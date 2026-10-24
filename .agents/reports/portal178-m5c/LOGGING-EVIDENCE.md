@@ -94,9 +94,24 @@ and [token_revoke.py](https://github.com/goauthentik/authentik/blob/4ec0d19b98da
 also log unknown raw tokens at DEBUG. They are **outside this three-call patch**;
 shared-system exposure remains, no global fix is claimed. No broader patch,
 shared-image build/rollout or restart is authorized by the portal DB/auth grant.
-Live UserInfo still waits for separately reviewed authorized three-call remediation
-and synthetic full-pipeline proof. The installed-image12-case test bypasses Django
-middleware and Go router logging; Model.save is mocked. It proves no event DB
-persistence, signal/notification behavior or live revoked/expired path. The only
-live safe probe was the synthetic missing-token401 case. Real production tokens
-and audit database writes are excluded from this evidence.
+The installed-image canary bypasses Django middleware and Go router logging;
+Model.save is mocked. It proves no event DB persistence, signal/notification
+behavior, or live revoked/expired path. The only live safe probe was the
+synthetic missing-token 401 case. Real production tokens and audit database
+writes are excluded from this evidence. A synthetic or source proof is not
+proof that an actual user token was logged.
+
+## Candidate artifact
+
+The three-call removal is a logging-argument bug fix. It does not change
+flows, grants, scopes, policy, token lifetimes, or log configuration. The
+candidate keeps Authentik 2026.8.5 and the installed digest above, and deletes
+only `access_token=access_token` from the three calls. Build and proof live in
+`scripts/authentik-userinfo-redaction/` and
+[the release packet](AUTHENTIK-CANDIDATE-RELEASE.md). The canary now runs the
+base image and the patched image as separate artifacts, at DEBUG and INFO,
+including a normal UserInfo 200 for both synthetic token shapes. INFO hides
+the DEBUG denials; the revoked WARNING remains. Baseline visibility is required,
+so a suppressed log cannot pass. This packet still does not change the
+HelmRelease or roll the shared server and worker. Introspection and revocation
+DEBUG logging stay outside the patch.

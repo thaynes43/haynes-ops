@@ -201,10 +201,14 @@ not assumptions about newer Authentik.
 `/introspect`.** Use exact-session current UserInfo plus durable local logout and
 short-lived encrypted token storage; no refresh or broader OAuth scope. Root
 coordinates the separate GoM6 contract/regression. The additional shared raw-token
-DEBUG paths remain disclosed in [logging evidence](LOGGING-EVIDENCE.md); the
-three-call UserInfo patch is not a global fix and has no rollout authorization.
-Live UserInfo remains held pending reviewed authorized remediation and synthetic
-full-pipeline proof. No production token or live revoked/expired test was used.
+DEBUG paths remain disclosed in [logging evidence](LOGGING-EVIDENCE.md). The
+three-call UserInfo change is a logging-argument bug fix, not a global fix:
+introspection and revocation stay outside it. The candidate image, synthetic
+base/patched proof, and rollback packet are in
+[the release packet](AUTHENTIK-CANDIDATE-RELEASE.md). This source does not change
+the HelmRelease pin. Ordinary GitOps rollout waits until root accepts the
+immutable artifact. A synthetic canary is not proof that a real user token was
+logged. No production token or live revoked/expired test was used.
 
 ## Evidence, with exact coverage
 

@@ -1,0 +1,248 @@
+name: Authentik UserInfo redaction
+
+# Builds the 2026.8.5 candidate that removes three UserInfo access_token log
+# arguments. Pull requests build, compare the base and patched images, and
+# record digests. A push to main publishes that same archive and signs it.
+# No manual dispatch. The Helm pin is not changed here.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/authentik-userinfo-redaction/**
+      - scripts/tests/portal178-m5c/authentik/**
+      - .agents/reports/portal178-m5c/pending/authentik-userinfo-log.patch
+      - .github/workflows/authentik-userinfo-redaction-build.yml
+  push:
+    branches: [main]
+    paths:
+      - scripts/authentik-userinfo-redaction/**
+      - scripts/tests/portal178-m5c/authentik/**
+      - .agents/reports/portal178-m5c/pending/authentik-userinfo-log.patch
+      - .github/workflows/authentik-userinfo-redaction-build.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Authentik UserInfo redaction - Success
+    runs-on: ubuntu-24.04
+    # Pull of the measured 377501332-byte amd64 base plus four sequential
+    # disposable UserInfo runs. This is not a test-pass cutoff.
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Host checks for the proposal and comparison rules
+        timeout-minutes: 2
+        run: nice -n 19 python3 -I -B scripts/tests/portal178-m5c/authentik/test_candidate_source.py
+
+      - name: Require free disk from the measured base size
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import shutil
+          compressed = 377501332
+          need = compressed * 12
+          free = shutil.disk_usage("/").free
+          print("free_bytes", free)
+          print("need_bytes", need)
+          if free < need:
+              raise SystemExit("runner disk is below 12x the measured base image")
+          PY
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Pull the pinned linux/amd64 base
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          docker pull --platform linux/amd64 \
+            ghcr.io/goauthentik/server@sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5
+
+      - name: Build the candidate archive without publishing
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: scripts/authentik-userinfo-redaction
+          file: scripts/authentik-userinfo-redaction/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: false
+          provenance: false
+          sbom: false
+          build-args: SOURCE_DATE_EPOCH=1792582296
+          tags: authentik-userinfo-redaction:candidate
+          outputs: type=docker,dest=${{ runner.temp }}/authentik-userinfo-redaction.tar,rewrite-timestamp=true
+
+      - name: Load the archive and compare base with candidate
+        timeout-minutes: 25
+        env:
+          METADATA: ${{ steps.build.outputs.metadata }}
+        run: |
+          set -euo pipefail
+          tar="${RUNNER_TEMP}/authentik-userinfo-redaction.tar"
+          test -s "$tar"
+          printf '%s\n' "$METADATA" > "${RUNNER_TEMP}/build-metadata.json"
+          load_out="$(docker load --input "$tar")"
+          printf '%s\n' "$load_out"
+          image=""
+          while IFS= read -r line; do
+            case "$line" in
+              "Loaded image: "*) image="${line#Loaded image: }" ;;
+              "Loaded image ID: "*) image="${line#Loaded image ID: }" ;;
+            esac
+          done <<< "$load_out"
+          test -n "$image"
+          if [[ "$image" == sha256:* ]]; then
+            docker tag "$image" authentik-userinfo-redaction:candidate
+            image="authentik-userinfo-redaction:candidate"
+          fi
+          base="ghcr.io/goauthentik/server@sha256:602227a86455d6772e3d16b7d852713c4f864f40df5df894abd1285bb53979a5"
+          docker image inspect "$base" > "${RUNNER_TEMP}/base-inspect.json"
+          docker image inspect "$image" > "${RUNNER_TEMP}/candidate-inspect.json"
+          extract() {
+            local ref="$1" dest="$2" cid
+            cid="$(docker create --pull never --entrypoint /bin/true "$ref")"
+            docker cp "$cid:/authentik/providers/oauth2/utils.py" "$dest"
+            docker rm "$cid" >/dev/null
+          }
+          extract "$base" "${RUNNER_TEMP}/base-utils.py"
+          extract "$image" "${RUNNER_TEMP}/candidate-utils.py"
+          python3 -B scripts/authentik-userinfo-redaction/verify_candidate.py \
+            --base-inspect "${RUNNER_TEMP}/base-inspect.json" \
+            --candidate-inspect "${RUNNER_TEMP}/candidate-inspect.json" \
+            --base-utils "${RUNNER_TEMP}/base-utils.py" \
+            --candidate-utils "${RUNNER_TEMP}/candidate-utils.py" \
+            --proposal .agents/reports/portal178-m5c/pending/authentik-userinfo-log.patch \
+            --archive "$tar" \
+            --metadata "${RUNNER_TEMP}/build-metadata.json" \
+            --out "${RUNNER_TEMP}/candidate-digests.json"
+          run_canary() {
+            local ref="$1" level="$2" dest="$3"
+            docker run --rm --network none --cpus 2 --memory 2g \
+              --read-only --cap-drop ALL --security-opt no-new-privileges \
+              --tmpfs /dev/shm:rw,nosuid,nodev,noexec,size=128m \
+              --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m \
+              --user 1000:1000 --entrypoint /ak-root/.venv/bin/python \
+              -e DJANGO_SETTINGS_MODULE=authentik.root.settings \
+              -e AUTHENTIK_SECRET_KEY=synthetic-disposable-image-only \
+              -e AUTHENTIK_LOG_LEVEL="$level" \
+              -e AUTHENTIK_ERROR_REPORTING__ENABLED=false \
+              -e AUTHENTIK_POSTGRESQL__HOST=127.0.0.1 \
+              --mount "type=bind,source=${GITHUB_WORKSPACE}/scripts/tests/portal178-m5c/authentik,target=/packet,readonly" \
+              --mount "type=bind,source=${GITHUB_WORKSPACE}/.agents/reports/portal178-m5c/pending,target=/proposal,readonly" \
+              "$ref" -I -B /packet/test_canary.py > "$dest"
+          }
+          run_one() {
+            local dest="$3"
+            if ! run_canary "$1" "$2" "$dest"; then
+              python3 -B -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).read_text())' "$dest"
+              exit 1
+            fi
+          }
+          run_one "$base" debug "${RUNNER_TEMP}/base-debug.json"
+          run_one "$base" info "${RUNNER_TEMP}/base-info.json"
+          run_one "$image" debug "${RUNNER_TEMP}/patched-debug.json"
+          run_one "$image" info "${RUNNER_TEMP}/patched-info.json"
+          python3 -B scripts/authentik-userinfo-redaction/compare_canary.py \
+            --base-debug "${RUNNER_TEMP}/base-debug.json" \
+            --base-info "${RUNNER_TEMP}/base-info.json" \
+            --patched-debug "${RUNNER_TEMP}/patched-debug.json" \
+            --patched-info "${RUNNER_TEMP}/patched-info.json"
+          python3 -B - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = json.loads(Path(os.environ["RUNNER_TEMP"], "candidate-digests.json").read_text())
+          print(json.dumps({k: report[k] for k in (
+              "archiveSha256", "candidateImageId", "candidateConfigSha256",
+              "buildxManifestDigest", "registryPublished", "runtimeMatch",
+              "utilsDeltaMatch", "layerPaths", "platform", "version")}, sort_keys=True))
+          PY
+
+      - name: Remove image inspect files
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/base-inspect.json "$RUNNER_TEMP"/candidate-inspect.json "$RUNNER_TEMP"/base-utils.py "$RUNNER_TEMP"/candidate-utils.py
+
+      - name: Upload the digest summary
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: authentik-userinfo-redaction-digests-${{ github.sha }}
+          path: ${{ runner.temp }}/candidate-digests.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload the validated archive for main publication
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: authentik-userinfo-redaction-${{ github.sha }}
+          path: ${{ runner.temp }}/authentik-userinfo-redaction.tar
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    name: Publish validated Authentik candidate
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Download this run's exact validated archive
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: authentik-userinfo-redaction-${{ github.sha }}
+          path: ${{ runner.temp }}
+
+      - name: Load the validated archive without rebuilding
+        run: |
+          set -euo pipefail
+          docker load --input "${RUNNER_TEMP}/authentik-userinfo-redaction.tar"
+
+      - name: Log in for main-only publication
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish the exact validated image
+        id: publish
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/authentik-userinfo-redaction
+        run: |
+          set -euo pipefail
+          docker tag authentik-userinfo-redaction:candidate "${IMAGE}:sha-${GITHUB_SHA}"
+          docker push "${IMAGE}:sha-${GITHUB_SHA}"
+          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:sha-${GITHUB_SHA}")"
+          echo "digest=${digest#*@}" >> "$GITHUB_OUTPUT"
+          echo "registry_digest=${digest#*@}"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
+
+      - name: Sign the main image digest
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/authentik-userinfo-redaction
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: >-
+          cosign sign --yes --new-bundle-format=false --use-signing-config=false
+          --registry-referrers-mode=legacy "${IMAGE}@${DIGEST}"

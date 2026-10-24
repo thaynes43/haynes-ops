@@ -50,3 +50,10 @@ Native review of published `6f71048f` (task haynes-ops-1024-001012). Source disp
 | N2 | `portal-infra-test.yml` pull_request and push path filters include `cluster16.yaml`, `portal-witness.yaml`, the RBAC kustomization, and blueprint 97. `validate.py` rejects a mapping that keeps the pin string while setting `direct_admin = active`. | Workflow permissions and triggers. Blueprint 97 expression. |
 | N3 | Peer helper catches `ValueError` and `KeyError` and prints the exception type only. | Peer identity and SQL. |
 | N4 | README records 7 packet tests. | Evidence from older heads is not relabeled. |
+
+UserInfo candidate, source and artifact only. The HelmRelease pin is unchanged.
+
+| Finding | Source change | Still closed |
+|---|---|---|
+| U1 | Three `access_token` logging arguments are removed by an image build pinned to installed 2026.8.5. Messages, severity, denials, and the sanitized revoked Event stay. | Registry digest after main publication, root review of that digest, then the ordinary pin. |
+| U2 | Canary compares the base image with the patched image at DEBUG and INFO, including a synthetic 200. Baseline marker visibility is required. | Not a production-token leak proof. Introspection and revocation logging are unchanged. |
