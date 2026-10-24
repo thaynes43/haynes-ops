@@ -67,7 +67,7 @@ stays unregistered and must not be applied in addition to this packet.
 | ExternalSecret | dev-agents | dev-env-v2-portal-oidc | 1Password item `dev-env`, properties `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` only. Kubernetes name unchanged. |
 | ExternalSecret | dev-agents | dev-env-v2-portal-runtime | Inert staged projection of the four runtime properties. Population and install HELD. Kubernetes name unchanged. |
 | ExternalSecret | database | dev-env-v2-portal-runtime-db | Inert staged basic-auth projection of `DB_USERNAME` and `DB_PASSWORD`. Population and install HELD. |
-| CiliumNetworkPolicy | dev-agents | dev-env-v2-portal | Copy of the pending BFF policy. |
+| CiliumNetworkPolicy | dev-agents | dev-env-v2-portal | Pending BFF rules plus exact OpenProject and operator egress. Not applied. |
 | IngressRoute | dev | dev-env-v2-portal | Internal host only. |
 | ServersTransport | dev-agents | dev-env-v2-portal | Backend TLS verification. Namespace is the Service namespace Traefik uses for an unqualified name. |
 
@@ -92,7 +92,7 @@ Mounts:
 | serving-tls | Secret `dev-env-v2-portal-tls`, not created here | `/etc/dev-env-portal/tls/tls.crt`, `/etc/dev-env-portal/tls/tls.key` | both absent |
 | api | projected SA token plus `kube-root-ca.crt` | `/var/run/portal/api/token`, `/var/run/portal/api/ca.crt` | token lifetime 3600 seconds; `config/admission-token-file` names the token path |
 
-`config/subject` is not in the ConfigMap. It is the existing issuer-plus-subject pin, not a 1Password property, and its value is unresolved. `PORTAL_SUBJECT` is not a mount and not an item field. `config/admission-uid` is not in the ConfigMap. `config/session-bindings.json`, `secrets/OPENPROJECT_TOKEN`, and `secrets/OPERATOR_TOKEN` are all absent, which is the published disabled-metadata state. The pod still cannot start: `config/subject` is missing, and the serving secret and every peer CA key are missing. The runtime ExternalSecret is inert and unpopulated.
+`config/subject` is not in the ConfigMap. It is the existing issuer-plus-subject pin, not a 1Password property, and its value is unresolved. `PORTAL_SUBJECT` is not a mount and not an item field. `config/admission-uid` is not in the ConfigMap. Merged runtime `fa8b1e2cf3af91e33bf0558873d70920e569751d` `metadataSelection` treats `secrets/OPENPROJECT_TOKEN`, `secrets/OPERATOR_TOKEN`, and `config/session-bindings.json` as one set. All absent leaves metadata disabled and those reads return unavailable. All present is the only enabled state, and the bindings file is schema 1 with tasks 120, 121, 122, 123, and 178 only. A subset fails startup. This render has none of the three files. No new 1Password property or token consumer is added. The pod still cannot start: `config/subject` is missing, and the serving secret and every peer CA key are missing. The runtime ExternalSecret is inert and unpopulated.
 
 Pinned config files:
 
@@ -146,7 +146,7 @@ The leaf in Secret `dev-agents/dev-env-v2-portal-tls` is what the process loads 
 
 ## Network isolation
 
-The rendered CiliumNetworkPolicy is the pending BFF policy: default deny, ingress only from `network` / `traefik` / `traefik-internal-network` to TCP 8443, egress only to CoreDNS for three exact names, `postgres16` TCP 5432, kube-apiserver TCP 443 and 6443, and `authentik.haynesnetwork.com` TCP 443.
+The rendered CiliumNetworkPolicy keeps default deny and the pending BFF rules: ingress only from `network` / `traefik` / `traefik-internal-network` to TCP 8443, CoreDNS for the earlier three names, `postgres16` TCP 5432, kube-apiserver TCP 443 and 6443, and `authentik.haynesnetwork.com` TCP 443. It adds DNS `matchName` entries for `work.haynesnetwork.com` and `dev-env-operator.dev-env-system.svc.cluster.local`, egress to that OpenProject name on TCP 443, and egress to pods labeled `app.kubernetes.io/name: dev-env-operator` in `dev-env-system` on TCP 8443. That label and port are the operator HelmRelease service `dev-env-operator` port 8443 and the endpoint selector in `kubernetes/main/apps/dev-env-system/network/app/operator.yaml`. There is no `matchPattern`, no namespace-only operator rule, and no metrics port 8080. The policy selects only `dev-env-v2-portal`. It is not applied. These paths do not enable metadata while the three files stay absent. Approved reads, once enabled by a later handoff, stay OpenProject GET for 120, 121, 122, 123, and 178, plus named dev-env session and claim reads. This packet does not add token mounts or widen that set.
 
 That policy is additive. `dev-env-session-platform` and `dev-env-session-web` still select a `dev-agents` pod named `dev-env-v2-portal`. `ccnp-exclusion.yaml` records the append-only NotIn change and is not rendered. Until that reviewed edit is applied, the dedicated policy is not an effective isolation boundary.
 
@@ -161,7 +161,7 @@ That policy is additive. `dev-env-session-platform` and `dev-env-session-web` st
 | CNPG `postgres16` | Secret `database/dev-env-v2-portal-runtime-db` | username and password | Pending `role-externalsecrets.yaml` | Unregistered inert projection. `DB_PASSWORD` must match that reviewed basic-auth mechanism. Migrator stays NOLOGIN. |
 | Traefik internal | IngressRoute `dev/dev-env-v2-portal` | Host `dev-env-v2.haynesops.com`, websecure, existing reflected certificate | Approved internal host | Staged. No public route and no reflector edit. |
 | Traefik to BFF | ServersTransport `dev-agents/dev-env-v2-portal` | HTTPS, verify CA, exact serverName | Required isolation in the internal-reader sequence | Template. Serving CA Secret is absent. |
-| BFF pod | CNP `dev-agents/dev-env-v2-portal` | ingress and egress above | Pending `bff-networkpolicy.yaml` | Staged copy. |
+| BFF pod | CNP `dev-agents/dev-env-v2-portal` | pending BFF rules plus exact OpenProject TCP 443 and operator TCP 8443 | Pending `bff-networkpolicy.yaml` plus this source delta | Staged. Not applied. Metadata stays disabled. |
 | BFF pod | CCNPs `dev-env-session-platform` and `dev-env-session-web` | remove this name from the additive allows | Required before the dedicated policy is effective | Review template only. Live policies unchanged. |
 | portal roles | `postgres16` `pg_hba` | six reject lines | PR4265 `cluster16.yaml` | Unchanged. No hostssl allow. |
 | certificate owner | ConfigMap `dev-agents/dev-env-v2-portal-postgres-ca` key `ca.crt` | public certificate only | `PORTAL-PUBLIC-CA-OPERATOR-HANDOFF-20261024.md` | Input prepared. No PEM stored. |

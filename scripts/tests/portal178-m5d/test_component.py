@@ -369,9 +369,69 @@ class ComponentRenderTest(unittest.TestCase):
     def test_network_policy_matches_pending_and_broad_allows_remain(self):
         rendered = by_kind(self.docs, "CiliumNetworkPolicy")
         self.assertEqual(len(rendered), 1)
+        spec = rendered[0]["spec"]
         pending = load(PENDING / "bff-networkpolicy.yaml")
-        self.assertEqual(rendered[0]["spec"], pending["spec"])
-        self.assertEqual(load(COMPONENT / "networkpolicy.yaml"), pending)
+        pending_spec = pending["spec"]
+        self.assertEqual(spec["endpointSelector"], {"matchLabels": {"app.kubernetes.io/name": "dev-env-v2-portal"}})
+        self.assertEqual(spec["enableDefaultDeny"], {"ingress": True, "egress": True})
+        self.assertEqual(spec["ingress"], pending_spec["ingress"])
+        self.assertEqual(spec["egress"][0]["toEndpoints"], pending_spec["egress"][0]["toEndpoints"])
+        self.assertEqual(spec["egress"][1], pending_spec["egress"][1])
+        self.assertEqual(spec["egress"][2], pending_spec["egress"][2])
+        self.assertEqual(spec["egress"][3], pending_spec["egress"][3])
+        dns_names = [item["matchName"] for item in spec["egress"][0]["toPorts"][0]["rules"]["dns"]]
+        pending_names = [item["matchName"] for item in pending_spec["egress"][0]["toPorts"][0]["rules"]["dns"]]
+        self.assertEqual(pending_names, [
+            "authentik.haynesnetwork.com",
+            "postgres16-rw.database.svc.cluster.local",
+            "kubernetes.default.svc.cluster.local",
+        ])
+        self.assertEqual(dns_names, pending_names + [
+            "work.haynesnetwork.com",
+            "dev-env-operator.dev-env-system.svc.cluster.local",
+        ])
+        self.assertEqual(spec["egress"][4], {
+            "toFQDNs": [{"matchName": "work.haynesnetwork.com"}],
+            "toPorts": [{"ports": [{"port": "443", "protocol": "TCP"}]}],
+        })
+        operator_rule = spec["egress"][5]
+        self.assertEqual(operator_rule, {
+            "toEndpoints": [{"matchLabels": {
+                "io.kubernetes.pod.namespace": "dev-env-system",
+                "app.kubernetes.io/name": "dev-env-operator",
+            }}],
+            "toPorts": [{"ports": [{"port": "8443", "protocol": "TCP"}]}],
+        })
+        self.assertEqual(len(spec["egress"]), 6)
+        policy_text = (COMPONENT / "networkpolicy.yaml").read_text()
+        self.assertNotIn("matchPattern", policy_text)
+        for rule in spec["egress"]:
+            for endpoint in rule.get("toEndpoints", []):
+                labels = endpoint.get("matchLabels", {})
+                if labels.get("io.kubernetes.pod.namespace") == "dev-env-system":
+                    self.assertEqual(set(labels), {"io.kubernetes.pod.namespace", "app.kubernetes.io/name"})
+                    self.assertEqual(labels["app.kubernetes.io/name"], "dev-env-operator")
+        operator_policy = load(ROOT / "kubernetes/main/apps/dev-env-system/network/app/operator.yaml")
+        self.assertEqual(
+            operator_policy["spec"]["endpointSelector"]["matchLabels"],
+            {"app.kubernetes.io/name": "dev-env-operator"},
+        )
+        self.assertEqual(operator_policy["metadata"]["namespace"], "dev-env-system")
+        release = load(ROOT / "kubernetes/main/apps/dev-env-system/operator/app/helmrelease.yaml")
+        api = release["spec"]["values"]["service"]["api"]
+        self.assertEqual(api["controller"], "dev-env-operator")
+        self.assertEqual(api["ports"]["https"]["port"], 8443)
+        self.assertNotEqual(spec, pending_spec)
+        for doc in by_kind(self.docs, "ExternalSecret"):
+            self.assertNotIn("OPENPROJECT_TOKEN", remote_properties(doc))
+            self.assertNotIn("OPERATOR_TOKEN", remote_properties(doc))
+        config = by_kind(self.docs, "ConfigMap")
+        config_data = next(item["data"] for item in config if item["metadata"]["name"] == "dev-env-v2-portal-config")
+        self.assertNotIn("session-bindings.json", config_data)
+        contract = CONTRACT.read_text()
+        self.assertIn("All absent leaves metadata disabled", contract)
+        self.assertIn("All present is the only enabled state", contract)
+        self.assertIn("This render has none of the three files", contract)
         self.assertEqual(by_kind(self.docs, "CiliumClusterwideNetworkPolicy"), [])
         exclusion = load(COMPONENT / "ccnp-exclusion.yaml")
         self.assertEqual(exclusion["append"], "dev-env-v2-portal")
@@ -458,6 +518,9 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertIn(PORTAL_IMAGE, contract)
         self.assertIn("backend-contract-03/RUNTIME-CONTRACT.md", contract)
         self.assertIn("unchanged from", contract)
+        self.assertIn("work.haynesnetwork.com", contract)
+        self.assertIn("dev-env-operator.dev-env-system.svc.cluster.local", contract)
+        self.assertIn("120, 121, 122, 123, and 178", contract)
         self.assertNotIn("6a522e843a8768099d8eb8086f9ff8272f94b725", contract)
         self.assertNotIn("Probe API cannot", contract)
         self.assertNotIn("no ExternalSecret selects", contract)
