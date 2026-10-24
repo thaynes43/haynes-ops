@@ -9,3 +9,9 @@ resources:
   # nothing else is stateful — so no volsync component.
 components:
   - ../../../../../shared/components/common/repos/app-template
+configMapGenerator:
+  - name: llama-server-card-b-power-cap
+    files:
+      - cap.sh=./card-b-power-cap.sh
+generatorOptions:
+  disableNameSuffixHash: true
