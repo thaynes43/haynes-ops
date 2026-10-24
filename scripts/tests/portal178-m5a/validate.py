@@ -202,9 +202,11 @@ def validate(blueprint, projection, schema):
     require(spec["secretStoreRef"] ==
             {"kind": "ClusterSecretStore", "name": "onepassword-connect"}, "dedicated store required")
     fields = ["OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET"]
+    # Supersession 2026-10-24: the item is existing HaynesKube/dev-env.
+    # The prior key dev-env-v2-portal is rejected. Unrelated properties stay unprojected.
     require(spec["data"] == [{"secretKey": f, "remoteRef":
-            {"key": "dev-env-v2-portal", "property": f}} for f in fields],
-            "only dedicated item/client fields")
+            {"key": "dev-env", "property": f}} for f in fields],
+            "only canonical dev-env properties")
     target = spec["target"]
     require(set(target) == {"name", "creationPolicy", "deletionPolicy", "template"},
             "projection target fields changed")
@@ -253,8 +255,12 @@ def main():
          lambda b, p: b["entries"][6]["attrs"].update(enabled=False)),
         ("deny-removed", "staged deny must remain closed",
          lambda b, p: b["entries"][0]["attrs"].update(expression="return True")),
-        ("broad-item", "only dedicated item/client fields",
-         lambda b, p: p["spec"]["data"][0]["remoteRef"].update(key="dev-env")),
+        ("historical-item", "only canonical dev-env properties",
+         lambda b, p: p["spec"]["data"][0]["remoteRef"].update(key="dev-env-v2-portal")),
+        ("unrelated-property", "only canonical dev-env properties",
+         lambda b, p: p["spec"]["data"].append({
+             "secretKey": "CLAUDE_CODE_OAUTH_TOKEN",
+             "remoteRef": {"key": "dev-env", "property": "CLAUDE_CODE_OAUTH_TOKEN"}})),
         ("data-from", "only explicit field projection; no dataFrom",
          lambda b, p: p["spec"].update(dataFrom=[{"extract": {"key": "openproject"}}])),
         ("federated-provider", "JWT federation must remain empty",
