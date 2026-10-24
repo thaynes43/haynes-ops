@@ -153,7 +153,7 @@ class Postgres(unittest.TestCase):
             with self.subTest(sql=statement):
                 self.denied_sql(statement)
         for statement in ["CREATE SCHEMA denied", "CREATE TEMP TABLE denied (id integer)",
-                          "CREATE TABLE public.denied (id integer)", "SET ROLE postgres",
+                          "CREATE TABLE public.denied (id integer)",
                           "SELECT * FROM private_fixture.data"]:
             with self.subTest(migrator=statement):
                 self.admin.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(MIGRATOR)))
@@ -163,6 +163,15 @@ class Postgres(unittest.TestCase):
                     self.assertEqual(failure.exception.sqlstate, "42501", statement)
                 finally:
                     self.admin.execute("RESET ROLE")
+        # SET ROLE checks the session user. The peer admin remains postgres, so
+        # become the migrator for this one negative. No migrator network login.
+        self.admin.execute(sql.SQL("SET SESSION AUTHORIZATION {}").format(sql.Identifier(MIGRATOR)))
+        try:
+            with self.assertRaises(psycopg.Error) as failure:
+                self.admin.execute("SET ROLE postgres")
+            self.assertEqual(failure.exception.sqlstate, "42501")
+        finally:
+            self.admin.execute("RESET SESSION AUTHORIZATION")
         with connect("postgres") as admin:
             self.assertEqual(admin.execute("SELECT has_database_privilege(%s,'postgres','CONNECT')",
                                            (RUNTIME,)).fetchone(), (True,))
