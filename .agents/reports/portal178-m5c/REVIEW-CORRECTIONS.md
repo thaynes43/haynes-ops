@@ -29,7 +29,7 @@ M5D activation-source pass, after native `0a9` SAFE_FOR_SOURCE_MERGE. Not applie
 |---|---|---|
 | M1 | Reject-only HBA is the registered stage on `cluster16`. The runtime `hostssl` allow stays in `hba-stage-allow.yaml` and is composed in front of the `host all` catch-all only after `010`/`020`/`030`. The whole role patch is not the first registration. | Live HBA reload, roles, Database, positive allow. |
 | M2 | Blueprint 97 is the only owner of `property_mappings` (exact 3, staged deny kept). The 98 provider entry is removed. The guard rejects 2 mappings, a 4th mapping, pin/UUID drift, and an open deny. | Authentik apply, disposable IdP/Actor/sub matrix, Gate A. |
-| O1 | `--verify-reviewed-sha256` pins `030` and sets the session read-only before the file. No default mode. | Live peer execution. |
+| O1 | `--verify-reviewed-sha256` pins `030`, opens one read-only transaction before those bytes, and refuses explicit read-write transaction control in them. No default mode. | Live peer execution. |
 | O2 | No migrator `hostssl` allow. Fixture enables LOGIN only to prove HBA still rejects. | A future reviewed LOGIN window, if one is ever needed. |
 | O3 | `030` also checks portal routines/extra composites, cluster-wide role settings, and leftover portal backends. | Production readback. |
 | O4 | README states the helper requires an explicit mode. | — |

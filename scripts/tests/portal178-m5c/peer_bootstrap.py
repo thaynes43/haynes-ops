@@ -23,6 +23,17 @@ ROOT = Path(__file__).resolve().parents[3]
 SQL_FILE = ROOT / ".agents/reports/portal178-m5c/pending/010-bootstrap.sql"
 NAMESPACE = "database"
 CLUSTER = "postgres16"
+VERIFY_PREFIX = "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;\nBEGIN READ ONLY;\n"
+# Explicit controls that can leave the read-only transaction the prefix opens.
+# The reviewed file's own BEGIN READ ONLY is allowed; READ WRITE is not.
+WRITABLE_SQL = re.compile(
+    r"(?i)(\bread\s+write\b|default_transaction_read_only|\bset\s+transaction\b|"
+    r"\bstart\s+transaction\b|\bset\s+session\s+characteristics\b)")
+
+
+def assert_verify_readonly(sql_text):
+    if WRITABLE_SQL.search(sql_text):
+        raise RuntimeError("verification SQL can leave the read-only transaction; stop")
 
 
 def invoke(args, **kwargs):
@@ -72,11 +83,13 @@ def main():
         source = SQL_FILE.with_name("030-verify.sql").read_bytes()
         if hashlib.sha256(source).hexdigest() != args.verify_reviewed_sha256:
             raise RuntimeError("SQL differs from reviewed hash; stop")
-        # Session read-only is enforced before the file. A swapped file that
-        # opens a read-write transaction fails closed even after a hash match
-        # of some other bytes; a hash mismatch never reaches psql.
+        text = source.decode()
+        # Hash pins the bytes. The prefix opens one read-only transaction before
+        # those bytes, and the scan rejects explicit controls that would leave it.
+        # A hash mismatch never reaches psql.
+        assert_verify_readonly(text)
         result = invoke([*command, "--dbname=dev_env_v2_portal", "-q", "-A", "-t", "--file=-"],
-                        input="SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;\n" + source.decode(),
+                        input=VERIFY_PREFIX + text,
                         capture_output=True)
         proof = json.loads(result.stdout)
         checks = proof.get("checks", {})

@@ -292,8 +292,14 @@ class Packet(unittest.TestCase):
         with mock.patch.object(helper, "invoke", fake_verify), mock.patch.object(sys, "argv", [str(path), "--verify-reviewed-sha256", digest]), redirect_stdout(io.StringIO()):
             helper.main()
         self.assertEqual(len(calls), 3)
-        self.assertTrue(calls[-1][1]["input"].startswith("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;\n"))
+        self.assertTrue(calls[-1][1]["input"].startswith(helper.VERIFY_PREFIX))
         self.assertIn("BEGIN READ ONLY;", calls[-1][1]["input"])
+        helper.assert_verify_readonly((PACKET / "030-verify.sql").read_text())
+        for writable in ("BEGIN READ WRITE;", "SET TRANSACTION READ WRITE;",
+                         "SET default_transaction_read_only = off;",
+                         "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE;"):
+            with self.assertRaisesRegex(RuntimeError, "read-only transaction"):
+                helper.assert_verify_readonly(writable)
         calls.clear()
         with mock.patch.object(helper, "invoke", fake_verify), mock.patch.object(sys, "argv", [str(path), "--verify-reviewed-sha256", "0"*64]):
             with self.assertRaisesRegex(RuntimeError, "differs from reviewed hash"):
