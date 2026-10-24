@@ -1,4 +1,4 @@
-# UNREGISTERED consumer. Runtime source is merged dev-env fa8b1e2cf3af91e33bf0558873d70920e569751d.
+# UNREGISTERED consumer. Runtime source is merged dev-env 5b39ebb13f3651c8aa741a2b4358bc1eecf6dd30.
 # The image pin is the published portal digest. It is not installation.
 # Mount root is /etc/dev-env-portal. Probes are HTTPS GET /healthz and /readyz.
 # Host is set with httpHeaders, not httpGet.host, so the dial target stays the pod IP.
@@ -53,7 +53,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          image: ghcr.io/thaynes43/dev-env-portal:sha-fa8b1e2@sha256:a273ea9941d2956534975fa832fb6318a78ec9b8d926403a0357a1674b9fe622
+          image: ghcr.io/thaynes43/dev-env-portal:sha-5b39ebb@sha256:b6491747e5730a7a220ac0b79b07493399449425a0acb1e177b52efa00e4233a
           imagePullPolicy: IfNotPresent
           ports:
             - name: https

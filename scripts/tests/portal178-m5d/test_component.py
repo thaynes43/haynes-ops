@@ -19,9 +19,10 @@ RUNTIME_CONTRACT = Path("/home/dev/work/orders/portal178-runtime-assembly-202610
 STABLE_CONTRACT = Path("/home/dev/work/orders/portal178-runtime-assembly-20261024/integration-fixes-02/RUNTIME-CONTRACT.md")
 M6_HEAD = "fa8b1e2cf3af91e33bf0558873d70920e569751d"
 PORTAL_IMAGE = (
-    "ghcr.io/thaynes43/dev-env-portal:sha-fa8b1e2"
-    "@sha256:a273ea9941d2956534975fa832fb6318a78ec9b8d926403a0357a1674b9fe622"
+    "ghcr.io/thaynes43/dev-env-portal:sha-5b39ebb"
+    "@sha256:b6491747e5730a7a220ac0b79b07493399449425a0acb1e177b52efa00e4233a"
 )
+PUBLISHED_HEAD = "5b39ebb13f3651c8aa741a2b4358bc1eecf6dd30"
 
 RESOURCES = [
     "oidc-externalsecret.yaml",
@@ -564,6 +565,7 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertIn("integration-fixes-02", contract)
         self.assertIn("config/subject", contract)
         self.assertIn(M6_HEAD, contract)
+        self.assertIn(PUBLISHED_HEAD, contract)
         self.assertIn(PORTAL_IMAGE, contract)
         self.assertIn("backend-contract-03/RUNTIME-CONTRACT.md", contract)
         self.assertIn("unchanged from", contract)
@@ -575,6 +577,14 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertIn("matches the bound session name and UID", contract)
         self.assertIn("does not claim the operator or OpenProject enforces them as backend ACLs", contract)
         self.assertNotIn("named dev-env session", contract)
+        self.assertIn("Published `fa8b1e2cf3af91e33bf0558873d70920e569751d` accepts schema 1", contract)
+        self.assertIn("c9e3421710319c2c10554b91dccb655de4871967", contract)
+        self.assertIn("taskclaim.Name(project, repository, taskKey)", contract)
+        self.assertIn("76 bytes", contract)
+        self.assertIn("does not choose the five production task keys", contract)
+        self.assertIn("provider 174", contract)
+        self.assertIn("not materialized", contract)
+        self.assertIn("historical handoff convention", contract)
         self.assertIn("not a 1Password technical limitation", contract)
         self.assertIn("Tom's secure UI", contract)
         self.assertIn("No approved automated writer", contract)
