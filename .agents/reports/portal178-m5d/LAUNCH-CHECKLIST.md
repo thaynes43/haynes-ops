@@ -49,7 +49,7 @@ Runtime, same item, explicitly HELD. Do not tell Tom to populate these. No crede
 
 `config/subject` is unresolved. The parser requires that file, and it is the existing issuer-plus-subject pin. It is not a 1Password property. This packet does not invent `PORTAL_SUBJECT`, a file, or a user step that would create a field.
 
-The later handoff, when authorized, is a reviewed secure UI write by Tom to the held property names only. It is not a chat paste, a generated value in git, or a second 1Password item. Source projections of `dev-env` already use twelve other property names; none collide with the six portal names above. Fields on the item that this packet does not name are preserved by omission. The rendered OIDC consumer selects `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`. The rendered runtime and database projections select only their named properties and stay unpopulated.
+Earlier handoff records said Tom alone writes these fields. That sentence is not a 1Password technical limitation. The verified route is Tom's secure UI. No approved automated writer for these fields was found. This packet does not authorize a new writer. An independently verified already-approved secure provisioner would replace that handoff assumption. The write is not a chat paste, a generated value in git, or a second 1Password item. Source projections of `dev-env` already use twelve other property names; none collide with the six portal names above. Fields on the item that this packet does not name are preserved by omission. The rendered OIDC consumer selects `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`. The rendered runtime and database projections select only their named properties and stay unpopulated.
 
 ## Unverified inputs
 
