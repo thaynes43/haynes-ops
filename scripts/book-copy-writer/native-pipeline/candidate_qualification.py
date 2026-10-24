@@ -561,11 +561,33 @@ def assert_clean_copy_sources(repo, paths=COPY_SOURCE_PATHS):
         raise QualificationRefused('COPY sources are dirty: %s' % status.strip())
 
 
+def commit_header_parents(repo):
+    """Parent SHAs from the raw commit header, not from HEAD^N.
+
+    actions/checkout fetches the pull-request merge with depth 1. That shallow
+    commit is grafted as parentless, so HEAD^1 and HEAD^2 do not resolve even
+    though the commit object still lists its parent lines. HEAD's own SHA
+    covers those lines.
+    """
+    raw = _git(repo, 'cat-file', 'commit', 'HEAD').stdout
+    header = raw.split('\n\n', 1)[0]
+    parents = []
+    for line in header.splitlines():
+        if not line.startswith('parent '):
+            continue
+        sha = line[len('parent '):].strip()
+        if not _is_sha(sha):
+            raise QualificationRefused('commit-header parent is not a 40-character SHA')
+        parents.append(sha)
+    return parents
+
+
 def bind_checkout_identity(repo, event_name, event_sha, pr_head_sha='', pr_base_sha=''):
-    """Bind checkout HEAD to the event SHA, and a PR merge to its real head.
+    """Bind checkout HEAD to the event SHA, and a PR merge to its header parents.
 
     On pull_request, GITHUB_SHA is the synthetic merge commit. The pull request
-    head is recorded separately and must be HEAD^2; the base must be HEAD^1.
+    head and base are recorded separately and must equal commit-header parents
+    2 and 1. The binding does not call HEAD^1 or HEAD^2.
     """
     if event_name not in KNOWN_EVENTS:
         raise QualificationRefused('unsupported checkout event %r' % (event_name,))
@@ -579,12 +601,13 @@ def bind_checkout_identity(repo, event_name, event_sha, pr_head_sha='', pr_base_
     if event_name == 'pull_request':
         if not _is_sha(pr_head_sha) or not _is_sha(pr_base_sha):
             raise QualificationRefused('pull request head and base SHAs must be recorded separately from the event SHA')
-        parent1 = _git(repo, 'rev-parse', 'HEAD^1').stdout.strip()
-        parent2 = _git(repo, 'rev-parse', 'HEAD^2').stdout.strip()
-        if parent1 != pr_base_sha:
-            raise QualificationRefused('merge parent HEAD^1 does not match the pull request base')
-        if parent2 != pr_head_sha:
-            raise QualificationRefused('merge parent HEAD^2 does not match the pull request head')
+        parents = commit_header_parents(repo)
+        if len(parents) != 2:
+            raise QualificationRefused('pull request checkout commit must have exactly two commit-header parents')
+        if parents[0] != pr_base_sha:
+            raise QualificationRefused('commit-header parent 1 does not match the pull request base')
+        if parents[1] != pr_head_sha:
+            raise QualificationRefused('commit-header parent 2 does not match the pull request head')
         if pr_head_sha == event_sha:
             raise QualificationRefused('pull request head SHA collapsed into the synthetic event SHA')
     elif pr_head_sha or pr_base_sha:

@@ -38,6 +38,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify host git binding without an image
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          nice -n 19 python3 -B scripts/book-copy-writer/native-pipeline/test_pipeline_closure.py \
+            PipelineCases.test_event_sha_binds_pull_request_head_and_dirty_copy_sources_fail \
+            PipelineCases.test_file_url_depth1_commit_header_parents \
+            PipelineCases.test_base_parser_refuses_pr3626_bytes_when_present
+
       - name: Verify exact public cached index and amd64 manifest metadata
         id: cache
         timeout-minutes: 2

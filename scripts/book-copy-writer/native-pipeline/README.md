@@ -189,10 +189,12 @@ loads that exact validated archive. Pull requests cannot publish or sign. This
 does not replace the frozen pins.
 
 On a pull request the recorded event SHA is the synthetic merge commit
-(`GITHUB_SHA`, equal to checkout `HEAD`). The pull request head SHA is recorded
-separately and must equal `HEAD^2`; the base must equal `HEAD^1`. The six
-Dockerfile COPY sources must be clean regular files whose worktree bytes match
-the blobs at `HEAD`.
+(`GITHUB_SHA`, equal to checkout `HEAD`). The pull request head and base are
+recorded separately. They must equal the second and first `parent` lines in
+that commit's raw header. The check does not use `HEAD^1` or `HEAD^2`: a
+depth-1 checkout grafts those parents away even though the header still lists
+them. The six Dockerfile COPY sources must be clean regular files whose
+worktree bytes match the blobs at `HEAD`.
 
 Passing this source pipeline does not qualify a changed requirements file for
 `prepare.materialize`. That path still requires frozen bytes from the immutable
