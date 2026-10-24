@@ -76,7 +76,8 @@ copy without the reviewed matching hash blocks the capability exception. Tests c
 both copies and the hash and exercise altered bytes/commands/mounts/environment against
 the actual Kyverno engine. The script:
 
-- Accepts only `talosw04` and Card B's exact UUID; every NVIDIA command selects it.
+- Accepts only `talosw04`. The visible-device value may be Card B's UUID, or `void` after the NVIDIA runtime mounts that pinned device for `NVIDIA_DRIVER_CAPABILITIES=utility`. Every NVIDIA command still selects Card B's UUID.
+- 2026-10-24: the first utility-capability startup saw `void` and exited before any power-limit write. Helm then restored the previous pod, whose read-only gate stayed at 350 W. `ERROR: init 250 result=11` on that log line is the Talos driver probe.
 - Refuses active or unreadable compute-process lists before any write.
 - Enables persistence mode and lowers the configured cap to 250 W; preserves any
   already lower maintenance limit. Reads back both configured and enforced limits.

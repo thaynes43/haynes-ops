@@ -56,6 +56,8 @@ spec:
               tag: server-cuda-b11096@sha256:0192ab2545efcbe79c240645e34abd8fffbe4813aedcef5a0e3a886ef6d6d82f
             env:
               NVIDIA_VISIBLE_DEVICES: GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b
+              # utility mounts nvidia-smi without CUDA, then the runtime rewrites
+              # the UUID above to void. The script allows only that rewrite.
               NVIDIA_DRIVER_CAPABILITIES: utility
               POD_NODE_NAME:
                 valueFrom:
@@ -78,7 +80,14 @@ spec:
                 smi() { timeout 15 nvidia-smi -i "$gpu" "$@"; }
 
                 [ "$POD_NODE_NAME" = talosw04 ] || fail 'refusing another node'
-                [ "$NVIDIA_VISIBLE_DEVICES" = "$gpu" ] || fail 'refusing another visible-device selection'
+                # The NVIDIA runtime rewrites a pinned UUID to "void" after mounting that
+                # device when NVIDIA_DRIVER_CAPABILITIES=utility. void is that rewrite, not a
+                # request for every GPU. Any other value is a different selection and must not
+                # reach nvidia-smi. The query below still requires Card B's UUID.
+                case "$NVIDIA_VISIBLE_DEVICES" in
+                  "$gpu"|void) ;;
+                  *) fail "refusing visible-device selection '$NVIDIA_VISIBLE_DEVICES'" ;;
+                esac
 
                 read_state() {
                   state=$(smi --query-gpu=uuid,persistence_mode,power.limit,enforced.power.limit --format=csv,noheader,nounits) || fail 'GPU state query failed'

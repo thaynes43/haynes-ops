@@ -84,8 +84,19 @@ class PowerCapTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assert_no_writes(calls)
 
+    def test_runtime_void_rewrite_still_caps_the_pinned_gpu(self):
+        result, calls, state = self.run_cap(env={'NVIDIA_VISIBLE_DEVICES': 'void'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([c[2:] for c in calls if c[2].startswith('-p')], [['-pm', '1'], ['-pl', '250']])
+        self.assertEqual(state['enforced'], '250.00')
+
     def test_wrong_node_or_visible_gpu_never_queries_hardware(self):
-        for env in ({'POD_NODE_NAME': 'talosw01'}, {'NVIDIA_VISIBLE_DEVICES': 'all'}):
+        for env in ({'POD_NODE_NAME': 'talosw01'},
+                    {'NVIDIA_VISIBLE_DEVICES': 'all'},
+                    {'NVIDIA_VISIBLE_DEVICES': 'none'},
+                    {'NVIDIA_VISIBLE_DEVICES': '0'},
+                    {'NVIDIA_VISIBLE_DEVICES': ''},
+                    {'NVIDIA_VISIBLE_DEVICES': 'void '}):
             result, calls, _ = self.run_cap(env=env)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(calls, [])
