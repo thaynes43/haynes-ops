@@ -33,6 +33,28 @@
     {
       customType: 'regex',
       description: [
+        'Authentik userinfo-redaction base. The Dockerfile is excluded from the',
+        'built-in dockerfile manager. A digest-only FROM has no currentValue, so',
+        'digest lookup falls through to the tag latest and warns "Could not',
+        'determine new digest". The version already sits in the comment',
+        '"Authentik server 2026.8.5"; this reads that version plus the pinned',
+        'index digest and leaves the FROM line digest-only. Adding :2026.8.5 to',
+        'FROM would select the same bytes (the tag index digest matches) but',
+        'would change the instruction text under the reviewed candidate expect',
+        'gate. Do not add a tag here without a new reviewed image closure.',
+      ],
+      managerFilePatterns: [
+        '/(^|/)scripts/authentik-userinfo-redaction/Dockerfile$/',
+      ],
+      matchStrings: [
+        '# syntax=(?<depName>docker/dockerfile):(?<currentValue>\\d+)',
+        'Authentik server (?<currentValue>\\d+\\.\\d+\\.\\d+), pinned by the published multi-arch index digest\\.\\n(?:#[^\\n]*\\n)*FROM (?<depName>ghcr\\.io/goauthentik/server)@(?<currentDigest>sha256:[a-f0-9]{64})',
+      ],
+      datasourceTemplate: 'docker',
+    },
+    {
+      customType: 'regex',
+      description: [
         'Dockerfile ARG version pins (scripts/**/Dockerfile)',
         'The built-in `dockerfile` manager only reads FROM/image refs, so an',
         '`ARG FOO_VERSION=1.2.3` preceded by a `# renovate: datasource=… depName=…`',

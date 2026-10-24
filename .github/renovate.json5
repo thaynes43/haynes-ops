@@ -80,6 +80,17 @@
       '/(^|/)kubernetes/.+\\.ya?ml(?:\\.j2)?$/',
     ],
   },
+  // Default Dockerfile patterns, minus the digest-only authentik base. That
+  // file's version key is the existing "Authentik server <version>" comment,
+  // read by the custom manager. The FROM line stays digest-only so the reviewed
+  // candidate closure is not rewritten. See .renovate/customManagers.json5.
+  dockerfile: {
+    managerFilePatterns: [
+      '/(^|/|\\.)([Dd]ocker|[Cc]ontainer)file$/',
+      '/(^|/)([Dd]ocker|[Cc]ontainer)file[^/]*$/',
+      '!/(^|/)scripts/authentik-userinfo-redaction/Dockerfile$/',
+    ],
+  },
   kustomize: {
     managerFilePatterns: [
       '/(^|/)kustomization\\.ya?ml(?:\\.j2)?$/',

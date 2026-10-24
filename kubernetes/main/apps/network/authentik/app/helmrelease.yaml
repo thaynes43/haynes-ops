@@ -113,11 +113,15 @@ spec:
             - secretRef:
                 name: authentik-secret
         # PLAN-042 step 1/2: copy the image's own web dist into the emptyDir.
-        # The chart tpl-renders server.initContainers. Server and worker append
-        # global.image.digest themselves; this override must append the same
-        # suffix or the init container stays on the tag.
+        # The chart tpl-renders server.initContainers with root context `$`
+        # (`tpl (toYaml .) $`). Server and worker append global.image.digest
+        # themselves; this override must append the same suffix or the init
+        # container stays on the tag. `$.Values` renders the same string as
+        # `.Values` in that tpl. The `$` makes Renovate's helm-values splitter
+        # return contains-variable instead of a docker package named after the
+        # expression.
         - name: web-dist-copy
-          image: '{{ default .Values.global.image.repository .Values.server.image.repository }}:{{ default (include "authentik.defaultTag" .) .Values.server.image.tag }}{{- if (default .Values.global.image.digest .Values.server.image.digest) -}}@{{ default .Values.global.image.digest .Values.server.image.digest }}{{- end }}'
+          image: '{{ default $.Values.global.image.repository $.Values.server.image.repository }}:{{ default (include "authentik.defaultTag" .) $.Values.server.image.tag }}{{- if (default $.Values.global.image.digest $.Values.server.image.digest) -}}@{{ default $.Values.global.image.digest $.Values.server.image.digest }}{{- end }}'
           imagePullPolicy: IfNotPresent
           command: [/bin/sh, -c]
           args:
