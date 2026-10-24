@@ -1,2 +1,4 @@
 *
 !Dockerfile
+!install_certifi.py
+!certifi-2026.10.23-py3-none-any.whl

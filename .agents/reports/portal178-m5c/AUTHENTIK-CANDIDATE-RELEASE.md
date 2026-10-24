@@ -5,6 +5,31 @@ Source and artifact only. This packet does not change
 a pod. Root reviews the immutable artifact, then continues the ordinary GitOps
 pin. A synthetic canary is not proof that a real user token was logged.
 
+## Held draft, not accepted
+
+This branch adds an unaccepted certifi `2026.10.23` overlay on the same
+Authentik `2026.8.5` base and keeps all three `access_token` redactions. It
+does not change the live trust store, a Kubernetes pin, or a running pod, and
+it does not fix the GPU outage. Official Authentik remains `2026.8.5`.
+
+Pull-request CI builds an archive and does not publish or sign it. The four
+keys in `scripts/authentik-userinfo-redaction/reviewed-digests.json` still
+identify the accepted utils-only build below, so the new archive fails that
+gate until those keys are replaced from the hosted report's actual bytes. The
+report is written as `UNACCEPTED` before that failure. The pull-request job
+uploads `authentik-userinfo-redaction-unaccepted-<commit>` and
+`authentik-userinfo-redaction-digests-<commit>` when those files exist. The
+draft archive SHA is the `archiveSha256` field of that report. It is not
+stored in Git yet.
+
+The accepted registry image
+`ghcr.io/thaynes43/authentik-userinfo-redaction@sha256:18fc99f13617a4b83dfc470e4f8cda7ed76cf513c5147c90e1de888838325663`
+does not sign this draft. The main publish job is unchanged and is not
+authorized for this draft. No Actions permission was added.
+
+The sections below describe the accepted utils-only artifact and the future
+pin procedure. They are not approval to publish or roll this draft.
+
 ## What the candidate is
 
 Authentik server and worker stay on chart `2026.8.5`. The image keeps the
@@ -15,19 +40,20 @@ The linux/amd64 manifest inside that index is
 compressed layers 377,501,332 bytes). Live server, worker, and `web-dist-copy`
 on 2026-10-24 all resolved to that index digest. Each deployment is 3/3 ready.
 
-The only source change is the [three-call patch](pending/authentik-userinfo-log.patch):
+The accepted utils-only image's only source change is the [three-call patch](pending/authentik-userinfo-log.patch):
 delete `access_token=access_token` from the missing DEBUG, expired DEBUG, and
 revoked WARNING calls in `authentik/providers/oauth2/utils.py`. Installed file
 `131cfcb81374f9beccb7cad6830fbcc9917f030ea5d3e4cfb26b470db6d6ebcb` becomes
 `ae1494c6c145d094fd1ad473517f4c0e5fbb8fdfc7b145c651235f29f1871b97`. Messages,
 severity, 401 `invalid_token` denials, and the sanitized suspicious-request
-Event stay. No dependency reinstall, log-level change, flow, scope, grant,
-lifetime, credential, or ingress change.
+Event stay. That accepted image did not reinstall a dependency and did not
+change log level, flow, scope, grant, lifetime, credential, or ingress.
 
-Build context is `scripts/authentik-userinfo-redaction/` and contains only the
-Dockerfile. Pull-request CI builds a docker archive, checks runtime
-user/entrypoint/cmd/env hash/platform against the base, checks the new layer is
-only that Python file, and runs the canary on both images at DEBUG and INFO.
+The accepted build context contained only the Dockerfile. That pull-request CI
+checked runtime user/entrypoint/cmd/env hash/platform against the base, checked
+the new layer was only that Python file, and ran the canary on both images at
+DEBUG and INFO. The held draft adds the pinned wheel and installer to the
+context and allows only that certifi delta plus the same utils file.
 The measured canary envelope is 2 CPU and 2 GiB, the same limits as the
 passing disposable proof on this digest. A push to main builds that Dockerfile
 again. Publish loads the archive from that same main run and refuses to push
@@ -49,9 +75,12 @@ The digests below were measured on run 40060699220 and reproduced on run
 
 Runtime user, entrypoint, command, environment hash, labels, and linux/amd64
 matched the base, and the base rootfs layers were the prefix of the candidate.
-A later run of the same Dockerfile must reproduce these digests. Do not invent
-a registry digest in the Helm pin. The pin uses the main publish job's
-`RepoDigests` value after root accepts this artifact.
+Those four digests remain the enforcement gate in `reviewed-digests.json`.
+The held draft's Dockerfile is not that build, so its hosted archive is
+expected to miss the gate until the four keys are replaced from reviewed
+bytes. Do not invent a registry digest in the Helm pin. The pin uses the main
+publish job's `RepoDigests` value after root accepts an artifact. The accepted
+image's signature does not extend to the held draft.
 
 ## Current effective refs
 

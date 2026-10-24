@@ -1,8 +1,11 @@
 name: Authentik UserInfo redaction
 
-# Builds the 2026.8.5 candidate that removes three UserInfo access_token log
-# arguments. Pull requests build, compare the base and patched images, and
-# record digests. A push to main publishes that same archive and signs it.
+# Builds the held Authentik 2026.8.5 candidate: three UserInfo access_token
+# redactions plus the pinned certifi 2026.10.23 overlay. Pull requests build
+# and compare. They do not publish or sign. reviewed-digests.json stays the
+# gate, so a new archive fails that check until its bytes are reviewed.
+# The unaccepted report and archive are still uploaded for that review.
+# A push to main publishes only an archive that matches the reviewed gate.
 # No manual dispatch. The Helm pin is not changed here.
 
 on:
@@ -135,23 +138,46 @@ jobs:
           docker image inspect "$base" > "${RUNNER_TEMP}/base-inspect.json"
           docker image inspect "$image" > "${RUNNER_TEMP}/candidate-inspect.json"
           extract() {
-            local ref="$1" dest="$2" cid
+            local ref="$1" src="$2" dest="$3" cid
             cid="$(docker create --pull never --entrypoint /bin/true "$ref")"
-            docker cp "$cid:/authentik/providers/oauth2/utils.py" "$dest"
+            docker cp "$cid:$src" "$dest"
             docker rm "$cid" >/dev/null
           }
-          extract "$base" "${RUNNER_TEMP}/base-utils.py"
-          extract "$image" "${RUNNER_TEMP}/candidate-utils.py"
+          extract "$base" /authentik/providers/oauth2/utils.py "${RUNNER_TEMP}/base-utils.py"
+          extract "$image" /authentik/providers/oauth2/utils.py "${RUNNER_TEMP}/candidate-utils.py"
+          extract "$base" /ak-root/.venv/lib/python3.14/site-packages/certifi/cacert.pem "${RUNNER_TEMP}/base-cacert.pem"
+          extract "$image" /ak-root/.venv/lib/python3.14/site-packages/certifi/cacert.pem "${RUNNER_TEMP}/candidate-cacert.pem"
+          extract "$image" /ak-root/.venv/lib/python3.14/site-packages/certifi/__init__.py "${RUNNER_TEMP}/candidate-init.py"
+          extract "$image" /ak-root/.venv/lib/python3.14/site-packages/certifi-2026.10.23.dist-info/METADATA "${RUNNER_TEMP}/candidate-metadata"
+          docker run --rm --network none --cpus 2 --memory 512m \
+            --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /dev/shm:rw,nosuid,nodev,noexec,size=64m \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m \
+            --user 1000:1000 --entrypoint /ak-root/.venv/bin/python \
+            "$image" -I -B -c 'import certifi, importlib.metadata as metadata, json; versions=[dist.version for dist in metadata.distributions() if (dist.metadata.get("Name") or "").lower()=="certifi"]; print(json.dumps({"distributionVersions": versions, "importlibMetadataVersion": metadata.version("certifi"), "moduleVersion": certifi.__version__, "where": certifi.where()}))' \
+            > "${RUNNER_TEMP}/runtime-certifi.json"
+          set +e
           python3 -B scripts/authentik-userinfo-redaction/verify_candidate.py \
             --base-inspect "${RUNNER_TEMP}/base-inspect.json" \
             --candidate-inspect "${RUNNER_TEMP}/candidate-inspect.json" \
             --base-utils "${RUNNER_TEMP}/base-utils.py" \
             --candidate-utils "${RUNNER_TEMP}/candidate-utils.py" \
+            --base-cacert "${RUNNER_TEMP}/base-cacert.pem" \
+            --candidate-cacert "${RUNNER_TEMP}/candidate-cacert.pem" \
+            --candidate-init "${RUNNER_TEMP}/candidate-init.py" \
+            --candidate-metadata "${RUNNER_TEMP}/candidate-metadata" \
+            --runtime-certifi "${RUNNER_TEMP}/runtime-certifi.json" \
             --proposal .agents/reports/portal178-m5c/pending/authentik-userinfo-log.patch \
             --archive "$tar" \
             --metadata "${RUNNER_TEMP}/build-metadata.json" \
             --expect scripts/authentik-userinfo-redaction/reviewed-digests.json \
             --out "${RUNNER_TEMP}/candidate-digests.json"
+          verify_status=$?
+          set -e
+          if [[ "$verify_status" -ne 0 && "$verify_status" -ne 2 ]]; then
+            echo "candidate proof failed before the reviewed digest pin"
+            exit "$verify_status"
+          fi
           run_canary() {
             local ref="$1" level="$2" dest="$3"
             docker run --rm --network none --cpus 2 --memory 2g \
@@ -184,29 +210,45 @@ jobs:
             --base-info "${RUNNER_TEMP}/base-info.json" \
             --patched-debug "${RUNNER_TEMP}/patched-debug.json" \
             --patched-info "${RUNNER_TEMP}/patched-info.json"
-          python3 -B - <<'PY'
-          import json, os
-          from pathlib import Path
-          report = json.loads(Path(os.environ["RUNNER_TEMP"], "candidate-digests.json").read_text())
-          print(json.dumps({k: report[k] for k in (
-              "archiveSha256", "candidateImageId", "candidateConfigSha256",
-              "buildxManifestDigest", "registryPublished", "runtimeMatch",
-              "utilsDeltaMatch", "layerPaths", "platform", "version")}, sort_keys=True))
-          summary = Path(os.environ["GITHUB_STEP_SUMMARY"])
-          summary.write_text(
-              "\n".join([
-                  "### Authentik candidate",
-                  "- archive `%s`" % report["archiveSha256"],
-                  "- config `%s`" % report["candidateImageId"],
-                  "- manifest `%s`" % report["buildxManifestDigest"],
-                  "- registry digest not published on this run",
-                  "",
-              ]))
-          PY
+          if [[ "$verify_status" -ne 0 ]]; then
+            echo "candidate proofs passed; reviewed digest pin does not match this unaccepted build"
+            exit "$verify_status"
+          fi
 
       - name: Remove image inspect files
         if: always()
-        run: rm -f "$RUNNER_TEMP"/base-inspect.json "$RUNNER_TEMP"/candidate-inspect.json "$RUNNER_TEMP"/base-utils.py "$RUNNER_TEMP"/candidate-utils.py
+        run: rm -f "$RUNNER_TEMP"/base-inspect.json "$RUNNER_TEMP"/candidate-inspect.json "$RUNNER_TEMP"/base-utils.py "$RUNNER_TEMP"/candidate-utils.py "$RUNNER_TEMP"/base-cacert.pem "$RUNNER_TEMP"/candidate-cacert.pem "$RUNNER_TEMP"/candidate-init.py "$RUNNER_TEMP"/candidate-metadata "$RUNNER_TEMP"/runtime-certifi.json
+
+      - name: Record candidate acceptance
+        if: always()
+        run: |
+          python3 -B - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["RUNNER_TEMP"]) / "candidate-digests.json"
+          summary = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          if not path.exists():
+              summary.write_text("### Authentik candidate\n\nNo digest report was written.\n")
+              raise SystemExit(0)
+          report = json.loads(path.read_text())
+          lines = [
+              "### Authentik candidate",
+              "- acceptance `%s`" % report.get("acceptance"),
+              "- qualified `%s`" % report.get("qualified"),
+              "- expect match `%s`" % report.get("expectMatch"),
+              "- archive `%s`" % report.get("archiveSha256"),
+              "- config `%s`" % report.get("candidateImageId"),
+              "- manifest `%s`" % report.get("buildxManifestDigest"),
+              "- signed `%s`" % report.get("signed"),
+              "- registry not published on this run",
+              "- the accepted image sha256:18fc99f13617a4b83dfc470e4f8cda7ed76cf513c5147c90e1de888838325663 does not sign this archive",
+              "",
+          ]
+          summary.write_text("\n".join(lines))
+          print(json.dumps({key: report.get(key) for key in (
+              "acceptance", "qualified", "expectMatch", "archiveSha256",
+              "candidateImageId", "buildxManifestDigest", "signed")}, sort_keys=True))
+          PY
 
       - name: Upload the digest summary
         if: always()
@@ -214,6 +256,16 @@ jobs:
         with:
           name: authentik-userinfo-redaction-digests-${{ github.sha }}
           path: ${{ runner.temp }}/candidate-digests.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload the unaccepted candidate archive
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: authentik-userinfo-redaction-unaccepted-${{ github.sha }}
+          path: ${{ runner.temp }}/authentik-userinfo-redaction.tar
+          compression-level: 0
           retention-days: 7
           if-no-files-found: ignore
 
