@@ -173,3 +173,37 @@ path, or changed bytes stops the launch before the EPUB scan. The PATH keeps the
 existing directories first and appends /home/dev/.local/bin.
 It performs no post-LIVE object census or model handoff. Its pre-exec original-byte age
 check cannot replace the supervisor's final post-arm activation age check.
+
+Candidate qualification is separate from the frozen runtime. Closure still
+requires image `ghcr.io/thaynes43/book-copy-writer@sha256:628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601`,
+source `daa542a395eb508de6bbeb2a7430e63aa3454b6e`, and pinned signature receipt
+`ee882db8feb49ff1510700a415d6635b33850ab0e1f6c76c0825775652818183`.
+That receipt is not re-verified in this CI. The frozen local image ID is logged
+when the pinned image is pulled. A built candidate must match the reviewed
+source bytes of the same six modules, including requirements.txt, as independent
+regular files under the declared reviewed roots. Pip logical lines are joined
+before the marker and required-distribution parse. Its local image ID, archive
+SHA-256, registry digest, and signature stay distinct. The candidate is not an
+admitted runtime and has no signature until the existing main-only publisher
+loads that exact validated archive. Pull requests cannot publish or sign. This
+does not replace the frozen pins.
+
+On a pull request the recorded event SHA is the synthetic merge commit
+(`GITHUB_SHA`, equal to checkout `HEAD`). The pull request head and base are
+recorded separately. They must equal the second and first `parent` lines in
+that commit's raw header. The check does not use `HEAD^1` or `HEAD^2`: a
+depth-1 checkout grafts those parents away even though the header still lists
+them. The six Dockerfile COPY sources must be clean regular files whose
+worktree bytes match the blobs at `HEAD`.
+
+Passing this source pipeline does not qualify a changed requirements file for
+`prepare.materialize`. That path still requires frozen bytes from the immutable
+image or a pinned bundle. That remains a later #3626 qualification dependency.
+
+The closure container still starts from the validation tag. Publish still checks
+the archive against the sidecar uploaded in the same artifact and does not
+compare the loaded image ID with the validated ID. This change does not claim
+that cross-job binding. The publication text gate requires the known triggers,
+exact top-level `contents: read`, no `continue-on-error` on validate, and the
+publish job's exact main-only `if` line. It is still a text gate, not a workflow
+interpreter.

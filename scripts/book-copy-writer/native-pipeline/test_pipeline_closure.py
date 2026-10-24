@@ -12,6 +12,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -24,6 +25,7 @@ sys.path.insert(0, str(HERE))
 import bootstrap_payload
 import pipeline_pins as pins
 import prepare
+import candidate_qualification as qualification
 
 
 def load(name, file):
@@ -341,10 +343,16 @@ class PipelineCases(unittest.TestCase):
                 self.assertEqual(pins.module_source('epub_copies.py'), bundle / 'epub_copies.py')
 
     def test_complete_current_runtime_and_scope_source_pins(self):
-        modules = Path('/copy-writer')
-        for name, expected in pins.MODULES.items():
-            path = modules / name if modules.is_dir() else pins.module_source(name)
-            self.assertEqual(digest(path), expected)
+        qualification.refuse_rewritten_frozen_contract()
+        try:
+            paths, image_ref = qualification.resolve_frozen_paths()
+        except qualification.FrozenRuntimeDependency as error:
+            if Path('/copy-writer').is_dir() or os.environ.get('FROZEN_RUNTIME_DIR') or Path('/frozen-runtime').is_dir():
+                raise
+            self.assertIn('no candidate fallback', str(error))
+            self.assertIn(qualification.FROZEN_IMAGE, str(error))
+        else:
+            qualification.qualify_frozen_runtime(paths, image_ref)
         self.assertEqual(digest(HERE / 'bound_census_collectors.py'), pins.COLLECTOR_SHA256)
         self.assertEqual(digest(HERE / 'capture-live-byte-baseline.py'), pins.LIVE_ENTRY_SHA256)
         self.assertEqual(hashlib.sha256(prepare.canonical(pins.SELECTED_SCOPE)).hexdigest(), pins.SELECTED_SCOPE_SHA256)
@@ -496,6 +504,448 @@ class PipelineCases(unittest.TestCase):
                                 env={**os.environ, 'PYTHONPATH': os.environ.get('COPY_TEST_MODULES', str(pins.module_source('epub_copies.py').parent)) + os.pathsep + str(HERE.parent)},
                                 capture_output=True, timeout=2)
         self.assertEqual(result.returncode, 2); self.assertEqual(result.stdout, b'')
+
+
+
+    def _candidate_trees(self, directory, image_replacements=None, omit=()):
+        source = Path(directory) / 'source'
+        image = Path(directory) / 'image'
+        paths = {}
+        for name in qualification.MODULE_NAMES:
+            if name == 'requirements.txt':
+                payload = b'typing-extensions==4.15.0; python_version < "3.13" --hash=sha256:' + (b'ab' * 32) + b'\n'
+            else:
+                payload = b'same-candidate:' + name.encode() + b'\n'
+            source.mkdir(parents=True, exist_ok=True)
+            image.mkdir(parents=True, exist_ok=True)
+            source_path = source / name
+            source_path.write_bytes(payload)
+            paths[name] = source_path
+            if name not in omit:
+                (image / name).write_bytes((image_replacements or {}).get(name, payload))
+        return paths, image
+
+    def _qualify(self, paths, image, **overrides):
+        values = {
+            'source_paths': paths,
+            'image_root': image,
+            'source_sha': 'a' * 40,
+            'reviewed_source_sha': 'a' * 40,
+            'local_image_id': 'sha256:' + ('1' * 64),
+            'archive_sha256': '2' * 64,
+            'registry_digest': None,
+            'signature_sha256': None,
+            'measure_interpreter': False,
+        }
+        values.update(overrides)
+        if 'reviewed_roots' not in overrides:
+            values['reviewed_roots'] = [Path(next(iter(paths.values()))).parent]
+        return qualification.qualify_candidate(**values)
+
+    def test_candidate_matches_reviewed_source_and_records_distinct_identity(self):
+        inside = Path('/copy-writer').is_dir()
+        if inside:
+            source_paths = {name: qualification.reviewed_source_path(name) for name in qualification.MODULE_NAMES}
+            manifest = qualification.qualify_candidate(
+                source_paths, Path('/copy-writer'), os.environ['CANDIDATE_SOURCE_SHA'],
+                os.environ['CANDIDATE_LOCAL_IMAGE_ID'], os.environ['CANDIDATE_ARCHIVE_SHA256'],
+                os.environ.get('CANDIDATE_REGISTRY_DIGEST') or None,
+                os.environ.get('CANDIDATE_SIGNATURE_SHA256') or None,
+                reviewed_source_sha=os.environ['CANDIDATE_EVENT_SHA'], measure_interpreter=True)
+            self.assertEqual(manifest['source_sha'], os.environ['CANDIDATE_SOURCE_SHA'])
+            self.assertEqual(manifest['source_sha'], os.environ['CANDIDATE_EVENT_SHA'])
+            pr_head = os.environ.get('CANDIDATE_PR_HEAD_SHA') or ''
+            if pr_head:
+                self.assertRegex(pr_head, '^[0-9a-f]{40}$')
+                self.assertNotEqual(pr_head, manifest['source_sha'])
+            self.assertRegex(os.environ['FROZEN_LOCAL_IMAGE_ID'], '^sha256:[0-9a-f]{64}$')
+            report = manifest['distribution_measurement']
+            pinned = qualification.pinned_interpreter((HERE.parent / 'Dockerfile').read_text())
+            self.assertTrue(report['interpreter'].startswith(pinned))
+            installed = {item['name'].lower().replace('_', '-'): item['version'] for item in report['installed']}
+            requirements = qualification.reviewed_source_path('requirements.txt').read_text()
+            for name, spec in qualification.required_distributions(requirements).items():
+                selected = qualification.evaluate_python_version_marker(spec['marker'], report['interpreter']) if spec['marker'] else True
+                if selected:
+                    self.assertEqual(installed.get(name), spec['version'])
+                else:
+                    self.assertNotIn(name, installed)
+        else:
+            with tempfile.TemporaryDirectory() as directory:
+                paths, image = self._candidate_trees(directory)
+                manifest = self._qualify(paths, image)
+        self.assertEqual(manifest['kind'], 'candidate-qualification')
+        self.assertFalse(manifest['admitted_runtime'])
+        self.assertIsNone(manifest['registry_digest'])
+        self.assertIsNone(manifest['signature_sha256'])
+        self.assertNotEqual(manifest['local_image_id'][7:], manifest['archive_sha256'])
+        self.assertFalse(manifest['marker']['marker_is_binary_proof'])
+        self.assertTrue(manifest['marker']['selects']['3.12'])
+        self.assertFalse(manifest['marker']['selects']['3.13'])
+        self.assertFalse(manifest['marker']['selects']['3.14'])
+        self.assertFalse(manifest['marker']['selects']['3.14.2'])
+
+    def test_candidate_negatives_cover_bytes_identity_and_promotion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths, image = self._candidate_trees(directory, {'book_copy_writer.py': b'changed-module\n'})
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'book_copy_writer.py'):
+                self._qualify(paths, image)
+            paths, image = self._candidate_trees(str(Path(directory) / 'missing'), omit=('proof_transport.py',))
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'missing module proof_transport.py'):
+                self._qualify(paths, image)
+            paths, image = self._candidate_trees(str(Path(directory) / 'req'), {'requirements.txt': b'requirements-differ\n'})
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'requirements.txt'):
+                self._qualify(paths, image)
+            paths, image = self._candidate_trees(str(Path(directory) / 'sha'))
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'source SHA'):
+                self._qualify(paths, image, source_sha='abc', reviewed_source_sha='abc')
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'reviewed checkout'):
+                self._qualify(paths, image, source_sha='a' * 40, reviewed_source_sha='b' * 40)
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'fake promotion proof: signature'):
+                self._qualify(paths, image, signature_sha256=qualification.FROZEN_SIGNATURE)
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'fake promotion proof: registry digest'):
+                self._qualify(paths, image, registry_digest=qualification.FROZEN_IMAGE.split('@', 1)[1])
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'archive SHA256 must stay distinct'):
+                self._qualify(paths, image, local_image_id='sha256:' + ('3' * 64), archive_sha256='3' * 64)
+            manifest = self._qualify(paths, image)
+            reported = json.loads(json.dumps(manifest))
+            reported['modules']['epub_copies.py']['image_sha256'] = 'c' * 64
+            roots = [next(iter(paths.values())).parent]
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'independently measured'):
+                qualification.verify_reported_manifest(reported, paths, image, reviewed_roots=roots)
+            manifest['admitted_runtime'] = True
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'mixed candidate/frozen manifest'):
+                qualification.refuse_mixed_manifest(manifest)
+            (image / 'requirements.txt').write_bytes(b'tampered-after-report\n')
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'does not match image'):
+                qualification.verify_reported_manifest(manifest, paths, image, reviewed_roots=roots)
+
+    def test_candidate_does_not_import_frozen_module_hashes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths, image = self._candidate_trees(directory)
+            with mock.patch.dict(pins.MODULES, {name: '0' * 64 for name in qualification.MODULE_NAMES}):
+                manifest = self._qualify(paths, image)
+            self.assertNotEqual(manifest['modules']['requirements.txt']['source_sha256'], '0' * 64)
+            self.assertNotEqual(manifest['modules']['requirements.txt']['source_sha256'], qualification.FROZEN_MODULES['requirements.txt'])
+
+    def test_frozen_runtime_rejects_tag_wrong_digest_and_candidate_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = {}
+            for name in qualification.MODULE_NAMES:
+                # The negative fixtures do not need preimages of the frozen hashes.
+                module_path = root / name
+                module_path.write_bytes(b'not-the-frozen-artifact:' + name.encode())
+                paths[name] = module_path
+            with self.assertRaisesRegex(qualification.FrozenRuntimeDependency, 'mutable tag'):
+                qualification.qualify_frozen_runtime(paths, 'ghcr.io/thaynes43/book-copy-writer:validation')
+            wrong = 'ghcr.io/thaynes43/book-copy-writer@sha256:' + ('ab' * 32)
+            with self.assertRaisesRegex(qualification.FrozenRuntimeDependency, 'wrong immutable frozen image'):
+                qualification.qualify_frozen_runtime(paths, wrong)
+            missing = dict(paths)
+            missing['requirements.txt'] = root / 'no-such-requirements.txt'
+            with self.assertRaisesRegex(qualification.FrozenRuntimeDependency, 'missing requirements.txt'):
+                qualification.qualify_frozen_runtime(missing, qualification.FROZEN_IMAGE)
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'does not match contract'):
+                qualification.qualify_frozen_runtime(paths, qualification.FROZEN_IMAGE)
+            with self.assertRaisesRegex(qualification.FrozenRuntimeDependency, 'no candidate fallback'):
+                qualification.resolve_frozen_paths(environ={}, candidate_present=True)
+            with self.assertRaisesRegex(qualification.FrozenRuntimeDependency, 'is not mounted'):
+                qualification.resolve_frozen_paths(environ={}, candidate_present=False)
+            with mock.patch.dict(pins.MODULES, {'requirements.txt': '0' * 64}):
+                with self.assertRaisesRegex(qualification.QualificationRefused, 'frozen module pins were rewritten'):
+                    qualification.refuse_rewritten_frozen_contract()
+
+    def test_marker_behavior_and_host_is_not_image_proof(self):
+        text = qualification.reviewed_source_path('requirements.txt').read_text()
+        table = qualification.marker_table(text)
+        self.assertEqual(table['marker'], 'python_version < "3.13"')
+        self.assertEqual(table['selects'], {'3.12': True, '3.13': False, '3.14': False, '3.14.2': False})
+        self.assertFalse(table['marker_is_binary_proof'])
+        sample = 'psycopg==9.9.9\npsycopg-binary==8.8.8 --hash=sha256:aa\ntyping-extensions==1.2.3; python_version < "3.13"\n'
+        parsed = qualification.required_distributions(sample)
+        self.assertEqual(parsed['psycopg'], {'version': '9.9.9', 'marker': None})
+        self.assertEqual(parsed['psycopg-binary']['version'], '8.8.8')
+        self.assertEqual(parsed['typing-extensions']['marker'], 'python_version < "3.13"')
+        self.assertEqual(qualification.pinned_interpreter('FROM python:3.11-slim@sha256:abc\n'), '3.11')
+        inside = Path('/copy-writer').is_dir()
+        report = qualification.distribution_report(inside)
+        self.assertFalse(report['marker_is_binary_proof'])
+        if inside:
+            self.assertTrue(report['measured_in_image'])
+            pinned = qualification.pinned_interpreter((HERE.parent / 'Dockerfile').read_text())
+            self.assertTrue(report['interpreter'].startswith(pinned))
+            installed = {item['name'].lower().replace('_', '-'): item['version'] for item in report['installed']}
+            for name, spec in qualification.required_distributions(text).items():
+                selected = qualification.evaluate_python_version_marker(spec['marker'], report['interpreter']) if spec['marker'] else True
+                if selected:
+                    self.assertEqual(installed.get(name), spec['version'])
+                else:
+                    self.assertNotIn(name, installed)
+            self.assertEqual(report['marker_selects_typing_extensions'], qualification.evaluate_python_version_marker(table['marker'], report['interpreter']))
+        else:
+            self.assertFalse(report['measured_in_image'])
+            self.assertIsNone(report['interpreter'])
+            self.assertIsNone(report['installed'])
+
+    def test_both_qualification_paths_gate_main_publication(self):
+        workflow = qualification.workflow_path().read_text()
+        qualification.assert_publication_gate(workflow)
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'does not need validate'):
+            qualification.assert_publication_gate(workflow.replace('needs: validate', 'needs: build', 1))
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'pull_request_target'):
+            qualification.assert_publication_gate(workflow + '\npull_request_target: {}\n')
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'rebuilds'):
+            qualification.assert_publication_gate(workflow.replace('docker load --input', 'docker build .\ndocker load --input', 1))
+        self.assertNotIn('CANDIDATE_REVIEWED_SHA', workflow)
+        self.assertIn('check-copy-sources', workflow)
+        self.assertIn('check-event-binding', workflow)
+        self.assertIn('Verify host git binding without an image', workflow)
+        self.assertNotIn('fetch-depth:', workflow)
+        self.assertIn('pinned signature receipt is not re-verified in this CI', workflow)
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'workflow permissions changed'):
+            qualification.assert_publication_gate(workflow.replace('  contents: read\n', '  contents: read\n  packages: write\n', 1))
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'validate continue-on-error'):
+            qualification.assert_publication_gate(workflow.replace(
+                '    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    continue-on-error: true\n', 1))
+        widened = workflow.replace(
+            '  publish:\n    name: Publish validated copy writer\n    needs: validate\n    if: ' + qualification.MAIN_ONLY,
+            '  publish:\n    name: Publish validated copy writer\n    needs: validate\n    if: always()  # ' + qualification.MAIN_ONLY,
+            1)
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'not main-only'):
+            qualification.assert_publication_gate(widened)
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'workflow trigger is not allowed'):
+            qualification.assert_publication_gate(workflow.replace(
+                '  workflow_dispatch: {}',
+                '  workflow_run:\n    workflows: [Book Copy Writer]\n  workflow_dispatch: {}', 1))
+
+    def test_pr3626_logical_lines_join_and_base_head_refuses_same_bytes(self):
+        payload = (HERE / 'fixtures' / 'pr3626-requirements-5c1b9888.txt').read_bytes()
+        self.assertEqual(hashlib.sha256(payload).hexdigest(),
+                         '5c1b98883689d0213c1680766569a2e78b5b85550828894256f07047e2652472')
+        self.assertNotEqual(hashlib.sha256(payload).hexdigest(), qualification.FROZEN_MODULES['requirements.txt'])
+        self.assertEqual(qualification.FROZEN_MODULES['requirements.txt'],
+                         '830451570988c97907965090ff7d83b327681336527f6f06dc92d0c74411becc')
+        self.assertTrue(qualification.FROZEN_IMAGE.endswith(
+            '628e97b8dbcc83a4d7068484b516b21dde740c4dd130d54f3b030f1ee7a75601'))
+        self.assertEqual(qualification.FROZEN_SOURCE, 'daa542a395eb508de6bbeb2a7430e63aa3454b6e')
+        self.assertEqual(qualification.FROZEN_SIGNATURE, 'ee882db8feb49ff1510700a415d6635b33850ab0e1f6c76c0825775652818183')
+        text = payload.decode()
+        table = qualification.marker_table(text)
+        self.assertEqual(table['marker'], 'python_version < "3.13"')
+        self.assertNotIn('\\', table['marker'])
+        self.assertEqual(table['selects'], {'3.12': True, '3.13': False, '3.14': False, '3.14.2': False})
+        self.assertFalse(table['marker_is_binary_proof'])
+        parsed = qualification.required_distributions(text)
+        self.assertEqual(parsed['psycopg'], {'version': '3.3.6', 'marker': None})
+        self.assertEqual(parsed['psycopg-binary'], {
+            'version': '3.3.6', 'marker': None})
+        self.assertEqual(parsed['typing-extensions'], {
+            'version': '4.16.0', 'marker': 'python_version < "3.13"'})
+        dangling = 'typing-extensions==4.16.0; python_version < "3.13" \\ --hash=sha256:' + ('ab' * 32) + '\n'
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'unsupported requirement marker'):
+            qualification.marker_table(dangling)
+        commented = '# typing-extensions==4.16.0; python_version < "3.13" \\\npsycopg==3.3.6\n'
+        with self.assertRaisesRegex(qualification.QualificationRefused, 'typing-extensions requirement is absent'):
+            qualification.typing_extensions_marker(commented)
+        preserved = '# note \\\ntyping-extensions==4.16.0; python_version < "3.13"\n'
+        self.assertEqual(qualification.typing_extensions_marker(preserved), 'python_version < "3.13"')
+
+    @unittest.skipUnless(shutil.which('git'), 'git is not available in this interpreter image')
+    def test_base_parser_refuses_pr3626_bytes_when_present(self):
+        repo = HERE.parent.parent.parent
+        if not (repo / '.git').exists():
+            self.skipTest('checkout has no .git; the base object is not available here')
+        probe = subprocess.run(
+            ['git', '-C', str(repo), 'cat-file', '-e',
+             '9435327c2922ae1560fb6b6bcef6e7c745eb7fa1:scripts/book-copy-writer/native-pipeline/candidate_qualification.py'],
+            capture_output=True)
+        if probe.returncode != 0:
+            self.skipTest('base commit object is not in this checkout')
+        text = (HERE / 'fixtures' / 'pr3626-requirements-5c1b9888.txt').read_text()
+        old = base_parser(repo)
+        with self.assertRaisesRegex(old['QualificationRefused'], 'unsupported requirement marker'):
+            old['marker_table'](text)
+        self.assertIn('\\', old['required_distributions'](text)['typing-extensions']['marker'])
+
+    def test_independent_regular_files_refuse_symlink_and_shared_roots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / 'image'
+            image.mkdir()
+            paths = {}
+            for name in qualification.MODULE_NAMES:
+                source = qualification.reviewed_source_path(name)
+                self.assertFalse(Path(source).is_symlink())
+                paths[name] = source
+                (image / name).write_bytes(Path(source).read_bytes())
+            roots = []
+            for source in paths.values():
+                parent = Path(source).resolve().parent
+                if parent not in roots:
+                    roots.append(parent)
+            manifest = qualification.qualify_candidate(
+                paths, image, 'a' * 40, 'sha256:' + ('1' * 64), '2' * 64, reviewed_roots=roots)
+            self.assertEqual(manifest['modules']['requirements.txt']['source_sha256'],
+                             qualification.sha256_file(paths['requirements.txt']))
+            linked = image / 'requirements.txt'
+            linked.unlink()
+            linked.symlink_to(paths['requirements.txt'])
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'symlink'):
+                qualification.qualify_candidate(
+                    paths, image, 'a' * 40, 'sha256:' + ('1' * 64), '2' * 64, reviewed_roots=roots)
+            reviewed = Path(directory) / 'reviewed'
+            reviewed.mkdir()
+            for name in qualification.MODULE_NAMES:
+                (reviewed / name).write_bytes(Path(paths[name]).read_bytes())
+            source_link = reviewed / 'epub_copies.py'
+            source_link.unlink()
+            source_link.symlink_to(image / 'epub_copies.py')
+            linked_paths = {name: reviewed / name for name in qualification.MODULE_NAMES}
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'symlink'):
+                qualification.qualify_candidate(
+                    linked_paths, image, 'a' * 40, 'sha256:' + ('1' * 64), '2' * 64, reviewed_roots=[reviewed])
+            same = {name: image / name for name in qualification.MODULE_NAMES}
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'not independent of image root'):
+                qualification.qualify_candidate(
+                    same, image, 'a' * 40, 'sha256:' + ('1' * 64), '2' * 64, reviewed_roots=[image])
+            nested = reviewed / 'nested-image'
+            nested.mkdir()
+            for name in qualification.MODULE_NAMES:
+                if name == 'epub_copies.py':
+                    (nested / name).write_bytes(Path(paths[name]).read_bytes())
+                else:
+                    (nested / name).write_bytes((reviewed / name).read_bytes())
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'not independent of image root'):
+                qualification.qualify_candidate(
+                    {name: reviewed / name for name in qualification.MODULE_NAMES}, nested,
+                    'a' * 40, 'sha256:' + ('1' * 64), '2' * 64, reviewed_roots=[reviewed])
+            outside_paths, outside_image = self._candidate_trees(str(Path(directory) / 'outside'))
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'outside the declared reviewed roots'):
+                qualification.qualify_candidate(
+                    outside_paths, outside_image, 'a' * 40, 'sha256:' + ('1' * 64), '2' * 64)
+
+    @unittest.skipUnless(shutil.which('git'), 'git is not available in this interpreter image')
+    def test_event_sha_binds_pull_request_head_and_dirty_copy_sources_fail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            rel = qualification.COPY_SOURCE_PATHS[0]
+            git = ['git', '-C', str(repo), '-c', 'user.email=isolated@example.invalid',
+                   '-c', 'user.name=isolated', '-c', 'commit.gpgsign=false']
+            subprocess.run(['git', '-C', str(repo), 'init', '-b', 'main'], check=True, capture_output=True)
+            self._git_commit(git, repo, rel, 'base\n', 'base')
+            base = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+            qualification.assert_clean_copy_sources(repo, paths=(rel,))
+            bound = qualification.bind_checkout_identity(repo, 'push', base)
+            self.assertEqual(bound['head_sha'], base)
+            self.assertIsNone(bound['pr_head_sha'])
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'only meaningful for pull_request'):
+                qualification.bind_checkout_identity(repo, 'push', base, pr_head_sha='b' * 40, pr_base_sha='c' * 40)
+            subprocess.run(git + ['checkout', '-b', 'feature'], check=True, capture_output=True)
+            self._git_commit(git, repo, rel, 'feature\n', 'feature')
+            feature = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+            subprocess.run(git + ['checkout', 'main'], check=True, capture_output=True)
+            subprocess.run(git + ['merge', '--no-ff', '-m', 'merge feature', 'feature'], check=True, capture_output=True)
+            merge = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+            self.assertEqual(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD^1'], text=True).strip(), base)
+            self.assertEqual(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD^2'], text=True).strip(), feature)
+            bound = qualification.bind_checkout_identity(repo, 'pull_request', merge, feature, base)
+            self.assertEqual(bound['event_sha'], merge)
+            self.assertEqual(bound['pr_head_sha'], feature)
+            self.assertNotEqual(bound['pr_head_sha'], bound['event_sha'])
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'commit-header parent 2'):
+                qualification.bind_checkout_identity(repo, 'pull_request', merge, 'd' * 40, base)
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'checkout HEAD does not match'):
+                qualification.bind_checkout_identity(repo, 'pull_request', base, feature, base)
+            subprocess.run(git + ['checkout', '--detach', base], check=True, capture_output=True)
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'exactly two commit-header parents'):
+                qualification.bind_checkout_identity(repo, 'pull_request', base, feature, 'e' * 40)
+            subprocess.run(git + ['checkout', 'main'], check=True, capture_output=True)
+            (repo / rel).write_text('dirty\n')
+            with self.assertRaisesRegex(qualification.QualificationRefused, 'differ from HEAD'):
+                qualification.assert_clean_copy_sources(repo, paths=(rel,))
+            subprocess.run(git + ['checkout', '--', rel], check=True, capture_output=True)
+            qualification.assert_clean_copy_sources(repo, paths=(rel,))
+            stray = repo / 'untracked.txt'
+            stray.write_text('ignored\n')
+            qualification.assert_clean_copy_sources(repo, paths=(rel,))
+
+    @unittest.skipUnless(shutil.which('git'), 'git is not available in this interpreter image')
+    def test_file_url_depth1_commit_header_parents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            origin = root / 'origin'
+            shallow = root / 'shallow'
+            local_clone = root / 'local-clone'
+            origin.mkdir()
+            git = ['git', '-C', str(origin), '-c', 'user.email=isolated@example.invalid',
+                   '-c', 'user.name=isolated', '-c', 'commit.gpgsign=false']
+            subprocess.run(['git', '-C', str(origin), 'init', '-b', 'main'], check=True, capture_output=True)
+            self._git_commit(git, origin, 'f.txt', 'base\n', 'base')
+            base = subprocess.check_output(['git', '-C', str(origin), 'rev-parse', 'HEAD'], text=True).strip()
+            subprocess.run(git + ['checkout', '-b', 'feature'], check=True, capture_output=True)
+            self._git_commit(git, origin, 'f.txt', 'feature\n', 'feature')
+            feature = subprocess.check_output(['git', '-C', str(origin), 'rev-parse', 'HEAD'], text=True).strip()
+            subprocess.run(git + ['checkout', 'main'], check=True, capture_output=True)
+            subprocess.run(git + ['merge', '--no-ff', '-m', 'merge feature', 'feature'], check=True, capture_output=True)
+            merge = subprocess.check_output(['git', '-C', str(origin), 'rev-parse', 'HEAD'], text=True).strip()
+            subprocess.run(['git', '-C', str(origin), 'config', 'uploadpack.allowAnySHA1InWant', 'true'], check=True)
+            subprocess.run(['git', '-C', str(origin), 'config', 'uploadpack.allowReachableSHA1InWant', 'true'], check=True)
+            shallow.mkdir()
+            subprocess.run(['git', '-C', str(shallow), 'init'], check=True, capture_output=True)
+            fetch = subprocess.run(
+                ['git', '-C', str(shallow), 'fetch', '--depth=1', 'file://' + str(origin),
+                 '+' + merge + ':refs/remotes/pull/1/merge'],
+                capture_output=True, text=True)
+            self.assertEqual(fetch.returncode, 0, fetch.stderr)
+            subprocess.run(
+                ['git', '-C', str(shallow), 'checkout', '--force', 'refs/remotes/pull/1/merge'],
+                check=True, capture_output=True)
+            self.assertTrue((shallow / '.git' / 'shallow').is_file())
+            peeled = subprocess.run(['git', '-C', str(shallow), 'rev-parse', 'HEAD^1'], capture_output=True, text=True)
+            self.assertNotEqual(peeled.returncode, 0)
+            self.assertIn('unknown revision', peeled.stderr)
+            self.assertEqual(qualification.commit_header_parents(shallow), [base, feature])
+            bound = qualification.bind_checkout_identity(shallow, 'pull_request', merge, feature, base)
+            self.assertEqual(bound['pr_base_sha'], base)
+            self.assertEqual(bound['pr_head_sha'], feature)
+            self.assertEqual(bound['event_sha'], merge)
+            cloned = subprocess.run(
+                ['git', 'clone', '--depth', '1', str(origin), str(local_clone)],
+                capture_output=True, text=True)
+            self.assertEqual(cloned.returncode, 0, cloned.stderr)
+            self.assertIn('depth is ignored', cloned.stderr)
+            self.assertFalse((local_clone / '.git' / 'shallow').exists())
+            local_peel = subprocess.run(
+                ['git', '-C', str(local_clone), 'rev-parse', 'HEAD^1'], capture_output=True, text=True)
+            self.assertEqual(local_peel.returncode, 0, local_peel.stderr)
+
+    def _git_commit(self, git, repo, rel, content, message):
+        path = repo / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        subprocess.run(git + ['add', '--', rel], check=True, capture_output=True)
+        subprocess.run(git + ['commit', '-m', message], check=True, capture_output=True)
+
+
+def base_parser(repo):
+    source = subprocess.check_output(
+        ['git', '-C', str(repo), 'show',
+         '9435327c2922ae1560fb6b6bcef6e7c745eb7fa1:scripts/book-copy-writer/native-pipeline/candidate_qualification.py'],
+        text=True)
+    tree = ast.parse(source)
+    chunks = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            names = [target.id for target in node.targets if isinstance(target, ast.Name)]
+            if 'MARKER_VERSIONS' in names:
+                chunks.append(ast.get_source_segment(source, node))
+        elif isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in {
+                'QualificationRefused', 'typing_extensions_marker', 'evaluate_python_version_marker',
+                '_version_pair', 'required_distributions', 'marker_table'}:
+            chunks.append(ast.get_source_segment(source, node))
+    namespace = {}
+    exec(compile('\n\n'.join(chunks), 'base-candidate-qualification.py', 'exec'), namespace)
+    return namespace
 
 
 def assignments_from_source(source):
