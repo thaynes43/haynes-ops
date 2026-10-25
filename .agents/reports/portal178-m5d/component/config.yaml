@@ -2,9 +2,9 @@
 # Duration, auth-style, and witness values are the published production_test.go
 # fixture, inside the contract bounds. They are not a launch SLO.
 # operator-api-url is the deployed operator HelmRelease origin.
-# openproject-base-url stays the value the published image pins.
-# approved-readers-06 head 0e93e2ec wants the internal origin and has no digest.
-# Replace this value only with a signed image that pins it.
+# openproject-base-url is the current signed runtime's pinned in-cluster origin.
+# The current parser uses project 3's paginated collection and does not require
+# config/session-bindings.json in production.
 # config/admission-uid and config/session-bindings.json are absent on purpose.
 apiVersion: v1
 kind: ConfigMap
@@ -18,7 +18,7 @@ data:
   token-url: https://authentik.haynesnetwork.com/application/o/token/
   userinfo-url: https://authentik.haynesnetwork.com/application/o/userinfo/
   jwks-url: https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/jwks/
-  openproject-base-url: https://work.haynesnetwork.com
+  openproject-base-url: https://openproject-web.frontend.svc.cluster.local:8443
   operator-api-url: https://dev-env-operator.dev-env-system.svc.cluster.local:8443
   admission-api-url: https://kubernetes.default.svc.cluster.local
   admission-token-file: /var/run/portal/api/token
