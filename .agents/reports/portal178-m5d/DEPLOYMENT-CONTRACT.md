@@ -16,7 +16,7 @@ Foundations reused, unchanged by this packet:
 
 ## Current signed runtime and historical supersession
 
-Current source is dev-env PR550, merged as `3221ca79f4d7fddf73b0cfafc71a24de28f13663` (2026-10-25 15:50:49Z). Publish run `40208871745` reached terminal SUCCESS at 15:54:50Z: push, keyless signing, and verification all succeeded. This packet therefore pins `ghcr.io/thaynes43/dev-env-portal:sha-3221ca7@sha256:033ff0b611eb15dc000f8d1bc653154f1f3f79d4f477b4eb62ac41d1e666bde2`. That immutable source artifact is not an installation or launch approval.
+Current source is dev-env PR550, merged as `3221ca79f4d7fddf73b0cfafc71a24de28f13663` (2026-10-25 15:50:50Z). Publish run `40208871745` reached terminal SUCCESS at 15:54:50Z: push, keyless signing, and verification all succeeded. This packet therefore pins `ghcr.io/thaynes43/dev-env-portal:sha-3221ca7@sha256:033ff0b611eb15dc000f8d1bc653154f1f3f79d4f477b4eb62ac41d1e666bde2`. That immutable source artifact is not an installation or launch approval.
 
 The current parser pins `https://openproject-web.frontend.svc.cluster.local:8443` and reads project 3 at `/api/v3/projects/3/work_packages?offset=<page>&pageSize=50&filters=%5B%5D`; `offset` is page number 1 onward, `pageSize` is 50, and the empty filters array is required. Sessions and Tasks are independent: an absent projected `OPERATOR_TOKEN` gives “Sessions not connected”; an absent optional `OPENPROJECT_TOKEN` gives “Tasks not connected”. `config/session-bindings.json` is not a production requirement, and no session-to-task join is inferred.
 

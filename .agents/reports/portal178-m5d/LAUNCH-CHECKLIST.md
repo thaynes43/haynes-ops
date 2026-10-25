@@ -32,8 +32,12 @@ secret. Both remain USER-REPORTED SAVED, not SecretSynced or value-verified.
 
 The four runtime fields remain HELD. This packet generates no value, reads no
 secret, and authorizes no writer. `config/subject` is neither an item property
-nor a public value. No raw subject, UID, credential, CA material, or personal
-data belongs in this repository.
+nor a public value. No private identity subject or UUID values, credentials or
+private keys, or personal data belongs in this repository. This preserves the
+DEPLOYMENT-CONTRACT's verified non-secret resource UID/admissionUID pin and its
+public-only CA certificate/provenance route: a public CA certificate is not a
+private key, and a resource UID is not a personal user UUID. This packet does
+not populate or export any value.
 
 Historical records for the prior `5b39ebb` image, PR545 parser assumptions,
 and their failed/denied receipts remain historical only. They do not change the
