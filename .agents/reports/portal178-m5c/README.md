@@ -40,9 +40,12 @@ UPDATE/TRUNCATE/CREATE/TEMP, ownership/admin/role/replication/BYPASSRLS or grant
 option. Migrator `dev_env_v2_portal_migrator` owns only this schema/tables; never
 BFF-mounted. No role-membership edge in either direction is allowed.
 
-The unregistered [role proposal](pending/cluster-portal.patch.yaml) sets runtime
-connectionLimit 8 and migrator 1. Its HBA list is the post-proof composition,
-not the first registration. Public GoM6 `c03cda77493c37d7bfe55747254ebbcf4dbeac98`
+The unregistered [role-only preproof stage](pending/roles-stage-preproof.patch.yaml)
+sets runtime connectionLimit 8 and migrator 1 without a `postgresql`/HBA stanza.
+It is **INERT source only**, not actual ACL, controller, admission, dynamic witness,
+database provisioning, or runtime proof. The original unregistered
+[combined post-proof patch](pending/cluster-portal.patch.yaml) remains the later
+role-plus-HBA composition. Public GoM6 `c03cda77493c37d7bfe55747254ebbcf4dbeac98`
 [postgres.go](https://github.com/thaynes43/dev-env/blob/c03cda77493c37d7bfe55747254ebbcf4dbeac98/web/portal/session/postgres.go#L92)
 sets MaxConns2/MinConns0. Proposed deployment bound: at most2 replicas plus1
 rollout surge, hence6 pool slots plus2 explicit verification/headroom slots =8.
@@ -80,14 +83,16 @@ gates; no database-wide NetworkPolicy affecting consumers is proposed.
 ## One-shot provisioning and effective readback
 
 1. Fresh ownership/absence/catalog/HBA checks, independent config review and
-   required CI precede each registration. The first HBA registration is the
-   reject-only list already on `cluster16`. Do not register
-   [cluster-portal.patch.yaml](pending/cluster-portal.patch.yaml) as that first
-   step: it still carries unregistered roles and the later runtime allow.
-   Field-scoped Secrets, managed roles, and the retained Database/schema come
-   next, still unregistered. The positive runtime `hostssl` allow is last,
-   after `010`, `020`, and `030` are all true, inserted before the `host all`
-   catch-all. Stop on existing names/ambiguous outcomes; no adoption or replay.
+   required CI precede each registration. The staged order is: six registered
+   rejects → [roles-only preproof](pending/roles-stage-preproof.patch.yaml) and
+   retained Database/schema → [010](pending/010-bootstrap.sql) bootstrap →
+   [020](pending/020-tables.sql) tables → [030](pending/030-verify.sql) ACL proof
+   → **LAST** runtime-only [hostssl allow](pending/hba-stage-allow.yaml), inserted
+   before the `host all` catch-all. The combined
+   [cluster-portal.patch.yaml](pending/cluster-portal.patch.yaml) is post-proof
+   only, never the first registration. This order is an inert source plan, not
+   evidence of ACL/controller/admission proof, dynamic witness creation, or DB
+   provisioning. Stop on existing names/ambiguous outcomes; no adoption or replay.
 2. The [fixed-target helper](../../../scripts/tests/portal178-m5c/peer_bootstrap.py)
    requires an explicit mode and has no default. `--preflight` and
    `--verify-reviewed-sha256` are read-only. Existing CNPG peer psql is root's
