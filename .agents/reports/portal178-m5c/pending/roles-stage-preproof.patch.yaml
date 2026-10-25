@@ -1,0 +1,37 @@
+# UNREGISTERED, INERT source-only preproof stage. Do not register or apply.
+# This is deliberately roles-only: the existing registered reject HBA stays
+# unchanged, and the post-proof hostssl allow remains in cluster-portal.patch.yaml.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres16
+  namespace: database
+spec:
+  managed:
+    roles:
+      - name: dev_env_v2_portal_runtime
+        ensure: present
+        login: true
+        connectionLimit: 8
+        inherit: false
+        superuser: false
+        createdb: false
+        createrole: false
+        replication: false
+        bypassrls: false
+        inRoles: []
+        passwordSecret:
+          name: dev-env-v2-portal-runtime-db
+      - name: dev_env_v2_portal_migrator
+        ensure: present
+        # Peer migration SET ROLE does not require LOGIN or a mounted password.
+        login: false
+        disablePassword: true
+        connectionLimit: 1
+        inherit: false
+        superuser: false
+        createdb: false
+        createrole: false
+        replication: false
+        bypassrls: false
+        inRoles: []

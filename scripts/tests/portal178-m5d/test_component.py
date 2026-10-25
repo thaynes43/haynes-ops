@@ -2,6 +2,7 @@
 """Render the unregistered Story178 consumer packet and reject live registration."""
 import re
 import subprocess
+import tempfile
 import unittest
 from copy import deepcopy
 from pathlib import Path
@@ -15,6 +16,7 @@ M5A = ROOT / ".agents/reports/portal178-m5a/pending/externalsecret.yaml"
 CONTRACT = ROOT / ".agents/reports/portal178-m5d/DEPLOYMENT-CONTRACT.md"
 CHECKLIST = ROOT / ".agents/reports/portal178-m5d/LAUNCH-CHECKLIST.md"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
+PORTAL_OIDC = ROOT / "kubernetes/main/apps/dev-env-system/secrets/app/externalsecret-portal-oidc.yaml"
 CURRENT_RUNTIME_HEAD = "3221ca79f4d7fddf73b0cfafc71a24de28f13663"
 PORTAL_IMAGE = (
     "ghcr.io/thaynes43/dev-env-portal:sha-3221ca7"
@@ -109,12 +111,55 @@ def projection_violations(doc, allowed):
     return violations
 
 
+def approved_portal_oidc_violations(path, doc):
+    """The one approved live portal consumer must be exact, not name-matched."""
+    expected = {
+        "apiVersion": "external-secrets.io/v1",
+        "kind": "ExternalSecret",
+        "metadata": {"name": "dev-env-v2-portal-oidc", "namespace": "dev-agents"},
+        "spec": {
+            "secretStoreRef": STORE,
+            "refreshInterval": "1h",
+            "target": {
+                "name": "dev-env-v2-portal-oidc", "creationPolicy": "Owner", "deletionPolicy": "Delete",
+                "template": {"engineVersion": "v2", "mergePolicy": "Replace", "type": "Opaque", "data": {
+                    "OIDC_CLIENT_ID": "{{ .OIDC_CLIENT_ID }}",
+                    "OIDC_CLIENT_SECRET": "{{ .OIDC_CLIENT_SECRET }}",
+                }},
+            },
+            "data": [
+                {"secretKey": "OIDC_CLIENT_ID", "remoteRef": {"key": CANONICAL_ITEM, "property": "OIDC_CLIENT_ID"}},
+                {"secretKey": "OIDC_CLIENT_SECRET", "remoteRef": {"key": CANONICAL_ITEM, "property": "OIDC_CLIENT_SECRET"}},
+            ],
+        },
+    }
+    return [] if path.resolve() == PORTAL_OIDC.resolve() and doc == expected else ["noncanonical-portal-oidc"]
+
+
+def dev_env_properties_from_documents(documents):
+    found = set()
+    for path, doc in documents:
+        if not doc or doc.get("kind") != "ExternalSecret":
+            continue
+        if not approved_portal_oidc_violations(path, doc):
+            continue
+        for item in doc.get("spec", {}).get("data", []):
+            ref = item.get("remoteRef", {})
+            if ref.get("key") == CANONICAL_ITEM:
+                found.add(ref.get("property"))
+    return found
+
+
 def dev_env_properties(tree):
     inline = re.compile(r"key:\s*dev-env(?![A-Za-z0-9_-])\s*,\s*property:\s*([A-Za-z0-9_]+)")
     block = re.compile(r"key:\s*dev-env(?![A-Za-z0-9_-])\s*\n\s*property:\s*([A-Za-z0-9_]+)")
     found = set()
     for path in tree.rglob("*.yaml"):
         text = path.read_text(errors="replace")
+        if path.resolve() == PORTAL_OIDC.resolve():
+            documents = list(yaml.safe_load_all(text))
+            if len(documents) == 1 and not approved_portal_oidc_violations(path, documents[0]):
+                continue
         found.update(inline.findall(text))
         found.update(block.findall(text))
     return found
@@ -605,8 +650,11 @@ class ComponentRenderTest(unittest.TestCase):
                 self.fail("portal Deployment is registered in " + str(path))
             if "kind: IngressRoute" in text and "dev-env-v2.haynesops.com" in text:
                 self.fail("portal route is registered in " + str(path))
-            if "kind: ExternalSecret" in text and "dev-env-v2-portal" in text:
-                self.fail("portal ExternalSecret is registered in " + str(path))
+            if "kind: ExternalSecret" in text:
+                for doc in yaml.safe_load_all(text):
+                    if doc and doc.get("kind") == "ExternalSecret" and "dev-env-v2-portal" in doc.get("metadata", {}).get("name", ""):
+                        self.assertEqual(approved_portal_oidc_violations(path, doc), [], str(path))
+                        self.assertEqual(path.resolve(), PORTAL_OIDC.resolve(), str(path))
             if "kind: ConfigMap" in text and "name: dev-env-v2-portal-admission" in text:
                 self.fail("CLOSED admission seed is registered in " + str(path))
 
@@ -631,9 +679,62 @@ class ComponentRenderTest(unittest.TestCase):
         }
         self.assertIn("PORTAL_SUBJECT", projection_violations(mutated, set(RUNTIME_FIELDS)))
         self.assertTrue(projection_violations({"spec": {"dataFrom": [{"extract": {"key": CANONICAL_ITEM}}], "data": []}}, PORTAL_PROPERTIES))
+        approved = load(PORTAL_OIDC)
+        self.assertEqual(approved_portal_oidc_violations(PORTAL_OIDC, approved), [])
+        for mutate in (
+            lambda doc: doc["spec"]["data"].append({"secretKey": "EXTRA", "remoteRef": {"key": CANONICAL_ITEM, "property": "EXTRA"}}),
+            lambda doc: doc["spec"]["data"][0]["remoteRef"].update(key="wrong-item"),
+            lambda doc: doc["spec"].update(dataFrom=[{"extract": {"key": CANONICAL_ITEM}}]),
+        ):
+            invalid = deepcopy(approved)
+            mutate(invalid)
+            self.assertTrue(approved_portal_oidc_violations(PORTAL_OIDC, invalid))
+        self.assertTrue(approved_portal_oidc_violations(
+            ROOT / "kubernetes/main/apps/dev-env-system/secrets/app/another-portal-oidc.yaml", approved))
         occupied = dev_env_properties(ROOT / "kubernetes")
         self.assertTrue(occupied)
-        self.assertTrue(PORTAL_PROPERTIES.isdisjoint(occupied))
+        self.assertTrue(set(OIDC_FIELDS).isdisjoint(occupied))
+        self.assertTrue(set(RUNTIME_FIELDS).isdisjoint(occupied))
+        collision = deepcopy(approved)
+        collision["metadata"]["name"] = "unrelated-consumer"
+        self.assertEqual(approved_portal_oidc_violations(PORTAL_OIDC, collision), ["noncanonical-portal-oidc"])
+        self.assertEqual(dev_env_properties_from_documents([(PORTAL_OIDC, collision)]), set(OIDC_FIELDS))
+        collision_path = ROOT / "kubernetes/main/apps/example/app/externalsecret.yaml"
+        self.assertTrue(approved_portal_oidc_violations(collision_path, approved))
+        self.assertEqual(dev_env_properties_from_documents([(collision_path, approved)]), set(OIDC_FIELDS))
+        with tempfile.TemporaryDirectory() as scratch:
+            inline = Path(scratch) / "inline"
+            inline.mkdir()
+            (inline / "nested.yaml").write_text("""\
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+spec:
+  values:
+    rawResources:
+      - apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        spec:
+          data:
+            - remoteRef: {key: dev-env, property: DB_PASSWORD}
+""")
+            block = Path(scratch) / "block"
+            block.mkdir()
+            (block / "nested.yaml").write_text("""\
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+spec:
+  values:
+    rawResources:
+      - apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        spec:
+          data:
+            - remoteRef:
+                key: dev-env
+                property: DB_PASSWORD
+""")
+            self.assertEqual(dev_env_properties(inline), {"DB_PASSWORD"})
+            self.assertEqual(dev_env_properties(block), {"DB_PASSWORD"})
         for path in [COMPONENT / "oidc-externalsecret.yaml", COMPONENT / "runtime-externalsecret.yaml",
                      COMPONENT / "role-externalsecret.yaml", PENDING / "runtime-externalsecret.yaml",
                      PENDING / "role-externalsecrets.yaml", M5A]:

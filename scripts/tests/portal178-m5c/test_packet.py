@@ -27,6 +27,7 @@ PACKET = ROOT / ".agents/reports/portal178-m5c/pending"
 BLUEPRINT = ROOT / "kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
 WITNESS = ROOT / "kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml"
+PORTAL_OIDC = ROOT / "kubernetes/main/apps/dev-env-system/secrets/app/externalsecret-portal-oidc.yaml"
 RUNTIME = "dev_env_v2_portal_runtime"
 MIGRATOR = "dev_env_v2_portal_migrator"
 VERIFY_CHECKS = {"target", "roles", "database_acl", "schema_acl", "tables_acl", "default_acl",
@@ -42,6 +43,36 @@ BlueprintLoader.add_constructor("!KeyOf", lambda loader, node: {"!KeyOf": loader
 
 def load(name):
     return yaml.load((PACKET / name).read_text(), Loader=BlueprintLoader)
+
+
+def approved_portal_oidc_violations(path, doc):
+    """Allow only the installed OIDC projection, including its exact contents."""
+    expected = {
+        "apiVersion": "external-secrets.io/v1",
+        "kind": "ExternalSecret",
+        "metadata": {"name": "dev-env-v2-portal-oidc", "namespace": "dev-agents"},
+        "spec": {
+            "secretStoreRef": {"kind": "ClusterSecretStore", "name": "onepassword-connect"},
+            "refreshInterval": "1h",
+            "target": {
+                "name": "dev-env-v2-portal-oidc", "creationPolicy": "Owner", "deletionPolicy": "Delete",
+                "template": {"engineVersion": "v2", "mergePolicy": "Replace", "type": "Opaque", "data": {
+                    "OIDC_CLIENT_ID": "{{ .OIDC_CLIENT_ID }}",
+                    "OIDC_CLIENT_SECRET": "{{ .OIDC_CLIENT_SECRET }}",
+                }},
+            },
+            "data": [
+                {"secretKey": "OIDC_CLIENT_ID", "remoteRef": {"key": "dev-env", "property": "OIDC_CLIENT_ID"}},
+                {"secretKey": "OIDC_CLIENT_SECRET", "remoteRef": {"key": "dev-env", "property": "OIDC_CLIENT_SECRET"}},
+            ],
+        },
+    }
+    violations = []
+    if path.resolve() != PORTAL_OIDC.resolve():
+        violations.append("wrong-path")
+    if doc != expected:
+        violations.append("noncanonical-oidc-projection")
+    return violations
 
 
 def structural_schema(path):
@@ -96,7 +127,7 @@ def network_exclusion_proof(policies, pods):
 
 
 def compose_hba(registered, allow_rule):
-    if hba_stage_violations(registered, allow_rule):
+    if reject_stage_violations(registered, allow_rule):
         raise AssertionError("refuse to compose a reject stage that already allows")
     index = next(i for i, line in enumerate(registered) if line.startswith("host all "))
     return registered[:index] + [allow_rule] + registered[index:]
@@ -115,6 +146,44 @@ def hba_stage_violations(registered, allow_rule):
     return violations
 
 
+def expected_reject_hba():
+    both = RUNTIME + "," + MIGRATOR
+    return [
+        f"host replication {both} 0.0.0.0/0 reject", f"host replication {both} ::/0 reject",
+        f"hostnossl all {both} 0.0.0.0/0 reject", f"hostnossl all {both} ::/0 reject",
+        f"host all {both} 0.0.0.0/0 reject", f"host all {both} ::/0 reject",
+    ]
+
+
+def reject_stage_violations(registered, allow_rule):
+    violations = hba_stage_violations(registered, allow_rule)
+    if registered != expected_reject_hba():
+        violations.append("registered reject stage differs from the approved six rules")
+    return violations
+
+
+def compose_managed_roles(existing, staged):
+    """Merge a future role stage by name without dropping unrelated roles."""
+    merged = deepcopy(existing)
+    positions = {role["name"]: i for i, role in enumerate(merged)}
+    for role in staged:
+        position = positions.get(role["name"])
+        if position is None:
+            positions[role["name"]] = len(merged)
+            merged.append(deepcopy(role))
+        else:
+            merged[position] = deepcopy(role)
+    return merged
+
+
+def compose_role_stage(base, stage):
+    """Apply the roles-only fragment without touching the base HBA or other spec."""
+    composed = deepcopy(base)
+    managed = composed["spec"].setdefault("managed", {})
+    managed["roles"] = compose_managed_roles(managed.get("roles", []), stage["spec"]["managed"]["roles"])
+    return composed
+
+
 def load_blueprint():
     return yaml.load(BLUEPRINT.read_text(), Loader=BlueprintLoader)
 
@@ -122,10 +191,14 @@ def load_blueprint():
 def check_crds(cluster_crd, database_crd):
     original = yaml.safe_load((ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml").read_text())
     original["metadata"]["namespace"] = "database"
-    patch = load("cluster-portal.patch.yaml")
+    role_stage = load("roles-stage-preproof.patch.yaml")
+    merged = compose_role_stage(original, role_stage)
+    jsonschema.validate(merged, structural_schema(cluster_crd))
+    post_proof = load("cluster-portal.patch.yaml")
     merged = deepcopy(original)
-    merged["spec"]["managed"] = patch["spec"]["managed"]
-    merged["spec"]["postgresql"].update(patch["spec"]["postgresql"])
+    managed = merged["spec"].setdefault("managed", {})
+    managed["roles"] = compose_managed_roles(managed.get("roles", []), post_proof["spec"]["managed"]["roles"])
+    merged["spec"]["postgresql"].update(post_proof["spec"]["postgresql"])
     jsonschema.validate(merged, structural_schema(cluster_crd))
     jsonschema.validate(load("database.yaml"), structural_schema(database_crd))
     print("PASS: supplied pinned/live CRD structural validation (not CEL/admission/controller execution)")
@@ -133,9 +206,12 @@ def check_crds(cluster_crd, database_crd):
 
 class Packet(unittest.TestCase):
     def test_role_and_projection_isolation(self):
-        patch = load("cluster-portal.patch.yaml")["spec"]
-        self.assertEqual(set(patch), {"managed", "postgresql"})
-        roles = patch["managed"]["roles"]
+        role_stage = load("roles-stage-preproof.patch.yaml")["spec"]
+        post_proof = load("cluster-portal.patch.yaml")["spec"]
+        self.assertEqual(set(role_stage), {"managed"})
+        self.assertEqual(set(post_proof), {"managed", "postgresql"})
+        self.assertEqual(role_stage["managed"], post_proof["managed"])
+        roles = role_stage["managed"]["roles"]
         self.assertEqual([r["name"] for r in roles], [RUNTIME, MIGRATOR])
         for r in roles:
             self.assertIs(r["login"], r["name"] == RUNTIME)
@@ -143,6 +219,7 @@ class Packet(unittest.TestCase):
             for flag in ("inherit", "superuser", "createdb", "createrole", "replication", "bypassrls"):
                 self.assertIs(r[flag], False)
             self.assertEqual(r["inRoles"], [])
+        self.assertEqual(roles[0]["passwordSecret"], {"name": "dev-env-v2-portal-runtime-db"})
         docs = list(yaml.safe_load_all((PACKET / "role-externalsecrets.yaml").read_text()))
         self.assertEqual(len(docs), 1, "NOLOGIN migrator receives no password/Secret")
         self.assertTrue(roles[1]["disablePassword"])
@@ -176,7 +253,7 @@ class Packet(unittest.TestCase):
         both = RUNTIME + "," + MIGRATOR
         reject = load("hba-stage-reject.yaml")["pg_hba"]
         allow = load("hba-stage-allow.yaml")["rule"]
-        self.assertEqual(hba_stage_violations(reject, allow), [])
+        self.assertEqual(reject_stage_violations(reject, allow), [])
         self.assertEqual(rules, compose_hba(reject, allow))
         self.assertEqual(rules, [
             f"host replication {both} 0.0.0.0/0 reject", f"host replication {both} ::/0 reject",
@@ -187,6 +264,31 @@ class Packet(unittest.TestCase):
         catch = next(i for i, line in enumerate(shadowed) if line.startswith("host all "))
         self.assertGreater(shadowed.index(allow), catch, "appending the allow after the catch-all never matches")
         self.assertNotIn(MIGRATOR, allow)
+
+    def test_role_preproof_preserves_reject_stage_and_existing_roles(self):
+        role_stage = load("roles-stage-preproof.patch.yaml")
+        self.assertEqual(role_stage["metadata"], {"name": "postgres16", "namespace": "database"})
+        self.assertEqual(set(role_stage["spec"]), {"managed"})
+        self.assertNotIn("postgresql", role_stage["spec"])
+        registered = yaml.safe_load(CLUSTER.read_text())["spec"]["postgresql"]["pg_hba"]
+        reject = load("hba-stage-reject.yaml")["pg_hba"]
+        allow = load("hba-stage-allow.yaml")["rule"]
+        self.assertEqual(registered, reject)
+        self.assertEqual(registered, expected_reject_hba())
+        self.assertEqual(reject_stage_violations(registered, allow), [])
+        existing = [{"name": "unrelated-managed-role", "ensure": "present"}]
+        synthetic_base = {"spec": {"managed": {"roles": existing}, "postgresql": {"pg_hba": reject}}}
+        composed = compose_role_stage(synthetic_base, role_stage)
+        self.assertEqual(composed["spec"]["postgresql"]["pg_hba"], reject)
+        self.assertEqual(composed["spec"]["managed"]["roles"][0], existing[0])
+        self.assertEqual([role["name"] for role in composed["spec"]["managed"]["roles"]],
+                         ["unrelated-managed-role", RUNTIME, MIGRATOR])
+        combined = load("cluster-portal.patch.yaml")["spec"]["postgresql"]["pg_hba"]
+        self.assertNotEqual(reject_stage_violations(combined, allow), [])
+        with self.assertRaises(AssertionError):
+            compose_hba(reject[:4] + [allow] + reject[4:], allow)
+        with self.assertRaises(AssertionError):
+            compose_hba(reject[:-1], allow)
 
     def test_live_mapping_semantics(self):
         expression = next(entry["attrs"]["expression"] for entry in load_blueprint()["entries"]
@@ -369,11 +471,27 @@ class Packet(unittest.TestCase):
             self.assertNotIn("hba-stage-allow.yaml", text, str(path))
             if "kind: ConfigMap" in text and "name: dev-env-v2-portal-admission" in text:
                 self.fail("CLOSED admission seed is registered in " + str(path))
-            if "kind: ExternalSecret" in text and "dev-env-v2-portal" in text:
-                self.fail("portal ExternalSecret is registered in " + str(path))
+            if "kind: ExternalSecret" not in text:
+                continue
+            for doc in yaml.safe_load_all(text):
+                if doc and doc.get("kind") == "ExternalSecret" and "dev-env-v2-portal" in doc.get("metadata", {}).get("name", ""):
+                    self.assertEqual(approved_portal_oidc_violations(path, doc), [], str(path))
+                    self.assertEqual(path.resolve(), PORTAL_OIDC.resolve(), str(path))
         authentik = (ROOT / "kubernetes/main/apps/network/authentik/app/kustomization.yaml").read_text()
         self.assertIn("97-dev-env-v2-portal-oidc.yaml", authentik)
         self.assertNotIn("98-", authentik)
+        oidc = yaml.safe_load(PORTAL_OIDC.read_text())
+        self.assertEqual(approved_portal_oidc_violations(PORTAL_OIDC, oidc), [])
+        for mutate in (
+            lambda doc: doc["spec"]["data"].append({"secretKey": "EXTRA", "remoteRef": {"key": "dev-env", "property": "EXTRA"}}),
+            lambda doc: doc["spec"]["data"][0]["remoteRef"].update(key="wrong-item"),
+            lambda doc: doc["spec"].update(dataFrom=[{"extract": {"key": "dev-env"}}]),
+        ):
+            invalid = deepcopy(oidc)
+            mutate(invalid)
+            self.assertTrue(approved_portal_oidc_violations(PORTAL_OIDC, invalid))
+        self.assertTrue(approved_portal_oidc_violations(
+            ROOT / "kubernetes/main/apps/dev-env-system/secrets/app/another-portal-oidc.yaml", oidc))
 
     def test_bff_only_network_proposal(self):
         folder = ROOT / "kubernetes/main/apps/dev-env-system/network/app"
