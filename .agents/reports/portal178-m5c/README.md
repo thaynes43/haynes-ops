@@ -45,7 +45,9 @@ sets runtime connectionLimit 8 and migrator 1 without a `postgresql`/HBA stanza.
 It is **INERT source only**, not actual ACL, controller, admission, dynamic witness,
 database provisioning, or runtime proof. The original unregistered
 [combined post-proof patch](pending/cluster-portal.patch.yaml) remains the later
-role-plus-HBA composition. Public GoM6 `c03cda77493c37d7bfe55747254ebbcf4dbeac98`
+role-plus-HBA composition. Any future per-name assembly must preserve unrelated
+managed roles; these composition helpers are offline evidence, not a deployed patch
+tool or ACL proof. Public GoM6 `c03cda77493c37d7bfe55747254ebbcf4dbeac98`
 [postgres.go](https://github.com/thaynes43/dev-env/blob/c03cda77493c37d7bfe55747254ebbcf4dbeac98/web/portal/session/postgres.go#L92)
 sets MaxConns2/MinConns0. Proposed deployment bound: at most2 replicas plus1
 rollout surge, hence6 pool slots plus2 explicit verification/headroom slots =8.

@@ -27,6 +27,7 @@ PACKET = ROOT / ".agents/reports/portal178-m5c/pending"
 BLUEPRINT = ROOT / "kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
 WITNESS = ROOT / "kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml"
+PORTAL_OIDC = ROOT / "kubernetes/main/apps/dev-env-system/secrets/app/externalsecret-portal-oidc.yaml"
 RUNTIME = "dev_env_v2_portal_runtime"
 MIGRATOR = "dev_env_v2_portal_migrator"
 VERIFY_CHECKS = {"target", "roles", "database_acl", "schema_acl", "tables_acl", "default_acl",
@@ -42,6 +43,36 @@ BlueprintLoader.add_constructor("!KeyOf", lambda loader, node: {"!KeyOf": loader
 
 def load(name):
     return yaml.load((PACKET / name).read_text(), Loader=BlueprintLoader)
+
+
+def approved_portal_oidc_violations(path, doc):
+    """Allow only the installed OIDC projection, including its exact contents."""
+    expected = {
+        "apiVersion": "external-secrets.io/v1",
+        "kind": "ExternalSecret",
+        "metadata": {"name": "dev-env-v2-portal-oidc", "namespace": "dev-agents"},
+        "spec": {
+            "secretStoreRef": {"kind": "ClusterSecretStore", "name": "onepassword-connect"},
+            "refreshInterval": "1h",
+            "target": {
+                "name": "dev-env-v2-portal-oidc", "creationPolicy": "Owner", "deletionPolicy": "Delete",
+                "template": {"engineVersion": "v2", "mergePolicy": "Replace", "type": "Opaque", "data": {
+                    "OIDC_CLIENT_ID": "{{ .OIDC_CLIENT_ID }}",
+                    "OIDC_CLIENT_SECRET": "{{ .OIDC_CLIENT_SECRET }}",
+                }},
+            },
+            "data": [
+                {"secretKey": "OIDC_CLIENT_ID", "remoteRef": {"key": "dev-env", "property": "OIDC_CLIENT_ID"}},
+                {"secretKey": "OIDC_CLIENT_SECRET", "remoteRef": {"key": "dev-env", "property": "OIDC_CLIENT_SECRET"}},
+            ],
+        },
+    }
+    violations = []
+    if path.resolve() != PORTAL_OIDC.resolve():
+        violations.append("wrong-path")
+    if doc != expected:
+        violations.append("noncanonical-oidc-projection")
+    return violations
 
 
 def structural_schema(path):
@@ -440,11 +471,27 @@ class Packet(unittest.TestCase):
             self.assertNotIn("hba-stage-allow.yaml", text, str(path))
             if "kind: ConfigMap" in text and "name: dev-env-v2-portal-admission" in text:
                 self.fail("CLOSED admission seed is registered in " + str(path))
-            if "kind: ExternalSecret" in text and "dev-env-v2-portal" in text:
-                self.fail("portal ExternalSecret is registered in " + str(path))
+            if "kind: ExternalSecret" not in text:
+                continue
+            for doc in yaml.safe_load_all(text):
+                if doc and doc.get("kind") == "ExternalSecret" and "dev-env-v2-portal" in doc.get("metadata", {}).get("name", ""):
+                    self.assertEqual(approved_portal_oidc_violations(path, doc), [], str(path))
+                    self.assertEqual(path.resolve(), PORTAL_OIDC.resolve(), str(path))
         authentik = (ROOT / "kubernetes/main/apps/network/authentik/app/kustomization.yaml").read_text()
         self.assertIn("97-dev-env-v2-portal-oidc.yaml", authentik)
         self.assertNotIn("98-", authentik)
+        oidc = yaml.safe_load(PORTAL_OIDC.read_text())
+        self.assertEqual(approved_portal_oidc_violations(PORTAL_OIDC, oidc), [])
+        for mutate in (
+            lambda doc: doc["spec"]["data"].append({"secretKey": "EXTRA", "remoteRef": {"key": "dev-env", "property": "EXTRA"}}),
+            lambda doc: doc["spec"]["data"][0]["remoteRef"].update(key="wrong-item"),
+            lambda doc: doc["spec"].update(dataFrom=[{"extract": {"key": "dev-env"}}]),
+        ):
+            invalid = deepcopy(oidc)
+            mutate(invalid)
+            self.assertTrue(approved_portal_oidc_violations(PORTAL_OIDC, invalid))
+        self.assertTrue(approved_portal_oidc_violations(
+            ROOT / "kubernetes/main/apps/dev-env-system/secrets/app/another-portal-oidc.yaml", oidc))
 
     def test_bff_only_network_proposal(self):
         folder = ROOT / "kubernetes/main/apps/dev-env-system/network/app"
