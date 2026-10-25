@@ -2,6 +2,7 @@
 """Render the unregistered Story178 consumer packet and reject live registration."""
 import re
 import subprocess
+import tempfile
 import unittest
 from copy import deepcopy
 from pathlib import Path
@@ -150,12 +151,18 @@ def dev_env_properties_from_documents(documents):
 
 
 def dev_env_properties(tree):
-    documents = []
+    inline = re.compile(r"key:\s*dev-env(?![A-Za-z0-9_-])\s*,\s*property:\s*([A-Za-z0-9_]+)")
+    block = re.compile(r"key:\s*dev-env(?![A-Za-z0-9_-])\s*\n\s*property:\s*([A-Za-z0-9_]+)")
+    found = set()
     for path in tree.rglob("*.yaml"):
         text = path.read_text(errors="replace")
-        if "kind: ExternalSecret" in text:
-            documents.extend((path, doc) for doc in yaml.safe_load_all(text))
-    return dev_env_properties_from_documents(documents)
+        if path.resolve() == PORTAL_OIDC.resolve():
+            documents = list(yaml.safe_load_all(text))
+            if len(documents) == 1 and not approved_portal_oidc_violations(path, documents[0]):
+                continue
+        found.update(inline.findall(text))
+        found.update(block.findall(text))
+    return found
 
 
 def load(path):
@@ -695,6 +702,39 @@ class ComponentRenderTest(unittest.TestCase):
         collision_path = ROOT / "kubernetes/main/apps/example/app/externalsecret.yaml"
         self.assertTrue(approved_portal_oidc_violations(collision_path, approved))
         self.assertEqual(dev_env_properties_from_documents([(collision_path, approved)]), set(OIDC_FIELDS))
+        with tempfile.TemporaryDirectory() as scratch:
+            inline = Path(scratch) / "inline"
+            inline.mkdir()
+            (inline / "nested.yaml").write_text("""\
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+spec:
+  values:
+    rawResources:
+      - apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        spec:
+          data:
+            - remoteRef: {key: dev-env, property: DB_PASSWORD}
+""")
+            block = Path(scratch) / "block"
+            block.mkdir()
+            (block / "nested.yaml").write_text("""\
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+spec:
+  values:
+    rawResources:
+      - apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        spec:
+          data:
+            - remoteRef:
+                key: dev-env
+                property: DB_PASSWORD
+""")
+            self.assertEqual(dev_env_properties(inline), {"DB_PASSWORD"})
+            self.assertEqual(dev_env_properties(block), {"DB_PASSWORD"})
         for path in [COMPONENT / "oidc-externalsecret.yaml", COMPONENT / "runtime-externalsecret.yaml",
                      COMPONENT / "role-externalsecret.yaml", PENDING / "runtime-externalsecret.yaml",
                      PENDING / "role-externalsecrets.yaml", M5A]:
