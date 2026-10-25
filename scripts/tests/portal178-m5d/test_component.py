@@ -15,14 +15,17 @@ M5A = ROOT / ".agents/reports/portal178-m5a/pending/externalsecret.yaml"
 CONTRACT = ROOT / ".agents/reports/portal178-m5d/DEPLOYMENT-CONTRACT.md"
 CHECKLIST = ROOT / ".agents/reports/portal178-m5d/LAUNCH-CHECKLIST.md"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
-RUNTIME_CONTRACT = Path("/home/dev/work/orders/portal178-runtime-assembly-20261024/canonical-item-01/RUNTIME-CONTRACT.md")
-STABLE_CONTRACT = Path("/home/dev/work/orders/portal178-runtime-assembly-20261024/integration-fixes-02/RUNTIME-CONTRACT.md")
-M6_HEAD = "fa8b1e2cf3af91e33bf0558873d70920e569751d"
+CURRENT_RUNTIME_HEAD = "3221ca79f4d7fddf73b0cfafc71a24de28f13663"
 PORTAL_IMAGE = (
-    "ghcr.io/thaynes43/dev-env-portal:sha-5b39ebb"
-    "@sha256:b6491747e5730a7a220ac0b79b07493399449425a0acb1e177b52efa00e4233a"
+    "ghcr.io/thaynes43/dev-env-portal:sha-3221ca7"
+    "@sha256:033ff0b611eb15dc000f8d1bc653154f1f3f79d4f477b4eb62ac41d1e666bde2"
 )
-PUBLISHED_HEAD = "5b39ebb13f3651c8aa741a2b4358bc1eecf6dd30"
+OPENPROJECT_ORIGIN = "https://openproject-web.frontend.svc.cluster.local:8443"
+OPENPROJECT_TASKS_QUERY = "/api/v3/projects/3/work_packages?offset=<page>&pageSize=50&filters=%5B%5D"
+OPERATOR_IMAGE = (
+    "sha-617ed15"
+    "@sha256:888c2a0cd1057091cd2bbac7ac743933a4819e100c4570b6eb9b7579afddd34b"
+)
 
 RESOURCES = [
     "oidc-externalsecret.yaml",
@@ -410,7 +413,7 @@ class ComponentRenderTest(unittest.TestCase):
             "token-url": "https://authentik.haynesnetwork.com/application/o/token/",
             "userinfo-url": "https://authentik.haynesnetwork.com/application/o/userinfo/",
             "jwks-url": "https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/jwks/",
-            "openproject-base-url": "https://work.haynesnetwork.com",
+            "openproject-base-url": OPENPROJECT_ORIGIN,
             "operator-api-url": "https://dev-env-operator.dev-env-system.svc.cluster.local:8443",
             "admission-api-url": "https://kubernetes.default.svc.cluster.local",
             "admission-token-file": "/var/run/portal/api/token",
@@ -546,6 +549,10 @@ class ComponentRenderTest(unittest.TestCase):
         api = release["spec"]["values"]["service"]["api"]
         self.assertEqual(api["controller"], "dev-env-operator")
         self.assertEqual(api["ports"]["https"]["port"], 8443)
+        operator = release["spec"]["values"]["controllers"]["dev-env-operator"]["containers"]["app"]
+        self.assertEqual(operator["image"]["tag"], OPERATOR_IMAGE)
+        self.assertNotIn("--enable-portal-reader", operator["args"])
+        self.assertNotIn("--session-namespace=dev-agents", operator["args"])
         self.assertNotEqual(spec, pending_spec)
         for doc in by_kind(self.docs, "ExternalSecret"):
             self.assertNotIn("OPERATOR_TOKEN", remote_properties(doc))
@@ -557,14 +564,11 @@ class ComponentRenderTest(unittest.TestCase):
         config_data = next(item["data"] for item in config if item["metadata"]["name"] == "dev-env-v2-portal-config")
         self.assertNotIn("session-bindings.json", config_data)
         contract = CONTRACT.read_text()
-        self.assertIn("All absent leaves metadata disabled", contract)
-        self.assertIn("All present is the only enabled state", contract)
-        self.assertIn("config/session-bindings.json` is absent from this render", contract)
-        self.assertIn("not a permanent product inventory", contract)
-        self.assertIn("0e93e2ec3aa972456cc07d3ad821a6487db8506e", contract)
-        self.assertIn("no published digest", contract)
+        self.assertIn("config/session-bindings.json` is not a production requirement", contract)
+        self.assertIn("Sessions and Tasks are independent", contract)
+        self.assertIn(CURRENT_RUNTIME_HEAD, contract)
         self.assertIn("--enable-portal-reader", contract)
-        self.assertIn("offset=<page>&pageSize=50", contract)
+        self.assertIn(OPENPROJECT_TASKS_QUERY, contract)
         self.assertEqual(by_kind(self.docs, "CiliumClusterwideNetworkPolicy"), [])
         exclusion = load(COMPONENT / "ccnp-exclusion.yaml")
         self.assertEqual(exclusion["append"], "dev-env-v2-portal")
@@ -652,26 +656,17 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertIn("/readyz", contract)
         self.assertIn("Standard base64", contract)
         self.assertIn("dev_env_v2_portal_runtime", contract)
-        self.assertIn("integration-fixes-02", contract)
+        self.assertIn(CURRENT_RUNTIME_HEAD, contract)
         self.assertIn("config/subject", contract)
-        self.assertIn(M6_HEAD, contract)
-        self.assertIn(PUBLISHED_HEAD, contract)
         self.assertIn(PORTAL_IMAGE, contract)
-        self.assertIn("backend-contract-03/RUNTIME-CONTRACT.md", contract)
-        self.assertIn("unchanged from", contract)
-        self.assertIn("work.haynesnetwork.com", contract)
+        self.assertIn(OPENPROJECT_ORIGIN, contract)
+        self.assertIn(OPENPROJECT_TASKS_QUERY, contract)
         self.assertIn("dev-env-operator.dev-env-system.svc.cluster.local", contract)
-        self.assertIn("120, 121, 122, 123, and 178", contract)
-        self.assertIn("/v1/sessions?repo=dev-env", contract)
-        self.assertIn("/v1/task-claims/{name}?project=dev-env", contract)
-        self.assertIn("matches the bound session name and UID", contract)
-        self.assertIn("does not claim the operator or OpenProject enforces them as backend ACLs", contract)
-        self.assertNotIn("named dev-env session", contract)
-        self.assertIn("Published `fa8b1e2cf3af91e33bf0558873d70920e569751d` accepts schema 1", contract)
-        self.assertIn("c9e3421710319c2c10554b91dccb655de4871967", contract)
-        self.assertIn("taskclaim.Name(project, repository, taskKey)", contract)
-        self.assertIn("76 bytes", contract)
-        self.assertIn("does not choose the five production task keys", contract)
+        self.assertIn("Sessions and Tasks are independent", contract)
+        self.assertIn("Tasks not connected", contract)
+        self.assertIn("fixed `dev-agents` namespace", contract)
+        self.assertIn(OPERATOR_IMAGE, checklist)
+        self.assertIn("no explicit `--enable-portal-reader`", checklist)
         self.assertIn("provider 174", contract)
         self.assertIn("not materialized", contract)
         self.assertIn("historical handoff convention", contract)
@@ -688,20 +683,9 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertIn("dev-env-v2-portal.dev-agents.svc.cluster.local", contract)
         self.assertIn("Historical record only; not loaded", contract)
         self.assertIn("HaynesKube/dev-env", contract)
-        self.assertIn("canonical-item-01/RUNTIME-CONTRACT.md", contract)
         self.assertIn("Population of these properties is HELD", (PENDING / "role-externalsecrets.yaml").read_text())
         for field in ATTESTATION:
             self.assertIn(field, contract)
-        if STABLE_CONTRACT.parent.is_dir():
-            self.assertTrue(STABLE_CONTRACT.is_file(), "stable runtime contract is missing")
-            stable = STABLE_CONTRACT.read_text()
-            self.assertIn("/etc/dev-env-portal", stable)
-            self.assertIn("/healthz", stable)
-            self.assertIn("/readyz", stable)
-            self.assertIn("https://authentik.haynesnetwork.com/application/o/authorize/", stable)
-            self.assertIn("config/subject", stable)
-            self.assertIn("USER-REPORTED SAVED", stable)
-            self.assertIn("historical source", stable)
 
     def test_approved_reader_route_certificates_and_preflight(self):
         import importlib.util
