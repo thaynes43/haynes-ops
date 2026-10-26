@@ -221,13 +221,10 @@ spec:
               # window. Going past 65536/slot would not — check for an
               # `n_ctx_train` warning in the log if you ever raise it again.
               # KV cost is roughly linear: 16k->32k per slot measured ~+240 MiB.
-              # TEMPORARY (haynesnetwork OpenProject #208, 2026-10-26): benchmark
-              # settings for the dev-tl1 tool-lift run: one 16k slot, minimal reasoning.
-              # Revert to 131072 / 2 slots / --reasoning-effort low afterwards.
               - --ctx-size
-              - "16384"
+              - "131072"
               - --parallel
-              - "1"
+              - "2"
               # Muse Glimmer's chat template is the ATEM tool-calling protocol
               # (reasoning channel + tool channels), so the jinja engine is not
               # optional for tool calls. Default-on in b11096; stated anyway.
@@ -239,7 +236,7 @@ spec:
               # Muse's template has no "off": without --reasoning-effort it falls back
               # to "high" (seen in the #208 smoke). minimal is its lowest level.
               - --reasoning-effort
-              - minimal
+              - low
               - --flash-attn
               - "on"
               # q8_0 KV roughly halves cache VRAM against the f16 default at
