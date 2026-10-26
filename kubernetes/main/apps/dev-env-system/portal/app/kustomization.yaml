@@ -2,13 +2,17 @@
 # yaml-language-server: $schema=https://json.schemastore.org/kustomization
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# Story178 portal inputs (S4, S6). Every object is in dev-agents and says so.
+# Story178 portal inputs (S4, S6), its Deployment (S8) and its internal route (S9).
+# Every object names its namespace: dev-agents, except the IngressRoute in dev, where
+# the wildcard certificate is reflected.
 resources:
   - ./certificates.yaml
   - ./service.yaml
   - ./serverstransport.yaml
   - ./config.yaml
   - ./runtime-externalsecret.yaml
+  - ./deployment.yaml
+  - ./ingressroute.yaml
 configMapGenerator:
   # Public CA certificates only, one key ca.crt each. The portal mounts each key as
   # one file under /etc/dev-env-portal/ca/ and trusts nothing else for that peer.

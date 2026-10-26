@@ -25,6 +25,35 @@ PORTAL_DB = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/portal-
 PORTAL_TREE = ROOT / "kubernetes/main/apps/dev-env-system/portal"
 PORTAL_INPUTS = PORTAL_TREE / "app"
 PORTAL_RUNTIME = PORTAL_INPUTS / "runtime-externalsecret.yaml"
+# Story178 S8+S9: the registered Deployment and its internal-only route.
+PORTAL_DEPLOYMENT = PORTAL_INPUTS / "deployment.yaml"
+PORTAL_ROUTE = PORTAL_INPUTS / "ingressroute.yaml"
+PORTAL_HOST = "dev-env-v2.haynesops.com"
+# One image line, pinned by tag and digest. The digest changes with each portal release.
+REGISTERED_PORTAL_IMAGE = re.compile(r"ghcr\.io/thaynes43/dev-env-portal:sha-[0-9a-f]{7,40}@sha256:[0-9a-f]{64}")
+# What LoadProduction reads under /etc/dev-env-portal (dev-env web/portal/session/production.go
+# after dev-env#560), and where each file comes from: (kind, name, key). The witness-*
+# config files are harmless extras the parser no longer reads.
+PRODUCTION_FILES = {
+    **{"config/" + key: ("ConfigMap", "dev-env-v2-portal-config", key)
+       for key in ("origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
+                   "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
+                   "absolute-ttl", "fresh-for", "clock-skew", "witness-gets-per-second", "witness-get-burst")},
+    "secrets/OIDC_CLIENT_ID": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_ID"),
+    "secrets/OIDC_CLIENT_SECRET": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_SECRET"),
+    "secrets/DB_USERNAME": ("Secret", "dev-env-v2-portal-runtime", "DB_USERNAME"),
+    "secrets/DB_PASSWORD": ("Secret", "dev-env-v2-portal-runtime", "DB_PASSWORD"),
+    "secrets/SESSION_AEAD_KEY": ("Secret", "dev-env-v2-portal-runtime", "SESSION_AEAD_KEY"),
+    "secrets/SESSION_GENERATION": ("Secret", "dev-env-v2-portal-runtime", "SESSION_GENERATION"),
+    "secrets/OPENPROJECT_TOKEN": ("Secret?", "dev-env-v2-portal-openproject", "OPENPROJECT_TOKEN"),
+    "secrets/OPERATOR_TOKEN": ("ServiceAccountToken", "dev-env-operator", 3600),
+    "ca/ca.crt": ("ConfigMap", "dev-env-v2-portal-postgres-ca", "ca.crt"),
+    "ca/issuer-ca.crt": ("ConfigMap", "dev-env-v2-portal-issuer-ca", "ca.crt"),
+    "ca/openproject-ca.crt": ("ConfigMap", "dev-env-v2-portal-openproject-ca", "ca.crt"),
+    "ca/operator-ca.crt": ("ConfigMap", "dev-env-api-ca", "ca.crt"),
+    "tls/tls.crt": ("Secret", "dev-env-v2-portal-tls", "tls.crt"),
+    "tls/tls.key": ("Secret", "dev-env-v2-portal-tls", "tls.key"),
+}
 POLICY_KS = PORTAL_TREE / "policy/ks.yaml"
 INPUTS_KS = PORTAL_TREE / "ks.yaml"
 READY_EXPR = "status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')"
@@ -361,6 +390,8 @@ def render_inputs():
 
 
 INPUT_OBJECTS = {
+    ("Deployment", "dev-env-v2-portal"),
+    ("IngressRoute", "dev-env-v2-portal"),
     ("ConfigMap", "dev-env-v2-portal-config"),
     ("ConfigMap", "dev-env-v2-portal-issuer-ca"),
     ("ConfigMap", "dev-env-v2-portal-openproject-ca"),
@@ -375,20 +406,185 @@ INPUT_OBJECTS = {
 }
 
 
+def mounted_files(deployment):
+    """Every file the Deployment puts under /etc/dev-env-portal, and its source.
+
+    The source is (kind, name, key), "Secret?" for an optional Secret, or
+    ("ServiceAccountToken", audience, expirationSeconds). A subPath mount, an
+    unknown volume type or a source without items is reported as ("unsupported", ...).
+    """
+    pod = deployment["spec"]["template"]["spec"]
+    volumes = {v["name"]: v for v in pod.get("volumes", [])}
+    files = {}
+
+    def add_items(prefix, kind, name, items):
+        if not items:
+            files[prefix + "*"] = ("unsupported", name, "no items")
+            return
+        for item in items:
+            files[prefix + item["path"]] = (kind, name, item["key"])
+
+    for container in pod["containers"]:
+        for mount in container.get("volumeMounts", []):
+            path = mount["mountPath"]
+            if not path.startswith("/etc/dev-env-portal/"):
+                continue
+            prefix = path[len("/etc/dev-env-portal/"):] + "/"
+            volume = volumes.get(mount["name"], {})
+            if "subPath" in mount or "subPathExpr" in mount:
+                files[prefix] = ("unsupported", mount["name"], "subPath")
+            elif "configMap" in volume:
+                cm = volume["configMap"]
+                if cm.get("items"):
+                    add_items(prefix, "ConfigMap", cm["name"], cm["items"])
+                else:
+                    files[prefix + "*"] = ("ConfigMap", cm["name"], "*")
+            elif "secret" in volume:
+                secret = volume["secret"]
+                kind = "Secret?" if secret.get("optional") else "Secret"
+                add_items(prefix, kind, secret["secretName"], secret.get("items"))
+            elif "projected" in volume:
+                for source in volume["projected"]["sources"]:
+                    if "secret" in source:
+                        kind = "Secret?" if source["secret"].get("optional") else "Secret"
+                        add_items(prefix, kind, source["secret"]["name"], source["secret"].get("items"))
+                    elif "configMap" in source:
+                        kind = "ConfigMap?" if source["configMap"].get("optional") else "ConfigMap"
+                        add_items(prefix, kind, source["configMap"]["name"], source["configMap"].get("items"))
+                    elif "serviceAccountToken" in source:
+                        token = source["serviceAccountToken"]
+                        files[prefix + token["path"]] = (
+                            "ServiceAccountToken", token.get("audience"), token.get("expirationSeconds"))
+                    else:
+                        files[prefix + "?"] = ("unsupported", mount["name"], sorted(source))
+            else:
+                files[prefix + "?"] = ("unsupported", mount["name"], sorted(volume))
+    return files
+
+
+def expand_config_files(files, docs):
+    """Replace a whole-ConfigMap mount with one file per key of the rendered ConfigMap."""
+    out = {}
+    configmaps = {doc["metadata"]["name"]: doc for doc in docs if doc.get("kind") == "ConfigMap"}
+    for path, source in files.items():
+        if path.endswith("*") and source[0] == "ConfigMap" and source[2] == "*" and source[1] in configmaps:
+            for key in configmaps[source[1]].get("data", {}):
+                out[path[:-1] + key] = ("ConfigMap", source[1], key)
+        else:
+            out[path] = source
+    return out
+
+
+def deployment_violations(doc, docs):
+    """The S8 portal Deployment: what it mounts, what it runs as, and how it resolves names."""
+    violations = []
+    spec = doc.get("spec", {})
+    template = spec.get("template", {})
+    pod = template.get("spec", {})
+    labels = {"app.kubernetes.io/name": "dev-env-v2-portal"}
+    if spec.get("selector") != {"matchLabels": labels} or template.get("metadata", {}).get("labels") != labels:
+        violations.append("labels")
+    containers = pod.get("containers", [])
+    if len(containers) != 1 or pod.get("initContainers") or pod.get("ephemeralContainers"):
+        violations.append("containers")
+        return violations
+    container = containers[0]
+    if not REGISTERED_PORTAL_IMAGE.fullmatch(str(container.get("image"))):
+        violations.append("image")
+    if container.get("command") or container.get("args") or container.get("env") or container.get("envFrom"):
+        violations.append("command-or-env")
+    if pod.get("serviceAccountName") != "dev-env-v2-portal" or pod.get("automountServiceAccountToken") is not False:
+        violations.append("service-account")
+    if pod.get("dnsPolicy") != "ClusterFirst" or pod.get("dnsConfig") != {"options": [{"name": "ndots", "value": "1"}]}:
+        violations.append("dns")
+    if any(pod.get(key) for key in ("hostNetwork", "hostPID", "hostIPC", "hostUsers")):
+        violations.append("host-namespace")
+    pod_security = pod.get("securityContext", {})
+    security = container.get("securityContext", {})
+    if (pod_security.get("runAsNonRoot") is not True
+            or pod_security.get("seccompProfile") != {"type": "RuntimeDefault"}
+            or security.get("allowPrivilegeEscalation") is not False
+            or security.get("readOnlyRootFilesystem") is not True
+            or security.get("capabilities") != {"drop": ["ALL"]}
+            or security.get("privileged")):
+        violations.append("security-context")
+    if "cpu" not in container.get("resources", {}).get("limits", {}):
+        violations.append("cpu-limit")
+    if container.get("ports") != [{"name": "https", "containerPort": 8443, "protocol": "TCP"}]:
+        violations.append("ports")
+    files = expand_config_files(mounted_files(doc), docs)
+    if files != PRODUCTION_FILES:
+        violations.append("mounted-files")
+    named = yaml.safe_dump(pod.get("volumes", []))
+    if "admission" in named or "witness" in named:
+        violations.append("admission-input")
+    for volume in pod.get("volumes", []):
+        secret = volume.get("secret", {}).get("secretName")
+        projected = [s["secret"]["name"] for s in volume.get("projected", {}).get("sources", []) if "secret" in s]
+        if "dev-env-v2-portal-ca" in [secret] + projected:
+            violations.append("ca-key-mounted")
+        if "hostPath" in volume or "persistentVolumeClaim" in volume:
+            violations.append("volume-type:" + volume["name"])
+    return violations
+
+
+def route_violations(doc):
+    """The S9 route: internal Traefik, internal DNS, one host, the portal Service over checked TLS."""
+    violations = []
+    meta = doc.get("metadata", {})
+    annotations = meta.get("annotations", {})
+    if annotations.get("kubernetes.io/ingress.class") != "traefik-internal":
+        violations.append("ingress-class")
+    if annotations.get("external-dns.kubernetes.io/target") != "internal.haynesops":
+        violations.append("dns-target")
+    if set(annotations) != {"kubernetes.io/ingress.class", "external-dns.kubernetes.io/target"}:
+        violations.append("annotations")
+    spec = doc.get("spec", {})
+    if spec.get("entryPoints") != ["websecure"]:
+        violations.append("entrypoints")
+    if spec.get("tls") != {"secretName": "certificate-haynesops"}:
+        violations.append("tls")
+    routes = spec.get("routes", [])
+    if len(routes) != 1:
+        violations.append("routes")
+        return violations
+    route = routes[0]
+    if route.get("kind") != "Rule" or route.get("match") != "Host(`%s`) && PathPrefix(`/`)" % PORTAL_HOST:
+        violations.append("match")
+    if route.get("middlewares"):
+        violations.append("middlewares")
+    if route.get("services") != [{
+            "kind": "Service", "name": "dev-env-v2-portal", "namespace": "dev-agents", "port": 8443,
+            "scheme": "https", "passHostHeader": True, "serversTransport": "dev-env-v2-portal"}]:
+        violations.append("backend")
+    text = yaml.safe_dump(doc)
+    for needle in ("traefik-external", "haynesnetwork.com", "cloudflare", "insecureSkipVerify"):
+        if needle in text:
+            violations.append("public:" + needle)
+    return violations
+
+
 def registered_input_violations(docs):
-    """What S4+S6 may register, and what must wait for later steps."""
+    """What S4, S6, S8 and S9 may register, and what stays out."""
     violations = []
     found = {(doc.get("kind"), doc.get("metadata", {}).get("name")) for doc in docs}
-    if found != INPUT_OBJECTS:
+    if found != INPUT_OBJECTS or len(found) != len(docs):
         violations.append("object-set")
     for doc in docs:
         meta = doc.get("metadata", {})
-        if meta.get("namespace") != "dev-agents":
+        expected_namespace = "dev" if doc.get("kind") == "IngressRoute" else "dev-agents"
+        if meta.get("namespace") != expected_namespace:
             violations.append("namespace:" + str(meta.get("name")))
-        if doc.get("kind") in {"Deployment", "StatefulSet", "Pod", "Job", "IngressRoute", "Ingress",
-                               "HTTPRoute", "Secret", "ServiceAccount", "Role", "RoleBinding",
-                               "CiliumNetworkPolicy"}:
+        if doc.get("kind") in {"StatefulSet", "DaemonSet", "Pod", "Job", "CronJob", "Ingress", "HTTPRoute",
+                               "Gateway", "IngressRouteTCP", "Middleware", "Secret", "ServiceAccount", "Role",
+                               "RoleBinding", "ClusterRole", "ClusterRoleBinding", "CiliumNetworkPolicy"}:
             violations.append("forbidden-kind:" + doc["kind"])
+        if doc.get("kind") == "Deployment":
+            violations += ["deployment:" + v for v in deployment_violations(doc, docs)]
+        if doc.get("kind") == "IngressRoute":
+            violations += ["route:" + v for v in route_violations(doc)]
+        if doc.get("kind") == "Service" and doc.get("spec", {}).get("type", "ClusterIP") != "ClusterIP":
+            violations.append("service-type")
         if doc.get("kind") == "ConfigMap" and meta.get("name") in {
                 "dev-env-v2-portal-admission", "dev-env-v2-portal-admission-ca", "dev-env-v2-portal-operator-ca"}:
             violations.append("held-configmap:" + meta["name"])
@@ -900,10 +1096,11 @@ class ComponentRenderTest(unittest.TestCase):
                 self.assertEqual(text.count("hostssl dev_env_v2_portal"), 1)
             else:
                 self.assertNotIn("hostssl dev_env_v2_portal", text, str(path))
+            # Story178 S8+S9 registered the Deployment and its route, each at one path.
             if "kind: Deployment" in text and "name: dev-env-v2-portal" in text:
-                self.fail("portal Deployment is registered in " + str(path))
-            if "kind: IngressRoute" in text and "dev-env-v2.haynesops.com" in text:
-                self.fail("portal route is registered in " + str(path))
+                self.assertEqual(path.resolve(), PORTAL_DEPLOYMENT.resolve(), "portal Deployment in " + str(path))
+            if "dev-env-v2.haynesops.com" in text and re.search(r"kind:\s*(IngressRoute|Ingress|HTTPRoute)\b", text):
+                self.assertEqual(path.resolve(), PORTAL_ROUTE.resolve(), "portal route in " + str(path))
             if "kind: ExternalSecret" in text:
                 for doc in yaml.safe_load_all(text):
                     if doc and doc.get("kind") == "ExternalSecret" and "dev-env-v2-portal" in doc.get("metadata", {}).get("name", ""):
@@ -1337,7 +1534,7 @@ class RegisteredInputsTest(unittest.TestCase):
         manifest = load(PORTAL_INPUTS / "kustomization.yaml")
         self.assertEqual(manifest["resources"], [
             "./certificates.yaml", "./service.yaml", "./serverstransport.yaml",
-            "./config.yaml", "./runtime-externalsecret.yaml",
+            "./config.yaml", "./runtime-externalsecret.yaml", "./deployment.yaml", "./ingressroute.yaml",
         ])
         self.assertNotIn("namespace", manifest)
         self.assertNotIn("components", manifest)
@@ -1345,14 +1542,15 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in PORTAL_INPUTS.iterdir()), sorted([
             "kustomization.yaml", "certificates.yaml", "service.yaml", "serverstransport.yaml",
             "config.yaml", "runtime-externalsecret.yaml", "issuer-ca.crt", "openproject-ca.crt",
-            "postgres-ca.crt",
+            "postgres-ca.crt", "deployment.yaml", "ingressroute.yaml",
         ]))
         self.assertEqual(registered_input_violations(self.docs), [])
         self.assertNotIn("portal-registration", self.rendered)
 
     def test_guard_rejects_later_steps_and_drift(self):
-        packet_deployment = self.packet[("Deployment", "dev-env-v2-portal")]
-        packet_route = self.packet[("IngressRoute", "dev-env-v2-portal")]
+        second_route = deepcopy(self.by_key[("IngressRoute", "dev-env-v2-portal")])
+        second_route["metadata"]["name"] = "dev-env-v2-portal-public"
+        duplicate_deployment = deepcopy(self.by_key[("Deployment", "dev-env-v2-portal")])
         admission = {"apiVersion": "v1", "kind": "ConfigMap",
                      "metadata": {"name": "dev-env-v2-portal-admission", "namespace": "dev-agents"},
                      "data": {"schema": "1", "state": "closed"}}
@@ -1360,8 +1558,8 @@ class RegisteredInputsTest(unittest.TestCase):
                         "metadata": {"name": "dev-env-v2-portal-admission-ca", "namespace": "dev-agents"},
                         "data": {"ca.crt": "x"}}
         for extra, expected in (
-            (packet_deployment, "forbidden-kind:Deployment"),
-            (packet_route, "forbidden-kind:IngressRoute"),
+            (second_route, "object-set"),
+            (duplicate_deployment, "object-set"),
             (admission, "held-configmap:dev-env-v2-portal-admission"),
             (admission_ca, "held-configmap:dev-env-v2-portal-admission-ca"),
         ):
@@ -1486,9 +1684,177 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertNotIn(("ExternalSecret", "dev-env-v2-portal-oidc"), self.by_key)
         self.assertNotIn(("ExternalSecret", "dev-env-v2-portal-openproject"), self.by_key)
 
+    def test_deployment_mounts_exactly_what_the_portal_reads(self):
+        deployment = self.by_key[("Deployment", "dev-env-v2-portal")]
+        self.assertEqual(deployment_violations(deployment, self.docs), [])
+        self.assertEqual(expand_config_files(mounted_files(deployment), self.docs), PRODUCTION_FILES)
+        # Every source the pod needs is registered here, by dev-env-secrets or by dev-env-pki,
+        # and only OPENPROJECT_TOKEN may be absent.
+        oidc = load(PORTAL_OIDC)
+        self.assertEqual((oidc["metadata"]["namespace"], oidc["spec"]["target"]["name"]),
+                         ("dev-agents", "dev-env-v2-portal-oidc"))
+        registered = {doc["metadata"]["name"] for doc in self.docs if doc["kind"] == "ConfigMap"}
+        registered |= {doc["spec"]["target"]["name"] for doc in self.docs if doc["kind"] == "ExternalSecret"}
+        registered |= {doc["spec"]["secretName"] for doc in self.docs if doc["kind"] == "Certificate"}
+        registered |= {"dev-env-v2-portal-oidc", "dev-env-api-ca"}
+        for path, (kind, name, _) in PRODUCTION_FILES.items():
+            if kind in {"ConfigMap", "Secret"}:
+                self.assertIn(name, registered, path)
+            elif kind == "Secret?":
+                self.assertEqual(path, "secrets/OPENPROJECT_TOKEN")
+                self.assertNotIn(name, registered)
+        # The operator's CA is dev-env-pki's pinned dev-agents/dev-env-api-ca, not a copy.
+        pki = load(ROOT / "kubernetes/main/apps/dev-env-system/pki/app/kustomization.yaml")
+        self.assertIn({"name": "dev-env-api-ca", "namespace": "dev-agents", "files": ["ca.crt"]},
+                      pki["configMapGenerator"])
+        self.assertNotIn("dev-env-v2-portal-operator-ca", self.rendered)
+        # Reloader restarts the portal when any mounted input changes.
+        annotations = deployment["metadata"]["annotations"]
+        reload = set(annotations["configmap.reloader.stakater.com/reload"].split(","))
+        reload |= set(annotations["secret.reloader.stakater.com/reload"].split(","))
+        self.assertEqual(reload, {name for _, name, _ in PRODUCTION_FILES.values()} - {"dev-env-operator"})
+        # The ServiceAccount is dev-env-rbac's; the operator reader names the same one.
+        rbac = [doc for doc in yaml.safe_load_all(
+            (ROOT / "kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml").read_text()) if doc]
+        self.assertIn(("ServiceAccount", "dev-agents", "dev-env-v2-portal"),
+                      {(d["kind"], d["metadata"]["namespace"], d["metadata"]["name"]) for d in rbac})
+        self.assertEqual(deployment["spec"]["template"]["spec"]["serviceAccountName"], "dev-env-v2-portal")
+        # The probes reach /healthz and /readyz over TLS with the portal's own Host.
+        container = deployment["spec"]["template"]["spec"]["containers"][0]
+        for probe, path in (("startupProbe", "/healthz"), ("livenessProbe", "/healthz"), ("readinessProbe", "/readyz")):
+            self.assertEqual(container[probe]["httpGet"], {
+                "path": path, "port": "https", "scheme": "HTTPS",
+                "httpHeaders": [{"name": "Host", "value": PORTAL_HOST}]}, probe)
+        # The image is one line, so a release bump touches one line.
+        self.assertEqual(PORTAL_DEPLOYMENT.read_text().count("ghcr.io/thaynes43/dev-env-portal"), 1)
+        # The Service and the policy select the Deployment's pods.
+        service = self.by_key[("Service", "dev-env-v2-portal")]
+        self.assertEqual(service["spec"]["selector"], deployment["spec"]["template"]["metadata"]["labels"])
+        policy = load(POLICY_KS.parent / "app/networkpolicy.yaml")
+        self.assertEqual(policy["spec"]["endpointSelector"]["matchLabels"],
+                         deployment["spec"]["template"]["metadata"]["labels"])
+
+    def test_deployment_guard_rejects_drift(self):
+        def mutated(change):
+            docs = deepcopy(self.docs)
+            change(next(d for d in docs if d["kind"] == "Deployment"))
+            return registered_input_violations(docs)
+
+        pod = lambda d: d["spec"]["template"]["spec"]
+        container = lambda d: pod(d)["containers"][0]
+        volume = lambda d, name: next(v for v in pod(d)["volumes"] if v["name"] == name)
+        for change, expected in (
+            (lambda d: container(d).update(image="ghcr.io/thaynes43/dev-env-portal:latest"), "image"),
+            (lambda d: container(d).update(image="ghcr.io/other/dev-env-portal:sha-b98247c@sha256:" + "0" * 64), "image"),
+            (lambda d: pod(d).update(automountServiceAccountToken=True), "service-account"),
+            (lambda d: pod(d).update(serviceAccountName="default"), "service-account"),
+            (lambda d: pod(d).update(hostNetwork=True), "host-namespace"),
+            (lambda d: pod(d).pop("dnsConfig"), "dns"),
+            (lambda d: pod(d).update(dnsPolicy="Default"), "dns"),
+            (lambda d: container(d)["securityContext"].update(readOnlyRootFilesystem=False), "security-context"),
+            (lambda d: container(d)["securityContext"]["capabilities"].update(add=["NET_ADMIN"]), "security-context"),
+            (lambda d: container(d)["resources"]["limits"].pop("cpu"), "cpu-limit"),
+            (lambda d: container(d).update(env=[{"name": "X", "value": "y"}]), "command-or-env"),
+            (lambda d: container(d).update(args=["serve"]), "command-or-env"),
+            (lambda d: d["spec"]["template"]["metadata"]["labels"].update(extra="x"), "labels"),
+            # A file the parser needs goes missing or moves.
+            (lambda d: volume(d, "ca")["projected"]["sources"].pop(), "mounted-files"),
+            (lambda d: volume(d, "tls")["secret"]["items"].append({"key": "ca.crt", "path": "ca.crt"}), "mounted-files"),
+            (lambda d: volume(d, "secrets")["projected"]["sources"][1]["secret"].update(optional=True), "mounted-files"),
+            (lambda d: volume(d, "secrets")["projected"]["sources"][2]["secret"].pop("optional"), "mounted-files"),
+            (lambda d: volume(d, "secrets")["projected"]["sources"][3]["serviceAccountToken"].update(
+                audience="https://kubernetes.default.svc"), "mounted-files"),
+            (lambda d: container(d)["volumeMounts"][2].update(subPath="ca.crt"), "mounted-files"),
+            # The CA key Secret, an admission input, or host storage.
+            (lambda d: volume(d, "tls")["secret"].update(secretName="dev-env-v2-portal-ca"), "ca-key-mounted"),
+            (lambda d: volume(d, "ca")["projected"]["sources"].append(
+                {"configMap": {"name": "dev-env-v2-portal-admission-ca"}}), "admission-input"),
+            (lambda d: pod(d)["volumes"].append({"name": "host", "hostPath": {"path": "/"}}), "volume-type:host"),
+        ):
+            self.assertIn("deployment:" + expected, mutated(change), expected)
+
+    def test_route_is_internal_only(self):
+        route = self.by_key[("IngressRoute", "dev-env-v2-portal")]
+        self.assertEqual(route_violations(route), [])
+        self.assertEqual(route["metadata"]["namespace"], "dev")
+        self.assertTrue(PORTAL_HOST.endswith(".haynesops.com"))
+        # Internal DNS: only the UniFi external-dns writes haynesops.com; Cloudflare excludes it.
+        dns = ROOT / "kubernetes/main/apps/network/external-dns"
+        cloudflare = load(dns / "cloudflare/helmrelease.yaml")["spec"]["values"]
+        unifi = load(dns / "unifi/helmrelease.yaml")["spec"]["values"]
+        self.assertIn("haynesops.com", cloudflare["excludeDomains"])
+        self.assertNotIn("haynesops.com", cloudflare["domainFilters"])
+        self.assertEqual(unifi["domainFilters"], ["haynesops.com"])
+        # Internal Traefik only: the external instance serves only its own class.
+        traefik = ROOT / "kubernetes/main/apps/network/traefik"
+        external = load(traefik / "traefik-external/app/helmrelease.yaml")["spec"]["values"]["providers"]
+        internal = load(traefik / "traefik-internal/app/helmrelease.yaml")["spec"]["values"]["providers"]
+        self.assertEqual(external["kubernetesCRD"]["ingressClass"], "traefik-external")
+        self.assertEqual(internal["kubernetesCRD"]["ingressClass"], "traefik-internal")
+        # The cross-namespace Service needs it on the internal instance.
+        self.assertIs(internal["kubernetesCRD"]["allowCrossNamespace"], True)
+        # The wildcard certificate is reflected to dev and not to dev-agents.
+        wildcard = load(ROOT / "kubernetes/main/apps/cert-manager/certificates/certificates-letsencrypt-wildcard"
+                        "/certificate-haynesops-prod.yaml")
+        reflected = wildcard["spec"]["secretTemplate"]["annotations"][
+            "reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces"].split(",")
+        self.assertIn("dev", reflected)
+        # No tunnel, public route or other manifest names the portal host or Service.
+        for path in (ROOT / "kubernetes").rglob("*.y*ml"):
+            text = path.read_text(errors="replace")
+            if PORTAL_HOST in text:
+                self.assertIn(path.resolve(), {
+                    PORTAL_ROUTE.resolve(), PORTAL_DEPLOYMENT.resolve(), (PORTAL_INPUTS / "config.yaml").resolve(),
+                    (PORTAL_INPUTS / "certificates.yaml").resolve(),
+                    (ROOT / "kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml").resolve(),
+                }, str(path))
+            if "cloudflare-tunnel" in str(path):
+                self.assertNotIn("dev-env-v2", text, str(path))
+            is_route = re.search(r"kind:\s*(IngressRoute|Ingress|HTTPRoute)\b", text)
+            if is_route and "dev-env-v2-portal" in text and path.resolve() != PORTAL_ROUTE.resolve():
+                self.fail("another route names the portal in " + str(path))
+        # Traefik checks the backend with the portal's own CA (Service namespace lookup).
+        self.assertEqual(unqualified_transport_lookup(route), ("dev-agents", "dev-env-v2-portal"))
+        transport = self.by_key[("ServersTransport", "dev-env-v2-portal")]
+        self.assertEqual(transport["metadata"]["namespace"], "dev-agents")
+        self.assertIs(transport["spec"]["insecureSkipVerify"], False)
+
+    def test_route_guard_rejects_public_exposure(self):
+        def mutated(change):
+            docs = deepcopy(self.docs)
+            change(next(d for d in docs if d["kind"] == "IngressRoute"))
+            return registered_input_violations(docs)
+
+        annotations = lambda d: d["metadata"]["annotations"]
+        service = lambda d: d["spec"]["routes"][0]["services"][0]
+        for change, expected in (
+            (lambda d: annotations(d).update({"kubernetes.io/ingress.class": "traefik-external"}), "route:ingress-class"),
+            (lambda d: annotations(d).pop("kubernetes.io/ingress.class"), "route:ingress-class"),
+            (lambda d: annotations(d).update({"external-dns.kubernetes.io/target": "external.haynesnetwork.com"}),
+             "route:dns-target"),
+            (lambda d: annotations(d).update({"external-dns.kubernetes.io/cloudflare-proxied": "true"}), "route:annotations"),
+            (lambda d: d["spec"]["routes"][0].update(match="Host(`dev-env-v2.haynesnetwork.com`)"), "route:match"),
+            (lambda d: d["spec"]["routes"][0].update(match="HostRegexp(`.+`)"), "route:match"),
+            (lambda d: d["spec"].update(entryPoints=["websecure", "web"]), "route:entrypoints"),
+            (lambda d: d["spec"].update(tls={"secretName": "certificate-haynesnetwork"}), "route:tls"),
+            (lambda d: d["spec"]["routes"][0].update(middlewares=[{"name": "default-headers", "namespace": "network"}]),
+             "route:middlewares"),
+            (lambda d: service(d).pop("serversTransport"), "route:backend"),
+            (lambda d: service(d).update(scheme="http"), "route:backend"),
+            (lambda d: d["spec"]["routes"].append(deepcopy(d["spec"]["routes"][0])), "route:routes"),
+            (lambda d: d["metadata"].update(namespace="dev-agents"), "namespace:dev-env-v2-portal"),
+        ):
+            self.assertIn(expected, mutated(change), expected)
+        exposed = deepcopy(self.docs)
+        next(d for d in exposed if d["kind"] == "Service")["spec"]["type"] = "LoadBalancer"
+        self.assertIn("service-type", registered_input_violations(exposed))
+
     def test_checklist_records_the_activation_steps(self):
         checklist = CHECKLIST.read_text()
         self.assertIn("## Activation steps S4+S6: portal inputs, 2026-10-26", checklist)
+        self.assertIn("## Activation steps S8+S9: portal Deployment and internal route, 2026-10-26", checklist)
+        for needle in ("internal.haynesops", "traefik-internal", "OPENPROJECT_TOKEN", "dev-env#560"):
+            self.assertIn(needle, checklist)
         for needle in (ISSUER_CA[0], OPENPROJECT_CA[0], POSTGRES_CA[0], "rootCAsSecrets",
                        "dev-env-api-ca", "openproject-portal-ca-1", "Re-pin it after the CNPG CA renewal", "dropped the admission witness"):
             self.assertIn(needle, checklist)

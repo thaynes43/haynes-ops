@@ -1,12 +1,14 @@
 ---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
-# Story178 portal inputs, steps S4 and S6: what the portal needs before its
-# Deployment exists. Serving certificates, the Service, Traefik's backend TLS check,
-# the non-secret config, three public CA bundles and the runtime ExternalSecret.
-# No Deployment, no route and no admission object. Nothing depends on this
-# Kustomization, so a failed input cannot hold back another app.
+# Story178 portal, steps S4, S6, S8 and S9: serving certificates, the Service,
+# Traefik's backend TLS check, the non-secret config, three public CA bundles, the
+# runtime ExternalSecret, the portal Deployment and its internal-only IngressRoute.
+# No admission object. Nothing depends on this Kustomization, so a failed portal
+# cannot hold back another app. wait covers the Deployment through kstatus: the
+# Kustomization is Ready only once the portal pod is Ready.
 #
-# No targetNamespace: every object names its own namespace (dev-agents).
+# No targetNamespace: every object names its own namespace (dev-agents, and dev for
+# the IngressRoute).
 # It waits for the portal policy (S1), and for the cert-manager and 1Password stores
 # that its Certificates and ExternalSecret need (the dev-env-pki and dev-env-secrets
 # pattern).
