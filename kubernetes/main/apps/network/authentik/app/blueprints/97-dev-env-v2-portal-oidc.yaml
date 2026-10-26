@@ -3,10 +3,12 @@
 # !Find is read-only; a missing user/group makes the binding serializer fail,
 # rolling back the import. Never create users/groups or manage memberships here.
 #
-# STAGED DENY: keep until reviewed runtime Gate A activation. Both positive
-# bindings remain mandatory (policy_engine_mode=all) when that deny is removed
-# by a separate reviewed change. This is not an identity integration test or
-# permission for the BFF to skip its immutable issuer+subject/current-authz gate.
+# ACCESS BY GROUP (Tom, 2026-10-26: "manage users by group not by ID", then
+# "fastest path to a working demo"). The staged deny binding (order 0) and the
+# single-user binding (order 10) are state: absent, so this import deletes
+# them. Only the authentik Admins group binding (order 20) remains, with
+# policy_engine_mode=all. The deny policy object stays, unbound. The portal
+# itself re-checks live Admins membership through the portal-local mapping.
 #
 # This file is the only owner of the provider property_mappings relation:
 # managed openid, managed profile, and the portal-local mapping below.
@@ -21,7 +23,7 @@ version: 1
 metadata:
   name: dev-env-v2-portal-oidc
   labels:
-    blueprints.goauthentik.io/description: 'Story178 internal portal OIDC foundation: confidential code/openid/profile, Tom AND Admins; staged deny until reviewed runtime activation.'
+    blueprints.goauthentik.io/description: 'Story178 internal portal OIDC: confidential code/openid/profile; access by authentik Admins group.'
 context: {}
 entries:
   - model: authentik_policies_expression.expressionpolicy
@@ -100,7 +102,7 @@ entries:
       meta_hide: true
       meta_description: Internal read-only portal; runtime activation pending Gate A.
   - model: authentik_policies.policybinding
-    state: present
+    state: absent
     identifiers:
       target: !KeyOf portal-application
       order: 0
@@ -110,7 +112,7 @@ entries:
       negate: false
       failure_result: false
   - model: authentik_policies.policybinding
-    state: present
+    state: absent
     identifiers:
       target: !KeyOf portal-application
       order: 10
