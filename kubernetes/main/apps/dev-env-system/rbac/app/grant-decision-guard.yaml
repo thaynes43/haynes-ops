@@ -1,6 +1,7 @@
 ---
-# Only the operator may submit an authenticated grant-decision handoff; the
-# broker may retain or remove it. This does not grant either actor new RBAC.
+# Only the operator may add a new authenticated handoff; it cannot overwrite
+# one. The broker may retain or remove it, but cannot fabricate or replace one.
+# This does not grant either actor new RBAC.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -22,11 +23,14 @@ spec:
       expression: "request.operation == 'CREATE' ? {} : oldObject.metadata.?annotations.orValue({})"
   validations:
     - expression: >-
-        request.userInfo.username in ['system:serviceaccount:dev-env-system:dev-env-operator', 'system:serviceaccount:dev-env-system:dev-env-broker'] ||
         ((variables.key in variables.annotations) == (variables.key in variables.prior) &&
-         (!(variables.key in variables.annotations) || variables.annotations[variables.key] == variables.prior[variables.key]))
+         (!(variables.key in variables.annotations) || variables.annotations[variables.key] == variables.prior[variables.key])) ||
+        (request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator' &&
+         !(variables.key in variables.prior) && variables.key in variables.annotations) ||
+        (request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-broker' &&
+         variables.key in variables.prior && !(variables.key in variables.annotations))
       reason: Forbidden
-      message: only the operator and broker may alter a grant decision handoff
+      message: only the operator may add a handoff and only the broker may remove it
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
