@@ -17,10 +17,10 @@ CONTRACT = ROOT / ".agents/reports/portal178-m5d/DEPLOYMENT-CONTRACT.md"
 CHECKLIST = ROOT / ".agents/reports/portal178-m5d/LAUNCH-CHECKLIST.md"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
 PORTAL_OIDC = ROOT / "kubernetes/main/apps/dev-env-system/secrets/app/externalsecret-portal-oidc.yaml"
-CURRENT_RUNTIME_HEAD = "3221ca79f4d7fddf73b0cfafc71a24de28f13663"
+CURRENT_RUNTIME_HEAD = "af402e533379bddd81e9266ee80ec6c565b81f29"
 PORTAL_IMAGE = (
-    "ghcr.io/thaynes43/dev-env-portal:sha-3221ca7"
-    "@sha256:033ff0b611eb15dc000f8d1bc653154f1f3f79d4f477b4eb62ac41d1e666bde2"
+    "ghcr.io/thaynes43/dev-env-portal:sha-af402e5"
+    "@sha256:71d3c5d64d1948a78acdc695337fb8edac542ec46eb81fcddaddafec30df0772"
 )
 OPENPROJECT_ORIGIN = "https://openproject-web.frontend.svc.cluster.local:8443"
 OPENPROJECT_TASKS_QUERY = "/api/v3/projects/3/work_packages?offset=<page>&pageSize=50&filters=%5B%5D"

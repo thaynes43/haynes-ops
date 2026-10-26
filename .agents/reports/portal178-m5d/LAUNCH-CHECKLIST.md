@@ -9,7 +9,7 @@ not whole-Story178 acceptance.
 
 | Gate | Exact evidence / action | State at 2026-10-25 | Accountable next actor | Scope |
 | --- | --- | --- | --- | --- |
-| Immutable portal artifact | dev-env `3221ca79f4d7fddf73b0cfafc71a24de28f13663`; Publish `40208871745` terminal SUCCESS 15:54:50Z; portal `sha-3221ca7@sha256:033ff0b611eb15dc000f8d1bc653154f1f3f79d4f477b4eb62ac41d1e666bde2` | Source pin updated and focused-tested; not installed | Root delivery owner after review/CI | This source PR only |
+| Immutable portal artifact | dev-env `af402e533379bddd81e9266ee80ec6c565b81f29`; Publish `40368529556` and post-merge CI `40368529884` terminal SUCCESS; portal `sha-af402e5@sha256:71d3c5d64d1948a78acdc695337fb8edac542ec46eb81fcddaddafec30df0772` | Source pin updated and focused-tested; not installed | Root delivery owner after review/CI | This source PR only |
 | Current parser contract | OpenProject `https://openproject-web.frontend.svc.cluster.local:8443`; project-3 query `/api/v3/projects/3/work_packages?offset=<page>&pageSize=50&filters=%5B%5D`; Sessions and Tasks independent | Source aligned and focused-tested | Root verifies exact-head review | This source PR only |
 | Packet registration | `dev-agents/dev-env-v2-portal` Deployment was API NotFound at 15:57:20Z; packet resources remain unregistered | Not installed; expected | Root, only after all prerequisites | Held activation |
 | OpenProject PKI release | `openproject-portal-ca`, `openproject-portal-api`, and `openproject-portal-pki` Ready; OpenProject HelmRelease Ready at 15:58:13Z | Issuance/release-ready only | Certificate/portal owner verifies propagation | Held trust/activation |
@@ -50,3 +50,14 @@ source PR. If accepted, it may merge this unregistered packet. A later bounded,
 specifically authorized provisioning/activation change must close every held
 gate before registering any portal resource; this checklist neither authorizes
 nor requests those actions.
+
+## Nonsecret readiness correction, 2026-10-26
+
+The dated 2026-10-25 matrix above is historical installation evidence, not a current absence claim. Current own-identity named metadata reads confirm:
+
+- OIDC ExternalSecret `dev-agents/dev-env-v2-portal-oidc` Ready=True, selecting only `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`. This is sync metadata, not value inspection or login acceptance. Do not request OIDC entry again.
+- Witness `dev-agents/dev-env-v2-portal-admission` UID `8d463394-7b50-4c12-9bfb-0c2eb6f5054d`, schema1, state closed. Preserve it; do not recreate or open it. A resource UID is not the private identity subject.
+- OpenProject `openproject-portal-ca` and `openproject-portal-api` Certificates Ready=True. Issuance is not BFF trust/reload proof.
+- Runtime and OpenProject credential ExternalSecrets, database runtime projection, portal config, portal serving Certificates and portal Deployment are NotFound. Their absence does NOT establish absent saved vault fields; secure input presence/current validity remain Unknown and uninspected.
+
+Compatible operator source candidate: `ghcr.io/thaynes43/dev-env-operator:sha-af402e5@sha256:1377ef1ee051543eeef19e4cd7e284488333a557681bae07223f64d9539c848a`. This source-only packet does not change the registered operator image, flags, login image, policy, registration, admission or resource limits. The ordinary policy-before-workload ordering and all existing runtime holds stay unchanged. The public PostgreSQL `ca.crt` export remains pending its specific disposition/provenance; the denied Secret read is not retried.
