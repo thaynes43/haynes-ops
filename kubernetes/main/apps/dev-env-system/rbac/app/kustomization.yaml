@@ -23,6 +23,7 @@ resources:
   - ./broker.yaml
   - ./broker-credentials.yaml
   - ./broker-guard.yaml
+  - ./grant-decision-guard.yaml
   - ./credential-job-guard.yaml
   - ./grant-catalog.yaml
   - ./v1-api-token.yaml

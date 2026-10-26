@@ -1,0 +1,37 @@
+---
+# Only the operator may submit an authenticated grant-decision handoff; the
+# broker may retain or remove it. This does not grant either actor new RBAC.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-grant-decision-handoff
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [dev-env.haynesops.com]
+        apiVersions: [v1alpha1]
+        operations: [CREATE, UPDATE]
+        resources: [accessgrants, accessgrants/status]
+  variables:
+    - name: key
+      expression: "'dev-env.haynesops.com/grant-decision'"
+    - name: annotations
+      expression: "object.metadata.?annotations.orValue({})"
+    - name: prior
+      expression: "request.operation == 'CREATE' ? {} : oldObject.metadata.?annotations.orValue({})"
+  validations:
+    - expression: >-
+        request.userInfo.username in ['system:serviceaccount:dev-env-system:dev-env-operator', 'system:serviceaccount:dev-env-system:dev-env-broker'] ||
+        ((variables.key in variables.annotations) == (variables.key in variables.prior) &&
+         (!(variables.key in variables.annotations) || variables.annotations[variables.key] == variables.prior[variables.key]))
+      reason: Forbidden
+      message: only the operator and broker may alter a grant decision handoff
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-grant-decision-handoff
+spec:
+  policyName: dev-env-grant-decision-handoff
+  validationActions: [Deny]
