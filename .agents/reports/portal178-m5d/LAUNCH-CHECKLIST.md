@@ -109,3 +109,9 @@ Acceptance is metadata only:
 - no portal pod exists.
 
 The workload Kustomization will `dependsOn` this one.
+
+## Activation step S7: runtime HBA allow, 2026-10-26
+
+After the 010/020/030 proof (#178 journal 1782), `cluster16.yaml` registers the reviewed post-proof HBA list, the same as `cluster-portal.patch.yaml`: the six rejects plus `hostssl dev_env_v2_portal dev_env_v2_portal_runtime 10.42.0.0/16 scram-sha-256`. The allow sits before the two `host all` rejects. The migrator still has no allow.
+
+CNPG reloads the HBA rules without a restart. Acceptance is a read-only peer query of `pg_hba_file_rules`: no errors, and the allow comes before the `host all` rejects.

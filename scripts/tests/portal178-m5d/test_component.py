@@ -671,7 +671,8 @@ class ComponentRenderTest(unittest.TestCase):
         cluster = load(CLUSTER)
         rejects = load(PENDING / "hba-stage-reject.yaml")["pg_hba"]
         self.assertEqual(len(rejects), 6)
-        self.assertEqual(cluster["spec"]["postgresql"]["pg_hba"], rejects)
+        allow = yaml.safe_load((PENDING / "hba-stage-allow.yaml").read_text())["rule"]
+        self.assertEqual(cluster["spec"]["postgresql"]["pg_hba"], rejects[:4] + [allow] + rejects[4:])
         self.assertEqual(cluster["spec"]["managed"], load(PENDING / "roles-stage-preproof.patch.yaml")["spec"]["managed"])
         self.assertEqual(load(CLUSTER.parent / "portal-database.yaml"), load(PENDING / "database.yaml"))
         database_kinds = []
@@ -681,7 +682,10 @@ class ComponentRenderTest(unittest.TestCase):
                 database_kinds += [(path.resolve(), doc["kind"]) for doc in yaml.safe_load_all(text)
                                    if doc and doc.get("kind") in {"Database", "DatabaseRole"}]
             self.assertNotIn("portal178-m5d", text, str(path))
-            self.assertNotIn("hostssl dev_env_v2_portal", text, str(path))
+            if path.resolve() == CLUSTER.resolve():
+                self.assertEqual(text.count("hostssl dev_env_v2_portal"), 1)
+            else:
+                self.assertNotIn("hostssl dev_env_v2_portal", text, str(path))
             if "kind: Deployment" in text and "name: dev-env-v2-portal" in text:
                 self.fail("portal Deployment is registered in " + str(path))
             if "kind: IngressRoute" in text and "dev-env-v2.haynesops.com" in text:
