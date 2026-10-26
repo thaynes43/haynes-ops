@@ -1,0 +1,16 @@
+---
+# The portal's HTTPS Service. It selects no pod until the Deployment exists.
+apiVersion: v1
+kind: Service
+metadata:
+  name: dev-env-v2-portal
+  namespace: dev-agents
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: dev-env-v2-portal
+  ports:
+    - name: https
+      port: 8443
+      protocol: TCP
+      targetPort: https

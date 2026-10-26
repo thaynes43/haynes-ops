@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Render the unregistered Story178 consumer packet and reject live registration."""
+import base64
+import hashlib
+import json
 import re
 import subprocess
 import tempfile
@@ -18,6 +21,35 @@ CHECKLIST = ROOT / ".agents/reports/portal178-m5d/LAUNCH-CHECKLIST.md"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
 PORTAL_OIDC = ROOT / "kubernetes/main/apps/dev-env-system/secrets/app/externalsecret-portal-oidc.yaml"
 PORTAL_DB = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/portal-runtime-db-externalsecret.yaml"
+# Story178 S4+S6: the registered portal inputs.
+PORTAL_TREE = ROOT / "kubernetes/main/apps/dev-env-system/portal"
+PORTAL_INPUTS = PORTAL_TREE / "app"
+PORTAL_RUNTIME = PORTAL_INPUTS / "runtime-externalsecret.yaml"
+POLICY_KS = PORTAL_TREE / "policy/ks.yaml"
+INPUTS_KS = PORTAL_TREE / "ks.yaml"
+WITNESS_UID = "8d463394-7b50-4c12-9bfb-0c2eb6f5054d"
+# The config/* files LoadProduction reads at dev-env b98247c. No subject file.
+PRODUCTION_CONFIG_FILES = {
+    "origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
+    "openproject-base-url", "operator-api-url", "admission-api-url", "admission-uid",
+    "admission-token-file", "auth-style", "login-ttl", "idle-ttl", "absolute-ttl",
+    "fresh-for", "clock-skew", "witness-gets-per-second", "witness-get-burst",
+}
+# Public CA inputs: file SHA-256, then the DER SHA-256 of each certificate in order.
+ISSUER_CA = (
+    "1b80197679a4666ee8eaa26db3f3d1380d37da0d1b9b2b8d5120201d3dcc608e",
+    [
+        "349dfa4058c5e263123b398ae795573c4e1313c83fe68f93556cd5e8031b3c7d",  # GTS Root R4
+        "96bcec06264976f37460779acf28c5a7cfe8a3c0aae11a8ffcee05c0bddf08c6",  # ISRG Root X1
+        "69729b8e15a86efc177a57afb7171dfc64add28c2fca8cf1507e34453ccb1470",  # ISRG Root X2
+        "c32ffd9f46f936d16c3673990959434b9ad60aafbb9e7cf33654f144cc1ba143",  # SSL.com TLS ECC Root CA 2022
+        "c90f26f0fb1b4018b22227519b5ca2b53e2ca5b3be5cf18efe1bef47380c5383",  # Sectigo Public Server Authentication Root E46
+    ],
+)
+OPENPROJECT_CA = (
+    "c190c3de7feaadcf23e7fa7a320409875cd366bae3239812cd33a117450bb21f",
+    ["9bd738852a33a019cf8b75ec9c2c574402d5217c0f6b57fbcff25cfe0122d986"],  # openproject-portal-ca
+)
 CURRENT_RUNTIME_HEAD = "af402e533379bddd81e9266ee80ec6c565b81f29"
 PORTAL_IMAGE = (
     "ghcr.io/thaynes43/dev-env-portal:sha-af402e5"
@@ -167,8 +199,34 @@ def approved_portal_db_violations(path, doc):
     return [] if path.resolve() == PORTAL_DB.resolve() and doc == expected else ["noncanonical-portal-db"]
 
 
+def approved_portal_runtime_violations(path, doc):
+    """Only the reviewed four-property runtime projection, at its one registered path."""
+    expected = {
+        "apiVersion": "external-secrets.io/v1", "kind": "ExternalSecret",
+        "metadata": {"name": "dev-env-v2-portal-runtime", "namespace": "dev-agents"},
+        "spec": {
+            "secretStoreRef": STORE, "refreshInterval": "1h",
+            "target": {
+                "name": "dev-env-v2-portal-runtime", "creationPolicy": "Owner", "deletionPolicy": "Delete",
+                "template": {"engineVersion": "v2", "mergePolicy": "Replace", "type": "Opaque", "data": {
+                    field: "{{ .%s }}" % field for field in RUNTIME_FIELDS
+                }},
+            },
+            "data": [
+                {"secretKey": field, "remoteRef": {"key": CANONICAL_ITEM, "property": field}}
+                for field in RUNTIME_FIELDS
+            ],
+        },
+    }
+    return [] if path.resolve() == PORTAL_RUNTIME.resolve() and doc == expected else ["noncanonical-portal-runtime"]
+
+
+APPROVED_LIVE_PATHS = {PORTAL_OIDC.resolve(), PORTAL_DB.resolve(), PORTAL_RUNTIME.resolve()}
+
+
 def approved_live_projection(path, doc):
-    return not approved_portal_oidc_violations(path, doc) or not approved_portal_db_violations(path, doc)
+    return (not approved_portal_oidc_violations(path, doc) or not approved_portal_db_violations(path, doc)
+            or not approved_portal_runtime_violations(path, doc))
 
 
 def dev_env_properties_from_documents(documents):
@@ -191,7 +249,7 @@ def dev_env_properties(tree):
     found = set()
     for path in tree.rglob("*.yaml"):
         text = path.read_text(errors="replace")
-        if path.resolve() in {PORTAL_OIDC.resolve(), PORTAL_DB.resolve()}:
+        if path.resolve() in APPROVED_LIVE_PATHS:
             documents = list(yaml.safe_load_all(text))
             if len(documents) == 1 and approved_live_projection(path, documents[0]):
                 continue
@@ -202,6 +260,131 @@ def dev_env_properties(tree):
 
 def load(path):
     return yaml.safe_load(path.read_text())
+
+
+def _flux_files(tree):
+    return sorted(set(tree.rglob("*.yaml")) | set(tree.rglob("*.yml")) | set(tree.rglob("*.json")))
+
+
+def _depends_on_names(node, name):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "dependsOn" and isinstance(value, list) and any(
+                    isinstance(item, dict) and item.get("name") == name for item in value):
+                return True
+            if _depends_on_names(value, name):
+                return True
+    elif isinstance(node, list):
+        return any(_depends_on_names(item, name) for item in node)
+    return False
+
+
+def dependents(tree, name):
+    """Files with a dependsOn entry naming exactly `name`, in YAML or JSON at any depth.
+
+    A file that mentions both dependsOn and the name but does not parse is
+    reported too, so an unreadable dependent cannot pass silently.
+    """
+    exact = re.compile(r"(?<![A-Za-z0-9-])" + re.escape(name) + r"(?![A-Za-z0-9-])")
+    found = []
+    for path in _flux_files(tree):
+        text = path.read_text(errors="replace")
+        if "dependsOn" not in text or not exact.search(text):
+            continue
+        try:
+            docs = [json.loads(text)] if path.suffix == ".json" else list(yaml.safe_load_all(text))
+        except (ValueError, yaml.YAMLError):
+            found.append(path.resolve())
+            continue
+        if any(_depends_on_names(doc, name) for doc in docs):
+            found.append(path.resolve())
+    return found
+
+
+def policy_mentions(tree):
+    return {path.resolve() for path in _flux_files(tree)
+            if "dev-env-v2-portal-policy" in path.read_text(errors="replace")}
+
+
+def policy_dependents(tree):
+    return dependents(tree, "dev-env-v2-portal-policy")
+
+
+def pem_certificates(text):
+    """DER bytes of each PEM block. Any non-CERTIFICATE block or stray text is an error."""
+    blocks = re.findall(r"-----BEGIN ([A-Z0-9 ]+)-----\n(.*?)-----END \1-----\n", text, re.S)
+    rebuilt = "".join("-----BEGIN %s-----\n%s-----END %s-----\n" % (kind, body, kind) for kind, body in blocks)
+    if rebuilt != text or not blocks:
+        raise ValueError("ca.crt must be PEM blocks only")
+    if any(kind != "CERTIFICATE" for kind, _ in blocks):
+        raise ValueError("ca.crt must hold CERTIFICATE blocks only")
+    return [base64.b64decode("".join(body.split()), validate=True) for _, body in blocks]
+
+
+def is_ca_certificate(der):
+    completed = subprocess.run(
+        ["openssl", "x509", "-inform", "DER", "-noout", "-ext", "basicConstraints"],
+        input=der, capture_output=True, check=True,
+    )
+    return b"CA:TRUE" in completed.stdout
+
+
+def render_inputs():
+    completed = subprocess.run(
+        ["kustomize", "build", str(PORTAL_INPUTS)], check=True, capture_output=True, text=True,
+    )
+    return completed.stdout, [doc for doc in yaml.safe_load_all(completed.stdout) if doc]
+
+
+INPUT_OBJECTS = {
+    ("ConfigMap", "dev-env-v2-portal-config"),
+    ("ConfigMap", "dev-env-v2-portal-issuer-ca"),
+    ("ConfigMap", "dev-env-v2-portal-openproject-ca"),
+    ("Service", "dev-env-v2-portal"),
+    ("Issuer", "dev-env-v2-portal-selfsigned"),
+    ("Issuer", "dev-env-v2-portal-ca"),
+    ("Certificate", "dev-env-v2-portal-ca"),
+    ("Certificate", "dev-env-v2-portal-serving"),
+    ("ExternalSecret", "dev-env-v2-portal-runtime"),
+    ("ServersTransport", "dev-env-v2-portal"),
+}
+
+
+def registered_input_violations(docs):
+    """What S4+S6 may register, and what must wait for later steps."""
+    violations = []
+    found = {(doc.get("kind"), doc.get("metadata", {}).get("name")) for doc in docs}
+    if found != INPUT_OBJECTS:
+        violations.append("object-set")
+    for doc in docs:
+        meta = doc.get("metadata", {})
+        if meta.get("namespace") != "dev-agents":
+            violations.append("namespace:" + str(meta.get("name")))
+        if doc.get("kind") in {"Deployment", "StatefulSet", "Pod", "Job", "IngressRoute", "Ingress",
+                               "HTTPRoute", "Secret", "ServiceAccount", "Role", "RoleBinding",
+                               "CiliumNetworkPolicy"}:
+            violations.append("forbidden-kind:" + doc["kind"])
+        if doc.get("kind") == "ConfigMap" and meta.get("name") in {
+                "dev-env-v2-portal-admission", "dev-env-v2-portal-postgres-ca",
+                "dev-env-v2-portal-admission-ca", "dev-env-v2-portal-operator-ca"}:
+            violations.append("held-configmap:" + meta["name"])
+        if doc.get("kind") == "ConfigMap" and meta.get("name") == "dev-env-v2-portal-config":
+            data = doc.get("data", {})
+            if set(data) != PRODUCTION_CONFIG_FILES:
+                violations.append("config-keys")
+            if data.get("admission-uid") != WITNESS_UID:
+                violations.append("admission-uid")
+        if doc.get("kind") == "ServersTransport" and "rootCAs" in doc.get("spec", {}):
+            violations.append("rootCAs-pruned-by-installed-crd")
+        if doc.get("kind") == "ExternalSecret" and approved_portal_runtime_violations(PORTAL_RUNTIME, doc):
+            violations.append("runtime-externalsecret")
+    text = yaml.safe_dump_all(docs)
+    for needle in ("PORTAL_SUBJECT", "config/subject", "PRIVATE KEY", "dataFrom"):
+        if needle in text:
+            violations.append("text:" + needle)
+    if any("subject" in doc.get("data", {}) for doc in docs if doc.get("kind") == "ConfigMap"):
+        violations.append("subject-key")
+    return violations
 
 
 def render():
@@ -701,7 +884,7 @@ class ComponentRenderTest(unittest.TestCase):
                 for doc in yaml.safe_load_all(text):
                     if doc and doc.get("kind") == "ExternalSecret" and "dev-env-v2-portal" in doc.get("metadata", {}).get("name", ""):
                         self.assertTrue(approved_live_projection(path, doc), str(path))
-                        self.assertIn(path.resolve(), {PORTAL_OIDC.resolve(), PORTAL_DB.resolve()})
+                        self.assertIn(path.resolve(), APPROVED_LIVE_PATHS)
             if "kind: ConfigMap" in text and "name: dev-env-v2-portal-admission" in text:
                 self.fail("CLOSED admission seed is registered in " + str(path))
         self.assertEqual(database_kinds, [((CLUSTER.parent / "portal-database.yaml").resolve(), "Database")])
@@ -981,17 +1164,11 @@ spec:
         self.assertEqual(load(registered_dir / "app/networkpolicy.yaml"), load(COMPONENT / "policy/networkpolicy.yaml"))
         system = load(ROOT / "kubernetes/main/apps/dev-env-system/kustomization.yaml")["resources"]
         self.assertEqual(system.count("./portal/policy/ks.yaml"), 1)
-        for path in (ROOT / "kubernetes").rglob("*.yaml"):
-            text = path.read_text(errors="replace")
-            if path.resolve() != (registered_dir / "ks.yaml").resolve():
-                self.assertNotIn("dev-env-v2-portal-policy", text, str(path))
-        for path in (ROOT / "kubernetes").rglob("*.json"):
-            text = path.read_text(errors="replace")
-            self.assertNotIn("dev-env-v2-portal-policy", text, str(path))
-        for path in (ROOT / "kubernetes").rglob("*.yaml"):
-            text = path.read_text(errors="replace")
-            if "dependsOn" in text:
-                self.assertNotIn("name: dev-env-v2-portal-policy", text, str(path))
+        # S4 relaxes "no dependents" to exactly one: the inputs Kustomization's dependsOn.
+        self.assertEqual(policy_mentions(ROOT / "kubernetes"), {POLICY_KS.resolve(), INPUTS_KS.resolve()})
+        self.assertEqual(policy_dependents(ROOT / "kubernetes"), [INPUTS_KS.resolve()])
+        self.assertEqual(load(INPUTS_KS)["spec"]["dependsOn"][0],
+                         {"name": "dev-env-v2-portal-policy", "namespace": "dev-env-system"})
         self.assertIn("location = /api/v3/projects/3/work_packages", portal_server)
         self.assertIn('proxy_pass http://127.0.0.1:8080;', portal_server)
         self.assertIn('proxy_set_header Cookie "";', portal_server)
@@ -1053,6 +1230,222 @@ spec:
         self.assertTrue(replacement_allowed(True, True))
         web = load(ROOT / "kubernetes/main/apps/frontend/openproject/app/helmrelease.yaml")
         self.assertEqual(web["spec"]["values"]["controllers"]["web"]["strategy"], "Recreate")
+
+
+def without_registration_marker(doc):
+    doc = deepcopy(doc)
+    annotations = doc["metadata"].get("annotations", {})
+    annotations.pop("dev-env.haynesops.com/portal-registration", None)
+    if not annotations:
+        doc["metadata"].pop("annotations", None)
+    return doc
+
+
+class RegisteredInputsTest(unittest.TestCase):
+    """Story178 S4+S6: the portal's inputs, registered before any portal pod."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rendered, cls.docs = render_inputs()
+        _, packet = render()
+        cls.packet = {(doc["kind"], doc["metadata"]["name"]): without_registration_marker(doc) for doc in packet}
+        cls.by_key = {(doc["kind"], doc["metadata"]["name"]): doc for doc in cls.docs}
+
+    def test_flux_kustomization_is_exact_and_has_no_dependents(self):
+        self.assertEqual(load(INPUTS_KS), {
+            "apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+            "kind": "Kustomization",
+            "metadata": {"name": "dev-env-v2-portal", "namespace": "dev-env-system"},
+            "spec": {
+                "dependsOn": [
+                    {"name": "dev-env-v2-portal-policy", "namespace": "dev-env-system"},
+                    {"name": "cert-manager", "namespace": "cert-manager"},
+                    {"name": "external-secrets-stores", "namespace": "external-secrets"},
+                ],
+                "path": "./kubernetes/main/apps/dev-env-system/portal/app",
+                "prune": True,
+                "sourceRef": {"kind": "GitRepository", "name": "haynes-ops", "namespace": "flux-system"},
+                "wait": True,
+                "interval": "30m",
+                "retryInterval": "1m",
+                "timeout": "5m",
+            },
+        })
+        self.assertNotIn("targetNamespace", load(INPUTS_KS)["spec"])
+        system = load(ROOT / "kubernetes/main/apps/dev-env-system/kustomization.yaml")["resources"]
+        self.assertEqual(system.count("./portal/ks.yaml"), 1)
+        self.assertEqual(system.count("./portal/policy/ks.yaml"), 1)
+        self.assertEqual(dependents(ROOT / "kubernetes", "dev-env-v2-portal"), [])
+        self.assertEqual(policy_dependents(ROOT / "kubernetes"), [INPUTS_KS.resolve()])
+
+    def test_dependents_scan_finds_yaml_and_json(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            tree = Path(scratch)
+            (tree / "a.yaml").write_text("spec:\n  dependsOn:\n    - name: dev-env-v2-portal\n")
+            (tree / "b.json").write_text('{"spec": {"dependsOn": [{"name": "dev-env-v2-portal"}]}}')
+            (tree / "c.yaml").write_text("spec:\n  dependsOn:\n    - name: dev-env-v2-portal-policy\n")
+            (tree / "d.yaml").write_text("dependsOn: [\n  name: dev-env-v2-portal\n")
+            self.assertEqual(sorted(p.name for p in dependents(tree, "dev-env-v2-portal")),
+                             ["a.yaml", "b.json", "d.yaml"])
+            self.assertEqual([p.name for p in policy_dependents(tree)], ["c.yaml"])
+
+    def test_inputs_are_exactly_the_registered_set(self):
+        manifest = load(PORTAL_INPUTS / "kustomization.yaml")
+        self.assertEqual(manifest["resources"], [
+            "./certificates.yaml", "./service.yaml", "./serverstransport.yaml",
+            "./config.yaml", "./runtime-externalsecret.yaml",
+        ])
+        self.assertNotIn("namespace", manifest)
+        self.assertNotIn("components", manifest)
+        self.assertEqual(manifest["generatorOptions"], {"disableNameSuffixHash": True})
+        self.assertEqual(sorted(p.name for p in PORTAL_INPUTS.iterdir()), sorted([
+            "kustomization.yaml", "certificates.yaml", "service.yaml", "serverstransport.yaml",
+            "config.yaml", "runtime-externalsecret.yaml", "issuer-ca.crt", "openproject-ca.crt",
+        ]))
+        self.assertEqual(registered_input_violations(self.docs), [])
+        self.assertNotIn("portal-registration", self.rendered)
+
+    def test_guard_rejects_later_steps_and_drift(self):
+        packet_deployment = self.packet[("Deployment", "dev-env-v2-portal")]
+        packet_route = self.packet[("IngressRoute", "dev-env-v2-portal")]
+        admission = {"apiVersion": "v1", "kind": "ConfigMap",
+                     "metadata": {"name": "dev-env-v2-portal-admission", "namespace": "dev-agents"},
+                     "data": {"schema": "1", "state": "closed"}}
+        postgres_ca = {"apiVersion": "v1", "kind": "ConfigMap",
+                       "metadata": {"name": "dev-env-v2-portal-postgres-ca", "namespace": "dev-agents"},
+                       "data": {"ca.crt": "x"}}
+        for extra, expected in (
+            (packet_deployment, "forbidden-kind:Deployment"),
+            (packet_route, "forbidden-kind:IngressRoute"),
+            (admission, "held-configmap:dev-env-v2-portal-admission"),
+            (postgres_ca, "held-configmap:dev-env-v2-portal-postgres-ca"),
+        ):
+            violations = registered_input_violations(self.docs + [deepcopy(extra)])
+            self.assertIn("object-set", violations)
+            self.assertIn(expected, violations)
+
+        def mutated(kind, name, change):
+            docs = deepcopy(self.docs)
+            change(next(d for d in docs if d["kind"] == kind and d["metadata"]["name"] == name))
+            return registered_input_violations(docs)
+
+        config = ("ConfigMap", "dev-env-v2-portal-config")
+        self.assertIn("subject-key", mutated(*config, lambda d: d["data"].update(subject="x")))
+        self.assertIn("config-keys", mutated(*config, lambda d: d["data"].update(subject="x")))
+        self.assertIn("config-keys", mutated(*config, lambda d: d["data"].pop("admission-uid")))
+        self.assertIn("admission-uid", mutated(*config, lambda d: d["data"].update({"admission-uid": "other"})))
+        self.assertIn("text:PORTAL_SUBJECT", mutated(*config, lambda d: d["data"].update(origin="PORTAL_SUBJECT")))
+        self.assertIn("namespace:dev-env-v2-portal", mutated("Service", "dev-env-v2-portal",
+                                                             lambda d: d["metadata"].update(namespace="dev")))
+        self.assertIn("rootCAs-pruned-by-installed-crd", mutated(
+            "ServersTransport", "dev-env-v2-portal",
+            lambda d: d["spec"].update(rootCAs=[{"secret": "dev-env-v2-portal-tls"}])))
+        runtime = ("ExternalSecret", "dev-env-v2-portal-runtime")
+        for change in (
+            lambda d: d["spec"]["data"].append({"secretKey": "PORTAL_SUBJECT",
+                                                "remoteRef": {"key": CANONICAL_ITEM, "property": "PORTAL_SUBJECT"}}),
+            lambda d: d["spec"].update(dataFrom=[{"extract": {"key": CANONICAL_ITEM}}]),
+            lambda d: d["spec"]["data"][0]["remoteRef"].update(key="dev-env-v2-portal-runtime"),
+            lambda d: d["spec"]["target"].update(name="another-recipient"),
+        ):
+            self.assertIn("runtime-externalsecret", mutated(*runtime, change))
+
+    def test_serving_pki_and_service_match_the_reviewed_packet(self):
+        for key in (("Issuer", "dev-env-v2-portal-selfsigned"), ("Issuer", "dev-env-v2-portal-ca"),
+                    ("Certificate", "dev-env-v2-portal-ca"), ("Certificate", "dev-env-v2-portal-serving"),
+                    ("Service", "dev-env-v2-portal")):
+            self.assertEqual(self.by_key[key], self.packet[key], key)
+
+    def test_servers_transport_trusts_the_ca_that_issues_the_leaf(self):
+        transport = self.by_key[("ServersTransport", "dev-env-v2-portal")]
+        packet = deepcopy(self.packet[("ServersTransport", "dev-env-v2-portal")])
+        # The one reviewed delta: the packet's rootCAs named a Secret nothing creates,
+        # and the installed CRD has no rootCAs field.
+        self.assertEqual(packet["spec"].pop("rootCAs"), [{"secret": "dev-env-v2-portal-serving-ca"}])
+        packet["spec"]["rootCAsSecrets"] = ["dev-env-v2-portal-tls"]
+        self.assertEqual(transport, packet)
+        self.assertNotIn("rootCAs", transport["spec"])
+        leaf = self.by_key[("Certificate", "dev-env-v2-portal-serving")]
+        ca = self.by_key[("Certificate", "dev-env-v2-portal-ca")]
+        ca_issuer = self.by_key[("Issuer", "dev-env-v2-portal-ca")]
+        self.assertEqual(transport["spec"]["rootCAsSecrets"], [leaf["spec"]["secretName"]])
+        self.assertEqual(leaf["spec"]["issuerRef"], {"name": ca_issuer["metadata"]["name"], "kind": "Issuer"})
+        self.assertEqual(ca_issuer["spec"]["ca"]["secretName"], ca["spec"]["secretName"])
+        self.assertIs(ca["spec"]["isCA"], True)
+        self.assertIn(transport["spec"]["serverName"], leaf["spec"]["dnsNames"])
+        self.assertIn("dev-env-v2.haynesops.com", leaf["spec"]["dnsNames"])
+        self.assertIs(transport["spec"]["insecureSkipVerify"], False)
+        self.assertEqual(transport["metadata"]["namespace"], leaf["metadata"]["namespace"])
+        # Every Secret the inputs name is one cert-manager creates here.
+        created = {doc["spec"]["secretName"] for doc in self.docs if doc["kind"] == "Certificate"}
+        self.assertEqual(created, {"dev-env-v2-portal-ca", "dev-env-v2-portal-tls"})
+        self.assertTrue(set(transport["spec"]["rootCAsSecrets"]) <= created)
+
+    def test_config_is_what_load_production_reads(self):
+        config = self.by_key[("ConfigMap", "dev-env-v2-portal-config")]
+        packet = self.packet[("ConfigMap", "dev-env-v2-portal-config")]
+        expected = dict(packet["data"], **{"admission-uid": WITNESS_UID})
+        self.assertEqual(config["data"], expected)
+        self.assertEqual(set(config["data"]), PRODUCTION_CONFIG_FILES)
+        self.assertNotIn("subject", config["data"])
+        self.assertNotIn("session-bindings.json", config["data"])
+        self.assertRegex(WITNESS_UID, r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+        for key, value in config["data"].items():
+            self.assertIsInstance(value, str, key)
+            self.assertLess(len(value.encode()), 4096, key)
+            self.assertEqual(value, value.strip(), key)
+            self.assertNotIn("\n", value, key)
+
+    def test_public_ca_bundles_are_pinned_certificates_only(self):
+        for name, filename, (file_sha, der_shas) in (
+            ("dev-env-v2-portal-issuer-ca", "issuer-ca.crt", ISSUER_CA),
+            ("dev-env-v2-portal-openproject-ca", "openproject-ca.crt", OPENPROJECT_CA),
+        ):
+            doc = self.by_key[("ConfigMap", name)]
+            self.assertEqual(set(doc["data"]), {"ca.crt"}, name)
+            self.assertNotIn("binaryData", doc)
+            raw = doc["data"]["ca.crt"].encode()
+            self.assertEqual(raw, (PORTAL_INPUTS / filename).read_bytes(), name)
+            self.assertLessEqual(len(raw), 64 << 10, name)
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), file_sha, name)
+            self.assertEqual(doc["metadata"]["annotations"], {
+                "dev-env.haynesops.com/ca-input": "public-only",
+                "dev-env.haynesops.com/ca-sha256": file_sha,
+            }, name)
+            ders = pem_certificates(doc["data"]["ca.crt"])
+            self.assertEqual([hashlib.sha256(der).hexdigest() for der in ders], der_shas, name)
+            for der in ders:
+                self.assertTrue(is_ca_certificate(der), name)
+        with self.assertRaises(ValueError):
+            pem_certificates("-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n")
+        with self.assertRaises(ValueError):
+            pem_certificates("comment\n" + (PORTAL_INPUTS / "openproject-ca.crt").read_text())
+
+    def test_runtime_external_secret_is_the_reviewed_projection(self):
+        doc = self.by_key[("ExternalSecret", "dev-env-v2-portal-runtime")]
+        self.assertEqual(approved_portal_runtime_violations(PORTAL_RUNTIME, doc), [])
+        self.assertEqual(doc["spec"], load(PENDING / "runtime-externalsecret.yaml")["spec"])
+        self.assertEqual(doc, self.packet[("ExternalSecret", "dev-env-v2-portal-runtime")])
+        self.assertTrue(approved_portal_runtime_violations(PORTAL_RUNTIME.with_name("other.yaml"), doc))
+        self.assertEqual(dev_env_properties_from_documents([(PORTAL_RUNTIME, doc)]), set())
+        self.assertEqual(dev_env_properties_from_documents([(PORTAL_RUNTIME.with_name("other.yaml"), doc)]),
+                         set(RUNTIME_FIELDS))
+        # DB_USERNAME and DB_PASSWORD come from the same item properties the role reads.
+        db = load(PORTAL_DB)
+        self.assertEqual(
+            [item["remoteRef"] for item in db["spec"]["data"]],
+            [item["remoteRef"] for item in doc["spec"]["data"] if item["secretKey"] in DB_FIELDS],
+        )
+        # The OIDC Secret stays with its existing owner; it is not duplicated here.
+        self.assertNotIn(("ExternalSecret", "dev-env-v2-portal-oidc"), self.by_key)
+        self.assertNotIn(("ExternalSecret", "dev-env-v2-portal-openproject"), self.by_key)
+
+    def test_checklist_records_the_activation_steps(self):
+        checklist = CHECKLIST.read_text()
+        self.assertIn("## Activation steps S4+S6: portal inputs, 2026-10-26", checklist)
+        for needle in (ISSUER_CA[0], OPENPROJECT_CA[0], WITNESS_UID, "rootCAsSecrets",
+                       "dev-env-api-ca", "kube-root-ca.crt", "openproject-portal-ca-1"):
+            self.assertIn(needle, checklist)
 
 
 if __name__ == "__main__":
