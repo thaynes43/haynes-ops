@@ -114,6 +114,10 @@ The workload Kustomization will `dependsOn` this one.
 
 After the 010/020/030 proof (#178 journal 1782), `cluster16.yaml` registers the reviewed post-proof HBA list, the same as `cluster-portal.patch.yaml`: the six rejects plus `hostssl dev_env_v2_portal dev_env_v2_portal_runtime 10.42.0.0/16 scram-sha-256`. The allow sits before the two `host all` rejects. The migrator still has no allow.
 
-CNPG asks PostgreSQL to reload the HBA rules without a restart. PostgreSQL parses the file, and a failed reload silently keeps the old rules. Acceptance is a read-only peer query:
+CNPG asks PostgreSQL to reload the HBA rules without a restart. PostgreSQL parses the file, and a rejected `pg_hba.conf` silently keeps the old rules while `pg_conf_load_time()` still advances. Each instance reloads on its own.
+
+Acceptance runs a read-only peer query on **all three** `postgres16` instances. On each instance, together:
 - `pg_hba_file_rules` shows no errors, and the allow comes before the `host all` rejects;
-- `pg_conf_load_time()` is later than the reconcile, proving the server loaded this file.
+- `pg_conf_load_time()` is later than the reconcile.
+
+Neither result alone proves the new rules are active. A replica that kept the old rules would refuse the runtime role after a failover.
