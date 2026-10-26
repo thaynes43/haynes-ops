@@ -26,6 +26,10 @@ PORTAL_IMAGE = (
 OPENPROJECT_ORIGIN = "https://openproject-web.frontend.svc.cluster.local:8443"
 OPENPROJECT_TASKS_QUERY = "/api/v3/projects/3/work_packages?offset=<page>&pageSize=50&filters=%5B%5D"
 OPERATOR_IMAGE = (
+    "sha-af402e5"
+    "@sha256:1377ef1ee051543eeef19e4cd7e284488333a557681bae07223f64d9539c848a"
+)
+PREVIOUS_OPERATOR_IMAGE = (
     "sha-617ed15"
     "@sha256:888c2a0cd1057091cd2bbac7ac743933a4819e100c4570b6eb9b7579afddd34b"
 )
@@ -627,8 +631,11 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(api["ports"]["https"]["port"], 8443)
         operator = release["spec"]["values"]["controllers"]["dev-env-operator"]["containers"]["app"]
         self.assertEqual(operator["image"]["tag"], OPERATOR_IMAGE)
-        self.assertNotIn("--enable-portal-reader", operator["args"])
-        self.assertNotIn("--session-namespace=dev-agents", operator["args"])
+        # Story178 S3: the reader is on, with the namespace it requires stated.
+        self.assertIn("--enable-portal-reader", operator["args"])
+        self.assertIn("--session-namespace=dev-agents", operator["args"])
+        self.assertEqual(sum(arg.startswith("--session-namespace") for arg in operator["args"]), 1)
+        self.assertFalse(any(arg.startswith("--enable-child-usage-capture") for arg in operator["args"]))
         self.assertNotEqual(spec, pending_spec)
         for doc in by_kind(self.docs, "ExternalSecret"):
             self.assertNotIn("OPERATOR_TOKEN", remote_properties(doc))
@@ -827,7 +834,8 @@ spec:
         self.assertIn("Tasks not connected", contract)
         self.assertIn("fixed `dev-agents` namespace", contract)
         self.assertIn(OPERATOR_IMAGE, checklist)
-        self.assertIn("no explicit `--enable-portal-reader`", checklist)
+        self.assertIn(PREVIOUS_OPERATOR_IMAGE, checklist)
+        self.assertIn("explicit `--enable-portal-reader` and `--session-namespace=dev-agents`", checklist)
         self.assertIn("provider 174", contract)
         self.assertIn("not materialized", contract)
         self.assertIn("historical handoff convention", contract)
