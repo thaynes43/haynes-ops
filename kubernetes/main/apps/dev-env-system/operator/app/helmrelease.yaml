@@ -72,6 +72,8 @@ spec:
                   seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
+              # Source af402e533379bddd81e9266ee80ec6c565b81f29 (v2.45.0-2-gaf402e5, dev-env main after release 2.45.0); Publish 40368529556 signed/verified.
+              # af402e5 adds the default-off portal reader (dev-env#545, #550, #557; enabled below for Story178 S3), child usage capture (#517, default off, not enabled here), fleet Pod resource specs behind an opt-in request header (#514) and read-only standby observation metrics (#512). CRD change: AgentSession spec.usageCaptureParentUID and status.capturedUsage, so dev-env-crds must carry the af402e5 schema first. Only the operator moves; keeper, broker, task worker image and templates image keep their pins.
               # Source 617ed15fa850d8fff49a9d2c45fa11e4411cd077 (v2.39.1); Publish 39706772225 signed/verified.
               # 2.39.1 makes a bad keeper notice flag disable notices instead of stopping the keeper (dev-env#505); no API type or CRD change. Operator, keeper, task worker image and templates image all move to 2.39.1. Broker stays on sha-eeb15e3.
               # Source 0c22cc0bac4f8e2151f4f27fa99a69b605b14784 (v2.39.0); Publish 39466593953 signed/verified.
@@ -95,7 +97,7 @@ spec:
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates. The executor stop (H3) is on since NB-06b (below).
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-617ed15@sha256:888c2a0cd1057091cd2bbac7ac743933a4819e100c4570b6eb9b7579afddd34b
+              tag: sha-af402e5@sha256:1377ef1ee051543eeef19e4cd7e284488333a557681bae07223f64d9539c848a
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -106,6 +108,15 @@ spec:
               # ServiceAccount (dev-env-rbac's dev-env-v2-api-token Role in `dev`,
               # held to this audience by dev-env-v1-token-guard).
               - --client-service-accounts=dev-agents/dev-env-workbench,dev/dev-env
+              # Story178 S3: the portal's Sessions view. Accept the ServiceAccount
+              # dev-agents/dev-env-v2-portal (portal-witness.yaml), only with a pod-bound token for
+              # audience dev-env-operator from a live Pod that runs as it, and only for
+              # GET /v1/sessions; every other route answers it 403 (apiserver server.go:316). It
+              # lists dev-agents AgentSessions of repo dev-env, read-only, paged (at most 100).
+              # The operator refuses to start with the reader on unless the session namespace is
+              # dev-agents (main.go:220), so that default is stated here.
+              - '--enable-portal-reader'
+              - '--session-namespace=dev-agents'
               # Explicit sole zero-task fixture; ordinary native hosts remain closed.
               - '--enable-coordinator-callers'
               - '--enable-managed-codex-tasks'
@@ -173,7 +184,8 @@ spec:
               # ConfigMap and its Role are in dev-env-rbac (operator-standby.yaml).
               - '--enable-standby-session=true'
               - '--standby-profile=workbench'
-              # The other flags keep their defaults: --session-namespace dev-agents,
+              # Off by default and not set: --enable-child-usage-capture (dev-env#517).
+              # The other flags keep their defaults:
               # --templates-name dev-env-templates in this namespace (the Lease lives
               # here too), --api-bind-address :8443, --api-tls-dir
               # /etc/dev-env-operator/api-tls, --human-service-account
