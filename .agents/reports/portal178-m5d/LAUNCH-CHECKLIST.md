@@ -67,3 +67,20 @@ Compatible operator source candidate: `ghcr.io/thaynes43/dev-env-operator:sha-af
 The owner-approved DB setup (journal1116, Sentinel_74419fc9bed881919d615a60f381d3e0) now registers only `database/dev-env-v2-portal-runtime-db` through the existing CNPG cluster Kustomization. It projects only `DB_USERNAME` and `DB_PASSWORD` from existing HaynesKube/dev-env into the reviewed basic-auth target. It does not create a new vault item, project session keys, create portal roles/databases, change HBA, install the portal, change trust or open admission. The inert packet's projection remains a reference; do not register the whole packet or create a second Flux owner for the registered precursor.
 
 Observe only ExternalSecret Ready/error metadata, never Secret values. Missing consumers did not prove missing saved fields. Stop if a precise property is unavailable or projection/parser prerequisites mismatch; hand off only the identified field through Tom's existing secure UI. After Ready and all reviewed prerequisites, roles-only preproof and retained Database/schema precede fixed-hash010/020/030; all six HBA rejects stay throughout this DB prerequisite. The post-proof HBA allow, portal activation, OIDC and witness changes remain outside it.
+
+## Roles-only preproof registration, 2026-10-26
+
+After #4309, the ExternalSecret `database/dev-env-v2-portal-runtime-db` was Ready (SecretSynced). Tom confirmed that both `DB_USERNAME` and `DB_PASSWORD` are saved in HaynesKube/dev-env (#178 journal 1778).
+
+This stage registers two things through the existing `cloudnative-pg-cluster` Kustomization:
+- the two roles from `roles-stage-preproof.patch.yaml`, verbatim as `postgres16` `spec.managed.roles`. The runtime role uses `passwordSecret`; the migrator has NOLOGIN and no password.
+- `pending/database.yaml`, verbatim as `portal-database.yaml`. Its prune is disabled and its reclaim policy is retain.
+
+All six HBA rejects stay unchanged, so neither role can connect yet.
+
+Next, in order, through `peer_bootstrap.py` and the reviewed hashes:
+1. `010-bootstrap.sql` (`9c2d4c11…c230e`) with `--apply-reviewed-sha256`;
+2. `020-tables.sql` (`4408926b…ab64`) with `--migrate-reviewed-sha256`;
+3. `030-verify.sql` (`b3a0b176…c572f`) with `--verify-reviewed-sha256`.
+
+Excluded from this stage: the runtime hostssl allow, portal activation, OIDC, the witness and admission changes.

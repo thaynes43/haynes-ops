@@ -19,9 +19,12 @@ step. See [client release packet](../portal178-m5a/RELEASE.md).
 
 Registered in this source, and applied only after root review and required CI:
 reject-only portal HBA on `postgres16`, the portal-local mapping inside
-blueprint 97, and the static witness RBAC. Still unregistered: managed roles,
-Database, ExternalSecrets, the runtime hostssl allow, the migrator allow, the
-CLOSED admission ConfigMap, BFF, and any route. Runtime remains 503.
+blueprint 97, and the static witness RBAC. Since 2026-10-26 also registered:
+the runtime DB credential projection (#4309), and the roles-only preproof
+roles plus the retained Database/schema (cluster16.yaml `managed.roles`,
+`portal-database.yaml`). Still unregistered: the runtime/OpenProject
+ExternalSecrets, the runtime hostssl allow, the migrator allow, the CLOSED
+admission ConfigMap, BFF, and any route. Runtime remains 503.
 See [review corrections](REVIEW-CORRECTIONS.md) and
 [recovery proposal](RECOVERY-PROPOSAL.md).
 

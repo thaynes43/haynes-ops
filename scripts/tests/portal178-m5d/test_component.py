@@ -672,7 +672,8 @@ class ComponentRenderTest(unittest.TestCase):
         rejects = load(PENDING / "hba-stage-reject.yaml")["pg_hba"]
         self.assertEqual(len(rejects), 6)
         self.assertEqual(cluster["spec"]["postgresql"]["pg_hba"], rejects)
-        self.assertNotIn("managed", cluster["spec"])
+        self.assertEqual(cluster["spec"]["managed"], load(PENDING / "roles-stage-preproof.patch.yaml")["spec"]["managed"])
+        self.assertEqual(load(CLUSTER.parent / "portal-database.yaml"), load(PENDING / "database.yaml"))
         for path in (ROOT / "kubernetes").rglob("*.yaml"):
             text = path.read_text(errors="replace")
             self.assertNotIn("portal178-m5d", text, str(path))

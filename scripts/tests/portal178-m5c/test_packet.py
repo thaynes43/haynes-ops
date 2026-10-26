@@ -457,7 +457,13 @@ class Packet(unittest.TestCase):
         reject = load("hba-stage-reject.yaml")["pg_hba"]
         allow = load("hba-stage-allow.yaml")["rule"]
         self.assertEqual(cluster["spec"]["postgresql"]["pg_hba"], reject)
-        self.assertNotIn("managed", cluster["spec"])
+        # Roles-only preproof stage: exactly the reviewed roles and Database,
+        # still behind all six rejects.
+        self.assertEqual(cluster["spec"]["managed"], load("roles-stage-preproof.patch.yaml")["spec"]["managed"])
+        registered_db = CLUSTER.parent / "portal-database.yaml"
+        self.assertEqual(yaml.safe_load(registered_db.read_text()), load("database.yaml"))
+        resources = yaml.safe_load((CLUSTER.parent / "kustomization.yaml").read_text())["resources"]
+        self.assertEqual(resources.count("./portal-database.yaml"), 1)
         self.assertEqual(hba_stage_violations(reject, allow), [])
         self.assertTrue(hba_stage_violations(reject + [allow], allow))
         self.assertTrue(hba_stage_violations(reject, allow.replace(RUNTIME, MIGRATOR)))
