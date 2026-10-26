@@ -973,6 +973,11 @@ spec:
             text = path.read_text(errors="replace")
             if path.resolve() != (registered_dir / "ks.yaml").resolve():
                 self.assertNotIn("dev-env-v2-portal-policy", text, str(path))
+        for path in (ROOT / "kubernetes").rglob("*.json"):
+            text = path.read_text(errors="replace")
+            self.assertNotIn("dev-env-v2-portal-policy", text, str(path))
+        for path in (ROOT / "kubernetes").rglob("*.yaml"):
+            text = path.read_text(errors="replace")
             if "dependsOn" in text:
                 self.assertNotIn("name: dev-env-v2-portal-policy", text, str(path))
         self.assertIn("location = /api/v3/projects/3/work_packages", portal_server)
