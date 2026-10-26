@@ -14,9 +14,8 @@
 #     ClusterRoleBinding only a cluster-wide one (nodes, break-glass); no binding in the
 #     three dev-env namespaces;
 #   - CiliumNetworkPolicies: only grant-* names, and only in dev-agents.
-# AccessGrants, GrantPolicies (read), Leases, Events, pods and pods/exec are not
-# narrowed here: the RBAC already scopes them to dev-agents and dev-env-system, and an
-# exec's target cannot be checked by name (session pods have no fixed prefix).
+# AccessGrants, GrantPolicies (read), Leases, Events and pods/exec are not narrowed
+# here. A separate policy below restricts pod updates to the reserved UID label.
 #
 # Failure: Fail, matched by username first (a string compare that cannot fail), so an
 # error refuses only the broker's own request. No paramRef (D-19 as built).
@@ -98,4 +97,87 @@ metadata:
   name: dev-env-broker-guard
 spec:
   policyName: dev-env-broker-guard
+  validationActions: [Deny]
+
+---
+# The broker can add only the exact live pod UID label for manual grants.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-broker-pod-uid-guard
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: [UPDATE]
+        resources: [pods]
+  matchConditions:
+    - name: broker-identity
+      expression: request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-broker'
+  variables:
+    - name: key
+      expression: "'dev-env.haynesops.com/grant-pod-uid'"
+    - name: labels
+      expression: "object.metadata.?labels.orValue({})"
+    - name: oldLabels
+      expression: "oldObject.metadata.?labels.orValue({})"
+  validations:
+    - expression: >-
+        request.namespace == 'dev-agents' && object.metadata.uid == oldObject.metadata.uid &&
+        variables.key in variables.labels && variables.labels[variables.key] == object.metadata.uid &&
+        variables.labels.all(k, k == variables.key || (k in variables.oldLabels && variables.labels[k] == variables.oldLabels[k])) &&
+        variables.oldLabels.all(k, k == variables.key || (k in variables.labels && variables.labels[k] == variables.oldLabels[k])) &&
+        object.spec == oldObject.spec &&
+        object.metadata.?annotations.orValue({}) == oldObject.metadata.?annotations.orValue({}) &&
+        object.metadata.?finalizers.orValue([]) == oldObject.metadata.?finalizers.orValue([]) &&
+        object.metadata.?ownerReferences.orValue([]) == oldObject.metadata.?ownerReferences.orValue([]) &&
+        object.metadata.?deletionTimestamp == oldObject.metadata.?deletionTimestamp &&
+        object.metadata.?deletionGracePeriodSeconds == oldObject.metadata.?deletionGracePeriodSeconds
+      reason: Forbidden
+      message: broker may only set the reserved pod UID label to that pod's UID
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-broker-pod-uid-guard
+spec:
+  policyName: dev-env-broker-pod-uid-guard
+  validationActions: [Deny]
+---
+# No other actor can forge a reserved grant pod identity label.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-grant-pod-uid-reserved
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: key
+      expression: "'dev-env.haynesops.com/grant-pod-uid'"
+    - name: labels
+      expression: "object.metadata.?labels.orValue({})"
+    - name: prior
+      expression: "request.operation == 'CREATE' ? {} : oldObject.metadata.?labels.orValue({})"
+  validations:
+    - expression: >-
+        request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-broker' ||
+        ((variables.key in variables.labels) == (variables.key in variables.prior) &&
+         (!(variables.key in variables.labels) || variables.labels[variables.key] == variables.prior[variables.key]))
+      reason: Forbidden
+      message: only the broker may set the reserved grant pod UID label
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-grant-pod-uid-reserved
+spec:
+  policyName: dev-env-grant-pod-uid-reserved
   validationActions: [Deny]
