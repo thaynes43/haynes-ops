@@ -16,7 +16,7 @@ Foundations reused, unchanged by this packet:
 
 ## Current signed runtime and historical supersession
 
-Current source is dev-env PR550, merged as `3221ca79f4d7fddf73b0cfafc71a24de28f13663` (2026-10-25 15:50:50Z). Publish run `40208871745` reached terminal SUCCESS at 15:54:50Z: push, keyless signing, and verification all succeeded. This packet therefore pins `ghcr.io/thaynes43/dev-env-portal:sha-3221ca7@sha256:033ff0b611eb15dc000f8d1bc653154f1f3f79d4f477b4eb62ac41d1e666bde2`. That immutable source artifact is not an installation or launch approval.
+Current source is dev-env PR557, reviewed at `d74e507fb3a152f4dbffe110925d4629b4cf4fbc` and merged as `af402e533379bddd81e9266ee80ec6c565b81f29` (2026-10-26 17:25:46Z). Publish run `40368529556` reached terminal SUCCESS: push, keyless signing, and verification all succeeded. This packet therefore pins `ghcr.io/thaynes43/dev-env-portal:sha-af402e5@sha256:71d3c5d64d1948a78acdc695337fb8edac542ec46eb81fcddaddafec30df0772`. The compatible published operator candidate is `ghcr.io/thaynes43/dev-env-operator:sha-af402e5@sha256:1377ef1ee051543eeef19e4cd7e284488333a557681bae07223f64d9539c848a`; it is recorded here only, not applied to the live operator HelmRelease. Post-merge CI `40368529884` succeeded. These source artifacts are not an installation or launch approval. The previous PR550 artifact and receipts remain historical.
 
 The current parser pins `https://openproject-web.frontend.svc.cluster.local:8443` and reads project 3 at `/api/v3/projects/3/work_packages?offset=<page>&pageSize=50&filters=%5B%5D`; `offset` is page number 1 onward, `pageSize` is 50, and the empty filters array is required. Sessions and Tasks are independent: an absent projected `OPERATOR_TOKEN` gives “Sessions not connected”; an absent optional `OPENPROJECT_TOKEN` gives “Tasks not connected”. `config/session-bindings.json` is not a production requirement, and no session-to-task join is inferred.
 
@@ -119,7 +119,7 @@ Pinned config files:
 
 The duration, auth-style, and witness values are source-tested fixture values inside the contract bounds. They are not a launch SLO.
 
-Image: `ghcr.io/thaynes43/dev-env-portal:sha-3221ca7@sha256:033ff0b611eb15dc000f8d1bc653154f1f3f79d4f477b4eb62ac41d1e666bde2`. It is the terminal-success signed artifact for source `3221ca79f4d7fddf73b0cfafc71a24de28f13663`; signing identity is `https://github.com/thaynes43/dev-env/.github/workflows/publish.yml@refs/heads/main` with issuer `https://token.actions.githubusercontent.com`. uid and gid are 65532. The container requests `50m` CPU and limits CPU to `200m`, under the `dev-agents` ceiling of 8 CPU in `dev-env-require-cpu-limit`. Memory request `64Mi` and limit `256Mi` are unchanged. The CPU limit is a staged bound, not a measured capacity.
+Image: `ghcr.io/thaynes43/dev-env-portal:sha-af402e5@sha256:71d3c5d64d1948a78acdc695337fb8edac542ec46eb81fcddaddafec30df0772`. It is the terminal-success signed artifact for source `af402e533379bddd81e9266ee80ec6c565b81f29`; signing identity is `https://github.com/thaynes43/dev-env/.github/workflows/publish.yml@refs/heads/main` with issuer `https://token.actions.githubusercontent.com`. uid and gid are 65532. The container requests `50m` CPU and limits CPU to `200m`, under the `dev-agents` ceiling of 8 CPU in `dev-env-require-cpu-limit`. Memory request `64Mi` and limit `256Mi` are unchanged. The CPU limit is a staged bound, not a measured capacity.
 
 Probes:
 
