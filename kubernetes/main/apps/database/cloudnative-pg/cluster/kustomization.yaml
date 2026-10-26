@@ -8,3 +8,4 @@ resources:
   - ./scheduledbackup.yaml
   - ./service.yaml
   - ./portal-runtime-db-externalsecret.yaml
+  - ./portal-database.yaml

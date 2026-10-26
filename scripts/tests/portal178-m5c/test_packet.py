@@ -457,7 +457,24 @@ class Packet(unittest.TestCase):
         reject = load("hba-stage-reject.yaml")["pg_hba"]
         allow = load("hba-stage-allow.yaml")["rule"]
         self.assertEqual(cluster["spec"]["postgresql"]["pg_hba"], reject)
-        self.assertNotIn("managed", cluster["spec"])
+        # Roles-only preproof stage: exactly the reviewed roles and Database,
+        # still behind all six rejects.
+        self.assertEqual(cluster["spec"]["managed"], load("roles-stage-preproof.patch.yaml")["spec"]["managed"])
+        registered_db = CLUSTER.parent / "portal-database.yaml"
+        self.assertEqual(yaml.safe_load(registered_db.read_text()), load("database.yaml"))
+        resources = yaml.safe_load((CLUSTER.parent / "kustomization.yaml").read_text())["resources"]
+        self.assertEqual(resources.count("./portal-database.yaml"), 1)
+        self.assertEqual(load("database.yaml")["metadata"]["annotations"],
+                         {"kustomize.toolkit.fluxcd.io/prune": "disabled"})
+        self.assertEqual(load("database.yaml")["spec"]["databaseReclaimPolicy"], "retain")
+        registered_kinds = []
+        for path in (ROOT / "kubernetes").rglob("*.yaml"):
+            text = path.read_text(errors="replace")
+            if "kind: Database" in text:
+                for doc in yaml.safe_load_all(text):
+                    if doc and doc.get("kind") in {"Database", "DatabaseRole"}:
+                        registered_kinds.append((path.resolve(), doc["kind"]))
+        self.assertEqual(registered_kinds, [(registered_db.resolve(), "Database")])
         self.assertEqual(hba_stage_violations(reject, allow), [])
         self.assertTrue(hba_stage_violations(reject + [allow], allow))
         self.assertTrue(hba_stage_violations(reject, allow.replace(RUNTIME, MIGRATOR)))

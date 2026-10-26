@@ -28,13 +28,45 @@ spec:
   superuserSecret:
     name: cloudnative-pg-secret
   enableSuperuserAccess: true
+  # Story178 roles-only preproof stage: the two portal roles, exactly as
+  # .agents/reports/portal178-m5c/pending/roles-stage-preproof.patch.yaml.
+  # The six HBA rejects below still refuse both roles. The runtime hostssl
+  # allow waits for the 010/020/030 proof; the migrator never gets one.
+  managed:
+    roles:
+      - name: dev_env_v2_portal_runtime
+        ensure: present
+        login: true
+        connectionLimit: 8
+        inherit: false
+        superuser: false
+        createdb: false
+        createrole: false
+        replication: false
+        bypassrls: false
+        inRoles: []
+        passwordSecret:
+          name: dev-env-v2-portal-runtime-db
+      - name: dev_env_v2_portal_migrator
+        ensure: present
+        # Peer migration SET ROLE does not require LOGIN or a mounted password.
+        login: false
+        disablePassword: true
+        connectionLimit: 1
+        inherit: false
+        superuser: false
+        createdb: false
+        createrole: false
+        replication: false
+        bypassrls: false
+        inRoles: []
   postgresql:
     parameters:
       max_connections: "400"
       shared_buffers: 256MB
-    # Story178 M5D stage 1 only. These rejects precede CNPG's default
-    # "host all all all scram-sha-256". No hostssl allow and no managed roles
-    # until 010/020/030 proof. The migrator has no allow line.
+    # Story178 M5D stage 1. These rejects precede CNPG's default
+    # "host all all all scram-sha-256". No hostssl allow until the
+    # 010/020/030 proof. The migrator has no allow line.
     pg_hba:
       - host replication dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
       - host replication dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject

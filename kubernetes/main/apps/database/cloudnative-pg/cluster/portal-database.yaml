@@ -1,0 +1,23 @@
+# Story178 roles-only preproof stage: the retained portal Database and its
+# schema, exactly as .agents/reports/portal178-m5c/pending/database.yaml.
+# CNPG owns provisioning. The 010 ACL bootstrap must finish and be verified
+# before any runtime consumer exists. Pruning is disabled, so removing this
+# file never drops the database.
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: dev-env-v2-portal
+  namespace: database
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  name: dev_env_v2_portal
+  owner: postgres
+  cluster:
+    name: postgres16
+  ensure: present
+  databaseReclaimPolicy: retain
+  schemas:
+    - name: portal
+      owner: dev_env_v2_portal_migrator
+      ensure: present
