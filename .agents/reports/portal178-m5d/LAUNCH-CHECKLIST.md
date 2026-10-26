@@ -124,55 +124,60 @@ Neither result alone proves the new rules are active. A replica that kept the ol
 
 ## Activation steps S4+S6: portal inputs, 2026-10-26
 
-A new Flux Kustomization `dev-env-system/dev-env-v2-portal` registers the inputs the portal needs before its Deployment exists:
+Owner direction, relayed by the coordinator on 2026-10-26: take the fastest path to a working demo without security edge cases. Tom dropped the admission witness and recovery fence; a separate change removes them from the portal source. So this step registers no admission input, and it adds the Postgres CA now instead of waiting for S5.
+
+A new Flux Kustomization `dev-env-system/dev-env-v2-portal` registers the portal's inputs:
 - path `kubernetes/main/apps/dev-env-system/portal/app`;
-- `dependsOn` the S1 policy, plus `cert-manager` and `external-secrets-stores` for its CRDs and store (the dev-env-pki and dev-env-secrets pattern);
-- `wait`, timeout 5m, retry 1m; no `targetNamespace`, every object names `dev-agents`;
-- nothing depends on it, so a failed input holds back no other app.
+- `dependsOn` the S1 policy, `cert-manager` and `external-secrets-stores`;
+- `wait`, timeout 5m, retry 1m;
+- `healthCheckExprs` require `Ready=True` on the Certificates and the ExternalSecret. Plain kstatus does not read their `Ready`;
+- no `targetNamespace`: every object names `dev-agents`;
+- nothing depends on it.
 
-It registers no Deployment, no IngressRoute or other route, no admission object and no witness change. The packet under this directory stays unregistered.
+There is no Deployment, route or admission object.
 
-What it registers:
-- **Serving PKI**: the packet's two Issuers and two Certificates, unchanged. cert-manager creates Secrets `dev-env-v2-portal-ca` (CA key, never mounted) and `dev-env-v2-portal-tls` (the leaf, with SANs `dev-env-v2.haynesops.com` and `dev-env-v2-portal.dev-agents.svc.cluster.local`).
-- **Service** `dev-env-v2-portal`, TCP 8443, unchanged. It selects no pod yet.
-- **ServersTransport** `dev-agents/dev-env-v2-portal`, with one fix. The packet's `rootCAs` named Secret `dev-env-v2-portal-serving-ca`, which nothing creates. The installed ServersTransport CRD also has no `rootCAs` field, so the API server would have dropped the list. It now uses `rootCAsSecrets: [dev-env-v2-portal-tls]`. Traefik v3.7.16 still reads that field and logs a deprecation warning. It reads only `ca.crt` of that Secret, which cert-manager fills with the issuing CA on every leaf, so the trusted CA and the leaf change together. The object must live in `dev-agents`: Traefik resolves the unqualified name in the Service's namespace and reads the CA Secret from its own.
-- **Config** `dev-env-v2-portal-config`: the 19 `config/*` files that `LoadProduction` reads at dev-env `b98247c`. It is the packet's 18 plus `admission-uid` `8d463394-7b50-4c12-9bfb-0c2eb6f5054d`, the live UID of the closed witness ConfigMap (read on 2026-10-26; schema 1, state closed). There is no `config/subject`, by the owner ruling of 2026-10-26 (authorization by Authentik group).
-- **Issuer CA** `dev-env-v2-portal-issuer-ca`, key `ca.crt`, 5,162 bytes, file SHA-256 `1b80197679a4666ee8eaa26db3f3d1380d37da0d1b9b2b8d5120201d3dcc608e`. It holds five roots, the ECDSA anchors of the CAs that Cloudflare's edge uses for this zone:
-  - GTS Root R4 (live);
-  - ISRG Root X1 and ISRG Root X2;
-  - SSL.com TLS ECC Root CA 2022;
-  - Sectigo Public Server Authentication Root E46.
-  Evidence:
-  - the live chain on 2026-10-26 was `haynesnetwork.com` ← WE1 ← GTS Root R4 (cross-signed by GlobalSign);
-  - CT logs since 2025-06 show WE1 as primary, with backups from Sectigo E36 and SSL.com "Cloudflare TLS Issuing ECC CA 4";
-  - the roots come from Debian `ca-certificates` 20250419~deb12u2 (Mozilla). Each DER SHA-256 matched the CA's own published copy and is pinned in the guard.
-- **OpenProject CA** `dev-env-v2-portal-openproject-ca`, key `ca.crt`, file SHA-256 `c190c3de7feaadcf23e7fa7a320409875cd366bae3239812cd33a117450bb21f`, DER SHA-256 `9bd738852a33a019cf8b75ec9c2c574402d5217c0f6b57fbcff25cfe0122d986`. Attestation fields:
-  - source: cluster `main`, CertificateRequest `frontend/openproject-portal-ca-1` `status.certificate`;
-  - resource UID `5df3bebb-9ed6-41f9-b1d7-74324910b0d5`, resourceVersion `853890739`, exported 2026-10-26 about 20:05Z;
-  - cross-check: `openproject-portal-api-1` `status.ca` holds the same bytes, and the live leaf (SAN `openproject-web.frontend.svc.cluster.local`) verifies against it;
-  - validity: notBefore 2026-10-24T23:59:41Z, notAfter 2036-10-21T23:59:41Z;
-  - renewal and rotation: cert-manager renews about 2035-10 with a new key. Re-pin from the newest CertificateRequest then.
-  - attestation: an agent metadata read; no Secret was read. An owner attestation, if still required, is the coordinator's decision.
-- **Runtime ExternalSecret** `dev-agents/dev-env-v2-portal-runtime`: the reviewed pending spec, unchanged. It projects exactly `DB_USERNAME`, `DB_PASSWORD`, `SESSION_AEAD_KEY` and `SESSION_GENERATION` from `HaynesKube/dev-env`, with no `dataFrom`. The OIDC ExternalSecret stays with `dev-env-secrets` and is not duplicated.
+| Object (`dev-agents`) | Source |
+| --- | --- |
+| Issuers and Certificates (`dev-env-v2-portal-ca`, `-serving`) | The packet, unchanged. The leaf is Secret `dev-env-v2-portal-tls`. |
+| Service `dev-env-v2-portal` | The packet, unchanged. |
+| ServersTransport `dev-env-v2-portal` | The packet, fixed. Its `rootCAs` named a Secret nothing creates, and the installed CRD has no `rootCAs` field. It now uses `rootCAsSecrets: [dev-env-v2-portal-tls]`, whose `ca.crt` cert-manager fills with the issuing CA. The packet IngressRoute names this object. |
+| ConfigMap `dev-env-v2-portal-config` | The packet's keys without `admission-api-url`, `admission-token-file` or `admission-uid`. The two `witness-*` files are harmless extras until the parser change drops them. No `config/subject`. |
+| ConfigMap `dev-env-v2-portal-postgres-ca` (`ca.crt`) | See the Postgres CA bullet below. |
+| ConfigMap `dev-env-v2-portal-issuer-ca` (`ca.crt`) | Five roots for the Cloudflare edge of `authentik.haynesnetwork.com`; see below. File SHA-256 `1b80197679a4666ee8eaa26db3f3d1380d37da0d1b9b2b8d5120201d3dcc608e`. |
+| ConfigMap `dev-env-v2-portal-openproject-ca` (`ca.crt`) | See the OpenProject CA bullet below. |
+| ExternalSecret `dev-env-v2-portal-runtime` | The reviewed pending spec: `DB_USERNAME`, `DB_PASSWORD`, `SESSION_AEAD_KEY`, `SESSION_GENERATION` from `HaynesKube/dev-env`. No `dataFrom`. |
 
-Left out on purpose:
-- **Postgres CA**: step S5, after the CNPG CA renewal around 2026-10-29.
-- **Operator CA and admission CA**: no duplicate ConfigMaps. S8's Deployment should map maintained sources instead:
-  - `dev-agents/dev-env-api-ca` `ca.crt` → `operator-ca.crt`. It is pinned by `dev-env-pki` (SHA-256 `5e438ee51a1dac88589277e57fde82347f6d3c125a419fd0afcfd5ec4baaec5d`) and verifies the live operator API name;
-  - `kube-root-ca.crt` `ca.crt` → `admission-ca.crt`. It verifies `kubernetes.default.svc.cluster.local`.
-- **OpenProject reader ExternalSecret, Deployment, IngressRoute and admission ConfigMap**: later steps.
+Provenance:
+- **Postgres CA**:
+  - CNPG `postgres16` CA, Secret `database/postgres16-ca` key `ca.crt`, certificate only;
+  - UID `39740a0c-5539-4829-9b16-78524a120476`, resourceVersion `694827978`, exported 2026-10-26 18:02Z;
+  - 603 bytes, file SHA-256 `f89c6cc6c2ddf495b5112023c7863142696ddecd413cba98bf36f1c940bae818`, DER SHA-256 `53b084dc3e8fe33fb9e6e1ffd49092cd806a396ef480324a2af0c21720e99f21`;
+  - it expires 2026-11-05 03:55Z. **Re-pin it after the CNPG CA renewal (about 2026-10-29)**, or the portal loses the database.
+- **Issuer roots**: GTS Root R4, ISRG Root X1, ISRG Root X2, SSL.com TLS ECC Root CA 2022, and Sectigo Public Server Authentication Root E46.
+  - The live chain on 2026-10-26 was `haynesnetwork.com` ← WE1 ← GTS Root R4.
+  - CT logs since 2025-06 show the edge using GTS (primary), Sectigo and SSL.com (backups); Let's Encrypt is Cloudflare's other issuing CA.
+  - The roots come from the Debian Mozilla bundle, and each matched the CA's published copy. The DER hashes are pinned in the guard.
+- **OpenProject CA**:
+  - CertificateRequest `frontend/openproject-portal-ca-1` `status.certificate` (UID `5df3bebb-9ed6-41f9-b1d7-74324910b0d5`, resourceVersion `853890739`), read without a Secret;
+  - file SHA-256 `c190c3de7feaadcf23e7fa7a320409875cd366bae3239812cd33a117450bb21f`, DER SHA-256 `9bd738852a33a019cf8b75ec9c2c574402d5217c0f6b57fbcff25cfe0122d986`, valid until 2036-10-21.
+- **Runtime fields**: Tom saved all four (relayed 2026-10-26). The DB pair is proven by the SecretSynced `database/dev-env-v2-portal-runtime-db`. This ExternalSecret's Ready is the first proof of the two `SESSION_*` fields.
 
-Evidence:
-- The portal's own `b98247c` parser read the rendered config and CA files in a throwaway test, and every check passed: the pins, the bounds, `admission-uid`, and both CA files. With `issuer-ca.crt` its production issuer client fetched the JWKS (HTTP 200). With the OpenProject CA it failed TLS. Without GTS Root R4 the live chain fails.
-- Guard: `scripts/tests/portal178-m5d/test_component.py` `RegisteredInputsTest`.
+Left for S8:
+- The Deployment maps `dev-agents/dev-env-api-ca` `ca.crt` to `ca/operator-ca.crt`. There is no duplicate ConfigMap.
+- It keeps `dev-env-v2-portal-tls` in its Reloader annotation. The portal loads its TLS files only at startup.
+- If S8 drops the ServersTransport reference, Traefik's shared `insecureSkipVerify` applies and this object can go.
 
-Risks:
-- **Runtime ExternalSecret failure**: a missing property makes the ExternalSecret not Ready, and no Secret is created. The `dev-env-v2-portal` Kustomization then fails its health check after 5m. Nothing depends on it and no pod mounts the Secret yet. Watch Ready metadata only.
-- **Cloudflare CA change**: if Cloudflare moves `authentik.haynesnetwork.com` to a CA outside the five roots, portal sign-in fails closed until a reviewed re-pin adds the root.
+Checks:
+- The guard is `scripts/tests/portal178-m5d/test_component.py` `RegisteredInputsTest`.
+- An earlier pass checked the rendered config and the issuer, OpenProject and operator CAs against dev-env `b98247c`'s own parser. With the issuer roots it fetched the live JWKS; with the wrong CA it failed TLS.
 
-Acceptance is metadata only:
+If the runtime ExternalSecret cannot sync:
+- no Secret is created;
+- the Kustomization fails its health check after 5m, and after 15m the critical `FluxReconciliationFailure` alert fires;
+- nothing depends on the Kustomization.
+
+Acceptance, read from metadata:
 - the Kustomization is Ready;
 - both Certificates are Ready;
 - the ExternalSecret is SecretSynced;
-- the ServersTransport keeps `rootCAsSecrets`;
-- no portal pod exists.
+- no portal pod exists yet.

@@ -1,14 +1,13 @@
 ---
 # The portal's non-secret configuration: one file per key under
-# /etc/dev-env-portal/config, exactly the config/* files that LoadProduction reads
-# at dev-env b98247c (web/portal/session/production.go).
+# /etc/dev-env-portal/config.
 # - The eight URLs must equal the constants the portal pins, or it refuses to start.
-# - admission-uid is the UID of the closed witness ConfigMap
-#   dev-agents/dev-env-v2-portal-admission. It is a resource UID, not a person.
-# - Durations, auth-style and witness rates are the tested fixture values, inside
-#   the parser's bounds. They are not a measured service level.
-# There is no subject file: the portal authorizes by Authentik group membership
-# (owner ruling 2026-10-26, dev-env b98247c).
+# - Durations and auth-style are the tested fixture values, inside the parser's
+#   bounds. They are not a measured service level.
+# - No admission keys: Tom dropped the admission witness and recovery fence
+#   (2026-10-26). The two witness-* rate files are harmless extras once the
+#   portal no longer reads them; delete them with that parser change.
+# - No subject file: the portal authorizes by Authentik group membership.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -23,9 +22,6 @@ data:
   jwks-url: https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/jwks/
   openproject-base-url: https://openproject-web.frontend.svc.cluster.local:8443
   operator-api-url: https://dev-env-operator.dev-env-system.svc.cluster.local:8443
-  admission-api-url: https://kubernetes.default.svc.cluster.local
-  admission-uid: 8d463394-7b50-4c12-9bfb-0c2eb6f5054d
-  admission-token-file: /var/run/portal/api/token
   auth-style: header
   login-ttl: 1m
   idle-ttl: 30m

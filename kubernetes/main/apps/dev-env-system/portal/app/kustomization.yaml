@@ -16,10 +16,12 @@ configMapGenerator:
   # commit that changes the file and its hash together.
   #
   # issuer-ca.crt: roots for https://authentik.haynesnetwork.com, served by the
-  # Cloudflare edge. Five ECDSA-era roots of the CAs that edge uses. Live chain on
-  # 2026-10-26: haynesnetwork.com <- WE1 <- GTS Root R4. CT logs for the zone since
-  # 2025-06 show WE1 (GTS) as primary, with backups from Sectigo (E36) and SSL.com
-  # (Cloudflare TLS Issuing ECC CA 4); Let's Encrypt is Cloudflare's third issuing CA.
+  # Cloudflare edge. Five roots of the CAs that edge uses: the anchors of their ECDSA
+  # chains, plus ISRG Root X1 (RSA), which anchors Let's Encrypt's cross-signs. Live
+  # chain on 2026-10-26: haynesnetwork.com <- WE1 <- GTS Root R4. CT logs for the zone
+  # since 2025-06 show WE1 (GTS) as primary, with backups from Sectigo (E36, to Root
+  # E46) and SSL.com (Cloudflare TLS Issuing ECC CA 4, via TLS Transit ECC CA R2, to
+  # TLS ECC Root CA 2022); Let's Encrypt is Cloudflare's third issuing CA.
   # DER SHA-256, in file order:
   #   GTS Root R4                                   349dfa4058c5e263123b398ae795573c4e1313c83fe68f93556cd5e8031b3c7d
   #   ISRG Root X1                                  96bcec06264976f37460779acf28c5a7cfe8a3c0aae11a8ffcee05c0bddf08c6
@@ -53,5 +55,20 @@ configMapGenerator:
       annotations:
         dev-env.haynesops.com/ca-input: public-only
         dev-env.haynesops.com/ca-sha256: c190c3de7feaadcf23e7fa7a320409875cd366bae3239812cd33a117450bb21f
+  # postgres-ca.crt: the CNPG postgres16 CA (OU database, CN postgres16), which signs
+  # postgres16-rw.database.svc.cluster.local. The portal reads it as ca/ca.crt.
+  # Exported 2026-10-26 18:02Z from Secret database/postgres16-ca key ca.crt (UID
+  # 39740a0c-5539-4829-9b16-78524a120476, resourceVersion 694827978), certificate only.
+  # DER SHA-256 53b084dc3e8fe33fb9e6e1ffd49092cd806a396ef480324a2af0c21720e99f21.
+  # It EXPIRES 2026-11-05 03:55Z. CNPG renews it with a new key first (about
+  # 2026-10-29): re-pin this file and its hash then, or the portal loses the database.
+  - name: dev-env-v2-portal-postgres-ca
+    namespace: dev-agents
+    files:
+      - ca.crt=postgres-ca.crt
+    options:
+      annotations:
+        dev-env.haynesops.com/ca-input: public-only
+        dev-env.haynesops.com/ca-sha256: f89c6cc6c2ddf495b5112023c7863142696ddecd413cba98bf36f1c940bae818
 generatorOptions:
   disableNameSuffixHash: true

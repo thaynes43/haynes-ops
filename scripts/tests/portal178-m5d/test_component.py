@@ -27,14 +27,16 @@ PORTAL_INPUTS = PORTAL_TREE / "app"
 PORTAL_RUNTIME = PORTAL_INPUTS / "runtime-externalsecret.yaml"
 POLICY_KS = PORTAL_TREE / "policy/ks.yaml"
 INPUTS_KS = PORTAL_TREE / "ks.yaml"
-WITNESS_UID = "8d463394-7b50-4c12-9bfb-0c2eb6f5054d"
-# The config/* files LoadProduction reads at dev-env b98247c. No subject file.
+READY_EXPR = "status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')"
+# The config/* files the portal reads, without the admission witness Tom dropped
+# on 2026-10-26. The witness-* rate files stay as harmless extras until the parser
+# change lands. No subject file.
 PRODUCTION_CONFIG_FILES = {
     "origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
-    "openproject-base-url", "operator-api-url", "admission-api-url", "admission-uid",
-    "admission-token-file", "auth-style", "login-ttl", "idle-ttl", "absolute-ttl",
-    "fresh-for", "clock-skew", "witness-gets-per-second", "witness-get-burst",
+    "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
+    "absolute-ttl", "fresh-for", "clock-skew", "witness-gets-per-second", "witness-get-burst",
 }
+ADMISSION_CONFIG_FILES = {"admission-api-url", "admission-uid", "admission-token-file"}
 # Public CA inputs: file SHA-256, then the DER SHA-256 of each certificate in order.
 ISSUER_CA = (
     "1b80197679a4666ee8eaa26db3f3d1380d37da0d1b9b2b8d5120201d3dcc608e",
@@ -49,6 +51,10 @@ ISSUER_CA = (
 OPENPROJECT_CA = (
     "c190c3de7feaadcf23e7fa7a320409875cd366bae3239812cd33a117450bb21f",
     ["9bd738852a33a019cf8b75ec9c2c574402d5217c0f6b57fbcff25cfe0122d986"],  # openproject-portal-ca
+)
+POSTGRES_CA = (
+    "f89c6cc6c2ddf495b5112023c7863142696ddecd413cba98bf36f1c940bae818",
+    ["53b084dc3e8fe33fb9e6e1ffd49092cd806a396ef480324a2af0c21720e99f21"],  # postgres16, expires 2026-11-05
 )
 CURRENT_RUNTIME_HEAD = "af402e533379bddd81e9266ee80ec6c565b81f29"
 PORTAL_IMAGE = (
@@ -266,11 +272,29 @@ def _flux_files(tree):
     return sorted(set(tree.rglob("*.yaml")) | set(tree.rglob("*.yml")) | set(tree.rglob("*.json")))
 
 
+def _names_entry(value, name):
+    entries = value if isinstance(value, list) else [value]
+    return any(isinstance(item, dict) and item.get("name") == name for item in entries)
+
+
 def _depends_on_names(node, name):
+    if isinstance(node, str):
+        # An inline kustomize patch carries YAML inside a string. Only parsed
+        # mappings and lists are searched again, so a scalar cannot recurse.
+        if "dependsOn" not in node:
+            return False
+        try:
+            docs = list(yaml.safe_load_all(node))
+        except yaml.YAMLError:
+            return True
+        return any(_depends_on_names(doc, name) for doc in docs if isinstance(doc, (dict, list)))
     if isinstance(node, dict):
+        # A JSON6902 operation: path .../dependsOn..., value {name: ...} or a list of them.
+        path = node.get("path")
+        if isinstance(path, str) and "dependsOn" in path and _names_entry(node.get("value"), name):
+            return True
         for key, value in node.items():
-            if key == "dependsOn" and isinstance(value, list) and any(
-                    isinstance(item, dict) and item.get("name") == name for item in value):
+            if key == "dependsOn" and isinstance(value, list) and _names_entry(value, name):
                 return True
             if _depends_on_names(value, name):
                 return True
@@ -340,6 +364,7 @@ INPUT_OBJECTS = {
     ("ConfigMap", "dev-env-v2-portal-config"),
     ("ConfigMap", "dev-env-v2-portal-issuer-ca"),
     ("ConfigMap", "dev-env-v2-portal-openproject-ca"),
+    ("ConfigMap", "dev-env-v2-portal-postgres-ca"),
     ("Service", "dev-env-v2-portal"),
     ("Issuer", "dev-env-v2-portal-selfsigned"),
     ("Issuer", "dev-env-v2-portal-ca"),
@@ -365,15 +390,14 @@ def registered_input_violations(docs):
                                "CiliumNetworkPolicy"}:
             violations.append("forbidden-kind:" + doc["kind"])
         if doc.get("kind") == "ConfigMap" and meta.get("name") in {
-                "dev-env-v2-portal-admission", "dev-env-v2-portal-postgres-ca",
-                "dev-env-v2-portal-admission-ca", "dev-env-v2-portal-operator-ca"}:
+                "dev-env-v2-portal-admission", "dev-env-v2-portal-admission-ca", "dev-env-v2-portal-operator-ca"}:
             violations.append("held-configmap:" + meta["name"])
         if doc.get("kind") == "ConfigMap" and meta.get("name") == "dev-env-v2-portal-config":
             data = doc.get("data", {})
             if set(data) != PRODUCTION_CONFIG_FILES:
                 violations.append("config-keys")
-            if data.get("admission-uid") != WITNESS_UID:
-                violations.append("admission-uid")
+            if ADMISSION_CONFIG_FILES & set(data):
+                violations.append("admission-config")
         if doc.get("kind") == "ServersTransport" and "rootCAs" in doc.get("spec", {}):
             violations.append("rootCAs-pruned-by-installed-crd")
         if doc.get("kind") == "ExternalSecret" and approved_portal_runtime_violations(PORTAL_RUNTIME, doc):
@@ -1266,11 +1290,19 @@ class RegisteredInputsTest(unittest.TestCase):
                 "prune": True,
                 "sourceRef": {"kind": "GitRepository", "name": "haynes-ops", "namespace": "flux-system"},
                 "wait": True,
+                "healthCheckExprs": [
+                    {"apiVersion": "cert-manager.io/v1", "kind": "Certificate", "current": READY_EXPR},
+                    {"apiVersion": "external-secrets.io/v1", "kind": "ExternalSecret", "current": READY_EXPR},
+                ],
                 "interval": "30m",
                 "retryInterval": "1m",
                 "timeout": "5m",
             },
         })
+        # Every kind that kstatus cannot judge has an explicit Ready expression.
+        checked = {(e["apiVersion"], e["kind"]) for e in load(INPUTS_KS)["spec"]["healthCheckExprs"]}
+        self.assertTrue({(d["apiVersion"], d["kind"]) for d in self.docs
+                         if d["kind"] in {"Certificate", "ExternalSecret"}} <= checked)
         self.assertNotIn("targetNamespace", load(INPUTS_KS)["spec"])
         system = load(ROOT / "kubernetes/main/apps/dev-env-system/kustomization.yaml")["resources"]
         self.assertEqual(system.count("./portal/ks.yaml"), 1)
@@ -1285,9 +1317,21 @@ class RegisteredInputsTest(unittest.TestCase):
             (tree / "b.json").write_text('{"spec": {"dependsOn": [{"name": "dev-env-v2-portal"}]}}')
             (tree / "c.yaml").write_text("spec:\n  dependsOn:\n    - name: dev-env-v2-portal-policy\n")
             (tree / "d.yaml").write_text("dependsOn: [\n  name: dev-env-v2-portal\n")
+            (tree / "e.yaml").write_text(
+                "patches:\n  - patch: |\n      kind: Kustomization\n      spec:\n"
+                "        dependsOn:\n          - name: dev-env-v2-portal\n")
+            (tree / "f.yaml").write_text("patches:\n  - patch: |\n      spec:\n        dependsOn: []\n"
+                                         "        path: dev-env-v2-portal\n")
+            (tree / "g.yaml").write_text(
+                "patches:\n  - patch: |\n      - op: add\n        path: /spec/dependsOn/-\n"
+                "        value:\n          name: dev-env-v2-portal\n")
+            (tree / "h.yaml").write_text(
+                "patches:\n  - patch: |\n      - op: add\n        path: /spec/dependsOn/-\n"
+                "        value:\n          name: dev-env-v2-portal-policy\n")
             self.assertEqual(sorted(p.name for p in dependents(tree, "dev-env-v2-portal")),
-                             ["a.yaml", "b.json", "d.yaml"])
-            self.assertEqual([p.name for p in policy_dependents(tree)], ["c.yaml"])
+                             ["a.yaml", "b.json", "d.yaml", "e.yaml", "g.yaml"])
+            self.assertFalse(_depends_on_names("/spec/dependsOn/-", "dev-env-v2-portal"))
+            self.assertEqual([p.name for p in policy_dependents(tree)], ["c.yaml", "h.yaml"])
 
     def test_inputs_are_exactly_the_registered_set(self):
         manifest = load(PORTAL_INPUTS / "kustomization.yaml")
@@ -1301,6 +1345,7 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in PORTAL_INPUTS.iterdir()), sorted([
             "kustomization.yaml", "certificates.yaml", "service.yaml", "serverstransport.yaml",
             "config.yaml", "runtime-externalsecret.yaml", "issuer-ca.crt", "openproject-ca.crt",
+            "postgres-ca.crt",
         ]))
         self.assertEqual(registered_input_violations(self.docs), [])
         self.assertNotIn("portal-registration", self.rendered)
@@ -1311,14 +1356,14 @@ class RegisteredInputsTest(unittest.TestCase):
         admission = {"apiVersion": "v1", "kind": "ConfigMap",
                      "metadata": {"name": "dev-env-v2-portal-admission", "namespace": "dev-agents"},
                      "data": {"schema": "1", "state": "closed"}}
-        postgres_ca = {"apiVersion": "v1", "kind": "ConfigMap",
-                       "metadata": {"name": "dev-env-v2-portal-postgres-ca", "namespace": "dev-agents"},
-                       "data": {"ca.crt": "x"}}
+        admission_ca = {"apiVersion": "v1", "kind": "ConfigMap",
+                        "metadata": {"name": "dev-env-v2-portal-admission-ca", "namespace": "dev-agents"},
+                        "data": {"ca.crt": "x"}}
         for extra, expected in (
             (packet_deployment, "forbidden-kind:Deployment"),
             (packet_route, "forbidden-kind:IngressRoute"),
             (admission, "held-configmap:dev-env-v2-portal-admission"),
-            (postgres_ca, "held-configmap:dev-env-v2-portal-postgres-ca"),
+            (admission_ca, "held-configmap:dev-env-v2-portal-admission-ca"),
         ):
             violations = registered_input_violations(self.docs + [deepcopy(extra)])
             self.assertIn("object-set", violations)
@@ -1332,8 +1377,8 @@ class RegisteredInputsTest(unittest.TestCase):
         config = ("ConfigMap", "dev-env-v2-portal-config")
         self.assertIn("subject-key", mutated(*config, lambda d: d["data"].update(subject="x")))
         self.assertIn("config-keys", mutated(*config, lambda d: d["data"].update(subject="x")))
-        self.assertIn("config-keys", mutated(*config, lambda d: d["data"].pop("admission-uid")))
-        self.assertIn("admission-uid", mutated(*config, lambda d: d["data"].update({"admission-uid": "other"})))
+        self.assertIn("config-keys", mutated(*config, lambda d: d["data"].pop("origin")))
+        self.assertIn("admission-config", mutated(*config, lambda d: d["data"].update({"admission-uid": "x"})))
         self.assertIn("text:PORTAL_SUBJECT", mutated(*config, lambda d: d["data"].update(origin="PORTAL_SUBJECT")))
         self.assertIn("namespace:dev-env-v2-portal", mutated("Service", "dev-env-v2-portal",
                                                              lambda d: d["metadata"].update(namespace="dev")))
@@ -1381,15 +1426,15 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertEqual(created, {"dev-env-v2-portal-ca", "dev-env-v2-portal-tls"})
         self.assertTrue(set(transport["spec"]["rootCAsSecrets"]) <= created)
 
-    def test_config_is_what_load_production_reads(self):
+    def test_config_is_the_packet_without_admission(self):
         config = self.by_key[("ConfigMap", "dev-env-v2-portal-config")]
         packet = self.packet[("ConfigMap", "dev-env-v2-portal-config")]
-        expected = dict(packet["data"], **{"admission-uid": WITNESS_UID})
+        expected = {k: v for k, v in packet["data"].items() if k not in ADMISSION_CONFIG_FILES}
         self.assertEqual(config["data"], expected)
         self.assertEqual(set(config["data"]), PRODUCTION_CONFIG_FILES)
+        self.assertTrue(ADMISSION_CONFIG_FILES.isdisjoint(config["data"]))
         self.assertNotIn("subject", config["data"])
         self.assertNotIn("session-bindings.json", config["data"])
-        self.assertRegex(WITNESS_UID, r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
         for key, value in config["data"].items():
             self.assertIsInstance(value, str, key)
             self.assertLess(len(value.encode()), 4096, key)
@@ -1400,6 +1445,7 @@ class RegisteredInputsTest(unittest.TestCase):
         for name, filename, (file_sha, der_shas) in (
             ("dev-env-v2-portal-issuer-ca", "issuer-ca.crt", ISSUER_CA),
             ("dev-env-v2-portal-openproject-ca", "openproject-ca.crt", OPENPROJECT_CA),
+            ("dev-env-v2-portal-postgres-ca", "postgres-ca.crt", POSTGRES_CA),
         ):
             doc = self.by_key[("ConfigMap", name)]
             self.assertEqual(set(doc["data"]), {"ca.crt"}, name)
@@ -1443,8 +1489,8 @@ class RegisteredInputsTest(unittest.TestCase):
     def test_checklist_records_the_activation_steps(self):
         checklist = CHECKLIST.read_text()
         self.assertIn("## Activation steps S4+S6: portal inputs, 2026-10-26", checklist)
-        for needle in (ISSUER_CA[0], OPENPROJECT_CA[0], WITNESS_UID, "rootCAsSecrets",
-                       "dev-env-api-ca", "kube-root-ca.crt", "openproject-portal-ca-1"):
+        for needle in (ISSUER_CA[0], OPENPROJECT_CA[0], POSTGRES_CA[0], "rootCAsSecrets",
+                       "dev-env-api-ca", "openproject-portal-ca-1", "Re-pin it after the CNPG CA renewal", "dropped the admission witness"):
             self.assertIn(needle, checklist)
 
 

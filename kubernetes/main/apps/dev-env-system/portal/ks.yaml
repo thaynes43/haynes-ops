@@ -2,7 +2,7 @@
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
 # Story178 portal inputs, steps S4 and S6: what the portal needs before its
 # Deployment exists. Serving certificates, the Service, Traefik's backend TLS check,
-# the non-secret config, two public CA bundles and the runtime ExternalSecret.
+# the non-secret config, three public CA bundles and the runtime ExternalSecret.
 # No Deployment, no route and no admission object. Nothing depends on this
 # Kustomization, so a failed input cannot hold back another app.
 #
@@ -30,6 +30,17 @@ spec:
     name: haynes-ops
     namespace: flux-system
   wait: true
+  # kstatus alone reads only observedGeneration and Reconciling/Stalled, which these
+  # kinds do not set, so without these a Certificate that never issues or an
+  # ExternalSecret that never syncs would still count as healthy. With them, the
+  # Kustomization is Ready only when both are Ready, and fails after the timeout.
+  healthCheckExprs:
+    - apiVersion: cert-manager.io/v1
+      kind: Certificate
+      current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
   interval: 30m
   retryInterval: 1m
   timeout: 5m
