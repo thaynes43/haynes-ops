@@ -1,0 +1,37 @@
+---
+# Story178 S8/S9: the portal's LAN-only route, the same pattern as dev-env and the
+# other internal apps here.
+# - Internal Traefik only: the traefik-internal class. traefik-external watches only
+#   its own class, so it never serves this route.
+# - Internal DNS only: haynesops.com is the UniFi external-dns zone, and the
+#   Cloudflare instance excludes it. The record targets internal.haynesops.
+# - No Cloudflare tunnel entry and no Authentik forward-auth middleware: the portal
+#   does its own OIDC login.
+# - In namespace dev because the wildcard certificate-haynesops is reflected there,
+#   not to dev-agents. traefik-internal allows the cross-namespace Service.
+# - Backend TLS is checked: Traefik looks the unqualified ServersTransport up in the
+#   Service's namespace (dev-agents) and trusts the portal's own CA.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: dev-env-v2-portal
+  namespace: dev
+  annotations:
+    external-dns.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`dev-env-v2.haynesops.com`) && PathPrefix(`/`)
+      services:
+        - kind: Service
+          name: dev-env-v2-portal
+          namespace: dev-agents
+          port: 8443
+          scheme: https
+          passHostHeader: true
+          serversTransport: dev-env-v2-portal
+  tls:
+    secretName: certificate-haynesops

@@ -181,3 +181,46 @@ Acceptance, read from metadata:
 - both Certificates are Ready;
 - the ExternalSecret is SecretSynced;
 - no portal pod exists yet.
+
+## Activation steps S8+S9: portal Deployment and internal route, 2026-10-26
+
+Owner direction (Tom, relayed by the coordinator): fastest path to a working demo. The same Flux Kustomization `dev-env-system/dev-env-v2-portal` now also registers the portal Deployment and its LAN-only route. Its `dependsOn`, `wait`, timeout and health checks are unchanged; `wait` judges the Deployment through kstatus, so the Kustomization is Ready only once the portal pod is Ready.
+
+**Deployment `dev-agents/dev-env-v2-portal`**, one replica:
+- ServiceAccount `dev-env-v2-portal`, already registered by `dev-env-rbac` (`portal-witness.yaml`); not duplicated. No API token automount.
+- ClusterFirst DNS with `ndots` 1, as the S1 policy requires. Pod Security restricted: non-root uid 65532, read-only root, no capabilities, RuntimeDefault seccomp. CPU limit 200m (the Kyverno dev-agents rule).
+- Probes: HTTPS `/healthz` (startup, liveness) and `/readyz` (readiness) with `Host: dev-env-v2.haynesops.com`. The portal answers them only over TLS for its own host. Both are static: they do not test the database or Authentik.
+- The image is one line: `ghcr.io/thaynes43/dev-env-portal:sha-4139a72@sha256:8bb9fee784c4476d5d5e75ce2da06d7aab68d28b5539d3fc03e3d1887f9695f6`. That is dev-env main `4139a72` (dev-env#560, admission fence removed; it includes b98247c's group authorization). Publish run 40399497473 signed it and verified the signature.
+
+What the portal reads (dev-env `web/portal/session/production.go` after dev-env#560) and where each file comes from:
+
+| Under `/etc/dev-env-portal` | Source |
+| --- | --- |
+| `config/<key>` | ConfigMap `dev-env-v2-portal-config`, whole. The two `witness-*` files are ignored extras. |
+| `secrets/OIDC_CLIENT_ID`, `secrets/OIDC_CLIENT_SECRET` | Secret `dev-env-v2-portal-oidc` (its ExternalSecret is in `dev-env-secrets`) |
+| `secrets/DB_USERNAME`, `DB_PASSWORD`, `SESSION_AEAD_KEY`, `SESSION_GENERATION` | Secret `dev-env-v2-portal-runtime` |
+| `secrets/OPENPROJECT_TOKEN` | Secret `dev-env-v2-portal-openproject`, **optional**. Nothing creates it yet. |
+| `secrets/OPERATOR_TOKEN` | Projected ServiceAccount token, audience `dev-env-operator`, one hour. The operator reader accepts only this identity. |
+| `ca/ca.crt` | ConfigMap `dev-env-v2-portal-postgres-ca` |
+| `ca/issuer-ca.crt` | ConfigMap `dev-env-v2-portal-issuer-ca` |
+| `ca/openproject-ca.crt` | ConfigMap `dev-env-v2-portal-openproject-ca` |
+| `ca/operator-ca.crt` | ConfigMap `dev-env-api-ca` (dev-env-pki's pinned copy in `dev-agents`; it verified the live operator API on 2026-10-26). No duplicate. |
+| `tls/tls.crt`, `tls/tls.key` | Secret `dev-env-v2-portal-tls`. Its `ca.crt` is not mounted, and the CA key Secret never is. |
+
+The portal starts without `OPENPROJECT_TOKEN`: the file is optional and Tasks shows "not connected". When Tom saves the property, a follow-up registers the `dev-env-v2-portal-openproject` ExternalSecret and changes the pod template (for example an annotation), because Reloader does not act on a Secret's creation. Reloader restarts the portal when any other mounted input changes.
+
+**IngressRoute `dev/dev-env-v2-portal`**, the pattern of the other internal apps here (for example `dev/dev-env`):
+- class `traefik-internal`; `traefik-external` serves only its own class;
+- `external-dns.kubernetes.io/target: internal.haynesops`. `haynesops.com` belongs to the UniFi external-dns, and the Cloudflare instance excludes it, so no public record is written;
+- entry point `websecure`, host `dev-env-v2.haynesops.com`, TLS `certificate-haynesops`. It sits in `dev` because that wildcard certificate is reflected to `dev`, not to `dev-agents`; `traefik-internal` allows the cross-namespace Service;
+- backend `dev-agents/dev-env-v2-portal:8443` over HTTPS with ServersTransport `dev-env-v2-portal`. Traefik v3.7.16 resolves that name in the Service's namespace and checks the portal leaf against the portal CA;
+- no middleware, no Authentik forward-auth (the portal does its own OIDC), no Cloudflare tunnel entry.
+
+Checks: `RegisteredInputsTest` pins the file map above, the pod's identity, DNS and security context, the one image line, and the route's class, DNS target, host, entry point, TLS and backend. Mutations that would expose the route publicly (external class, Cloudflare host or annotation, extra entry point, middleware, plain HTTP backend) or break a mount fail it.
+
+A throwaway run of `LoadProduction` at dev-env#560 head `3bc4d44` read a tree built from this Deployment's rendered mounts (rendered ConfigMaps, the live `dev-env-api-ca`, synthetic secrets and leaf, a synthetic operator token, no OpenProject token). It loaded, answered `/healthz` and `/readyz` with the probe's Host, refused a probe without it, and refused to start without `ca/operator-ca.crt`. Nothing from that run is committed.
+
+Acceptance, after the image bump and merge:
+- the Kustomization is Ready and the pod is Ready;
+- `dev-env-v2.haynesops.com` resolves on the LAN only, and sign-in through Authentik reaches the Agents page for an Admins member;
+- Sessions lists the dev-env sessions in `dev-agents`; Tasks shows not connected until the OpenProject token exists.
