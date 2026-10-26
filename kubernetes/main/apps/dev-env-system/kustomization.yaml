@@ -32,3 +32,4 @@ resources:
   - ./keeper/ks.yaml
   - ./native-lifecycle/ks.json
   - ./owned-luna-prep/ks.yaml
+  - ./portal/policy/ks.yaml

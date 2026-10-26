@@ -1,0 +1,65 @@
+# Story178 portal network policy, registered 2026-10-26 (step S1), verbatim
+# from the reviewed packet. It selects only pods labelled dev-env-v2-portal, and
+# none exist yet. The shared session tiers already exclude that label (#4277).
+# REQUIRED pod DNS when the Deployment lands: ClusterFirst with ndots=1, so the
+# exact DNS names below stay narrow.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-v2-portal
+  namespace: dev-agents
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-v2-portal
+  enableDefaultDeny:
+    ingress: true
+    egress: true
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: network
+            app.kubernetes.io/name: traefik
+            app.kubernetes.io/instance: traefik-internal-network
+      toPorts:
+        - ports: [{port: '8443', protocol: TCP}]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports: [{port: '53', protocol: ANY}]
+          rules:
+            dns:
+              - matchName: authentik.haynesnetwork.com
+              - matchName: postgres16-rw.database.svc.cluster.local
+              - matchName: kubernetes.default.svc.cluster.local
+              - matchName: openproject-web.frontend.svc.cluster.local
+              - matchName: dev-env-operator.dev-env-system.svc.cluster.local
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: database
+            cnpg.io/cluster: postgres16
+      toPorts:
+        - ports: [{port: '5432', protocol: TCP}]
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports: [{port: '443', protocol: TCP}, {port: '6443', protocol: TCP}]
+    - toFQDNs:
+        - matchName: authentik.haynesnetwork.com
+      toPorts:
+        - ports: [{port: '443', protocol: TCP}]
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: frontend
+            app.kubernetes.io/instance: openproject
+            app.kubernetes.io/controller: web
+      toPorts:
+        - ports: [{port: '8443', protocol: TCP}]
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-operator
+      toPorts:
+        - ports: [{port: '8443', protocol: TCP}]

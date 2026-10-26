@@ -222,7 +222,7 @@ spec:
               # `n_ctx_train` warning in the log if you ever raise it again.
               # KV cost is roughly linear: 16k->32k per slot measured ~+240 MiB.
               # TEMPORARY (haynesnetwork OpenProject #208, 2026-10-26): benchmark
-              # settings for the dev-tl1 tool-lift run: one 16k slot, thinking off.
+              # settings for the dev-tl1 tool-lift run: one 16k slot, minimal reasoning.
               # Revert to 131072 / 2 slots / --reasoning-effort low afterwards.
               - --ctx-size
               - "16384"
@@ -236,8 +236,10 @@ spec:
               # normalises "Reasoning effort" -> "Reasoning strength" in a system
               # prompt). `low` keeps assistant/HA latency down; the flag is
               # accepted by this build (`minimal|low|medium|high|xhigh|max`).
-              - --reasoning-budget
-              - "0"
+              # Muse's template has no "off": without --reasoning-effort it falls back
+              # to "high" (seen in the #208 smoke). minimal is its lowest level.
+              - --reasoning-effort
+              - minimal
               - --flash-attn
               - "on"
               # q8_0 KV roughly halves cache VRAM against the f16 default at

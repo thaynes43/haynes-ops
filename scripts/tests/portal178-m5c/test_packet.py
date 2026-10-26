@@ -447,11 +447,34 @@ class Packet(unittest.TestCase):
                 helper.main()
 
     def test_staged_registration_surface(self):
+        # Share the exact DB-precursor predicate rather than adding a name-only
+        # exception or a second definition of its permitted fields/recipient.
+        component_path = ROOT / "scripts/tests/portal178-m5d/test_component.py"
+        spec = importlib.util.spec_from_file_location("portal_component_guard", component_path)
+        component = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(component)
         cluster = yaml.safe_load(CLUSTER.read_text())
         reject = load("hba-stage-reject.yaml")["pg_hba"]
         allow = load("hba-stage-allow.yaml")["rule"]
         self.assertEqual(cluster["spec"]["postgresql"]["pg_hba"], reject)
-        self.assertNotIn("managed", cluster["spec"])
+        # Roles-only preproof stage: exactly the reviewed roles and Database,
+        # still behind all six rejects.
+        self.assertEqual(cluster["spec"]["managed"], load("roles-stage-preproof.patch.yaml")["spec"]["managed"])
+        registered_db = CLUSTER.parent / "portal-database.yaml"
+        self.assertEqual(yaml.safe_load(registered_db.read_text()), load("database.yaml"))
+        resources = yaml.safe_load((CLUSTER.parent / "kustomization.yaml").read_text())["resources"]
+        self.assertEqual(resources.count("./portal-database.yaml"), 1)
+        self.assertEqual(load("database.yaml")["metadata"]["annotations"],
+                         {"kustomize.toolkit.fluxcd.io/prune": "disabled"})
+        self.assertEqual(load("database.yaml")["spec"]["databaseReclaimPolicy"], "retain")
+        registered_kinds = []
+        for path in (ROOT / "kubernetes").rglob("*.yaml"):
+            text = path.read_text(errors="replace")
+            if "kind: Database" in text:
+                for doc in yaml.safe_load_all(text):
+                    if doc and doc.get("kind") in {"Database", "DatabaseRole"}:
+                        registered_kinds.append((path.resolve(), doc["kind"]))
+        self.assertEqual(registered_kinds, [(registered_db.resolve(), "Database")])
         self.assertEqual(hba_stage_violations(reject, allow), [])
         self.assertTrue(hba_stage_violations(reject + [allow], allow))
         self.assertTrue(hba_stage_violations(reject, allow.replace(RUNTIME, MIGRATOR)))
@@ -475,8 +498,22 @@ class Packet(unittest.TestCase):
                 continue
             for doc in yaml.safe_load_all(text):
                 if doc and doc.get("kind") == "ExternalSecret" and "dev-env-v2-portal" in doc.get("metadata", {}).get("name", ""):
-                    self.assertEqual(approved_portal_oidc_violations(path, doc), [], str(path))
-                    self.assertEqual(path.resolve(), PORTAL_OIDC.resolve(), str(path))
+                    if doc["metadata"]["name"] == "dev-env-v2-portal-runtime-db":
+                        self.assertEqual(component.approved_portal_db_violations(path, doc), [], str(path))
+                    else:
+                        self.assertEqual(approved_portal_oidc_violations(path, doc), [], str(path))
+                        self.assertEqual(path.resolve(), PORTAL_OIDC.resolve(), str(path))
+        db = yaml.safe_load(component.PORTAL_DB.read_text())
+        self.assertEqual(component.approved_portal_db_violations(component.PORTAL_DB, db), [])
+        self.assertTrue(component.approved_portal_db_violations(component.PORTAL_DB.with_name("other.yaml"), db))
+        for mutate in (
+            lambda doc: doc["spec"]["data"][0]["remoteRef"].update(property="SESSION_AEAD_KEY"),
+            lambda doc: doc["spec"].update(dataFrom=[{"extract": {"key": "dev-env"}}]),
+            lambda doc: doc["metadata"].update(namespace="dev-agents"),
+        ):
+            invalid = deepcopy(db)
+            mutate(invalid)
+            self.assertTrue(component.approved_portal_db_violations(component.PORTAL_DB, invalid))
         authentik = (ROOT / "kubernetes/main/apps/network/authentik/app/kustomization.yaml").read_text()
         self.assertIn("97-dev-env-v2-portal-oidc.yaml", authentik)
         self.assertNotIn("98-", authentik)

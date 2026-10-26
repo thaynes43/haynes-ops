@@ -7,3 +7,5 @@ resources:
   - ./cluster16-pgvecto.yaml
   - ./scheduledbackup.yaml
   - ./service.yaml
+  - ./portal-runtime-db-externalsecret.yaml
+  - ./portal-database.yaml

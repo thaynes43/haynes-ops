@@ -19,9 +19,12 @@ step. See [client release packet](../portal178-m5a/RELEASE.md).
 
 Registered in this source, and applied only after root review and required CI:
 reject-only portal HBA on `postgres16`, the portal-local mapping inside
-blueprint 97, and the static witness RBAC. Still unregistered: managed roles,
-Database, ExternalSecrets, the runtime hostssl allow, the migrator allow, the
-CLOSED admission ConfigMap, BFF, and any route. Runtime remains 503.
+blueprint 97, and the static witness RBAC. Since 2026-10-26 also registered:
+the runtime DB credential projection (#4309), and the roles-only preproof
+roles plus the retained Database/schema (cluster16.yaml `managed.roles`,
+`portal-database.yaml`). Still unregistered: the runtime/OpenProject
+ExternalSecrets, the runtime hostssl allow, the migrator allow, the CLOSED
+admission ConfigMap, BFF, and any route. Runtime remains 503.
 See [review corrections](REVIEW-CORRECTIONS.md) and
 [recovery proposal](RECOVERY-PROPOSAL.md).
 
@@ -39,6 +42,12 @@ ownermigrator; exactly `pending_logins` and `sessions`. Runtime
 UPDATE/TRUNCATE/CREATE/TEMP, ownership/admin/role/replication/BYPASSRLS or grant
 option. Migrator `dev_env_v2_portal_migrator` owns only this schema/tables; never
 BFF-mounted. No role-membership edge in either direction is allowed.
+
+**Registered 2026-10-26.** The role-only preproof stage below is now registered
+verbatim as `postgres16` `spec.managed.roles` in `cluster16.yaml`, with the
+retained Database as `portal-database.yaml`. The pending file and its
+"UNREGISTERED" header stay as the reviewed source; the paragraph below is
+the pre-registration record. It is still not ACL proof: that is 010/020/030.
 
 The unregistered [role-only preproof stage](pending/roles-stage-preproof.patch.yaml)
 sets runtime connectionLimit 8 and migrator 1 without a `postgresql`/HBA stanza.
