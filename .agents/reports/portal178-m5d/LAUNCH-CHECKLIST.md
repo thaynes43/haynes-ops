@@ -91,3 +91,21 @@ Next, in order, through `peer_bootstrap.py` and the reviewed hashes:
 3. `030-verify.sql` (`b3a0b176…c572f`) with `--verify-reviewed-sha256`.
 
 Excluded from this stage: the runtime hostssl allow, portal activation, OIDC, the witness and admission changes.
+
+## Activation step S1: portal network policy, 2026-10-26
+
+Tom approved starting the activation stage (#178 journal 1784). The packet's `registration/policy-ks.yaml` would have pointed Flux at this report directory and placed the Kustomization in `dev-agents`.
+
+Instead, the policy is registered verbatim through its own Flux Kustomization:
+- `dev-env-system/dev-env-v2-portal-policy`;
+- path `kubernetes/main/apps/dev-env-system/portal/policy/app`;
+- target `dev-agents`.
+
+Nothing depends on it. It selects only `app.kubernetes.io/name: dev-env-v2-portal`, and no pod has that label yet. The shared session-tier exclusions for that label are already live (#4277).
+
+Acceptance is metadata only:
+- the CNP is Valid;
+- the Kustomization is Ready;
+- no portal pod exists.
+
+The workload Kustomization will `dependsOn` this one.
