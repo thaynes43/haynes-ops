@@ -4,6 +4,9 @@ Agent-facing operational docs for this repo — runbooks, safety rules, and refe
 
 Top-level agent instructions live in [`CLAUDE.md`](../CLAUDE.md); this folder holds the longer-form material it references.
 
+## skills/ — reusable task skills
+- [renovate-queue](skills/renovate-queue/SKILL.md) — survey the live Dependency Dashboard and every open update PR, then deliver an eligible reviewed head through the existing upgrade path.
+
 **[`HARDENING.md`](HARDENING.md) — safety defects found while doing other work.** Checks that
 can pass without having run, docs that assert a safety property the cluster does not have, and
 guards whose degraded state is fail-open. Append findings there as you hit them; a false green
