@@ -25,6 +25,7 @@ PORTAL_DB = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/portal-
 PORTAL_TREE = ROOT / "kubernetes/main/apps/dev-env-system/portal"
 PORTAL_INPUTS = PORTAL_TREE / "app"
 PORTAL_RUNTIME = PORTAL_INPUTS / "runtime-externalsecret.yaml"
+PORTAL_OPENPROJECT = PORTAL_INPUTS / "openproject-externalsecret.yaml"
 # Story178 S8+S9: the registered Deployment and its internal-only route.
 PORTAL_DEPLOYMENT = PORTAL_INPUTS / "deployment.yaml"
 PORTAL_ROUTE = PORTAL_INPUTS / "ingressroute.yaml"
@@ -256,12 +257,31 @@ def approved_portal_runtime_violations(path, doc):
     return [] if path.resolve() == PORTAL_RUNTIME.resolve() and doc == expected else ["noncanonical-portal-runtime"]
 
 
-APPROVED_LIVE_PATHS = {PORTAL_OIDC.resolve(), PORTAL_DB.resolve(), PORTAL_RUNTIME.resolve()}
+def approved_portal_openproject_violations(path, doc):
+    """Fast path, 2026-10-26: the agents' existing token, one property, one path."""
+    expected = {
+        "apiVersion": "external-secrets.io/v1", "kind": "ExternalSecret",
+        "metadata": {"name": "dev-env-v2-portal-openproject", "namespace": "dev-agents"},
+        "spec": {
+            "secretStoreRef": STORE, "refreshInterval": "1h",
+            "target": {
+                "name": "dev-env-v2-portal-openproject", "creationPolicy": "Owner", "deletionPolicy": "Delete",
+                "template": {"engineVersion": "v2", "mergePolicy": "Replace", "type": "Opaque",
+                             "data": {"OPENPROJECT_TOKEN": "{{ .OPENPROJECT_TOKEN }}"}},
+            },
+            "data": [{"secretKey": "OPENPROJECT_TOKEN", "remoteRef": {"key": "openproject", "property": "API_TOKEN"}}],
+        },
+    }
+    return [] if path.resolve() == PORTAL_OPENPROJECT.resolve() and doc == expected else ["noncanonical-portal-openproject"]
+
+
+APPROVED_LIVE_PATHS = {PORTAL_OIDC.resolve(), PORTAL_DB.resolve(), PORTAL_RUNTIME.resolve(), PORTAL_OPENPROJECT.resolve()}
 
 
 def approved_live_projection(path, doc):
     return (not approved_portal_oidc_violations(path, doc) or not approved_portal_db_violations(path, doc)
-            or not approved_portal_runtime_violations(path, doc))
+            or not approved_portal_runtime_violations(path, doc)
+            or not approved_portal_openproject_violations(path, doc))
 
 
 def dev_env_properties_from_documents(documents):
@@ -402,6 +422,7 @@ INPUT_OBJECTS = {
     ("Certificate", "dev-env-v2-portal-ca"),
     ("Certificate", "dev-env-v2-portal-serving"),
     ("ExternalSecret", "dev-env-v2-portal-runtime"),
+    ("ExternalSecret", "dev-env-v2-portal-openproject"),
     ("ServersTransport", "dev-env-v2-portal"),
 }
 
@@ -596,7 +617,8 @@ def registered_input_violations(docs):
                 violations.append("admission-config")
         if doc.get("kind") == "ServersTransport" and "rootCAs" in doc.get("spec", {}):
             violations.append("rootCAs-pruned-by-installed-crd")
-        if doc.get("kind") == "ExternalSecret" and approved_portal_runtime_violations(PORTAL_RUNTIME, doc):
+        if (doc.get("kind") == "ExternalSecret" and approved_portal_runtime_violations(PORTAL_RUNTIME, doc)
+                and approved_portal_openproject_violations(PORTAL_OPENPROJECT, doc)):
             violations.append("runtime-externalsecret")
     text = yaml.safe_dump_all(docs)
     for needle in ("PORTAL_SUBJECT", "config/subject", "PRIVATE KEY", "dataFrom"):
@@ -1534,14 +1556,15 @@ class RegisteredInputsTest(unittest.TestCase):
         manifest = load(PORTAL_INPUTS / "kustomization.yaml")
         self.assertEqual(manifest["resources"], [
             "./certificates.yaml", "./service.yaml", "./serverstransport.yaml",
-            "./config.yaml", "./runtime-externalsecret.yaml", "./deployment.yaml", "./ingressroute.yaml",
+            "./config.yaml", "./runtime-externalsecret.yaml", "./openproject-externalsecret.yaml",
+            "./deployment.yaml", "./ingressroute.yaml",
         ])
         self.assertNotIn("namespace", manifest)
         self.assertNotIn("components", manifest)
         self.assertEqual(manifest["generatorOptions"], {"disableNameSuffixHash": True})
         self.assertEqual(sorted(p.name for p in PORTAL_INPUTS.iterdir()), sorted([
             "kustomization.yaml", "certificates.yaml", "service.yaml", "serverstransport.yaml",
-            "config.yaml", "runtime-externalsecret.yaml", "issuer-ca.crt", "openproject-ca.crt",
+            "config.yaml", "runtime-externalsecret.yaml", "openproject-externalsecret.yaml", "issuer-ca.crt", "openproject-ca.crt",
             "postgres-ca.crt", "deployment.yaml", "ingressroute.yaml",
         ]))
         self.assertEqual(registered_input_violations(self.docs), [])
@@ -1682,14 +1705,17 @@ class RegisteredInputsTest(unittest.TestCase):
         )
         # The OIDC Secret stays with its existing owner; it is not duplicated here.
         self.assertNotIn(("ExternalSecret", "dev-env-v2-portal-oidc"), self.by_key)
-        self.assertNotIn(("ExternalSecret", "dev-env-v2-portal-openproject"), self.by_key)
+        openproject = self.by_key[("ExternalSecret", "dev-env-v2-portal-openproject")]
+        self.assertEqual(approved_portal_openproject_violations(PORTAL_OPENPROJECT, openproject), [])
+        self.assertTrue(approved_portal_openproject_violations(PORTAL_RUNTIME, openproject))
+        self.assertEqual(dev_env_properties_from_documents([(PORTAL_OPENPROJECT, openproject)]), set())
 
     def test_deployment_mounts_exactly_what_the_portal_reads(self):
         deployment = self.by_key[("Deployment", "dev-env-v2-portal")]
         self.assertEqual(deployment_violations(deployment, self.docs), [])
         self.assertEqual(expand_config_files(mounted_files(deployment), self.docs), PRODUCTION_FILES)
         # Every source the pod needs is registered here, by dev-env-secrets or by dev-env-pki,
-        # and only OPENPROJECT_TOKEN may be absent.
+        # and OPENPROJECT_TOKEN is mounted optional but now registered too.
         oidc = load(PORTAL_OIDC)
         self.assertEqual((oidc["metadata"]["namespace"], oidc["spec"]["target"]["name"]),
                          ("dev-agents", "dev-env-v2-portal-oidc"))
@@ -1702,7 +1728,7 @@ class RegisteredInputsTest(unittest.TestCase):
                 self.assertIn(name, registered, path)
             elif kind == "Secret?":
                 self.assertEqual(path, "secrets/OPENPROJECT_TOKEN")
-                self.assertNotIn(name, registered)
+                self.assertIn(name, registered)
         # The operator's CA is dev-env-pki's pinned dev-agents/dev-env-api-ca, not a copy.
         pki = load(ROOT / "kubernetes/main/apps/dev-env-system/pki/app/kustomization.yaml")
         self.assertIn({"name": "dev-env-api-ca", "namespace": "dev-agents", "files": ["ca.crt"]},

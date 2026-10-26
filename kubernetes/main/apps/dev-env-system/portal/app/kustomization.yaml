@@ -11,6 +11,7 @@ resources:
   - ./serverstransport.yaml
   - ./config.yaml
   - ./runtime-externalsecret.yaml
+  - ./openproject-externalsecret.yaml
   - ./deployment.yaml
   - ./ingressroute.yaml
 configMapGenerator:
