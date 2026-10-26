@@ -17,6 +17,7 @@ CONTRACT = ROOT / ".agents/reports/portal178-m5d/DEPLOYMENT-CONTRACT.md"
 CHECKLIST = ROOT / ".agents/reports/portal178-m5d/LAUNCH-CHECKLIST.md"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
 PORTAL_OIDC = ROOT / "kubernetes/main/apps/dev-env-system/secrets/app/externalsecret-portal-oidc.yaml"
+PORTAL_DB = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/portal-runtime-db-externalsecret.yaml"
 CURRENT_RUNTIME_HEAD = "af402e533379bddd81e9266ee80ec6c565b81f29"
 PORTAL_IMAGE = (
     "ghcr.io/thaynes43/dev-env-portal:sha-af402e5"
@@ -136,12 +137,42 @@ def approved_portal_oidc_violations(path, doc):
     return [] if path.resolve() == PORTAL_OIDC.resolve() and doc == expected else ["noncanonical-portal-oidc"]
 
 
+
+def approved_portal_db_violations(path, doc):
+    """Only the reviewed two-field CNPG precursor may join live consumers."""
+    expected = {
+        "apiVersion": "external-secrets.io/v1", "kind": "ExternalSecret",
+        "metadata": {"name": "dev-env-v2-portal-runtime-db", "namespace": "database"},
+        "spec": {
+            "secretStoreRef": STORE, "refreshInterval": "1h",
+            "target": {
+                "name": "dev-env-v2-portal-runtime-db", "creationPolicy": "Owner", "deletionPolicy": "Delete",
+                "template": {
+                    "engineVersion": "v2", "mergePolicy": "Replace",
+                    "metadata": {"labels": {"cnpg.io/reload": "true"}},
+                    "type": "kubernetes.io/basic-auth",
+                    "data": {"username": "{{ .DB_USERNAME }}", "password": "{{ .DB_PASSWORD }}"},
+                },
+            },
+            "data": [
+                {"secretKey": "DB_USERNAME", "remoteRef": {"key": CANONICAL_ITEM, "property": "DB_USERNAME"}},
+                {"secretKey": "DB_PASSWORD", "remoteRef": {"key": CANONICAL_ITEM, "property": "DB_PASSWORD"}},
+            ],
+        },
+    }
+    return [] if path.resolve() == PORTAL_DB.resolve() and doc == expected else ["noncanonical-portal-db"]
+
+
+def approved_live_projection(path, doc):
+    return not approved_portal_oidc_violations(path, doc) or not approved_portal_db_violations(path, doc)
+
+
 def dev_env_properties_from_documents(documents):
     found = set()
     for path, doc in documents:
         if not doc or doc.get("kind") != "ExternalSecret":
             continue
-        if not approved_portal_oidc_violations(path, doc):
+        if approved_live_projection(path, doc):
             continue
         for item in doc.get("spec", {}).get("data", []):
             ref = item.get("remoteRef", {})
@@ -156,9 +187,9 @@ def dev_env_properties(tree):
     found = set()
     for path in tree.rglob("*.yaml"):
         text = path.read_text(errors="replace")
-        if path.resolve() == PORTAL_OIDC.resolve():
+        if path.resolve() in {PORTAL_OIDC.resolve(), PORTAL_DB.resolve()}:
             documents = list(yaml.safe_load_all(text))
-            if len(documents) == 1 and not approved_portal_oidc_violations(path, documents[0]):
+            if len(documents) == 1 and approved_live_projection(path, documents[0]):
                 continue
         found.update(inline.findall(text))
         found.update(block.findall(text))
@@ -653,11 +684,34 @@ class ComponentRenderTest(unittest.TestCase):
             if "kind: ExternalSecret" in text:
                 for doc in yaml.safe_load_all(text):
                     if doc and doc.get("kind") == "ExternalSecret" and "dev-env-v2-portal" in doc.get("metadata", {}).get("name", ""):
-                        self.assertEqual(approved_portal_oidc_violations(path, doc), [], str(path))
-                        self.assertEqual(path.resolve(), PORTAL_OIDC.resolve(), str(path))
+                        self.assertTrue(approved_live_projection(path, doc), str(path))
+                        self.assertIn(path.resolve(), {PORTAL_OIDC.resolve(), PORTAL_DB.resolve()})
             if "kind: ConfigMap" in text and "name: dev-env-v2-portal-admission" in text:
                 self.fail("CLOSED admission seed is registered in " + str(path))
 
+
+    def test_registered_db_projection_is_exact_and_keeps_other_properties_closed(self):
+        approved = load(PORTAL_DB)
+        self.assertEqual(approved_portal_db_violations(PORTAL_DB, approved), [])
+        self.assertEqual(approved["spec"], load(PENDING / "role-externalsecrets.yaml")["spec"])
+        manifest = load(PORTAL_DB.parent / "kustomization.yaml")
+        self.assertEqual(manifest["resources"].count("./portal-runtime-db-externalsecret.yaml"), 1)
+        self.assertEqual(dev_env_properties_from_documents([(PORTAL_DB, approved)]), set())
+        for mutate in (
+            lambda doc: doc["spec"]["data"][0]["remoteRef"].update(key="wrong-item"),
+            lambda doc: doc["spec"]["data"][0]["remoteRef"].update(property="SESSION_AEAD_KEY"),
+            lambda doc: doc["spec"]["data"].append({"secretKey": "EXTRA", "remoteRef": {"key": CANONICAL_ITEM, "property": "EXTRA"}}),
+            lambda doc: doc["spec"].update(dataFrom=[{"extract": {"key": CANONICAL_ITEM}}]),
+            lambda doc: doc["metadata"].update(namespace="dev-agents"),
+            lambda doc: doc["spec"]["target"].update(name="another-recipient"),
+            lambda doc: doc["spec"]["target"]["template"]["data"].update(username="{{ .SESSION_AEAD_KEY }}"),
+        ):
+            invalid = deepcopy(approved)
+            mutate(invalid)
+            self.assertTrue(approved_portal_db_violations(PORTAL_DB, invalid))
+        wrong_path = PORTAL_DB.with_name("another-consumer.yaml")
+        self.assertTrue(approved_portal_db_violations(wrong_path, approved))
+        self.assertEqual(dev_env_properties_from_documents([(wrong_path, approved)]), set(DB_FIELDS))
 
     def test_historical_item_keys_and_unrelated_properties_are_rejected(self):
         rendered_secrets = by_kind(self.docs, "ExternalSecret")
