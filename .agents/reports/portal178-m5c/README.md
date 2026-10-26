@@ -43,6 +43,12 @@ UPDATE/TRUNCATE/CREATE/TEMP, ownership/admin/role/replication/BYPASSRLS or grant
 option. Migrator `dev_env_v2_portal_migrator` owns only this schema/tables; never
 BFF-mounted. No role-membership edge in either direction is allowed.
 
+**Registered 2026-10-26.** The role-only preproof stage below is now registered
+verbatim as `postgres16` `spec.managed.roles` in `cluster16.yaml`, with the
+retained Database as `portal-database.yaml`. The pending file and its
+"UNREGISTERED" header stay as the reviewed source; the paragraph below is
+the pre-registration record. It is still not ACL proof: that is 010/020/030.
+
 The unregistered [role-only preproof stage](pending/roles-stage-preproof.patch.yaml)
 sets runtime connectionLimit 8 and migrator 1 without a `postgresql`/HBA stanza.
 It is **INERT source only**, not actual ACL, controller, admission, dynamic witness,

@@ -674,8 +674,12 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(cluster["spec"]["postgresql"]["pg_hba"], rejects)
         self.assertEqual(cluster["spec"]["managed"], load(PENDING / "roles-stage-preproof.patch.yaml")["spec"]["managed"])
         self.assertEqual(load(CLUSTER.parent / "portal-database.yaml"), load(PENDING / "database.yaml"))
+        database_kinds = []
         for path in (ROOT / "kubernetes").rglob("*.yaml"):
             text = path.read_text(errors="replace")
+            if "kind: Database" in text:
+                database_kinds += [(path.resolve(), doc["kind"]) for doc in yaml.safe_load_all(text)
+                                   if doc and doc.get("kind") in {"Database", "DatabaseRole"}]
             self.assertNotIn("portal178-m5d", text, str(path))
             self.assertNotIn("hostssl dev_env_v2_portal", text, str(path))
             if "kind: Deployment" in text and "name: dev-env-v2-portal" in text:
@@ -689,6 +693,7 @@ class ComponentRenderTest(unittest.TestCase):
                         self.assertIn(path.resolve(), {PORTAL_OIDC.resolve(), PORTAL_DB.resolve()})
             if "kind: ConfigMap" in text and "name: dev-env-v2-portal-admission" in text:
                 self.fail("CLOSED admission seed is registered in " + str(path))
+        self.assertEqual(database_kinds, [((CLUSTER.parent / "portal-database.yaml").resolve(), "Database")])
 
 
     def test_registered_db_projection_is_exact_and_keeps_other_properties_closed(self):

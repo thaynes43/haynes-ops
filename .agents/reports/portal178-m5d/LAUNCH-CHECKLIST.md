@@ -78,6 +78,13 @@ This stage registers two things through the existing `cloudnative-pg-cluster` Ku
 
 All six HBA rejects stay unchanged, so neither role can connect yet.
 
+Flux Ready does not prove the roles and schema were applied. Before 010, read back metadata only:
+- `Database/dev-env-v2-portal` `status.applied` is true, and `status.schemas` shows `portal` applied;
+- `Cluster/postgres16` `status.managedRolesStatus` lists both roles, and `cannotReconcile` is empty;
+- `peer_bootstrap.py --preflight` reports `targetRoleCount` 2 and `targetDatabaseCount` 1.
+
+The CNPG Database controller retries after 30 seconds if it created the schema before the migrator role. Allow that one retry before treating `applied: false` as a stop.
+
 Next, in order, through `peer_bootstrap.py` and the reviewed hashes:
 1. `010-bootstrap.sql` (`9c2d4c11…c230e`) with `--apply-reviewed-sha256`;
 2. `020-tables.sql` (`4408926b…ab64`) with `--migrate-reviewed-sha256`;
