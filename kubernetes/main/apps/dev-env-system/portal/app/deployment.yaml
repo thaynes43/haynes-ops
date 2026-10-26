@@ -65,7 +65,7 @@ spec:
       containers:
         - name: portal
           # The one image line. Placeholder until the dev-env#560 image publishes.
-          image: ghcr.io/thaynes43/dev-env-portal:sha-4139a72@sha256:8bb9fee784c4476d5d5e75ce2da06d7aab68d28b5539d3fc03e3d1887f9695f6
+          image: ghcr.io/thaynes43/dev-env-portal:sha-0effa8b@sha256:6d81d2633f984103b39ba2d1b03ab1f2dd1a7bef7dc3b74d7fe16c40e026b33c
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
