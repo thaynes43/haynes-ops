@@ -126,6 +126,10 @@ spec:
   validations:
     - expression: >-
         request.namespace == 'dev-agents' && object.metadata.uid == oldObject.metadata.uid &&
+        'dev-env.haynesops.com/session' in variables.labels &&
+        variables.labels['dev-env.haynesops.com/session'] == object.metadata.name &&
+        object.metadata.?ownerReferences.orValue([]).exists(o, o.kind == 'AgentSession' && o.name == object.metadata.name && o.?controller.orValue(false)) &&
+        (!('dev-env.haynesops.com/hold' in variables.labels) || variables.labels['dev-env.haynesops.com/hold'] != 'true') &&
         variables.key in variables.labels && variables.labels[variables.key] == object.metadata.uid &&
         variables.labels.all(k, k == variables.key || (k in variables.oldLabels && variables.labels[k] == variables.oldLabels[k])) &&
         variables.oldLabels.all(k, k == variables.key || (k in variables.labels && variables.labels[k] == variables.oldLabels[k])) &&
