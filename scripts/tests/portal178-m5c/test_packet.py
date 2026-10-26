@@ -512,6 +512,8 @@ class Packet(unittest.TestCase):
                         # Story178 S4+S6: the reviewed four-property projection, one path only.
                         self.assertEqual(component.approved_portal_runtime_violations(path, doc), [], str(path))
                         self.assertEqual(doc["spec"], load("runtime-externalsecret.yaml")["spec"], str(path))
+                    elif doc["metadata"]["name"] == "dev-env-v2-portal-openproject":
+                        self.assertEqual(component.approved_portal_openproject_violations(path, doc), [], str(path))
                     else:
                         self.assertEqual(approved_portal_oidc_violations(path, doc), [], str(path))
                         self.assertEqual(path.resolve(), PORTAL_OIDC.resolve(), str(path))
