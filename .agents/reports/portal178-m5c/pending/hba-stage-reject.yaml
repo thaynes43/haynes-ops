@@ -1,3 +1,5 @@
+# Registered 2026-10-26 by S7: cluster16.yaml now carries these six rejects plus
+# the one runtime allow (= cluster-portal.patch.yaml). Kept as the reject-stage record.
 # First HBA registration. Must stay equal to cluster16.spec.postgresql.pg_hba.
 # No hostssl/SCRAM allow. No roles, database, or migrator admission.
 pg_hba:

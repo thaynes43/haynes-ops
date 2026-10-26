@@ -114,4 +114,6 @@ The workload Kustomization will `dependsOn` this one.
 
 After the 010/020/030 proof (#178 journal 1782), `cluster16.yaml` registers the reviewed post-proof HBA list, the same as `cluster-portal.patch.yaml`: the six rejects plus `hostssl dev_env_v2_portal dev_env_v2_portal_runtime 10.42.0.0/16 scram-sha-256`. The allow sits before the two `host all` rejects. The migrator still has no allow.
 
-CNPG reloads the HBA rules without a restart. Acceptance is a read-only peer query of `pg_hba_file_rules`: no errors, and the allow comes before the `host all` rejects.
+CNPG asks PostgreSQL to reload the HBA rules without a restart. PostgreSQL parses the file, and a failed reload silently keeps the old rules. Acceptance is a read-only peer query:
+- `pg_hba_file_rules` shows no errors, and the allow comes before the `host all` rejects;
+- `pg_conf_load_time()` is later than the reconcile, proving the server loaded this file.

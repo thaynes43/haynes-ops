@@ -1,3 +1,4 @@
+# Registered 2026-10-26: roles by #4310, this HBA list by S7 (cluster16.yaml).
 # UNREGISTERED future proposal. Do not register this file as the first change.
 # Stage 1 is pending/hba-stage-reject.yaml, already represented on cluster16.
 # This pg_hba list is the post-proof composition: reject stage plus the single
