@@ -447,6 +447,12 @@ class Packet(unittest.TestCase):
                 helper.main()
 
     def test_staged_registration_surface(self):
+        # Share the exact DB-precursor predicate rather than adding a name-only
+        # exception or a second definition of its permitted fields/recipient.
+        component_path = ROOT / "scripts/tests/portal178-m5d/test_component.py"
+        spec = importlib.util.spec_from_file_location("portal_component_guard", component_path)
+        component = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(component)
         cluster = yaml.safe_load(CLUSTER.read_text())
         reject = load("hba-stage-reject.yaml")["pg_hba"]
         allow = load("hba-stage-allow.yaml")["rule"]
@@ -475,8 +481,22 @@ class Packet(unittest.TestCase):
                 continue
             for doc in yaml.safe_load_all(text):
                 if doc and doc.get("kind") == "ExternalSecret" and "dev-env-v2-portal" in doc.get("metadata", {}).get("name", ""):
-                    self.assertEqual(approved_portal_oidc_violations(path, doc), [], str(path))
-                    self.assertEqual(path.resolve(), PORTAL_OIDC.resolve(), str(path))
+                    if doc["metadata"]["name"] == "dev-env-v2-portal-runtime-db":
+                        self.assertEqual(component.approved_portal_db_violations(path, doc), [], str(path))
+                    else:
+                        self.assertEqual(approved_portal_oidc_violations(path, doc), [], str(path))
+                        self.assertEqual(path.resolve(), PORTAL_OIDC.resolve(), str(path))
+        db = yaml.safe_load(component.PORTAL_DB.read_text())
+        self.assertEqual(component.approved_portal_db_violations(component.PORTAL_DB, db), [])
+        self.assertTrue(component.approved_portal_db_violations(component.PORTAL_DB.with_name("other.yaml"), db))
+        for mutate in (
+            lambda doc: doc["spec"]["data"][0]["remoteRef"].update(property="SESSION_AEAD_KEY"),
+            lambda doc: doc["spec"].update(dataFrom=[{"extract": {"key": "dev-env"}}]),
+            lambda doc: doc["metadata"].update(namespace="dev-agents"),
+        ):
+            invalid = deepcopy(db)
+            mutate(invalid)
+            self.assertTrue(component.approved_portal_db_violations(component.PORTAL_DB, invalid))
         authentik = (ROOT / "kubernetes/main/apps/network/authentik/app/kustomization.yaml").read_text()
         self.assertIn("97-dev-env-v2-portal-oidc.yaml", authentik)
         self.assertNotIn("98-", authentik)
