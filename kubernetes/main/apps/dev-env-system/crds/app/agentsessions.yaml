@@ -490,6 +490,17 @@ spec:
                 - message: immutable after create; only operatingMode and lifecycle
                     may change
                   rule: self == oldSelf
+              usageCaptureParentUID:
+                description: |-
+                  UsageCaptureParentUID is the authenticated parent Session UID when child
+                  usage capture is enabled. The API sets it from that parent object. It is
+                  not a permission and it is not taken from the request body.
+                maxLength: 128
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: usage capture parent UID is immutable
+                  rule: self == oldSelf
               workspace:
                 description: |-
                   Workspace explicitly opts this session into a pre-provisioned workspace.
@@ -550,6 +561,7 @@ spec:
                 == has(oldSelf.workspace) && has(self.projectCanary) == has(oldSelf.projectCanary)
                 && has(self.commonRules) == has(oldSelf.commonRules) && has(self.sessionDirectory)
                 == has(oldSelf.sessionDirectory) && has(self.privatePilot) == has(oldSelf.privatePilot)
+                && has(self.usageCaptureParentUID) == has(oldSelf.usageCaptureParentUID)
             - message: project canaries require their fixed private bounded subscription
                 task contract
               rule: '!has(self.projectCanary) || (self.mode == ''task'' && self.agent
@@ -862,6 +874,509 @@ spec:
                   from its bundle instead.
                 format: date-time
                 type: string
+              capturedUsage:
+                description: |-
+                  CapturedUsage is the parent's append-only ledger of direct children's
+                  accepted initial observations (OpenProject #109). It is absent unless
+                  capture is enabled. It is not a usage total.
+                properties:
+                  coverage:
+                    enum:
+                    - CaptureOnly
+                    type: string
+                  overflow:
+                    type: boolean
+                  receipts:
+                    items:
+                      description: CapturedUsageReceipt is one accepted initial observation
+                        copied onto its parent.
+                      properties:
+                        capturedAt:
+                          format: date-time
+                          type: string
+                        childName:
+                          maxLength: 253
+                          type: string
+                        key:
+                          pattern: ^[0-9a-f]{64}$
+                          type: string
+                        observation:
+                          description: |-
+                            UsageObservationStatus is immutable publisher evidence for the first
+                            managed invocation. Version 2 records the provider-reported served models
+                            and billing basis (DESIGN-018, 2026-10-12). It never attests a charge,
+                            subscription quota or another Session's usage.
+                          properties:
+                            actualModelState:
+                              enum:
+                              - Unknown
+                              - ProviderReported
+                              maxLength: 64
+                              type: string
+                            aggregationScope:
+                              enum:
+                              - Unknown
+                              maxLength: 64
+                              type: string
+                            apiBillingState:
+                              enum:
+                              - Unknown
+                              maxLength: 64
+                              type: string
+                            billingBasis:
+                              description: |-
+                                BillingBasis is Subscription for a plan-served launch; the cost is then a
+                                CLI list-price equivalent, never a charge.
+                              enum:
+                              - Subscription
+                              - Unknown
+                              maxLength: 64
+                              type: string
+                            cacheCreationInputTokens:
+                              description: TokenObservationStatus preserves independent
+                                metric presence.
+                              properties:
+                                amount:
+                                  format: int64
+                                  maximum: 1000000000000000
+                                  minimum: 0
+                                  type: integer
+                                state:
+                                  enum:
+                                  - Unknown
+                                  - Reported
+                                  maxLength: 64
+                                  type: string
+                              required:
+                              - state
+                              type: object
+                              x-kubernetes-validations:
+                              - message: reported token count requires an amount;
+                                  Unknown omits it
+                                rule: (self.state == 'Reported') == has(self.amount)
+                            cacheReadInputTokens:
+                              description: TokenObservationStatus preserves independent
+                                metric presence.
+                              properties:
+                                amount:
+                                  format: int64
+                                  maximum: 1000000000000000
+                                  minimum: 0
+                                  type: integer
+                                state:
+                                  enum:
+                                  - Unknown
+                                  - Reported
+                                  maxLength: 64
+                                  type: string
+                              required:
+                              - state
+                              type: object
+                              x-kubernetes-validations:
+                              - message: reported token count requires an amount;
+                                  Unknown omits it
+                                rule: (self.state == 'Reported') == has(self.amount)
+                            cost:
+                              description: CostObservationStatus is a CLI equivalent
+                                estimate, never billed dollars.
+                              properties:
+                                amount:
+                                  maxLength: 64
+                                  pattern: ^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$
+                                  type: string
+                                kind:
+                                  enum:
+                                  - Unknown
+                                  - ProviderCLIEquivalentEstimate
+                                  maxLength: 64
+                                  type: string
+                                state:
+                                  enum:
+                                  - Unknown
+                                  - Reported
+                                  maxLength: 64
+                                  type: string
+                                unit:
+                                  enum:
+                                  - USD
+                                  maxLength: 64
+                                  type: string
+                              required:
+                              - kind
+                              - state
+                              type: object
+                              x-kubernetes-validations:
+                              - message: cost requires explicit presence and CLI estimate
+                                  provenance
+                                rule: 'self.state == ''Reported'' ? (has(self.amount)
+                                  && has(self.unit) && self.unit == ''USD'' && self.kind
+                                  == ''ProviderCLIEquivalentEstimate'') : (!has(self.amount)
+                                  && !has(self.unit) && self.kind == ''Unknown'')'
+                            counterSemantics:
+                              enum:
+                              - InvocationFinalTotal
+                              maxLength: 64
+                              type: string
+                            coverage:
+                              enum:
+                              - InitialManagedInvocation
+                              maxLength: 64
+                              type: string
+                            id:
+                              maxLength: 64
+                              pattern: ^[0-9a-f]{64}$
+                              type: string
+                            inputTokens:
+                              description: TokenObservationStatus preserves independent
+                                metric presence.
+                              properties:
+                                amount:
+                                  format: int64
+                                  maximum: 1000000000000000
+                                  minimum: 0
+                                  type: integer
+                                state:
+                                  enum:
+                                  - Unknown
+                                  - Reported
+                                  maxLength: 64
+                                  type: string
+                              required:
+                              - state
+                              type: object
+                              x-kubernetes-validations:
+                              - message: reported token count requires an amount;
+                                  Unknown omits it
+                                rule: (self.state == 'Reported') == has(self.amount)
+                            localResourceState:
+                              enum:
+                              - Unknown
+                              maxLength: 64
+                              type: string
+                            logicalTaskEpoch:
+                              maxLength: 20
+                              pattern: ^[1-9][0-9]*$
+                              type: string
+                            logicalTaskUID:
+                              maxLength: 128
+                              type: string
+                            observedAt:
+                              format: date-time
+                              type: string
+                            outputTokens:
+                              description: TokenObservationStatus preserves independent
+                                metric presence.
+                              properties:
+                                amount:
+                                  format: int64
+                                  maximum: 1000000000000000
+                                  minimum: 0
+                                  type: integer
+                                state:
+                                  enum:
+                                  - Unknown
+                                  - Reported
+                                  maxLength: 64
+                                  type: string
+                              required:
+                              - state
+                              type: object
+                              x-kubernetes-validations:
+                              - message: reported token count requires an amount;
+                                  Unknown omits it
+                                rule: (self.state == 'Reported') == has(self.amount)
+                            provenance:
+                              description: 'Provenance labels every Reported value:
+                                the serving CLI''s final result.'
+                              enum:
+                              - ProviderReported
+                              maxLength: 64
+                              type: string
+                            resultState:
+                              enum:
+                              - Final
+                              - Partial
+                              maxLength: 64
+                              type: string
+                            servedModels:
+                              description: ServedModels are the provider-reported
+                                models, sorted by id.
+                              items:
+                                description: |-
+                                  ModelUsageStatus is one provider-reported served model's share of the
+                                  initial invocation, with independent counter and cost presence.
+                                properties:
+                                  cacheCreationInputTokens:
+                                    description: TokenObservationStatus preserves
+                                      independent metric presence.
+                                    properties:
+                                      amount:
+                                        format: int64
+                                        maximum: 1000000000000000
+                                        minimum: 0
+                                        type: integer
+                                      state:
+                                        enum:
+                                        - Unknown
+                                        - Reported
+                                        maxLength: 64
+                                        type: string
+                                    required:
+                                    - state
+                                    type: object
+                                    x-kubernetes-validations:
+                                    - message: reported token count requires an amount;
+                                        Unknown omits it
+                                      rule: (self.state == 'Reported') == has(self.amount)
+                                  cacheReadInputTokens:
+                                    description: TokenObservationStatus preserves
+                                      independent metric presence.
+                                    properties:
+                                      amount:
+                                        format: int64
+                                        maximum: 1000000000000000
+                                        minimum: 0
+                                        type: integer
+                                      state:
+                                        enum:
+                                        - Unknown
+                                        - Reported
+                                        maxLength: 64
+                                        type: string
+                                    required:
+                                    - state
+                                    type: object
+                                    x-kubernetes-validations:
+                                    - message: reported token count requires an amount;
+                                        Unknown omits it
+                                      rule: (self.state == 'Reported') == has(self.amount)
+                                  cost:
+                                    description: CostObservationStatus is a CLI equivalent
+                                      estimate, never billed dollars.
+                                    properties:
+                                      amount:
+                                        maxLength: 64
+                                        pattern: ^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$
+                                        type: string
+                                      kind:
+                                        enum:
+                                        - Unknown
+                                        - ProviderCLIEquivalentEstimate
+                                        maxLength: 64
+                                        type: string
+                                      state:
+                                        enum:
+                                        - Unknown
+                                        - Reported
+                                        maxLength: 64
+                                        type: string
+                                      unit:
+                                        enum:
+                                        - USD
+                                        maxLength: 64
+                                        type: string
+                                    required:
+                                    - kind
+                                    - state
+                                    type: object
+                                    x-kubernetes-validations:
+                                    - message: cost requires explicit presence and
+                                        CLI estimate provenance
+                                      rule: 'self.state == ''Reported'' ? (has(self.amount)
+                                        && has(self.unit) && self.unit == ''USD''
+                                        && self.kind == ''ProviderCLIEquivalentEstimate'')
+                                        : (!has(self.amount) && !has(self.unit) &&
+                                        self.kind == ''Unknown'')'
+                                  inputTokens:
+                                    description: TokenObservationStatus preserves
+                                      independent metric presence.
+                                    properties:
+                                      amount:
+                                        format: int64
+                                        maximum: 1000000000000000
+                                        minimum: 0
+                                        type: integer
+                                      state:
+                                        enum:
+                                        - Unknown
+                                        - Reported
+                                        maxLength: 64
+                                        type: string
+                                    required:
+                                    - state
+                                    type: object
+                                    x-kubernetes-validations:
+                                    - message: reported token count requires an amount;
+                                        Unknown omits it
+                                      rule: (self.state == 'Reported') == has(self.amount)
+                                  model:
+                                    maxLength: 256
+                                    minLength: 1
+                                    pattern: ^[A-Za-z0-9][A-Za-z0-9._:/@+\[\]-]*$
+                                    type: string
+                                  outputTokens:
+                                    description: TokenObservationStatus preserves
+                                      independent metric presence.
+                                    properties:
+                                      amount:
+                                        format: int64
+                                        maximum: 1000000000000000
+                                        minimum: 0
+                                        type: integer
+                                      state:
+                                        enum:
+                                        - Unknown
+                                        - Reported
+                                        maxLength: 64
+                                        type: string
+                                    required:
+                                    - state
+                                    type: object
+                                    x-kubernetes-validations:
+                                    - message: reported token count requires an amount;
+                                        Unknown omits it
+                                      rule: (self.state == 'Reported') == has(self.amount)
+                                required:
+                                - cacheCreationInputTokens
+                                - cacheReadInputTokens
+                                - cost
+                                - inputTokens
+                                - model
+                                - outputTokens
+                                type: object
+                              maxItems: 8
+                              type: array
+                              x-kubernetes-list-map-keys:
+                              - model
+                              x-kubernetes-list-type: map
+                            source:
+                              properties:
+                                attemptID:
+                                  maxLength: 64
+                                  pattern: ^[0-9a-f]{64}$
+                                  type: string
+                                podUID:
+                                  maxLength: 128
+                                  minLength: 1
+                                  type: string
+                                provider:
+                                  enum:
+                                  - claude
+                                  - codex
+                                  maxLength: 64
+                                  type: string
+                                requestedModel:
+                                  maxLength: 256
+                                  minLength: 1
+                                  type: string
+                                sessionUID:
+                                  maxLength: 128
+                                  minLength: 1
+                                  type: string
+                              required:
+                              - attemptID
+                              - podUID
+                              - provider
+                              - requestedModel
+                              - sessionUID
+                              type: object
+                            subscriptionQuotaState:
+                              enum:
+                              - Unknown
+                              maxLength: 64
+                              type: string
+                            version:
+                              enum:
+                              - 1
+                              - 2
+                              format: int32
+                              type: integer
+                            workerID:
+                              maxLength: 128
+                              type: string
+                          required:
+                          - actualModelState
+                          - aggregationScope
+                          - apiBillingState
+                          - cacheCreationInputTokens
+                          - cacheReadInputTokens
+                          - cost
+                          - counterSemantics
+                          - coverage
+                          - id
+                          - inputTokens
+                          - localResourceState
+                          - observedAt
+                          - outputTokens
+                          - resultState
+                          - source
+                          - subscriptionQuotaState
+                          - version
+                          type: object
+                          x-kubernetes-validations:
+                          - message: original usage observation cannot change
+                            rule: self == oldSelf
+                          - message: logical task provenance requires one complete
+                              server binding
+                            rule: has(self.logicalTaskUID) == has(self.logicalTaskEpoch)
+                              && has(self.logicalTaskUID) == has(self.workerID)
+                          - message: Codex token-only usage cannot assert cost
+                            rule: self.source.provider != 'codex' || (self.cost.state
+                              == 'Unknown' && (!has(self.servedModels) || self.servedModels.all(m,
+                              m.cost.state == 'Unknown')))
+                          - message: version 2 requires provenance and billing basis;
+                              version 1 carries neither
+                            rule: 'self.version == 1 ? (!has(self.provenance) && !has(self.billingBasis)
+                              && !has(self.servedModels) && self.actualModelState
+                              == ''Unknown'') : (has(self.provenance) && has(self.billingBasis))'
+                          - message: actual model is ProviderReported exactly when
+                              served models are listed
+                            rule: (self.actualModelState == 'ProviderReported') ==
+                              (has(self.servedModels) && size(self.servedModels) >
+                              0)
+                        parentUID:
+                          maxLength: 128
+                          minLength: 1
+                          type: string
+                      required:
+                      - capturedAt
+                      - key
+                      - observation
+                      - parentUID
+                      type: object
+                    maxItems: 64
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - key
+                    x-kubernetes-list-type: map
+                  retention:
+                    enum:
+                    - ParentLifetime
+                    type: string
+                  scope:
+                    enum:
+                    - CapturedDirectChildInitialInvocations
+                    type: string
+                  version:
+                    enum:
+                    - 1
+                    format: int32
+                    type: integer
+                required:
+                - coverage
+                - retention
+                - scope
+                - version
+                type: object
+                x-kubernetes-validations:
+                - message: captured usage overflow is sticky
+                  rule: '!has(oldSelf.overflow) || !oldSelf.overflow || (has(self.overflow)
+                    && self.overflow)'
+                - message: captured usage receipts are append-only
+                  rule: '!has(oldSelf.receipts) || size(self.receipts) >= size(oldSelf.receipts)'
+                - message: captured usage receipts do not change
+                  rule: '!has(oldSelf.receipts) || oldSelf.receipts.all(old, self.receipts.exists(new,
+                    new == old))'
               conditions:
                 description: Conditions are the standard conditions.
                 items:
@@ -2338,6 +2853,8 @@ spec:
               rule: '!has(oldSelf.sharedAdmission) || has(self.sharedAdmission)'
             - message: private history retention cannot be removed
               rule: '!has(oldSelf.privateHistory) || has(self.privateHistory)'
+            - message: captured usage ledger cannot be removed
+              rule: '!has(oldSelf.capturedUsage) || has(self.capturedUsage)'
             - message: directory creation evidence cannot be removed
               rule: '!has(oldSelf.sessionDirectory) || has(self.sessionDirectory)'
         required:
@@ -2359,6 +2876,9 @@ spec:
         - message: private history retention cannot be erased with status
           rule: '!has(oldSelf.status) || !has(oldSelf.status.privateHistory) || (has(self.status)
             && has(self.status.privateHistory))'
+        - message: captured usage ledger cannot be erased with status
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.capturedUsage) || (has(self.status)
+            && has(self.status.capturedUsage))'
         - message: original usage observation cannot be erased
           rule: '!has(oldSelf.status) || !has(oldSelf.status.usageObservation) ||
             (has(self.status) && has(self.status.usageObservation))'
