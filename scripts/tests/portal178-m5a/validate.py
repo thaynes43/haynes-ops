@@ -104,15 +104,19 @@ def validate(blueprint, projection, schema):
     require(blueprint["metadata"] == {
         "name": "dev-env-v2-portal-oidc",
         "labels": {"blueprints.goauthentik.io/description":
-            "Story178 internal portal OIDC foundation: confidential code/openid/profile, Tom AND Admins; staged deny until reviewed runtime activation."}},
+            "Story178 internal portal OIDC: confidential code/openid/profile; access by authentik Admins group."}},
         "blueprint metadata changed")
     entries = blueprint["entries"]
     require(len(entries) == 7, "expected deny, portal mapping, provider, application and three bindings")
     ids = {e["id"]: e["model"] for e in entries if "id" in e}
     require(len(ids) == 4, "duplicate or missing entry ID")
     for index, e in enumerate(entries):
-        require(e.get("state") == "present" and not e.get("conditions") and not e.get("permissions"),
+        require(not e.get("conditions") and not e.get("permissions"),
                 "entries must reconcile unconditionally without permissions")
+        # Group access (2026-10-26): the deny (order 0) and single-user (order 10)
+        # bindings are deleted; everything else, the Admins binding included, stays.
+        require(e.get("state") == ("absent" if index in (4, 5) else "present"),
+                "deny and user bindings absent; Admins binding and the rest present")
         require(set(e) == ({"model", "id", "state", "identifiers", "attrs"} if index < 4
                           else {"model", "state", "identifiers", "attrs"}), "entry fields changed")
         allowed = schema["definitions"]["model_" + e["model"]]["properties"]
@@ -253,6 +257,12 @@ def main():
          lambda b, p: b["entries"][6]["attrs"].pop("group")),
         ("disabled-binding", "deny AND exact active Tom AND existing Admins bindings required",
          lambda b, p: b["entries"][6]["attrs"].update(enabled=False)),
+        ("group-binding-absent", "deny and user bindings absent; Admins binding and the rest present",
+         lambda b, p: b["entries"][6].update(state="absent")),
+        ("deny-binding-present", "deny and user bindings absent; Admins binding and the rest present",
+         lambda b, p: b["entries"][4].update(state="present")),
+        ("user-binding-present", "deny and user bindings absent; Admins binding and the rest present",
+         lambda b, p: b["entries"][5].update(state="present")),
         ("deny-removed", "staged deny must remain closed",
          lambda b, p: b["entries"][0]["attrs"].update(expression="return True")),
         ("historical-item", "only canonical dev-env properties",
