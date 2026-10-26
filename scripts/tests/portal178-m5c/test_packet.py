@@ -508,6 +508,10 @@ class Packet(unittest.TestCase):
                 if doc and doc.get("kind") == "ExternalSecret" and "dev-env-v2-portal" in doc.get("metadata", {}).get("name", ""):
                     if doc["metadata"]["name"] == "dev-env-v2-portal-runtime-db":
                         self.assertEqual(component.approved_portal_db_violations(path, doc), [], str(path))
+                    elif doc["metadata"]["name"] == "dev-env-v2-portal-runtime":
+                        # Story178 S4+S6: the reviewed four-property projection, one path only.
+                        self.assertEqual(component.approved_portal_runtime_violations(path, doc), [], str(path))
+                        self.assertEqual(doc["spec"], load("runtime-externalsecret.yaml")["spec"], str(path))
                     else:
                         self.assertEqual(approved_portal_oidc_violations(path, doc), [], str(path))
                         self.assertEqual(path.resolve(), PORTAL_OIDC.resolve(), str(path))

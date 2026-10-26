@@ -1,0 +1,74 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Story178 portal inputs (S4, S6). Every object is in dev-agents and says so.
+resources:
+  - ./certificates.yaml
+  - ./service.yaml
+  - ./serverstransport.yaml
+  - ./config.yaml
+  - ./runtime-externalsecret.yaml
+configMapGenerator:
+  # Public CA certificates only, one key ca.crt each. The portal mounts each key as
+  # one file under /etc/dev-env-portal/ca/ and trusts nothing else for that peer.
+  # Each annotation is the SHA-256 of the exact ca.crt bytes. Re-pin by a reviewed
+  # commit that changes the file and its hash together.
+  #
+  # issuer-ca.crt: roots for https://authentik.haynesnetwork.com, served by the
+  # Cloudflare edge. Five roots of the CAs that edge uses: the anchors of their ECDSA
+  # chains, plus ISRG Root X1 (RSA), which anchors Let's Encrypt's cross-signs. Live
+  # chain on 2026-10-26: haynesnetwork.com <- WE1 <- GTS Root R4. CT logs for the zone
+  # since 2025-06 show WE1 (GTS) as primary, with backups from Sectigo (E36, to Root
+  # E46) and SSL.com (Cloudflare TLS Issuing ECC CA 4, via TLS Transit ECC CA R2, to
+  # TLS ECC Root CA 2022); Let's Encrypt is Cloudflare's third issuing CA.
+  # DER SHA-256, in file order:
+  #   GTS Root R4                                   349dfa4058c5e263123b398ae795573c4e1313c83fe68f93556cd5e8031b3c7d
+  #   ISRG Root X1                                  96bcec06264976f37460779acf28c5a7cfe8a3c0aae11a8ffcee05c0bddf08c6
+  #   ISRG Root X2                                  69729b8e15a86efc177a57afb7171dfc64add28c2fca8cf1507e34453ccb1470
+  #   SSL.com TLS ECC Root CA 2022                  c32ffd9f46f936d16c3673990959434b9ad60aafbb9e7cf33654f144cc1ba143
+  #   Sectigo Public Server Authentication Root E46 c90f26f0fb1b4018b22227519b5ca2b53e2ca5b3be5cf18efe1bef47380c5383
+  # Source: the Mozilla bundle in Debian ca-certificates 20250419~deb12u2. Each one
+  # matched the CA's own published copy. Without GTS Root R4 the live chain fails.
+  # If Cloudflare moves this host to a CA outside this list, sign-in fails closed
+  # until the root is added here.
+  - name: dev-env-v2-portal-issuer-ca
+    namespace: dev-agents
+    files:
+      - ca.crt=issuer-ca.crt
+    options:
+      annotations:
+        dev-env.haynesops.com/ca-input: public-only
+        dev-env.haynesops.com/ca-sha256: 1b80197679a4666ee8eaa26db3f3d1380d37da0d1b9b2b8d5120201d3dcc608e
+  # openproject-ca.crt: the openproject-portal-ca certificate (frontend), which signs
+  # the OpenProject portal listener openproject-web.frontend.svc.cluster.local:8443.
+  # Copied from CertificateRequest frontend/openproject-portal-ca-1 status.certificate
+  # (never the Secret); the leaf's request openproject-portal-api-1 status.ca is the
+  # same bytes. DER SHA-256 9bd738852a33a019cf8b75ec9c2c574402d5217c0f6b57fbcff25cfe0122d986,
+  # not after 2036-10-21. cert-manager renews it about 2035-10 with a new key: re-pin
+  # from the newest CertificateRequest then.
+  - name: dev-env-v2-portal-openproject-ca
+    namespace: dev-agents
+    files:
+      - ca.crt=openproject-ca.crt
+    options:
+      annotations:
+        dev-env.haynesops.com/ca-input: public-only
+        dev-env.haynesops.com/ca-sha256: c190c3de7feaadcf23e7fa7a320409875cd366bae3239812cd33a117450bb21f
+  # postgres-ca.crt: the CNPG postgres16 CA (OU database, CN postgres16), which signs
+  # postgres16-rw.database.svc.cluster.local. The portal reads it as ca/ca.crt.
+  # Exported 2026-10-26 18:02Z from Secret database/postgres16-ca key ca.crt (UID
+  # 39740a0c-5539-4829-9b16-78524a120476, resourceVersion 694827978), certificate only.
+  # DER SHA-256 53b084dc3e8fe33fb9e6e1ffd49092cd806a396ef480324a2af0c21720e99f21.
+  # It EXPIRES 2026-11-05 03:55Z. CNPG renews it with a new key first (about
+  # 2026-10-29): re-pin this file and its hash then, or the portal loses the database.
+  - name: dev-env-v2-portal-postgres-ca
+    namespace: dev-agents
+    files:
+      - ca.crt=postgres-ca.crt
+    options:
+      annotations:
+        dev-env.haynesops.com/ca-input: public-only
+        dev-env.haynesops.com/ca-sha256: f89c6cc6c2ddf495b5112023c7863142696ddecd413cba98bf36f1c940bae818
+generatorOptions:
+  disableNameSuffixHash: true

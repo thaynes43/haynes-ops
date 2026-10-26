@@ -1,0 +1,64 @@
+---
+# The portal's own serving PKI, as reviewed in the Story178 packet.
+# A self-signed Issuer makes the CA; a CA Issuer signs the serving leaf.
+# The CA key stays in Secret dev-env-v2-portal-ca. The portal will mount only the
+# leaf Secret dev-env-v2-portal-tls (tls.crt, tls.key).
+# The leaf carries the public host (the portal checks it) and the Service name
+# (Traefik checks it, see serverstransport.yaml).
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: dev-env-v2-portal-selfsigned
+  namespace: dev-agents
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dev-env-v2-portal-ca
+  namespace: dev-agents
+spec:
+  isCA: true
+  commonName: dev-env-v2-portal-ca
+  secretName: dev-env-v2-portal-ca
+  duration: 87600h
+  renewBefore: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: dev-env-v2-portal-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: dev-env-v2-portal-ca
+  namespace: dev-agents
+spec:
+  ca:
+    secretName: dev-env-v2-portal-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dev-env-v2-portal-serving
+  namespace: dev-agents
+spec:
+  secretName: dev-env-v2-portal-tls
+  dnsNames:
+    - dev-env-v2.haynesops.com
+    - dev-env-v2-portal.dev-agents.svc.cluster.local
+  duration: 2160h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+    - server auth
+    - digital signature
+  issuerRef:
+    name: dev-env-v2-portal-ca
+    kind: Issuer

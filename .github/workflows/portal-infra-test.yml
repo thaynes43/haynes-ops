@@ -12,6 +12,8 @@ on:
       - kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml
       - kubernetes/main/apps/dev-env-system/rbac/app/kustomization.yaml
       - kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml
+      - kubernetes/main/apps/dev-env-system/portal/**
+      - kubernetes/main/apps/dev-env-system/kustomization.yaml
   push:
     branches: [main, 'agent/**']
     paths:
@@ -24,6 +26,8 @@ on:
       - kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml
       - kubernetes/main/apps/dev-env-system/rbac/app/kustomization.yaml
       - kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml
+      - kubernetes/main/apps/dev-env-system/portal/**
+      - kubernetes/main/apps/dev-env-system/kustomization.yaml
 permissions:
   contents: read
 concurrency:

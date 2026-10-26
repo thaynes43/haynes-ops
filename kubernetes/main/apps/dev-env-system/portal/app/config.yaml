@@ -1,0 +1,32 @@
+---
+# The portal's non-secret configuration: one file per key under
+# /etc/dev-env-portal/config.
+# - The eight URLs must equal the constants the portal pins, or it refuses to start.
+# - Durations and auth-style are the tested fixture values, inside the parser's
+#   bounds. They are not a measured service level.
+# - No admission keys: Tom dropped the admission witness and recovery fence
+#   (2026-10-26). The two witness-* rate files are harmless extras once the
+#   portal no longer reads them; delete them with that parser change.
+# - No subject file: the portal authorizes by Authentik group membership.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-v2-portal-config
+  namespace: dev-agents
+data:
+  origin: https://dev-env-v2.haynesops.com
+  issuer: https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/
+  authorization-url: https://authentik.haynesnetwork.com/application/o/authorize/
+  token-url: https://authentik.haynesnetwork.com/application/o/token/
+  userinfo-url: https://authentik.haynesnetwork.com/application/o/userinfo/
+  jwks-url: https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/jwks/
+  openproject-base-url: https://openproject-web.frontend.svc.cluster.local:8443
+  operator-api-url: https://dev-env-operator.dev-env-system.svc.cluster.local:8443
+  auth-style: header
+  login-ttl: 1m
+  idle-ttl: 30m
+  absolute-ttl: 1h
+  fresh-for: 1m
+  clock-skew: 0s
+  witness-gets-per-second: "30"
+  witness-get-burst: "57"
