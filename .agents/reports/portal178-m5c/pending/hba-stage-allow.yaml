@@ -1,3 +1,4 @@
+# Registered 2026-10-26 by S7 in cluster16.yaml, before the two host-all rejects.
 # Last HBA change. Not registered. Insert this one runtime rule immediately
 # before the first "host all" catch-all, only after 010, 020, and 030 are all
 # true. No migrator allow: NOLOGIN must not pre-open a pod-CIDR LOGIN window.

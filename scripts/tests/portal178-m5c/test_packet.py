@@ -273,9 +273,14 @@ class Packet(unittest.TestCase):
         registered = yaml.safe_load(CLUSTER.read_text())["spec"]["postgresql"]["pg_hba"]
         reject = load("hba-stage-reject.yaml")["pg_hba"]
         allow = load("hba-stage-allow.yaml")["rule"]
-        self.assertEqual(registered, reject)
-        self.assertEqual(registered, expected_reject_hba())
-        self.assertEqual(reject_stage_violations(registered, allow), [])
+        # Post-proof (2026-10-26): exactly the reviewed six rejects plus the one
+        # runtime-only hostssl allow, before the two "host all" rejects.
+        post_proof = load("cluster-portal.patch.yaml")["spec"]["postgresql"]["pg_hba"]
+        self.assertEqual(registered, post_proof)
+        self.assertEqual(registered, reject[:4] + [allow] + reject[4:])
+        self.assertEqual(reject, expected_reject_hba())
+        self.assertEqual(reject_stage_violations(reject, allow), [])
+        self.assertEqual([line for line in registered if not line.endswith(" reject")], [allow])
         existing = [{"name": "unrelated-managed-role", "ensure": "present"}]
         synthetic_base = {"spec": {"managed": {"roles": existing}, "postgresql": {"pg_hba": reject}}}
         composed = compose_role_stage(synthetic_base, role_stage)
@@ -456,9 +461,9 @@ class Packet(unittest.TestCase):
         cluster = yaml.safe_load(CLUSTER.read_text())
         reject = load("hba-stage-reject.yaml")["pg_hba"]
         allow = load("hba-stage-allow.yaml")["rule"]
-        self.assertEqual(cluster["spec"]["postgresql"]["pg_hba"], reject)
-        # Roles-only preproof stage: exactly the reviewed roles and Database,
-        # still behind all six rejects.
+        self.assertEqual(cluster["spec"]["postgresql"]["pg_hba"], reject[:4] + [allow] + reject[4:])
+        # Roles-only preproof stage: exactly the reviewed roles and Database;
+        # the six rejects stay, plus the post-proof runtime allow.
         self.assertEqual(cluster["spec"]["managed"], load("roles-stage-preproof.patch.yaml")["spec"]["managed"])
         registered_db = CLUSTER.parent / "portal-database.yaml"
         self.assertEqual(yaml.safe_load(registered_db.read_text()), load("database.yaml"))
@@ -488,7 +493,10 @@ class Packet(unittest.TestCase):
         self.assertNotIn("create", widened[3]["rules"][0]["verbs"])
         for path in (ROOT / "kubernetes").rglob("*.yaml"):
             text = path.read_text(errors="replace")
-            self.assertNotIn("hostssl dev_env_v2_portal", text, str(path))
+            if path.resolve() == CLUSTER.resolve():
+                self.assertEqual(text.count("hostssl dev_env_v2_portal"), 1)
+            else:
+                self.assertNotIn("hostssl dev_env_v2_portal", text, str(path))
             self.assertNotIn("98-portal-live-profile", text, str(path))
             self.assertNotIn("cluster-portal.patch.yaml", text, str(path))
             self.assertNotIn("hba-stage-allow.yaml", text, str(path))
