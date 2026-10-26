@@ -190,7 +190,7 @@ Owner direction (Tom, relayed by the coordinator): fastest path to a working dem
 - ServiceAccount `dev-env-v2-portal`, already registered by `dev-env-rbac` (`portal-witness.yaml`); not duplicated. No API token automount.
 - ClusterFirst DNS with `ndots` 1, as the S1 policy requires. Pod Security restricted: non-root uid 65532, read-only root, no capabilities, RuntimeDefault seccomp. CPU limit 200m (the Kyverno dev-agents rule).
 - Probes: HTTPS `/healthz` (startup, liveness) and `/readyz` (readiness) with `Host: dev-env-v2.haynesops.com`. The portal answers them only over TLS for its own host. Both are static: they do not test the database or Authentik.
-- The image is one line. It is a placeholder, `sha-b98247c`, until the dev-env#560 image publishes. **The b98247c binary still requires the admission inputs, so it exits at start**: bump the line to the #560 image before merging, or the Kustomization fails its wait after 5m.
+- The image is one line: `ghcr.io/thaynes43/dev-env-portal:sha-4139a72@sha256:8bb9fee784c4476d5d5e75ce2da06d7aab68d28b5539d3fc03e3d1887f9695f6`. That is dev-env main `4139a72` (dev-env#560, admission fence removed; it includes b98247c's group authorization). Publish run 40399497473 signed it and verified the signature.
 
 What the portal reads (dev-env `web/portal/session/production.go` after dev-env#560) and where each file comes from:
 
