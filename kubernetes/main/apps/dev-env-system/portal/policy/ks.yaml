@@ -1,0 +1,21 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# Story178 portal isolation, step S1: the portal's default-deny network policy,
+# applied and verified before any portal pod exists. Nothing depends on this
+# Kustomization, so a failure here cannot hold back another app.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: dev-env-v2-portal-policy
+  namespace: dev-env-system
+spec:
+  targetNamespace: dev-agents
+  path: ./kubernetes/main/apps/dev-env-system/portal/policy/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m

@@ -958,9 +958,23 @@ spec:
         self.assertFalse(portal_pod_creation_allowed(False, True))
         self.assertTrue(portal_pod_creation_allowed(True, True))
         self.assertFalse(same_apply_proves_isolation())
+        # S1 registers the policy alone, verbatim, in its own Kustomization.
+        registered_dir = ROOT / "kubernetes/main/apps/dev-env-system/portal/policy"
+        registered_ks = load(registered_dir / "ks.yaml")
+        self.assertEqual(registered_ks["metadata"], {"name": "dev-env-v2-portal-policy", "namespace": "dev-env-system"})
+        self.assertEqual(registered_ks["spec"]["targetNamespace"], "dev-agents")
+        self.assertEqual(registered_ks["spec"]["path"], "./kubernetes/main/apps/dev-env-system/portal/policy/app")
+        self.assertNotIn("dependsOn", registered_ks["spec"])
+        self.assertEqual(load(registered_dir / "app/kustomization.yaml")["resources"], ["./networkpolicy.yaml"])
+        self.assertEqual(load(registered_dir / "app/networkpolicy.yaml"), load(COMPONENT / "policy/networkpolicy.yaml"))
+        system = load(ROOT / "kubernetes/main/apps/dev-env-system/kustomization.yaml")["resources"]
+        self.assertEqual(system.count("./portal/policy/ks.yaml"), 1)
         for path in (ROOT / "kubernetes").rglob("*.yaml"):
             text = path.read_text(errors="replace")
-            self.assertNotIn("dev-env-v2-portal-policy", text, str(path))
+            if path.resolve() != (registered_dir / "ks.yaml").resolve():
+                self.assertNotIn("dev-env-v2-portal-policy", text, str(path))
+            if "dependsOn" in text:
+                self.assertNotIn("name: dev-env-v2-portal-policy", text, str(path))
         self.assertIn("location = /api/v3/projects/3/work_packages", portal_server)
         self.assertIn('proxy_pass http://127.0.0.1:8080;', portal_server)
         self.assertIn('proxy_set_header Cookie "";', portal_server)
