@@ -1,8 +1,10 @@
-# Story178 portal network policy, registered 2026-10-26 (step S1), verbatim
-# from the reviewed packet. It selects only pods labelled dev-env-v2-portal, and
-# none exist yet. The shared session tiers already exclude that label (#4277).
-# REQUIRED pod DNS when the Deployment lands: ClusterFirst with ndots=1, so the
-# exact DNS names below stay narrow.
+# Story178 portal network policy, registered 2026-10-26 (step S1) from the reviewed
+# packet. It selects only pods labelled dev-env-v2-portal. The shared session tiers
+# already exclude that label (#4277). The Deployment uses ClusterFirst DNS with
+# ndots=1, so the exact DNS names below stay narrow.
+# One delta from the packet: no kube-apiserver egress and no kubernetes.default
+# DNS name. They served only the admission witness, which Tom dropped on
+# 2026-10-26 (dev-env#560); the portal reads no Kubernetes API.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -34,7 +36,6 @@ spec:
             dns:
               - matchName: authentik.haynesnetwork.com
               - matchName: postgres16-rw.database.svc.cluster.local
-              - matchName: kubernetes.default.svc.cluster.local
               - matchName: openproject-web.frontend.svc.cluster.local
               - matchName: dev-env-operator.dev-env-system.svc.cluster.local
     - toEndpoints:
@@ -43,9 +44,6 @@ spec:
             cnpg.io/cluster: postgres16
       toPorts:
         - ports: [{port: '5432', protocol: TCP}]
-    - toEntities: [kube-apiserver]
-      toPorts:
-        - ports: [{port: '443', protocol: TCP}, {port: '6443', protocol: TCP}]
     - toFQDNs:
         - matchName: authentik.haynesnetwork.com
       toPorts:

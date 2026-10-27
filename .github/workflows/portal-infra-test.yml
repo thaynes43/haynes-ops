@@ -9,7 +9,7 @@ on:
       - scripts/tests/portal178-m5c/**
       - .github/workflows/portal-infra-test.yml
       - kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml
-      - kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml
+      - kubernetes/main/apps/dev-env-system/rbac/app/portal-serviceaccount.yaml
       - kubernetes/main/apps/dev-env-system/rbac/app/kustomization.yaml
       - kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml
       - kubernetes/main/apps/dev-env-system/portal/**
@@ -23,7 +23,7 @@ on:
       - scripts/tests/portal178-m5c/**
       - .github/workflows/portal-infra-test.yml
       - kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml
-      - kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml
+      - kubernetes/main/apps/dev-env-system/rbac/app/portal-serviceaccount.yaml
       - kubernetes/main/apps/dev-env-system/rbac/app/kustomization.yaml
       - kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml
       - kubernetes/main/apps/dev-env-system/portal/**

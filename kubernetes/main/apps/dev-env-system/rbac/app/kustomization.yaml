@@ -32,4 +32,4 @@ resources:
   - ./v1-token-guard.yaml
   - ./native-lifecycle-serviceaccount.yaml
   - ./session-directory-guard.yaml
-  - ./portal-witness.yaml
+  - ./portal-serviceaccount.yaml

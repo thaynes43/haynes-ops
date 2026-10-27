@@ -26,7 +26,8 @@ ROOT = Path(__file__).resolve().parents[3]
 PACKET = ROOT / ".agents/reports/portal178-m5c/pending"
 BLUEPRINT = ROOT / "kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
-WITNESS = ROOT / "kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml"
+# The portal ServiceAccount. The witness RBAC beside it is gone (Tom, 2026-10-26: "drop the switch").
+PORTAL_SA = ROOT / "kubernetes/main/apps/dev-env-system/rbac/app/portal-serviceaccount.yaml"
 PORTAL_OIDC = ROOT / "kubernetes/main/apps/dev-env-system/secrets/app/externalsecret-portal-oidc.yaml"
 RUNTIME = "dev_env_v2_portal_runtime"
 MIGRATOR = "dev_env_v2_portal_migrator"
@@ -483,14 +484,17 @@ class Packet(unittest.TestCase):
         self.assertEqual(hba_stage_violations(reject, allow), [])
         self.assertTrue(hba_stage_violations(reject + [allow], allow))
         self.assertTrue(hba_stage_violations(reject, allow.replace(RUNTIME, MIGRATOR)))
-        registered = list(yaml.safe_load_all(WITNESS.read_text()))
-        contract = list(yaml.safe_load_all((PACKET / "witness-rbac.yaml").read_text()))
-        self.assertEqual(registered, contract)
-        self.assertIn("./portal-witness.yaml", (WITNESS.parent / "kustomization.yaml").read_text())
-        widened = deepcopy(registered)
-        widened[1]["rules"][0]["verbs"].append("list")
-        self.assertNotEqual(widened, contract)
-        self.assertNotIn("create", widened[3]["rules"][0]["verbs"])
+        # Only the portal's ServiceAccount stays registered. The admission witness,
+        # its recovery fence and their Roles and RoleBindings are gone (dev-env#560).
+        registered = [doc for doc in yaml.safe_load_all(PORTAL_SA.read_text()) if doc]
+        self.assertEqual(registered, [{
+            "apiVersion": "v1", "kind": "ServiceAccount",
+            "metadata": {"name": "dev-env-v2-portal", "namespace": "dev-agents"},
+            "automountServiceAccountToken": False}])
+        rbac_resources = yaml.safe_load((PORTAL_SA.parent / "kustomization.yaml").read_text())["resources"]
+        self.assertEqual(rbac_resources.count("./portal-serviceaccount.yaml"), 1)
+        self.assertNotIn("./portal-witness.yaml", rbac_resources)
+        self.assertFalse((PORTAL_SA.parent / "portal-witness.yaml").exists())
         for path in (ROOT / "kubernetes").rglob("*.yaml"):
             text = path.read_text(errors="replace")
             if path.resolve() == CLUSTER.resolve():
@@ -500,8 +504,8 @@ class Packet(unittest.TestCase):
             self.assertNotIn("98-portal-live-profile", text, str(path))
             self.assertNotIn("cluster-portal.patch.yaml", text, str(path))
             self.assertNotIn("hba-stage-allow.yaml", text, str(path))
-            if "kind: ConfigMap" in text and "name: dev-env-v2-portal-admission" in text:
-                self.fail("CLOSED admission seed is registered in " + str(path))
+            # No admission seed, witness Role or RoleBinding names it anywhere.
+            self.assertNotIn("dev-env-v2-portal-admission", text, str(path))
             if "kind: ExternalSecret" not in text:
                 continue
             for doc in yaml.safe_load_all(text):
@@ -564,25 +568,6 @@ class Packet(unittest.TestCase):
             "io.kubernetes.pod.namespace": "network", "app.kubernetes.io/name": "traefik",
             "app.kubernetes.io/instance": "traefik-internal-network"}}])
         self.assertEqual(policy["egress"][-1]["toFQDNs"], [{"matchName": "authentik.haynesnetwork.com"}])
-
-    def test_exact_witness_grant(self):
-        seed = load("witness-closed-bootstrap.yaml")
-        self.assertEqual(seed["metadata"], {"name": "dev-env-v2-portal-admission", "namespace": "dev-agents"})
-        self.assertEqual(seed["data"], {"schema": "1", "state": "closed"})
-        docs = list(yaml.safe_load_all((PACKET / "witness-rbac.yaml").read_text()))
-        self.assertEqual([d["kind"] for d in docs], ["ServiceAccount", "Role", "RoleBinding", "Role", "RoleBinding"])
-        self.assertEqual(docs[0]["metadata"], {"name": "dev-env-v2-portal", "namespace": "dev-agents"})
-        self.assertIs(docs[0]["automountServiceAccountToken"], False)
-        for role, binding, verbs, subject in [
-            (docs[1], docs[2], ["get"], {"kind": "ServiceAccount", "name": "dev-env-v2-portal", "namespace": "dev-agents"}),
-            (docs[3], docs[4], ["get", "update"], {"kind": "ServiceAccount", "name": "dev-env", "namespace": "dev"}),
-        ]:
-            self.assertEqual(role["metadata"]["namespace"], "dev-agents")
-            self.assertEqual(role["rules"], [{"apiGroups": [""], "resources": ["configmaps"],
-                "resourceNames": ["dev-env-v2-portal-admission"], "verbs": verbs}])
-            self.assertEqual(binding["metadata"]["namespace"], "dev-agents")
-            self.assertEqual(binding["roleRef"], {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": role["metadata"]["name"]})
-            self.assertEqual(binding["subjects"], [subject])
 
 
 if __name__ == "__main__":
