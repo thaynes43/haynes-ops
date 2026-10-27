@@ -72,6 +72,8 @@ spec:
                   seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
+              # Source 11be6eda454d34904e053a0d01c0ba13bfa5d749 (v2.50.0, dev-env#580 and #582, release #581, 2026-10-27); Publish 40597197081 signed/verified.
+              # 11be6ed adds the default-off portal launch route (dev-env#580). It registers only with --portal-launch-repo plus a required --portal-launch-profile; neither is set here, so nothing new is served. No controller, templates, API type or CRD change. Only the operator moves.
               # Source e1f91a09ddb02dc63f00b78a5475d805c899b0e5 (v2.49.0, dev-env#578 and release #579, 2026-10-27); Publish 40576369070 signed/verified.
               # e1f91a0 adds the Remote Control entry to the portal reader's view=activity summary (dev-env#578): the state word, plus the link only as exactly https://claude.ai/code/session_<id>; never the name or session id. Read-only; no new route, flag or RBAC. The portal must already run v2.49.0 (haynes-ops#4357): older portals refuse the new key. Only the operator moves; keeper, broker, task worker image and templates image keep their pins.
               # Source 8b854b94079f585dc349fcaf35d6ca6ffd9e8c6c (dev-env#576 merge on main, 2026-10-27); Publish 40561618362 signed/verified.
@@ -105,7 +107,7 @@ spec:
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates. The executor stop (H3) is on since NB-06b (below).
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-e1f91a0@sha256:cc0d8881781d55daea0797bc3c997d541ff0633e1b065f5b7da9cc57eb5ceed0
+              tag: sha-11be6ed@sha256:dcaee481863793a702a8d8b187dbaa85a97270246557ce52ca3a19edd324fd4d
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
