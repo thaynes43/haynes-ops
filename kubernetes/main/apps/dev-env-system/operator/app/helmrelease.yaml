@@ -72,6 +72,8 @@ spec:
                   seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
+              # Source 8b854b94079f585dc349fcaf35d6ca6ffd9e8c6c (dev-env#576 merge on main, 2026-10-27); Publish 40561618362 signed/verified.
+              # 8b854b9 adds the default-off pilot agent image (dev-env#576): --pilot-agent-image and --pilot-agent-session make the pods of the sessions with one parent and idempotency key run another digest-pinned agent image. Only the image line of such a session's own pod changes; existing pods are never compared or replaced, and the revision label stays the templates'. No API type or CRD change. Only the operator moves; keeper, broker, task worker image and templates image keep their pins.
               # Source 7af05eff410b61bc9bac491c102348d0d58c4eaf (v2.47.0, dev-env#574 and release #575, 2026-10-27); Publish 40549518186 signed/verified.
               # 7af05ef adds the default-off portal message and conversation routes (dev-env#574). They register only with --portal-send-target or --portal-history-target, and neither is set here, so the portal reader still may only list session summaries. No change to existing routes, the controller, the templates package, API types or CRDs. Only the operator moves; keeper, broker, task worker image and templates image keep their pins.
               # Source 0134c30f (dev-env#568 merge on main, 2026-10-27); Publish 40452436157 signed/verified.
@@ -101,7 +103,7 @@ spec:
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates. The executor stop (H3) is on since NB-06b (below).
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-7af05ef@sha256:28a2cd7f42d4f4fe977276e2b8081e10c2f283fa474bb50e1effa9889c93bb71
+              tag: sha-8b854b9@sha256:f7051372f0814c7d191c6109b8eca93828216c0d2d62c0ef631b02019517dace
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -121,6 +123,21 @@ spec:
               # dev-agents (main.go:220), so that default is stated here.
               - '--enable-portal-reader'
               - '--session-namespace=dev-agents'
+              # Story178 live IDE pilot (dev-env#576, docs/portal-session-runtime.md "Pilot agent
+              # image for one session"): portal history binds only at a session's first launch on
+              # agentd 2.47 or later, and the templates image is still 2.45.0. These two flags put
+              # the sessions that dev-env-1027-111645 creates with idempotency key live-ide-pilot-1
+              # on the signed 2.47.0 agent image (publish-agent 40549555659). The operator selects
+              # only a Claude remote or local session on repo dev-env with no workspace, project
+              # canary or private pilot; a task or --project session with that key would start on
+              # the templates image. It matches every such session while these lines stay: using
+              # the new key for one session only is the operating rule, not a limit. No such
+              # session exists yet, and no existing pod changes.
+              # This is code version only: profile, Secrets, egress and grants are the parent's, and
+              # it authorizes no portal send or history (those stay off). Remove both lines when the
+              # pilot ends.
+              - '--pilot-agent-image=ghcr.io/thaynes43/dev-env:2.47.0@sha256:44141eeb5be1a34a6dc47ea4fbfe2ac4de4c90dd271c6ba41c4f5d8a05a5cb89'
+              - '--pilot-agent-session=dev-env-1027-111645/live-ide-pilot-1'
               # Explicit sole zero-task fixture; ordinary native hosts remain closed.
               - '--enable-coordinator-callers'
               - '--enable-managed-codex-tasks'
