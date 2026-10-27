@@ -134,10 +134,19 @@ spec:
               # the new key for one session only is the operating rule, not a limit. No such
               # session exists yet, and no existing pod changes.
               # This is code version only: profile, Secrets, egress and grants are the parent's, and
-              # it authorizes no portal send or history (those stay off). Remove both lines when the
-              # pilot ends.
+              # it authorizes no portal send or history (see the two portal target flags below).
+              # Remove both lines when the pilot ends.
               - '--pilot-agent-image=ghcr.io/thaynes43/dev-env:2.47.0@sha256:44141eeb5be1a34a6dc47ea4fbfe2ac4de4c90dd271c6ba41c4f5d8a05a5cb89'
               - '--pilot-agent-session=dev-env-1027-111645/live-ide-pilot-1'
+              # Story178 live IDE pilot, Tom's approval 2026-10-27: portal Send and history for
+              # ONE session, dev-env-1027-185745 (UID 54c61939-3ae4-43de-96fe-526e33bb56ad), and
+              # nothing else. The operator registers the message and conversation routes only with
+              # these flags, and they still accept only the portal ServiceAccount. Which person may
+              # use them is the portal's private scope, which binds Tom's principal alone
+              # (portal/app/actions-externalsecret.yaml). No automatic expiry: remove both lines
+              # by PR, together with that ExternalSecret and the portal Deployment's projection.
+              - '--portal-send-target=dev-env-1027-185745=54c61939-3ae4-43de-96fe-526e33bb56ad'
+              - '--portal-history-target=dev-env-1027-185745=54c61939-3ae4-43de-96fe-526e33bb56ad'
               # Explicit sole zero-task fixture; ordinary native hosts remain closed.
               - '--enable-coordinator-callers'
               - '--enable-managed-codex-tasks'

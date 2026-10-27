@@ -48,6 +48,7 @@ PRODUCTION_FILES = {
     "secrets/DB_PASSWORD": ("Secret", "dev-env-v2-portal-runtime", "DB_PASSWORD"),
     "secrets/SESSION_AEAD_KEY": ("Secret", "dev-env-v2-portal-runtime", "SESSION_AEAD_KEY"),
     "secrets/SESSION_GENERATION": ("Secret", "dev-env-v2-portal-runtime", "SESSION_GENERATION"),
+    "config/session-actions.json": ("Secret?", "dev-env-v2-portal-actions", "session-actions.json"),
     "secrets/OPENPROJECT_TOKEN": ("Secret?", "dev-env-v2-portal-openproject", "OPENPROJECT_TOKEN"),
     "secrets/OPERATOR_TOKEN": ("ServiceAccountToken", "dev-env-operator", 3600),
     "ca/ca.crt": ("ConfigMap", "dev-env-v2-portal-postgres-ca", "ca.crt"),
@@ -514,7 +515,10 @@ def mounted_files(deployment):
                         add_items(prefix, kind, source["secret"]["name"], source["secret"].get("items"))
                     elif "configMap" in source:
                         kind = "ConfigMap?" if source["configMap"].get("optional") else "ConfigMap"
-                        add_items(prefix, kind, source["configMap"]["name"], source["configMap"].get("items"))
+                        if source["configMap"].get("items"):
+                            add_items(prefix, kind, source["configMap"]["name"], source["configMap"]["items"])
+                        else:  # the whole ConfigMap, as a plain configMap volume does
+                            files[prefix + "*"] = (kind, source["configMap"]["name"], "*")
                     elif "serviceAccountToken" in source:
                         token = source["serviceAccountToken"]
                         files[prefix + token["path"]] = (
@@ -1796,7 +1800,7 @@ class RegisteredInputsTest(unittest.TestCase):
             if kind in {"ConfigMap", "Secret"}:
                 self.assertIn(name, registered, path)
             elif kind == "Secret?":
-                self.assertEqual(path, "secrets/OPENPROJECT_TOKEN")
+                self.assertIn(path, {"secrets/OPENPROJECT_TOKEN", "config/session-actions.json"})
                 self.assertIn(name, registered)
         # The operator's CA is dev-env-pki's pinned dev-agents/dev-env-api-ca, not a copy.
         pki = load(ROOT / "kubernetes/main/apps/dev-env-system/pki/app/kustomization.yaml")
@@ -1830,7 +1834,7 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertEqual(policy["spec"]["endpointSelector"]["matchLabels"],
                          deployment["spec"]["template"]["metadata"]["labels"])
 
-    def test_private_action_secret_is_staged_and_not_mounted(self):
+    def test_private_action_scope_is_tom_only_for_the_one_pilot_session(self):
         doc = self.by_key[("ExternalSecret", "dev-env-v2-portal-actions")]
         self.assertEqual(approved_portal_actions_violations(PORTAL_ACTIONS, doc), [])
         self.assertTrue(approved_portal_actions_violations(PORTAL_ACTIONS.with_name("other.yaml"), doc))
@@ -1863,17 +1867,38 @@ class RegisteredInputsTest(unittest.TestCase):
                   "targets": [{"name": "dev-env-1027-185745", "uid": "54c61939-3ae4-43de-96fe-526e33bb56ad"}]}
         self.assertEqual(scope, {"send": action, "history": action})
         self.assertLessEqual(len(text), 8 * 1024)
-        # Stage 1 only creates the Secret. Nothing mounts it and the operator has no target flags.
+        # The Deployment maps the file into config/, optional, beside the whole ConfigMap.
         deployment = self.by_key[("Deployment", "dev-env-v2-portal")]
-        self.assertNotIn("dev-env-v2-portal-actions", yaml.safe_dump(deployment))
-        self.assertNotIn("dev-env-v2-portal-actions", {name for _, name, _ in mounted_files(deployment).values()})
         volume = next(v for v in deployment["spec"]["template"]["spec"]["volumes"] if v["name"] == "config")
-        self.assertEqual(volume, {"name": "config", "configMap": {"name": "dev-env-v2-portal-config"}})
-        self.assertNotIn("config/session-actions.json", expand_config_files(mounted_files(deployment), self.docs))
+        self.assertEqual(volume["projected"]["sources"], [
+            {"configMap": {"name": "dev-env-v2-portal-config"}},
+            {"secret": {"name": "dev-env-v2-portal-actions", "optional": True,
+                        "items": [{"key": "session-actions.json", "path": "session-actions.json"}]}},
+        ])
+        mount = next(m for m in deployment["spec"]["template"]["spec"]["containers"][0]["volumeMounts"]
+                     if m["name"] == "config")
+        self.assertEqual(mount, {"name": "config", "mountPath": "/etc/dev-env-portal/config", "readOnly": True})
+        files = expand_config_files(mounted_files(deployment), self.docs)
+        self.assertEqual(files["config/session-actions.json"],
+                         ("Secret?", "dev-env-v2-portal-actions", "session-actions.json"))
+        self.assertEqual({k for k in files if k.startswith("config/")},
+                         {"config/" + k for k in PRODUCTION_CONFIG_FILES} | {"config/session-actions.json"})
+        # The operator registers the routes for that one target and no other.
         release = load(OPERATOR_RELEASE)
         args = release["spec"]["values"]["controllers"]["dev-env-operator"]["containers"]["app"]["args"]
-        self.assertFalse([a for a in args if a.startswith(("--portal-send-target", "--portal-history-target"))])
+        target = "dev-env-1027-185745=54c61939-3ae4-43de-96fe-526e33bb56ad"
+        self.assertEqual([a for a in args if a.startswith("--portal-send-target")], ["--portal-send-target=" + target])
+        self.assertEqual([a for a in args if a.startswith("--portal-history-target")],
+                         ["--portal-history-target=" + target])
         self.assertIn("--enable-portal-reader", args)
+        # The text states how it is revoked and that Reloader acts on a change, not a create.
+        header = PORTAL_DEPLOYMENT.read_text()
+        flat = " ".join(PORTAL_ACTIONS.read_text().replace("# ", "").split())
+        self.assertIn("config/session-actions.json  optional: Secret dev-env-v2-portal-actions", header)
+        self.assertIn("not when one is first created", flat)
+        self.assertIn("does NOT revoke a running portal", flat)
+        self.assertIn("immediate kill switch", CHECKLIST.read_text())
+        self.assertIn("SecretSynced", CHECKLIST.read_text())
         # The principal's subject is never committed: the only UUID-shaped strings in these
         # files are the pilot Session UID and the pinned values that were there before.
         pinned = {"39740a0c-5539-4829-9b16-78524a120476",  # postgres16-ca Secret UID (provenance)
@@ -1908,10 +1933,8 @@ class RegisteredInputsTest(unittest.TestCase):
         docs = deepcopy(self.docs)
         deployment = next(d for d in docs if d["kind"] == "Deployment")
         volume = next(v for v in deployment["spec"]["template"]["spec"]["volumes"] if v["name"] == "config")
-        volume.pop("configMap")
-        volume["projected"] = {"sources": [{"configMap": {"name": "dev-env-v2-portal-config"}}, {"secret": {
-            "name": "dev-env-v2-portal-actions", "items": [{"key": "session-actions.json", "path": "session-actions.json"}]}}]}
-        self.assertTrue(any(v.startswith("deployment:") for v in registered_input_violations(docs)))
+        volume["projected"]["sources"][1]["secret"].pop("optional")
+        self.assertIn("deployment:mounted-files", registered_input_violations(docs))
 
     def test_deployment_guard_rejects_drift(self):
         def mutated(change):
