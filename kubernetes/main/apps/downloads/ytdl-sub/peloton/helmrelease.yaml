@@ -29,7 +29,7 @@ spec:
           app:
             image:
               repository: ghcr.io/jmbannon/ytdl-sub
-              tag: 2026.08.26
+              tag: 2026.10.27
             env:
               # ytdrivarr projects the yt-dlp plugins a Peloton library needs next to its
               # subscriptions.yaml (ytdrivarr#40: an override of yt-dlp's Peloton extractor for
