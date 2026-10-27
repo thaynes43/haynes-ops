@@ -98,12 +98,12 @@ PORTAL_IMAGE = (
 OPENPROJECT_ORIGIN = "https://openproject-web.frontend.svc.cluster.local:8443"
 OPENPROJECT_TASKS_QUERY = "/api/v3/projects/3/work_packages?offset=<page>&pageSize=50&filters=%5B%5D"
 OPERATOR_IMAGE = (
-    "sha-8b854b9"
-    "@sha256:f7051372f0814c7d191c6109b8eca93828216c0d2d62c0ef631b02019517dace"
+    "sha-e1f91a0"
+    "@sha256:cc0d8881781d55daea0797bc3c997d541ff0633e1b065f5b7da9cc57eb5ceed0"
 )
 PREVIOUS_OPERATOR_IMAGE = (
-    "sha-7af05ef"
-    "@sha256:28a2cd7f42d4f4fe977276e2b8081e10c2f283fa474bb50e1effa9889c93bb71"
+    "sha-8b854b9"
+    "@sha256:f7051372f0814c7d191c6109b8eca93828216c0d2d62c0ef631b02019517dace"
 )
 
 RESOURCES = [
