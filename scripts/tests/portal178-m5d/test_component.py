@@ -26,6 +26,9 @@ PORTAL_TREE = ROOT / "kubernetes/main/apps/dev-env-system/portal"
 PORTAL_INPUTS = PORTAL_TREE / "app"
 PORTAL_RUNTIME = PORTAL_INPUTS / "runtime-externalsecret.yaml"
 PORTAL_OPENPROJECT = PORTAL_INPUTS / "openproject-externalsecret.yaml"
+# 2026-10-27: Tom-only send and history for the one pilot session (private subject).
+PORTAL_ACTIONS = PORTAL_INPUTS / "actions-externalsecret.yaml"
+OPERATOR_RELEASE = ROOT / "kubernetes/main/apps/dev-env-system/operator/app/helmrelease.yaml"
 # Story178 S8+S9: the registered Deployment and its internal-only route.
 PORTAL_DEPLOYMENT = PORTAL_INPUTS / "deployment.yaml"
 PORTAL_ROUTE = PORTAL_INPUTS / "ingressroute.yaml"
@@ -279,13 +282,48 @@ def approved_portal_openproject_violations(path, doc):
     return [] if path.resolve() == PORTAL_OPENPROJECT.resolve() and doc == expected else ["noncanonical-portal-openproject"]
 
 
-APPROVED_LIVE_PATHS = {PORTAL_OIDC.resolve(), PORTAL_DB.resolve(), PORTAL_RUNTIME.resolve(), PORTAL_OPENPROJECT.resolve()}
+ACTIONS_ISSUER = "https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/"
+ACTIONS_SUBJECT_TEMPLATE = "{{ .PORTAL_ACTION_SUBJECT }}"
+ACTIONS_TARGET = {"name": "dev-env-1027-185745", "uid": "54c61939-3ae4-43de-96fe-526e33bb56ad"}
+ACTIONS_FILE = "session-actions.json"
+DUMMY_SUBJECT = "00000000-0000-4000-8000-000000000000"
+UUID_SHAPE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
+def actions_scope(subject):
+    action = {"issuer": ACTIONS_ISSUER, "subject": subject, "targets": [dict(ACTIONS_TARGET)]}
+    return {"send": deepcopy(action), "history": deepcopy(action)}
+
+
+def approved_portal_actions_violations(path, doc):
+    """Tom's private action scope: one property, one file, one pilot target, one registered path."""
+    expected_file = json.dumps(actions_scope(ACTIONS_SUBJECT_TEMPLATE), separators=(",", ":"))
+    expected = {
+        "apiVersion": "external-secrets.io/v1", "kind": "ExternalSecret",
+        "metadata": {"name": "dev-env-v2-portal-actions", "namespace": "dev-agents"},
+        "spec": {
+            "secretStoreRef": STORE, "refreshInterval": "1h",
+            "target": {
+                "name": "dev-env-v2-portal-actions", "creationPolicy": "Owner", "deletionPolicy": "Delete",
+                "template": {"engineVersion": "v2", "mergePolicy": "Replace", "type": "Opaque",
+                             "data": {ACTIONS_FILE: expected_file}},
+            },
+            "data": [{"secretKey": "PORTAL_ACTION_SUBJECT",
+                      "remoteRef": {"key": CANONICAL_ITEM, "property": "PORTAL_ACTION_SUBJECT"}}],
+        },
+    }
+    return [] if path.resolve() == PORTAL_ACTIONS.resolve() and doc == expected else ["noncanonical-portal-actions"]
+
+
+APPROVED_LIVE_PATHS = {PORTAL_OIDC.resolve(), PORTAL_DB.resolve(), PORTAL_RUNTIME.resolve(), PORTAL_OPENPROJECT.resolve(),
+                       PORTAL_ACTIONS.resolve()}
 
 
 def approved_live_projection(path, doc):
     return (not approved_portal_oidc_violations(path, doc) or not approved_portal_db_violations(path, doc)
             or not approved_portal_runtime_violations(path, doc)
-            or not approved_portal_openproject_violations(path, doc))
+            or not approved_portal_openproject_violations(path, doc)
+            or not approved_portal_actions_violations(path, doc))
 
 
 def dev_env_properties_from_documents(documents):
@@ -427,6 +465,7 @@ INPUT_OBJECTS = {
     ("Certificate", "dev-env-v2-portal-serving"),
     ("ExternalSecret", "dev-env-v2-portal-runtime"),
     ("ExternalSecret", "dev-env-v2-portal-openproject"),
+    ("ExternalSecret", "dev-env-v2-portal-actions"),
     ("ServersTransport", "dev-env-v2-portal"),
 }
 
@@ -622,7 +661,8 @@ def registered_input_violations(docs):
         if doc.get("kind") == "ServersTransport" and "rootCAs" in doc.get("spec", {}):
             violations.append("rootCAs-pruned-by-installed-crd")
         if (doc.get("kind") == "ExternalSecret" and approved_portal_runtime_violations(PORTAL_RUNTIME, doc)
-                and approved_portal_openproject_violations(PORTAL_OPENPROJECT, doc)):
+                and approved_portal_openproject_violations(PORTAL_OPENPROJECT, doc)
+                and approved_portal_actions_violations(PORTAL_ACTIONS, doc)):
             violations.append("runtime-externalsecret")
     text = yaml.safe_dump_all(docs)
     for needle in ("PORTAL_SUBJECT", "config/subject", "PRIVATE KEY", "dataFrom"):
@@ -1582,15 +1622,15 @@ class RegisteredInputsTest(unittest.TestCase):
         manifest = load(PORTAL_INPUTS / "kustomization.yaml")
         self.assertEqual(manifest["resources"], [
             "./certificates.yaml", "./service.yaml", "./serverstransport.yaml",
-            "./config.yaml", "./runtime-externalsecret.yaml", "./openproject-externalsecret.yaml",
-            "./deployment.yaml", "./ingressroute.yaml",
+            "./config.yaml", "./runtime-externalsecret.yaml", "./actions-externalsecret.yaml",
+            "./openproject-externalsecret.yaml", "./deployment.yaml", "./ingressroute.yaml",
         ])
         self.assertNotIn("namespace", manifest)
         self.assertNotIn("components", manifest)
         self.assertEqual(manifest["generatorOptions"], {"disableNameSuffixHash": True})
         self.assertEqual(sorted(p.name for p in PORTAL_INPUTS.iterdir()), sorted([
             "kustomization.yaml", "certificates.yaml", "service.yaml", "serverstransport.yaml",
-            "config.yaml", "runtime-externalsecret.yaml", "openproject-externalsecret.yaml", "issuer-ca.crt", "openproject-ca.crt",
+            "config.yaml", "runtime-externalsecret.yaml", "actions-externalsecret.yaml", "openproject-externalsecret.yaml", "issuer-ca.crt", "openproject-ca.crt",
             "postgres-ca.crt", "deployment.yaml", "ingressroute.yaml",
         ]))
         self.assertEqual(registered_input_violations(self.docs), [])
@@ -1789,6 +1829,89 @@ class RegisteredInputsTest(unittest.TestCase):
         policy = load(POLICY_KS.parent / "app/networkpolicy.yaml")
         self.assertEqual(policy["spec"]["endpointSelector"]["matchLabels"],
                          deployment["spec"]["template"]["metadata"]["labels"])
+
+    def test_private_action_secret_is_staged_and_not_mounted(self):
+        doc = self.by_key[("ExternalSecret", "dev-env-v2-portal-actions")]
+        self.assertEqual(approved_portal_actions_violations(PORTAL_ACTIONS, doc), [])
+        self.assertTrue(approved_portal_actions_violations(PORTAL_ACTIONS.with_name("other.yaml"), doc))
+        self.assertEqual(dev_env_properties_from_documents([(PORTAL_ACTIONS, doc)]), set())
+        self.assertEqual(dev_env_properties_from_documents([(PORTAL_ACTIONS.with_name("other.yaml"), doc)]),
+                         {"PORTAL_ACTION_SUBJECT"})
+        spec = doc["spec"]
+        # One projected property, no dataFrom, and the same recipient shape as the runtime Secret.
+        self.assertNotIn("dataFrom", spec)
+        self.assertEqual(spec["data"], [{"secretKey": "PORTAL_ACTION_SUBJECT",
+                                         "remoteRef": {"key": "dev-env", "property": "PORTAL_ACTION_SUBJECT"}}])
+        runtime = self.by_key[("ExternalSecret", "dev-env-v2-portal-runtime")]["spec"]
+        for field in ("secretStoreRef", "refreshInterval"):
+            self.assertEqual(spec[field], runtime[field])
+        self.assertEqual({k: v for k, v in spec["target"].items() if k not in {"name", "template"}},
+                         {k: v for k, v in runtime["target"].items() if k not in {"name", "template"}})
+        self.assertEqual(spec["target"]["name"], "dev-env-v2-portal-actions")
+        template = spec["target"]["template"]
+        self.assertEqual({k: v for k, v in template.items() if k != "data"},
+                         {k: v for k, v in runtime["target"]["template"].items() if k != "data"})
+        # Exactly one file key, compact JSON, and the subject is a placeholder, never a value.
+        self.assertEqual(list(template["data"]), ["session-actions.json"])
+        text = template["data"]["session-actions.json"]
+        self.assertEqual(text.count("{{ .PORTAL_ACTION_SUBJECT }}"), 2)
+        self.assertEqual(text, json.dumps(json.loads(text.replace("{{ .PORTAL_ACTION_SUBJECT }}", DUMMY_SUBJECT)),
+                                          separators=(",", ":")).replace(DUMMY_SUBJECT, "{{ .PORTAL_ACTION_SUBJECT }}"))
+        scope = json.loads(text.replace("{{ .PORTAL_ACTION_SUBJECT }}", DUMMY_SUBJECT))
+        action = {"issuer": "https://authentik.haynesnetwork.com/application/o/dev-env-v2-portal/",
+                  "subject": DUMMY_SUBJECT,
+                  "targets": [{"name": "dev-env-1027-185745", "uid": "54c61939-3ae4-43de-96fe-526e33bb56ad"}]}
+        self.assertEqual(scope, {"send": action, "history": action})
+        self.assertLessEqual(len(text), 8 * 1024)
+        # Stage 1 only creates the Secret. Nothing mounts it and the operator has no target flags.
+        deployment = self.by_key[("Deployment", "dev-env-v2-portal")]
+        self.assertNotIn("dev-env-v2-portal-actions", yaml.safe_dump(deployment))
+        self.assertNotIn("dev-env-v2-portal-actions", {name for _, name, _ in mounted_files(deployment).values()})
+        volume = next(v for v in deployment["spec"]["template"]["spec"]["volumes"] if v["name"] == "config")
+        self.assertEqual(volume, {"name": "config", "configMap": {"name": "dev-env-v2-portal-config"}})
+        self.assertNotIn("config/session-actions.json", expand_config_files(mounted_files(deployment), self.docs))
+        release = load(OPERATOR_RELEASE)
+        args = release["spec"]["values"]["controllers"]["dev-env-operator"]["containers"]["app"]["args"]
+        self.assertFalse([a for a in args if a.startswith(("--portal-send-target", "--portal-history-target"))])
+        self.assertIn("--enable-portal-reader", args)
+        # The principal's subject is never committed: the only UUID-shaped strings in these
+        # files are the pilot Session UID and the pinned values that were there before.
+        pinned = {"39740a0c-5539-4829-9b16-78524a120476",  # postgres16-ca Secret UID (provenance)
+                  "5df3bebb-9ed6-41f9-b1d7-74324910b0d5", "8d463394-7b50-4c12-9bfb-0c2eb6f5054d"}
+        allowed = {ACTIONS_TARGET["uid"]} | pinned
+        for path in sorted(PORTAL_INPUTS.glob("*.yaml")) + [OPERATOR_RELEASE, CHECKLIST]:
+            self.assertLessEqual(set(UUID_SHAPE.findall(path.read_text())), allowed, str(path))
+
+    def test_action_scope_guard_rejects_drift(self):
+        def mutated(change):
+            docs = deepcopy(self.docs)
+            change(next(d for d in docs if d["metadata"]["name"] == "dev-env-v2-portal-actions"))
+            return registered_input_violations(docs)
+
+        def template(d):
+            return d["spec"]["target"]["template"]["data"]
+
+        base = self.by_key[("ExternalSecret", "dev-env-v2-portal-actions")]
+        text = base["spec"]["target"]["template"]["data"]["session-actions.json"]
+        for change in (
+            # A committed subject, a second target, another file, a second property, dataFrom.
+            lambda d: template(d).update({"session-actions.json": text.replace(
+                "{{ .PORTAL_ACTION_SUBJECT }}", "11111111-2222-4333-8444-555555555555")}),
+            lambda d: template(d).update({"session-actions.json": text.replace(
+                '"targets":[', '"targets":[{"name":"x","uid":"y"},', 1)}),
+            lambda d: template(d).update({"other.json": "{}"}),
+            lambda d: d["spec"]["data"].append({"secretKey": "X", "remoteRef": {"key": "dev-env", "property": "X"}}),
+            lambda d: d["spec"].update(dataFrom=[{"extract": {"key": "dev-env"}}]),
+            lambda d: d["spec"]["data"][0]["remoteRef"].update(property="PORTAL_SUBJECT"),
+        ):
+            self.assertIn("runtime-externalsecret", mutated(change))
+        docs = deepcopy(self.docs)
+        deployment = next(d for d in docs if d["kind"] == "Deployment")
+        volume = next(v for v in deployment["spec"]["template"]["spec"]["volumes"] if v["name"] == "config")
+        volume.pop("configMap")
+        volume["projected"] = {"sources": [{"configMap": {"name": "dev-env-v2-portal-config"}}, {"secret": {
+            "name": "dev-env-v2-portal-actions", "items": [{"key": "session-actions.json", "path": "session-actions.json"}]}}]}
+        self.assertTrue(any(v.startswith("deployment:") for v in registered_input_violations(docs)))
 
     def test_deployment_guard_rejects_drift(self):
         def mutated(change):
