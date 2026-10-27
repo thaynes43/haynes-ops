@@ -15,6 +15,10 @@ scope, the routine lifecycle writes are yours. Run `opwork.py --help` for the co
   opwork.py checkpoint 97 "state..."            # explicit local record, no tracker needed
   opwork.py pending | flush                     # tracker was down: list / replay notes
 
+Every item line carries the canonical OpenProject link, for example
+https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/97. OPWORK_BASE_URL
+overrides that default (a plain https hostname: no credentials, port, path or query); opwork prints no other links.
+
 Session identity (the Execution owner and the comment prefix) comes from OPWORK_SESSION,
 else "<OPWORK_AGENT or agent> | worktree <name> | branch <branch>". Project defaults to
 OPWORK_PROJECT or haynes-engineering. A mutation is reported done only after a read back.
@@ -26,6 +30,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -33,6 +38,11 @@ import urllib.parse
 import uuid
 
 PROJECT = "haynes-engineering"
+BASE_URL = "https://work.haynesnetwork.com"  # the verified public address; the API origin in agent-api.py is cluster-internal
+LINK_PROJECT = PROJECT  # main() sets it to --project, so the link names the project the command works in
+LINK_BASE = BASE_URL  # main() sets it from OPWORK_BASE_URL after validating it, before any tracker request
+BASE_RULE = "OPWORK_BASE_URL must be a plain https://hostname (ASCII letters, digits, hyphens and dots; no credentials, port, path or query)"
+HOSTNAME = re.compile(r"https://(?=.{1,253}/?\Z)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*/?\Z", re.ASCII)
 OWNER, REPOS, ACCEPT, CONSTRAINTS, SOURCE_KEY, PROVENANCE = "customField2", "customField3", "customField4", "customField5", "customField6", "customField11"
 MARKDOWN = (ACCEPT, CONSTRAINTS, PROVENANCE)
 HOLDS = ("Needs answer", "Needs approval", "Paused")  # an explicit hold or pause stays one without --force
@@ -76,12 +86,25 @@ def href_id(link):
     return int(href.rsplit("/", 1)[-1]) if href else None
 
 
+def base_url():
+    """The validated link base. A strict match on the raw text, so nothing is parsed that could
+    raise with the value in the message, and the value is never echoed (it may hold a secret)."""
+    raw = os.environ.get("OPWORK_BASE_URL") or BASE_URL
+    if not HOSTNAME.match(raw):
+        raise Fail(BASE_RULE)
+    return raw.rstrip("/")
+
+
+def wp_url(wp_id):
+    return "%s/projects/%s/work_packages/%s" % (LINK_BASE, LINK_PROJECT, wp_id)
+
+
 def line(wp):
     parent = href_id(wp["_links"].get("parent"))
     owner = text_of(wp.get(OWNER))
-    return "#%s %s [%s]%s lock=%s%s - %s" % (wp["id"], wp["_links"]["type"]["title"], wp["_links"]["status"]["title"],
-                                             " parent=#%s" % parent if parent else "", wp["lockVersion"],
-                                             " owner=<%s>" % owner if owner else "", wp["subject"])
+    return "#%s %s [%s]%s lock=%s%s %s - %s" % (wp["id"], wp["_links"]["type"]["title"], wp["_links"]["status"]["title"],
+                                                " parent=#%s" % parent if parent else "", wp["lockVersion"],
+                                                " owner=<%s>" % owner if owner else "", wp_url(wp["id"]), wp["subject"])
 
 
 class Tracker:
@@ -452,13 +475,17 @@ def build_parser():
 
 
 def main(argv=None, tracker=None, unavailable=None):
+    global LINK_PROJECT, LINK_BASE
     args = build_parser().parse_args(argv)
+    LINK_PROJECT = args.project
     session = session_id()
     if getattr(args, "text", None) == "-":
         args.text = sys.stdin.read().strip()
     if args.fn in (cmd_checkpoint, cmd_pending):
         tracker = None
     try:
+        if args.fn not in (cmd_checkpoint, cmd_pending):  # these print no item lines; validate before any tracker object or request
+            LINK_BASE = base_url()
         if tracker is None and args.fn not in (cmd_checkpoint, cmd_pending):
             api = load_api()
             tracker, unavailable = Tracker(api.request, api.ApiUnavailable, args.project), api.ApiUnavailable

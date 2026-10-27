@@ -491,6 +491,91 @@ class CreateTests(Base):
         self.assertEqual((code, "#30" in out, "#31" in out, self.posts("/projects/")), (0, True, True, []))
 
 
+class LinkTests(Base):
+    BASE = "https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/"
+
+    def setUp(self):
+        super().setUp()
+        saved = os.environ.pop("OPWORK_BASE_URL", None)
+        self.addCleanup(lambda: os.environ.pop("OPWORK_BASE_URL", None) if saved is None else os.environ.__setitem__("OPWORK_BASE_URL", saved))
+
+    def test_one_line_form_adds_only_the_work_package_link(self):
+        self.story(10, subject="Ten")
+        self.story(11, subject="Eleven", status="In progress")
+        out = self.run_cli("search")[1]
+        # Everything before and after the link is the existing line, unchanged.
+        self.assertIn("#10 Story [Ungroomed] parent=#5 lock=1 %s10 - Ten\n" % self.BASE, out)
+        self.assertIn("#11 Story [In progress] parent=#5 lock=1 %s11 - Eleven\n" % self.BASE, out)
+        self.assertNotIn(self.BASE + "5/", out)
+        self.assertEqual(op.line(self.fake.wps[10]).replace(self.BASE + "10 ", ""), "#10 Story [Ungroomed] parent=#5 lock=1 - Ten")
+
+    def test_show_header_has_the_link_and_the_rest_is_unchanged(self):
+        self.story(10)
+        code, out, _ = self.run_cli("show", "10")
+        self.assertEqual(code, 0)
+        self.assertEqual(out.splitlines()[0], "#10 Story [Ungroomed] parent=#5 lock=1 %s10 - Story 10" % self.BASE)
+        self.assertEqual(out.count("http"), 1)
+        self.assertIn("  source-key: ", out)
+
+    def test_create_result_links_the_new_item_by_its_id(self):
+        self.story()
+        code, out, err = self.run_cli(*CreateTests.args)
+        self.assertEqual(code, 0, err)
+        made = next(w for w in self.fake.wps.values() if w[op.SOURCE_KEY] == "followup:10:cache")
+        self.assertIn("created (read back): #%d Story [Ungroomed] parent=#5 lock=1 %s%d - Add retry cache layer" % (made["id"], self.BASE, made["id"]), out)
+        self.assertNotIn(self.BASE + "10 ", out)  # the origin is only named, not re-printed
+        reused = self.run_cli(*CreateTests.args)[1]
+        self.assertIn("REUSED, not created: #%d " % made["id"], reused)
+        self.assertIn("%s%d - " % (self.BASE, made["id"]), reused)
+
+    def test_claim_and_status_lines_carry_the_link(self):
+        self.story()
+        self.assertIn(self.BASE + "10 ", self.run_cli("claim", "10")[1])
+        self.assertIn(self.BASE + "10 ", self.run_cli("status", "10", "In review")[1])
+
+    def test_base_can_be_overridden_and_project_follows_the_flag(self):
+        self.story()
+        os.environ["OPWORK_BASE_URL"] = "https://work.example.test/"
+        self.assertIn("https://work.example.test/projects/haynes-engineering/work_packages/10 ", self.run_cli("show", "10")[1])
+        del os.environ["OPWORK_BASE_URL"]
+        self.assertIn("https://work.haynesnetwork.com/projects/other/work_packages/10 ", self.run_cli("--project", "other", "show", "10")[1])
+
+    def test_unsafe_base_is_refused_and_never_printed(self):
+        self.story()
+        for bad in ("http://work.haynesnetwork.com", "https://user:s3cr3t@work.haynesnetwork.com", "https://work.haynesnetwork.com/x", "https://work.haynesnetwork.com/?t=s3cr3t",
+                    "work.haynesnetwork.com", "https://work.haynesnetwork.com:8443", "https://work.haynesnetwork.com/\n", "https://", "https://-bad.example"):
+            os.environ["OPWORK_BASE_URL"] = bad
+            code, out, err = self.run_cli("show", "10")
+            self.assertEqual((code, out, err.strip()), (1, "", op.BASE_RULE), bad)
+
+    def test_malformed_bases_that_make_urlsplit_raise_or_echo_never_leak(self):
+        self.story()
+        for bad in ("https://user\uff20s3cr3t.example", "https://[s3cr3t", "https://host:s3cr3t", "https://h\u00f6st.s3cr3t.example", "https://xn--s3cr3t-.example:99999"):
+            os.environ["OPWORK_BASE_URL"] = bad
+            code, out, err = self.run_cli("show", "10")
+            self.assertEqual(code, 1, bad)
+            self.assertNotIn("s3cr3t", out + err)
+            self.assertEqual((out, err.strip()), ("", op.BASE_RULE), bad)
+
+    def test_bad_base_stops_a_write_before_any_tracker_request(self):
+        self.story()
+        before = copy.deepcopy(self.fake.wps[10])
+        os.environ["OPWORK_BASE_URL"] = "https://user:s3cr3t@work.haynesnetwork.com"
+        for argv in (("claim", "10"), ("complete", "10", "--evidence", "e"), ("status", "10", "In review"), ("comment", "10", "hi"), CreateTests.args):
+            code, out, err = self.run_cli(*argv)
+            self.assertEqual((code, out, err.strip()), (1, "", op.BASE_RULE), argv)
+        self.assertEqual(self.fake.calls, [])  # not even a read
+        self.assertEqual(self.fake.wps[10], before)  # lock, owner and status untouched
+        self.assertEqual(self.fake.acts[10], [])
+        self.assertEqual(len(self.fake.wps), 3)  # nothing created
+        self.assertEqual(self.run_cli("pending")[0], 0)  # offline commands do not print links, so they still work
+
+    def test_no_github_links_are_generated(self):
+        self.story()
+        self.assertNotIn("github.com", self.run_cli("show", "10", "--history", "--relations")[1])
+        self.assertNotIn("github.com", self.run_cli("search")[1])
+
+
 class OutageTests(Base):
     def test_reads_fail_clearly_without_writing_anything(self):
         self.fake.fail["GET /api/v3"] = "before"
