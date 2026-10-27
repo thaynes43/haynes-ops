@@ -72,6 +72,8 @@ spec:
                   seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
+              # Source 7af05eff410b61bc9bac491c102348d0d58c4eaf (v2.47.0, dev-env#574 and release #575, 2026-10-27); Publish 40549518186 signed/verified.
+              # 7af05ef adds the default-off portal message and conversation routes (dev-env#574). They register only with --portal-send-target or --portal-history-target, and neither is set here, so the portal reader still may only list session summaries. No change to existing routes, the controller, the templates package, API types or CRDs. Only the operator moves; keeper, broker, task worker image and templates image keep their pins.
               # Source 0134c30f (dev-env#568 merge on main, 2026-10-27); Publish 40452436157 signed/verified.
               # 0134c30 changes only the portal reader: it lists every repository's sessions in dev-agents and adds provider, launchedBy (spec.parent, pattern-checked) and taskResult to view=activity (OpenProject #178). No other operator or keeper code changed since af402e5; no API type or CRD change. The portal must already run sha-0134c30 (haynes-ops#4331): older portals refuse the new keys. Only the operator moves; keeper, broker, task worker image and templates image keep their pins.
               # Source af402e533379bddd81e9266ee80ec6c565b81f29 (v2.45.0-2-gaf402e5, dev-env main after release 2.45.0); Publish 40368529556 signed/verified.
@@ -99,7 +101,7 @@ spec:
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates. The executor stop (H3) is on since NB-06b (below).
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-0134c30@sha256:1ac4b1d9ed4d5456026d2c762626a3b3baa09200e7ddec9f27da455456a4176a
+              tag: sha-7af05ef@sha256:28a2cd7f42d4f4fe977276e2b8081e10c2f283fa474bb50e1effa9889c93bb71
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
