@@ -25,7 +25,7 @@ spec:
   values:
     controllers:
       ollama:
-        replicas: 1
+        replicas: 0  # paused: HaynesIntelligence dual-3090 install + rack test (#3052); restore after
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
