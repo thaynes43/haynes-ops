@@ -17,7 +17,7 @@ scope, the routine lifecycle writes are yours. Run `opwork.py --help` for the co
 
 Every item line carries the canonical OpenProject link, for example
 https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/97. OPWORK_BASE_URL
-overrides that default (https only, no credentials in it); opwork prints no other links.
+overrides that default (a plain https hostname: no credentials, port, path or query); opwork prints no other links.
 
 Session identity (the Execution owner and the comment prefix) comes from OPWORK_SESSION,
 else "<OPWORK_AGENT or agent> | worktree <name> | branch <branch>". Project defaults to
@@ -30,6 +30,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -39,6 +40,9 @@ import uuid
 PROJECT = "haynes-engineering"
 BASE_URL = "https://work.haynesnetwork.com"  # the verified public address; the API origin in agent-api.py is cluster-internal
 LINK_PROJECT = PROJECT  # main() sets it to --project, so the link names the project the command works in
+LINK_BASE = BASE_URL  # main() sets it from OPWORK_BASE_URL after validating it, before any tracker request
+BASE_RULE = "OPWORK_BASE_URL must be a plain https://hostname (ASCII letters, digits, hyphens and dots; no credentials, port, path or query)"
+HOSTNAME = re.compile(r"https://(?=.{1,253}/?\Z)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*/?\Z", re.ASCII)
 OWNER, REPOS, ACCEPT, CONSTRAINTS, SOURCE_KEY, PROVENANCE = "customField2", "customField3", "customField4", "customField5", "customField6", "customField11"
 MARKDOWN = (ACCEPT, CONSTRAINTS, PROVENANCE)
 HOLDS = ("Needs answer", "Needs approval", "Paused")  # an explicit hold or pause stays one without --force
@@ -83,15 +87,16 @@ def href_id(link):
 
 
 def base_url():
+    """The validated link base. A strict match on the raw text, so nothing is parsed that could
+    raise with the value in the message, and the value is never echoed (it may hold a secret)."""
     raw = os.environ.get("OPWORK_BASE_URL") or BASE_URL
-    parts = urllib.parse.urlsplit(raw)
-    if parts.scheme != "https" or not parts.hostname or "@" in parts.netloc or parts.query or parts.fragment or parts.path.strip("/"):
-        raise Fail("OPWORK_BASE_URL must be a plain https://host address (no credentials, path or query)")
-    return "https://" + parts.netloc
+    if not HOSTNAME.match(raw):
+        raise Fail(BASE_RULE)
+    return raw.rstrip("/")
 
 
 def wp_url(wp_id):
-    return "%s/projects/%s/work_packages/%s" % (base_url(), LINK_PROJECT, wp_id)
+    return "%s/projects/%s/work_packages/%s" % (LINK_BASE, LINK_PROJECT, wp_id)
 
 
 def line(wp):
@@ -470,7 +475,7 @@ def build_parser():
 
 
 def main(argv=None, tracker=None, unavailable=None):
-    global LINK_PROJECT
+    global LINK_PROJECT, LINK_BASE
     args = build_parser().parse_args(argv)
     LINK_PROJECT = args.project
     session = session_id()
@@ -479,6 +484,8 @@ def main(argv=None, tracker=None, unavailable=None):
     if args.fn in (cmd_checkpoint, cmd_pending):
         tracker = None
     try:
+        if args.fn not in (cmd_checkpoint, cmd_pending):  # these print no item lines; validate before any tracker object or request
+            LINK_BASE = base_url()
         if tracker is None and args.fn not in (cmd_checkpoint, cmd_pending):
             api = load_api()
             tracker, unavailable = Tracker(api.request, api.ApiUnavailable, args.project), api.ApiUnavailable

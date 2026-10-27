@@ -542,12 +542,33 @@ class LinkTests(Base):
 
     def test_unsafe_base_is_refused_and_never_printed(self):
         self.story()
-        for bad in ("http://work.haynesnetwork.com", "https://user:secret@work.haynesnetwork.com", "https://work.haynesnetwork.com/x", "https://work.haynesnetwork.com/?t=secret", "work.haynesnetwork.com"):
+        for bad in ("http://work.haynesnetwork.com", "https://user:s3cr3t@work.haynesnetwork.com", "https://work.haynesnetwork.com/x", "https://work.haynesnetwork.com/?t=s3cr3t",
+                    "work.haynesnetwork.com", "https://work.haynesnetwork.com:8443", "https://work.haynesnetwork.com/\n", "https://", "https://-bad.example"):
+            os.environ["OPWORK_BASE_URL"] = bad
+            code, out, err = self.run_cli("show", "10")
+            self.assertEqual((code, out, err.strip()), (1, "", op.BASE_RULE), bad)
+
+    def test_malformed_bases_that_make_urlsplit_raise_or_echo_never_leak(self):
+        self.story()
+        for bad in ("https://user\uff20s3cr3t.example", "https://[s3cr3t", "https://host:s3cr3t", "https://h\u00f6st.s3cr3t.example", "https://xn--s3cr3t-.example:99999"):
             os.environ["OPWORK_BASE_URL"] = bad
             code, out, err = self.run_cli("show", "10")
             self.assertEqual(code, 1, bad)
-            self.assertEqual(out, "")
-            self.assertNotIn("secret", err)
+            self.assertNotIn("s3cr3t", out + err)
+            self.assertEqual((out, err.strip()), ("", op.BASE_RULE), bad)
+
+    def test_bad_base_stops_a_write_before_any_tracker_request(self):
+        self.story()
+        before = copy.deepcopy(self.fake.wps[10])
+        os.environ["OPWORK_BASE_URL"] = "https://user:s3cr3t@work.haynesnetwork.com"
+        for argv in (("claim", "10"), ("complete", "10", "--evidence", "e"), ("status", "10", "In review"), ("comment", "10", "hi"), CreateTests.args):
+            code, out, err = self.run_cli(*argv)
+            self.assertEqual((code, out, err.strip()), (1, "", op.BASE_RULE), argv)
+        self.assertEqual(self.fake.calls, [])  # not even a read
+        self.assertEqual(self.fake.wps[10], before)  # lock, owner and status untouched
+        self.assertEqual(self.fake.acts[10], [])
+        self.assertEqual(len(self.fake.wps), 3)  # nothing created
+        self.assertEqual(self.run_cli("pending")[0], 0)  # offline commands do not print links, so they still work
 
     def test_no_github_links_are_generated(self):
         self.story()
