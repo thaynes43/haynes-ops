@@ -2,7 +2,7 @@
 # ghcr.io/thaynes43/actions-runner: ephemeral ARC jobs in private repositories.
 # Upstream supplies Ubuntu 24.04, runner UID 1001, action Node runtimes,
 # Docker CLI 29.9.2, Buildx, and the ARC container hooks. Preserve that layout.
-FROM ghcr.io/actions/actions-runner:2.338.1@sha256:e275409999c37162649aa050ca573f03eab2eabcb3a1e7fcc47548de6b4f9690
+FROM ghcr.io/actions/actions-runner:2.338.2@sha256:759a1d94a15b05941aba5196974ff43fe15b4cbba29b694b35cbc32a1166b232
 
 LABEL org.opencontainers.image.source="https://github.com/thaynes43/haynes-ops" \
       org.opencontainers.image.description="Ephemeral ARC runner tools for private repositories"
