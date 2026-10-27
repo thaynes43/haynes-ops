@@ -57,24 +57,22 @@ email/username) for any future OIDC provider whose consumer keys accounts on `su
 
 `97-dev-env-v2-portal-oidc.yaml` adds the approved internal portal confidential
 client (`authorization_code`, `openid profile`, strict callback, `user_uuid`). Its
-application combines the existing active `thaynes` user and `authentik Admins`
-bindings with **all** semantics for Authentik's effective policy user: MIRROR
-actors can inherit their parent's result, so the BFF must pin Tom's exact
-immutable subject independently. COPY actors may lock out a copied conjunction.
-An additional explicit deny keeps admission
-closed until reviewed runtime activation. The same blueprint owns the provider
-mapping relation: managed openid, managed profile, and one portal-local mapping.
-There is no second blueprint and no runtime, launch link, outpost or ingress
-in this foundation. The [M5A release packet](../../../../../../../.agents/reports/portal178-m5a/RELEASE.md)
-records secret provisioning, atomic import/reference behavior and outstanding
-runtime acceptance. Removing a blueprint file does **not** delete its objects;
-removing this file alone is not an access revocation.
-Activation requires explicit `state: absent` for both deny entries, after Gate A;
-never disable/delete a positive binding. Disabling/deleting a conjunct widens
-access, and zero enabled bindings permits authenticated users by default. Read
-back the exact enabled order 0/10/20 set and successful blueprint instance while
-staged, plus non-null expected RSA signer and matching JWKS RS256; a blueprint
-error, binding drift or missing signer blocks release and needs an alert/handoff.
+application has exactly one policy binding, the existing `authentik Admins` group
+(order 20), with **all** semantics: access is managed by group, not by user ID
+(Tom, 2026-10-26). The staged deny binding (order 0) and the single-user `thaynes`
+binding (order 10) were deleted by an earlier import with `state: absent`; those
+entries are no longer in the file. The `dev-env-v2-portal-staged-deny` policy
+object remains, unbound. The portal re-checks live Admins membership through its
+portal-local mapping. The same blueprint owns the provider mapping relation:
+managed openid, managed profile, and one portal-local mapping. There is no second
+blueprint. The [M5A release packet](../../../../../../../.agents/reports/portal178-m5a/RELEASE.md)
+records secret provisioning and atomic import/reference behavior. Removing a
+blueprint file does **not** delete its objects; removing this file alone is not an
+access revocation. Never disable or delete the Admins binding: zero enabled
+bindings permits every authenticated user by default. Read back the single enabled
+order-20 group binding, a successful blueprint instance, a non-null expected RSA
+signer and matching JWKS RS256; a blueprint error, binding drift or missing signer
+needs an alert/handoff.
 
 ## Pending file (NOT discovered)
 

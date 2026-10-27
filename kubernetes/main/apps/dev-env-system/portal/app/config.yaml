@@ -4,9 +4,8 @@
 # - The eight URLs must equal the constants the portal pins, or it refuses to start.
 # - Durations and auth-style are the tested fixture values, inside the parser's
 #   bounds. They are not a measured service level.
-# - No admission keys: Tom dropped the admission witness and recovery fence
-#   (2026-10-26). The two witness-* rate files are harmless extras once the
-#   portal no longer reads them; delete them with that parser change.
+# - No admission or witness keys: Tom dropped the admission witness and recovery
+#   fence (2026-10-26), and the portal no longer reads them (dev-env#560).
 # - No subject file: the portal authorizes by Authentik group membership.
 apiVersion: v1
 kind: ConfigMap
@@ -28,5 +27,3 @@ data:
   absolute-ttl: 1h
   fresh-for: 1m
   clock-skew: 0s
-  witness-gets-per-second: "30"
-  witness-get-burst: "57"

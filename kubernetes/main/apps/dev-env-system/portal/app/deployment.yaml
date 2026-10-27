@@ -46,7 +46,7 @@ spec:
       labels:
         app.kubernetes.io/name: dev-env-v2-portal
     spec:
-      # Registered by dev-env-rbac (portal-witness.yaml); not duplicated here.
+      # Registered by dev-env-rbac (portal-serviceaccount.yaml); not duplicated here.
       serviceAccountName: dev-env-v2-portal
       automountServiceAccountToken: false
       enableServiceLinks: false

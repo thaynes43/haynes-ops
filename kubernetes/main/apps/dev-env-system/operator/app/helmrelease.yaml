@@ -109,7 +109,7 @@ spec:
               # held to this audience by dev-env-v1-token-guard).
               - --client-service-accounts=dev-agents/dev-env-workbench,dev/dev-env
               # Story178 S3: the portal's Sessions view. Accept the ServiceAccount
-              # dev-agents/dev-env-v2-portal (portal-witness.yaml), only with a pod-bound token for
+              # dev-agents/dev-env-v2-portal (portal-serviceaccount.yaml), only with a pod-bound token for
               # audience dev-env-operator from a live Pod that runs as it, and only for
               # GET /v1/sessions; every other route answers it 403 (apiserver server.go:316). It
               # lists dev-agents AgentSessions of repo dev-env, read-only, paged (at most 100).

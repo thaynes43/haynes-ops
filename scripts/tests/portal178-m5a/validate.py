@@ -77,7 +77,6 @@ EXPECTED_FINDS = [
     find("authentik_providers_oauth2.scopemapping",
          ("managed", "goauthentik.io/providers/oauth2/scope-profile")),
     find("authentik_crypto.certificatekeypair", ("name", "jwt-signing-key-rsa-longterm")),
-    find("authentik_core.user", ("username", "thaynes"), ("is_active", True)),
     find("authentik_core.group", ("name", "authentik Admins")),
 ]
 
@@ -86,7 +85,7 @@ def materialize(value, ids):
     if isinstance(value, Ref):
         if value.tag == "Find":
             require(value in EXPECTED_FINDS, "unexpected directory lookup")
-            return 1 if value.value[0] == "authentik_core.user" else SYNTHETIC_UUID
+            return SYNTHETIC_UUID
         require(value.tag == "KeyOf" and value.value in ids, "unresolved entry reference")
         model = ids[value.value]
         return 1 if model == "authentik_providers_oauth2.oauth2provider" else SYNTHETIC_UUID
@@ -107,23 +106,22 @@ def validate(blueprint, projection, schema):
             "Story178 internal portal OIDC: confidential code/openid/profile; access by authentik Admins group."}},
         "blueprint metadata changed")
     entries = blueprint["entries"]
-    require(len(entries) == 7, "expected deny, portal mapping, provider, application and three bindings")
+    require(len(entries) == 5, "expected deny policy, portal mapping, provider, application and one binding")
     ids = {e["id"]: e["model"] for e in entries if "id" in e}
     require(len(ids) == 4, "duplicate or missing entry ID")
     for index, e in enumerate(entries):
         require(not e.get("conditions") and not e.get("permissions"),
                 "entries must reconcile unconditionally without permissions")
         # Group access (2026-10-26): the deny (order 0) and single-user (order 10)
-        # bindings are deleted; everything else, the Admins binding included, stays.
-        require(e.get("state") == ("absent" if index in (4, 5) else "present"),
-                "deny and user bindings absent; Admins binding and the rest present")
+        # bindings were deleted by an earlier import; their absent entries are gone.
+        require(e.get("state") == "present", "every entry present")
         require(set(e) == ({"model", "id", "state", "identifiers", "attrs"} if index < 4
                           else {"model", "state", "identifiers", "attrs"}), "entry fields changed")
         allowed = schema["definitions"]["model_" + e["model"]]["properties"]
         require(set(e["attrs"]) <= set(allowed) and set(e["identifiers"]) <= set(allowed),
                 "unknown model attribute")
     policy, mapping_entry, provider, application, *bindings = entries
-    require(len(bindings) == 3, "expected deny, portal mapping, provider, application and three bindings")
+    require(len(bindings) == 1, "expected deny policy, portal mapping, provider, application and one binding")
     require(policy["model"] == "authentik_policies_expression.expressionpolicy" and
             policy["id"] == "portal-staged-deny" and
             policy["identifiers"] == {"name": "dev-env-v2-portal-staged-deny"} and
@@ -186,13 +184,12 @@ def validate(blueprint, projection, schema):
             a["policy_engine_mode"] == "all" and a["meta_hide"] is True and
             "meta_launch_url" not in a and not a.get("backchannel_providers"),
             "all-policy application without launch/backchannel required")
-    for b, order, subject in zip(bindings, [0, 10, 20], [
-            {"policy": Ref("KeyOf", "portal-staged-deny")},
-            {"user": EXPECTED_FINDS[5]}, {"group": EXPECTED_FINDS[6]}], strict=True):
-        require(b["model"] == "authentik_policies.policybinding" and
-                b["identifiers"] == {"target": Ref("KeyOf", "portal-application"), "order": order} and
-                b["attrs"] == {**subject, "enabled": True, "negate": False, "failure_result": False},
-                "deny AND exact active Tom AND existing Admins bindings required")
+    # The one binding: the existing authentik Admins group. No user or policy binding.
+    (b,) = bindings
+    require(b["model"] == "authentik_policies.policybinding" and
+            b["identifiers"] == {"target": Ref("KeyOf", "portal-application"), "order": 20} and
+            b["attrs"] == {"group": EXPECTED_FINDS[5], "enabled": True, "negate": False, "failure_result": False},
+            "exactly the existing Admins group binding required")
 
     require(set(projection) == {"apiVersion", "kind", "metadata", "spec"}, "projection fields changed")
     require(projection["metadata"] == {"name": "dev-env-v2-portal-oidc", "namespace": "dev-env-system"},
@@ -251,18 +248,28 @@ def main():
          lambda b, p: b["entries"][2]["attrs"].update(sub_mode="user_username")),
         ("secret-in-source", "provider attribute allowlist changed",
          lambda b, p: b["entries"][2]["attrs"].update(client_secret="SYNTHETIC_CANARY")),
-        ("missing-user", "deny AND exact active Tom AND existing Admins bindings required",
-         lambda b, p: b["entries"][5]["attrs"].pop("user")),
-        ("missing-group", "deny AND exact active Tom AND existing Admins bindings required",
-         lambda b, p: b["entries"][6]["attrs"].pop("group")),
-        ("disabled-binding", "deny AND exact active Tom AND existing Admins bindings required",
-         lambda b, p: b["entries"][6]["attrs"].update(enabled=False)),
-        ("group-binding-absent", "deny and user bindings absent; Admins binding and the rest present",
-         lambda b, p: b["entries"][6].update(state="absent")),
-        ("deny-binding-present", "deny and user bindings absent; Admins binding and the rest present",
-         lambda b, p: b["entries"][4].update(state="present")),
-        ("user-binding-present", "deny and user bindings absent; Admins binding and the rest present",
-         lambda b, p: b["entries"][5].update(state="present")),
+        ("missing-group", "exactly the existing Admins group binding required",
+         lambda b, p: b["entries"][4]["attrs"].pop("group")),
+        ("disabled-binding", "exactly the existing Admins group binding required",
+         lambda b, p: b["entries"][4]["attrs"].update(enabled=False)),
+        ("group-binding-absent", "every entry present",
+         lambda b, p: b["entries"][4].update(state="absent")),
+        ("user-instead-of-group", "exactly the existing Admins group binding required",
+         lambda b, p: (b["entries"][4]["attrs"].pop("group"), b["entries"][4]["attrs"].update(user=find(
+             "authentik_core.user", ("username", "thaynes"), ("is_active", True))))),
+        ("extra-user-binding", "expected deny policy, portal mapping, provider, application and one binding",
+         lambda b, p: b["entries"].append({
+             "model": "authentik_policies.policybinding", "state": "present",
+             "identifiers": {"target": Ref("KeyOf", "portal-application"), "order": 10},
+             "attrs": {"user": 1, "enabled": True, "negate": False, "failure_result": False}})),
+        ("extra-deny-binding", "expected deny policy, portal mapping, provider, application and one binding",
+         lambda b, p: b["entries"].append({
+             "model": "authentik_policies.policybinding", "state": "absent",
+             "identifiers": {"target": Ref("KeyOf", "portal-application"), "order": 0},
+             "attrs": {"policy": Ref("KeyOf", "portal-staged-deny"), "enabled": True,
+                       "negate": False, "failure_result": False}})),
+        ("binding-order", "exactly the existing Admins group binding required",
+         lambda b, p: b["entries"][4]["identifiers"].update(order=0)),
         ("deny-removed", "staged deny must remain closed",
          lambda b, p: b["entries"][0]["attrs"].update(expression="return True")),
         ("historical-item", "only canonical dev-env properties",
@@ -305,17 +312,12 @@ def main():
          lambda b, p: b["entries"][2]["attrs"].update(signing_key=None)),
         ("launch-url", "application attribute allowlist changed",
          lambda b, p: b["entries"][3]["attrs"].update(meta_launch_url="https://example.invalid/")),
-        ("negated-user", "deny AND exact active Tom AND existing Admins bindings required",
-         lambda b, p: b["entries"][5]["attrs"].update(negate=True)),
-        ("group-fail-open", "deny AND exact active Tom AND existing Admins bindings required",
-         lambda b, p: b["entries"][6]["attrs"].update(failure_result=True)),
-        ("deleted-conjunct", "expected deny, portal mapping, provider, application and three bindings",
+        ("negated-group", "exactly the existing Admins group binding required",
+         lambda b, p: b["entries"][4]["attrs"].update(negate=True)),
+        ("group-fail-open", "exactly the existing Admins group binding required",
+         lambda b, p: b["entries"][4]["attrs"].update(failure_result=True)),
+        ("zero-bindings", "expected deny policy, portal mapping, provider, application and one binding",
          lambda b, p: b["entries"].pop()),
-        ("zero-bindings", "expected deny, portal mapping, provider, application and three bindings",
-         lambda b, p: b.update(entries=b["entries"][:4])),
-        ("inactive-user-reference", "deny AND exact active Tom AND existing Admins bindings required",
-         lambda b, p: b["entries"][5]["attrs"].update(user=find(
-             "authentik_core.user", ("username", "thaynes")))),
         ("drop-portal-mapping", "exact three mappings required",
          lambda b, p: b["entries"][2]["attrs"]["property_mappings"].pop()),
         ("mapping-pin", "portal mapping pin changed",

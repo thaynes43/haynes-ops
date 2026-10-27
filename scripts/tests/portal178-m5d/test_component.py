@@ -33,13 +33,12 @@ PORTAL_HOST = "dev-env-v2.haynesops.com"
 # One image line, pinned by tag and digest. The digest changes with each portal release.
 REGISTERED_PORTAL_IMAGE = re.compile(r"ghcr\.io/thaynes43/dev-env-portal:sha-[0-9a-f]{7,40}@sha256:[0-9a-f]{64}")
 # What LoadProduction reads under /etc/dev-env-portal (dev-env web/portal/session/production.go
-# after dev-env#560), and where each file comes from: (kind, name, key). The witness-*
-# config files are harmless extras the parser no longer reads.
+# after dev-env#560), and where each file comes from: (kind, name, key).
 PRODUCTION_FILES = {
     **{"config/" + key: ("ConfigMap", "dev-env-v2-portal-config", key)
        for key in ("origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
                    "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
-                   "absolute-ttl", "fresh-for", "clock-skew", "witness-gets-per-second", "witness-get-burst")},
+                   "absolute-ttl", "fresh-for", "clock-skew")},
     "secrets/OIDC_CLIENT_ID": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_ID"),
     "secrets/OIDC_CLIENT_SECRET": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_SECRET"),
     "secrets/DB_USERNAME": ("Secret", "dev-env-v2-portal-runtime", "DB_USERNAME"),
@@ -59,14 +58,19 @@ POLICY_KS = PORTAL_TREE / "policy/ks.yaml"
 INPUTS_KS = PORTAL_TREE / "ks.yaml"
 READY_EXPR = "status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')"
 # The config/* files the portal reads, without the admission witness Tom dropped
-# on 2026-10-26. The witness-* rate files stay as harmless extras until the parser
-# change lands. No subject file.
+# on 2026-10-26 (dev-env#560). No subject file.
 PRODUCTION_CONFIG_FILES = {
     "origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
     "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
-    "absolute-ttl", "fresh-for", "clock-skew", "witness-gets-per-second", "witness-get-burst",
+    "absolute-ttl", "fresh-for", "clock-skew",
 }
 ADMISSION_CONFIG_FILES = {"admission-api-url", "admission-uid", "admission-token-file"}
+# The witness's API rate limits, in the reviewed packet and no longer registered.
+WITNESS_CONFIG_FILES = {"witness-gets-per-second", "witness-get-burst"}
+# The S1 packet policy's witness-only rules, absent from the registered policy.
+WITNESS_DNS_NAME = {"matchName": "kubernetes.default.svc.cluster.local"}
+WITNESS_APISERVER_RULE = {"toEntities": ["kube-apiserver"], "toPorts": [{"ports": [
+    {"port": "443", "protocol": "TCP"}, {"port": "6443", "protocol": "TCP"}]}]}
 # Public CA inputs: file SHA-256, then the DER SHA-256 of each certificate in order.
 ISSUER_CA = (
     "1b80197679a4666ee8eaa26db3f3d1380d37da0d1b9b2b8d5120201d3dcc608e",
@@ -613,7 +617,7 @@ def registered_input_violations(docs):
             data = doc.get("data", {})
             if set(data) != PRODUCTION_CONFIG_FILES:
                 violations.append("config-keys")
-            if ADMISSION_CONFIG_FILES & set(data):
+            if (ADMISSION_CONFIG_FILES | WITNESS_CONFIG_FILES) & set(data):
                 violations.append("admission-config")
         if doc.get("kind") == "ServersTransport" and "rootCAs" in doc.get("spec", {}):
             violations.append("rootCAs-pruned-by-installed-crd")
@@ -654,6 +658,20 @@ def same_apply_proves_isolation():
 
 def by_kind(docs, kind):
     return [doc for doc in docs if doc.get("kind") == kind]
+
+
+def policy_without_witness(policy):
+    """The packet policy minus its witness-only egress (exactly one of each, or it fails)."""
+    out = deepcopy(policy)
+    egress = out["spec"]["egress"]
+    if egress.count(WITNESS_APISERVER_RULE) != 1:
+        raise AssertionError("packet policy lacks exactly one kube-apiserver rule")
+    egress.remove(WITNESS_APISERVER_RULE)
+    dns = egress[0]["toPorts"][0]["rules"]["dns"]
+    if dns.count(WITNESS_DNS_NAME) != 1:
+        raise AssertionError("packet policy lacks exactly one kubernetes.default DNS name")
+    dns.remove(WITNESS_DNS_NAME)
+    return out
 
 
 def remote_properties(doc):
@@ -1404,7 +1422,15 @@ spec:
         self.assertEqual(registered_ks["spec"]["path"], "./kubernetes/main/apps/dev-env-system/portal/policy/app")
         self.assertNotIn("dependsOn", registered_ks["spec"])
         self.assertEqual(load(registered_dir / "app/kustomization.yaml")["resources"], ["./networkpolicy.yaml"])
-        self.assertEqual(load(registered_dir / "app/networkpolicy.yaml"), load(COMPONENT / "policy/networkpolicy.yaml"))
+        # The registered policy is the packet's without the witness-only egress: the
+        # kube-apiserver rule and the kubernetes.default DNS name (dev-env#560).
+        registered_policy = load(registered_dir / "app/networkpolicy.yaml")
+        packet_policy = load(COMPONENT / "policy/networkpolicy.yaml")
+        self.assertEqual(registered_policy, policy_without_witness(packet_policy))
+        self.assertNotEqual(registered_policy, packet_policy)
+        registered_text = yaml.safe_dump(registered_policy)
+        self.assertNotIn("kube-apiserver", registered_text)
+        self.assertNotIn("kubernetes.default", registered_text)
         system = load(ROOT / "kubernetes/main/apps/dev-env-system/kustomization.yaml")["resources"]
         self.assertEqual(system.count("./portal/policy/ks.yaml"), 1)
         # S4 relaxes "no dependents" to exactly one: the inputs Kustomization's dependsOn.
@@ -1600,6 +1626,7 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertIn("config-keys", mutated(*config, lambda d: d["data"].update(subject="x")))
         self.assertIn("config-keys", mutated(*config, lambda d: d["data"].pop("origin")))
         self.assertIn("admission-config", mutated(*config, lambda d: d["data"].update({"admission-uid": "x"})))
+        self.assertIn("admission-config", mutated(*config, lambda d: d["data"].update({"witness-get-burst": "57"})))
         self.assertIn("text:PORTAL_SUBJECT", mutated(*config, lambda d: d["data"].update(origin="PORTAL_SUBJECT")))
         self.assertIn("namespace:dev-env-v2-portal", mutated("Service", "dev-env-v2-portal",
                                                              lambda d: d["metadata"].update(namespace="dev")))
@@ -1650,10 +1677,12 @@ class RegisteredInputsTest(unittest.TestCase):
     def test_config_is_the_packet_without_admission(self):
         config = self.by_key[("ConfigMap", "dev-env-v2-portal-config")]
         packet = self.packet[("ConfigMap", "dev-env-v2-portal-config")]
-        expected = {k: v for k, v in packet["data"].items() if k not in ADMISSION_CONFIG_FILES}
+        dropped = ADMISSION_CONFIG_FILES | WITNESS_CONFIG_FILES
+        self.assertTrue(WITNESS_CONFIG_FILES <= set(packet["data"]))
+        expected = {k: v for k, v in packet["data"].items() if k not in dropped}
         self.assertEqual(config["data"], expected)
         self.assertEqual(set(config["data"]), PRODUCTION_CONFIG_FILES)
-        self.assertTrue(ADMISSION_CONFIG_FILES.isdisjoint(config["data"]))
+        self.assertTrue(dropped.isdisjoint(config["data"]))
         self.assertNotIn("subject", config["data"])
         self.assertNotIn("session-bindings.json", config["data"])
         for key, value in config["data"].items():
@@ -1740,10 +1769,11 @@ class RegisteredInputsTest(unittest.TestCase):
         reload |= set(annotations["secret.reloader.stakater.com/reload"].split(","))
         self.assertEqual(reload, {name for _, name, _ in PRODUCTION_FILES.values()} - {"dev-env-operator"})
         # The ServiceAccount is dev-env-rbac's; the operator reader names the same one.
+        # It is the file's only object: no witness Role or RoleBinding.
         rbac = [doc for doc in yaml.safe_load_all(
-            (ROOT / "kubernetes/main/apps/dev-env-system/rbac/app/portal-witness.yaml").read_text()) if doc]
-        self.assertIn(("ServiceAccount", "dev-agents", "dev-env-v2-portal"),
-                      {(d["kind"], d["metadata"]["namespace"], d["metadata"]["name"]) for d in rbac})
+            (ROOT / "kubernetes/main/apps/dev-env-system/rbac/app/portal-serviceaccount.yaml").read_text()) if doc]
+        self.assertEqual([(d["kind"], d["metadata"]["namespace"], d["metadata"]["name"]) for d in rbac],
+                         [("ServiceAccount", "dev-agents", "dev-env-v2-portal")])
         self.assertEqual(deployment["spec"]["template"]["spec"]["serviceAccountName"], "dev-env-v2-portal")
         # The probes reach /healthz and /readyz over TLS with the portal's own Host.
         container = deployment["spec"]["template"]["spec"]["containers"][0]
