@@ -141,7 +141,7 @@ There is no Deployment, route or admission object.
 | Issuers and Certificates (`dev-env-v2-portal-ca`, `-serving`) | The packet, unchanged. The leaf is Secret `dev-env-v2-portal-tls`. |
 | Service `dev-env-v2-portal` | The packet, unchanged. |
 | ServersTransport `dev-env-v2-portal` | The packet, fixed. Its `rootCAs` named a Secret nothing creates, and the installed CRD has no `rootCAs` field. It now uses `rootCAsSecrets: [dev-env-v2-portal-tls]`, whose `ca.crt` cert-manager fills with the issuing CA. The packet IngressRoute names this object. |
-| ConfigMap `dev-env-v2-portal-config` | The packet's keys without `admission-api-url`, `admission-token-file` or `admission-uid`. The two `witness-*` files are harmless extras until the parser change drops them. No `config/subject`. |
+| ConfigMap `dev-env-v2-portal-config` | The packet's keys without `admission-api-url`, `admission-token-file` or `admission-uid`. The `witness-*` keys were removed by haynes-ops#4326. No `config/subject`. |
 | ConfigMap `dev-env-v2-portal-postgres-ca` (`ca.crt`) | See the Postgres CA bullet below. |
 | ConfigMap `dev-env-v2-portal-issuer-ca` (`ca.crt`) | Five roots for the Cloudflare edge of `authentik.haynesnetwork.com`; see below. File SHA-256 `1b80197679a4666ee8eaa26db3f3d1380d37da0d1b9b2b8d5120201d3dcc608e`. |
 | ConfigMap `dev-env-v2-portal-openproject-ca` (`ca.crt`) | See the OpenProject CA bullet below. |
@@ -152,7 +152,7 @@ Provenance:
   - CNPG `postgres16` CA, Secret `database/postgres16-ca` key `ca.crt`, certificate only;
   - UID `39740a0c-5539-4829-9b16-78524a120476`, resourceVersion `694827978`, exported 2026-10-26 18:02Z;
   - 603 bytes, file SHA-256 `f89c6cc6c2ddf495b5112023c7863142696ddecd413cba98bf36f1c940bae818`, DER SHA-256 `53b084dc3e8fe33fb9e6e1ffd49092cd806a396ef480324a2af0c21720e99f21`;
-  - it expires 2026-11-05 03:55Z. **Re-pin it after the CNPG CA renewal (about 2026-10-29)**, or the portal loses the database.
+  - this copy's dates end 2026-11-05 03:55Z. CNPG renews the CA with the same key, and from dev-env#564 the portal trusts the pinned key with the dates opened, so the renewal needs no re-pin. Re-pin only if the CA key changes.
 - **Issuer roots**: GTS Root R4, ISRG Root X1, ISRG Root X2, SSL.com TLS ECC Root CA 2022, and Sectigo Public Server Authentication Root E46.
   - The live chain on 2026-10-26 was `haynesnetwork.com` ← WE1 ← GTS Root R4.
   - CT logs since 2025-06 show the edge using GTS (primary), Sectigo and SSL.com (backups); Let's Encrypt is Cloudflare's other issuing CA.
@@ -187,16 +187,16 @@ Acceptance, read from metadata:
 Owner direction (Tom, relayed by the coordinator): fastest path to a working demo. The same Flux Kustomization `dev-env-system/dev-env-v2-portal` now also registers the portal Deployment and its LAN-only route. Its `dependsOn`, `wait`, timeout and health checks are unchanged; `wait` judges the Deployment through kstatus, so the Kustomization is Ready only once the portal pod is Ready.
 
 **Deployment `dev-agents/dev-env-v2-portal`**, one replica:
-- ServiceAccount `dev-env-v2-portal`, already registered by `dev-env-rbac` (`portal-witness.yaml`); not duplicated. No API token automount.
+- ServiceAccount `dev-env-v2-portal`, already registered by `dev-env-rbac` (`portal-serviceaccount.yaml`, haynes-ops#4326); not duplicated. No API token automount.
 - ClusterFirst DNS with `ndots` 1, as the S1 policy requires. Pod Security restricted: non-root uid 65532, read-only root, no capabilities, RuntimeDefault seccomp. CPU limit 200m (the Kyverno dev-agents rule).
 - Probes: HTTPS `/healthz` (startup, liveness) and `/readyz` (readiness) with `Host: dev-env-v2.haynesops.com`. The portal answers them only over TLS for its own host. Both are static: they do not test the database or Authentik.
-- The image is one line: `ghcr.io/thaynes43/dev-env-portal:sha-0effa8b@sha256:6d81d2633f984103b39ba2d1b03ab1f2dd1a7bef7dc3b74d7fe16c40e026b33c`. That is dev-env main `0effa8b` (dev-env#561, 2026-10-26: `/` and a missing session land on sign-in; the ok tone uses the accent instead of green). It includes dev-env#560 (admission fence removed) and b98247c (group authorization). Publish run 40416297055 signed it and verified the signature. This bump also rolls the pod, so it picks up `OPENPROJECT_TOKEN` (haynes-ops#4322).
+- The image is one line: `ghcr.io/thaynes43/dev-env-portal:sha-684d530@sha256:66cf94834c5db9aa50c98a018897baa67c59261d13a748b2b1a58ef893916548`. That is dev-env main `684d530` (dev-env#564, 2026-10-27: Tasks load OpenProject 17 collections, whose paging link moved to `/api/v3/workspaces/3`; tasks show type, parent, owner and a description excerpt; the Planned entries, allowance bar and stale banner are gone; the pinned PostgreSQL CA is trusted by key, so the CNPG renewal needs no re-pin). It includes dev-env#561 (entry redirects, accent ok tone), #560 (admission fence removed) and b98247c (group authorization). Publish run 40430662292 signed it and verified the signature.
 
 What the portal reads (dev-env `web/portal/session/production.go` after dev-env#560) and where each file comes from:
 
 | Under `/etc/dev-env-portal` | Source |
 | --- | --- |
-| `config/<key>` | ConfigMap `dev-env-v2-portal-config`, whole. The two `witness-*` files are ignored extras. |
+| `config/<key>` | ConfigMap `dev-env-v2-portal-config`, whole. |
 | `secrets/OIDC_CLIENT_ID`, `secrets/OIDC_CLIENT_SECRET` | Secret `dev-env-v2-portal-oidc` (its ExternalSecret is in `dev-env-secrets`) |
 | `secrets/DB_USERNAME`, `DB_PASSWORD`, `SESSION_AEAD_KEY`, `SESSION_GENERATION` | Secret `dev-env-v2-portal-runtime` |
 | `secrets/OPENPROJECT_TOKEN` | Secret `dev-env-v2-portal-openproject`, **optional**. Nothing creates it yet. |

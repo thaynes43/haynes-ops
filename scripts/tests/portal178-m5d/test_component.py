@@ -1912,7 +1912,7 @@ class RegisteredInputsTest(unittest.TestCase):
         for needle in ("internal.haynesops", "traefik-internal", "OPENPROJECT_TOKEN", "dev-env#560"):
             self.assertIn(needle, checklist)
         for needle in (ISSUER_CA[0], OPENPROJECT_CA[0], POSTGRES_CA[0], "rootCAsSecrets",
-                       "dev-env-api-ca", "openproject-portal-ca-1", "Re-pin it after the CNPG CA renewal", "dropped the admission witness"):
+                       "dev-env-api-ca", "openproject-portal-ca-1", "so the renewal needs no re-pin", "dropped the admission witness"):
             self.assertIn(needle, checklist)
 
 
