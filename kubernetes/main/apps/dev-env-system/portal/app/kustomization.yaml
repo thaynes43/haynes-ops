@@ -65,8 +65,11 @@ configMapGenerator:
   # Exported 2026-10-26 18:02Z from Secret database/postgres16-ca key ca.crt (UID
   # 39740a0c-5539-4829-9b16-78524a120476, resourceVersion 694827978), certificate only.
   # DER SHA-256 53b084dc3e8fe33fb9e6e1ffd49092cd806a396ef480324a2af0c21720e99f21.
-  # It EXPIRES 2026-11-05 03:55Z. CNPG renews it with a new key first (about
-  # 2026-10-29): re-pin this file and its hash then, or the portal loses the database.
+  # This copy's dates end 2026-11-05 03:55Z. CNPG 1.30.1 (renewCASecret in
+  # internal/controller/cluster_pki.go) renews the CA about 7 days earlier with the
+  # SAME key and subject. From dev-env#564 the portal trusts the pinned CA's key with
+  # its dates opened, so no re-pin is needed at renewal; re-pin only if the CA key
+  # itself changes (a cluster rebuild).
   - name: dev-env-v2-portal-postgres-ca
     namespace: dev-agents
     files:
