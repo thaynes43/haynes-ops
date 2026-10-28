@@ -154,3 +154,66 @@ spec:
   credential:
     names: [proxmox]
   maxTTL: 4h
+---
+# ---- hw-ssh lease, agent-attested: a STANDING scope (D-88, D-89) ----
+# Tom approved this scope on 2026-10-28T01:37:41Z: full-profile haynes-ops sessions may
+# request the hw-ssh credential for up to one hour per grant. It is not a one-session
+# pilot and it is not deleted on a schedule: it is removed only by Tom's decision.
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: credential-hw-ssh-attested
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Standing scope Tom approved on 2026-10-28T01:37:41Z: every full-profile haynes-ops
+    session and their haynes-ops children may request an agent-attested lease of the ONE
+    shared hw-ssh key, up to 1h per grant. The key is user dev-env on the five PVE hosts
+    (sudo allowlist; qm is root-equivalent), root on HaynesTower and PiKVM, and the other
+    documented hardware. Anything in the pod can COPY the key while it is installed;
+    removing it at expiry, release or session end is NOT revocation and not containment,
+    and the key has no cryptographic expiry (revoking means rotating it on every host).
+    Eligibility is that whole class, NOT one session. Approval is the requesting agent's own
+    claim that the user or a coordinator approved (D-88), not verified human identity.
+    Removal of this policy is Tom's decision only; deleting it stops new approvals but does
+    not end Active grants (release those). Request with --type credential --credential
+    hw-ssh --ttl 1h, then attest.
+  attested:
+    profiles: [full]
+    repos: [haynes-ops]
+  type: credential
+  credential:
+    names: [hw-ssh]
+  maxTTL: 1h
+---
+# ---- SSH to haynesintelligence, agent-attested (D-88; same approval) ----
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: egress-haynesintelligence-ssh-attested
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Under the same approval (Tom, 2026-10-28T01:37:41Z): SSH (22) from a full-profile
+    haynes-ops session or its haynes-ops child to haynesintelligence.haynesnetwork only,
+    the destination of the first pilot and of the hw-ssh lease (credential-hw-ssh-attested),
+    up to 1h per grant. Any other host would need its own approved policy. Eligibility is
+    that whole class, NOT one session. Approval is the requesting agent's own claim that the
+    user or a coordinator approved (D-88), not verified human identity. Removal of this
+    policy is Tom's decision only; deleting it stops new approvals but does not end Active
+    grants (release those). Request with --fqdn haynesintelligence.haynesnetwork --port 22
+    --ttl 1h, then attest.
+  attested:
+    profiles: [full]
+    repos: [haynes-ops]
+  type: egress
+  egress:
+    fqdns:
+      - haynesintelligence.haynesnetwork
+    ports:
+      - port: 22
+  maxTTL: 1h
