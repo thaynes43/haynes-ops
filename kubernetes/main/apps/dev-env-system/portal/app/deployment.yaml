@@ -64,8 +64,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # The one image line: dev-env v2.52.0 (main fd89b72, release #592; publish run 40616512876 signed and verified it). Its only portal change since v2.50.0 is dev-env#591: it reads an optional conversationUsage activity key and shows measured conversation usage for interactive sessions. The operator sends that key only with --portal-conversation-usage, which is not set yet, so the portal still renders what it did.
-          image: ghcr.io/thaynes43/dev-env-portal:sha-fd89b72@sha256:a7b5b32756394c123b5aacf185867f4a883652ca5e7500bcddd0b3caf0ae7472
+          # dev-env v2.55.0 (main b9558eb; publish run 40711785178 signed and verified the portal image).
+          image: ghcr.io/thaynes43/dev-env-portal:sha-b9558eb@sha256:5a393f1699656aada8b8c2d7c4ae487dbc2ed3edeecec37fcf4e3a68f026261d
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
