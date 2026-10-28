@@ -72,7 +72,7 @@ spec:
                   seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Source <v2.52.0 commit> (v2.52.0, release #592); Publish <run> signed/verified (cosign verify passed) -- PLACEHOLDER until #592 publishes.
+              # Source fd89b72e6eac3eaca8868406031358a29c1d0514 (v2.52.0, release #592); publish.yml run 40616512876 signed and verified keyless (Sign the image, Verify the signature: success); digest re-checked on ghcr by tag.
               # v2.52.0 adds (all default off, none enabled by this pin): attested grants (D-88, dev-env#586: --enable-grant-attestation on the operator API, --enable-attested-grants on the broker; GrantPolicy spec.attested), hw-ssh credential grants (D-89, dev-env#590: --enable-hw-ssh-grants on the broker and the keeper), the usage unit B backend (dev-env#588), and the opwork link. CRD changes: credentialjobs, grantpolicies and agentsessions, so dev-env-crds must carry the v2.52.0 schemas first (haynes-ops PR "CRDs for v2.52.0"). Only the operator moves in this file; the broker and keeper pins move in the same PR.
               # Source 11be6eda454d34904e053a0d01c0ba13bfa5d749 (v2.50.0, dev-env#580 and #582, release #581, 2026-10-27); Publish 40597197081 signed/verified.
               # 11be6ed adds the default-off portal launch route (dev-env#580). It registers only with --portal-launch-repo plus a required --portal-launch-profile; neither is set here, so nothing new is served. No controller, templates, API type or CRD change. Only the operator moves.
@@ -109,7 +109,7 @@ spec:
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates. The executor stop (H3) is on since NB-06b (below).
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-REPLACE_WITH_V2_52_0_SHORT@sha256:REPLACE_WITH_V2_52_0_DIGEST
+              tag: sha-fd89b72@sha256:053d1905ecc6fb18c9a00189c50f1961949389264eaddd29b4e20c743eb8f5b3
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
