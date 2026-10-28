@@ -36,7 +36,7 @@ spec:
           app:
             image:
               repository: docker.io/ollama/ollama
-              tag: 0.40.11
+              tag: 0.40.12
             env:
               - name: NVIDIA_VISIBLE_DEVICES
                 value: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a
