@@ -27,3 +27,4 @@ data:
   absolute-ttl: 1h
   fresh-for: 1m
   clock-skew: 0s
+  pages-alertmanager.json: '{"source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts"}'

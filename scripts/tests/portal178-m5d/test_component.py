@@ -38,7 +38,7 @@ PRODUCTION_FILES = {
     **{"config/" + key: ("ConfigMap", "dev-env-v2-portal-config", key)
        for key in ("origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
                    "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
-                   "absolute-ttl", "fresh-for", "clock-skew")},
+                   "absolute-ttl", "fresh-for", "clock-skew", "pages-alertmanager.json")},
     "secrets/OIDC_CLIENT_ID": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_ID"),
     "secrets/OIDC_CLIENT_SECRET": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_SECRET"),
     "secrets/DB_USERNAME": ("Secret", "dev-env-v2-portal-runtime", "DB_USERNAME"),
@@ -62,8 +62,9 @@ READY_EXPR = "status.conditions.exists(e, e.type == 'Ready' && e.status == 'True
 PRODUCTION_CONFIG_FILES = {
     "origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
     "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
-    "absolute-ttl", "fresh-for", "clock-skew",
+    "absolute-ttl", "fresh-for", "clock-skew", "pages-alertmanager.json",
 }
+PAGES_CONFIG = '{"source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts"}'
 ADMISSION_CONFIG_FILES = {"admission-api-url", "admission-uid", "admission-token-file"}
 # The witness's API rate limits, in the reviewed packet and no longer registered.
 WITNESS_CONFIG_FILES = {"witness-gets-per-second", "witness-get-burst"}
@@ -619,6 +620,8 @@ def registered_input_violations(docs):
                 violations.append("config-keys")
             if (ADMISSION_CONFIG_FILES | WITNESS_CONFIG_FILES) & set(data):
                 violations.append("admission-config")
+            if data.get("pages-alertmanager.json") != PAGES_CONFIG:
+                violations.append("pages-config")
         if doc.get("kind") == "ServersTransport" and "rootCAs" in doc.get("spec", {}):
             violations.append("rootCAs-pruned-by-installed-crd")
         if (doc.get("kind") == "ExternalSecret" and approved_portal_runtime_violations(PORTAL_RUNTIME, doc)
@@ -1704,6 +1707,7 @@ class RegisteredInputsTest(unittest.TestCase):
         dropped = ADMISSION_CONFIG_FILES | WITNESS_CONFIG_FILES
         self.assertTrue(WITNESS_CONFIG_FILES <= set(packet["data"]))
         expected = {k: v for k, v in packet["data"].items() if k not in dropped}
+        expected["pages-alertmanager.json"] = PAGES_CONFIG
         self.assertEqual(config["data"], expected)
         self.assertEqual(set(config["data"]), PRODUCTION_CONFIG_FILES)
         self.assertTrue(dropped.isdisjoint(config["data"]))
@@ -1714,6 +1718,28 @@ class RegisteredInputsTest(unittest.TestCase):
             self.assertLess(len(value.encode()), 4096, key)
             self.assertEqual(value, value.strip(), key)
             self.assertNotIn("\n", value, key)
+
+    def test_pages_config_is_exact_and_rejects_drift(self):
+        self.assertEqual(registered_input_violations(self.docs), [])
+        bad_values = [
+            '{"source_url":"http://wrong.example/api/v2/alerts"}',
+            '{"source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts","issuer":"x"}',
+            '{"source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts","subject":"x"}',
+            '{"source_url":42}', '{"source_url":null}', 'null', '{',
+            '{"source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts","unknown":true}',
+            '{"source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts","source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts"}',
+        ]
+        for value in bad_values:
+            docs = deepcopy(self.docs)
+            config = next(d for d in docs if d.get("kind") == "ConfigMap" and d.get("metadata", {}).get("name") == "dev-env-v2-portal-config")
+            config["data"]["pages-alertmanager.json"] = value
+            self.assertIn("pages-config", registered_input_violations(docs), value)
+        deployment = self.by_key[("Deployment", "dev-env-v2-portal")]
+        self.assertEqual(deployment["spec"]["strategy"], {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}})
+        image = deployment["spec"]["template"]["spec"]["containers"][0]["image"]
+        self.assertRegex(image, REGISTERED_PORTAL_IMAGE)
+        self.assertEqual(image, "ghcr.io/thaynes43/dev-env-portal:sha-b9558eb@sha256:5a393f1699656aada8b8c2d7c4ae487dbc2ed3edeecec37fcf4e3a68f026261d")
+        self.assertEqual(expand_config_files(mounted_files(deployment), self.docs), PRODUCTION_FILES)
 
     def test_public_ca_bundles_are_pinned_certificates_only(self):
         for name, filename, (file_sha, der_shas) in (
