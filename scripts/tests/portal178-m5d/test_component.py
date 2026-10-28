@@ -1434,11 +1434,23 @@ spec:
         self.assertEqual(registered_ks["spec"]["path"], "./kubernetes/main/apps/dev-env-system/portal/policy/app")
         self.assertNotIn("dependsOn", registered_ks["spec"])
         self.assertEqual(load(registered_dir / "app/kustomization.yaml")["resources"], ["./networkpolicy.yaml"])
-        # The registered policy is the packet's without the witness-only egress: the
-        # kube-apiserver rule and the kubernetes.default DNS name (dev-env#560).
+        # The registered policy removes witness-only egress and adds the approved
+        # scoped Alertmanager read; every other packet policy field remains exact.
         registered_policy = load(registered_dir / "app/networkpolicy.yaml")
         packet_policy = load(COMPONENT / "policy/networkpolicy.yaml")
-        self.assertEqual(registered_policy, policy_without_witness(packet_policy))
+        expected_policy = policy_without_witness(packet_policy)
+        expected_policy["spec"]["egress"][0]["toPorts"][0]["rules"]["dns"].append(
+            {"matchName": "alertmanager-operated.observability.svc.cluster.local"})
+        expected_policy["spec"]["egress"].append({
+            "toEndpoints": [{"matchLabels": {
+                "io.kubernetes.pod.namespace": "observability",
+                "app.kubernetes.io/name": "alertmanager",
+                "app.kubernetes.io/instance": "kube-prometheus-stack",
+            }}],
+            "toPorts": [{"ports": [{"port": "9093", "protocol": "TCP"}],
+                         "rules": {"http": [{"method": "^GET$", "path": "^/api/v2/alerts$"}]}}],
+        })
+        self.assertEqual(registered_policy, expected_policy)
         self.assertNotEqual(registered_policy, packet_policy)
         registered_text = yaml.safe_dump(registered_policy)
         self.assertNotIn("kube-apiserver", registered_text)
