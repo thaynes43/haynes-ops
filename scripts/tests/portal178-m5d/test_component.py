@@ -1079,6 +1079,13 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertIn("--session-namespace=dev-agents", operator["args"])
         self.assertEqual(sum(arg.startswith("--session-namespace") for arg in operator["args"]), 1)
         self.assertFalse(any(arg.startswith("--enable-child-usage-capture") for arg in operator["args"]))
+        # The measured-usage pilot (2026-10-28): one new key and the signed 2.52.0 agent image,
+        # each flag once. The parent is the coordinator session and no portal action is enabled.
+        self.assertEqual([a for a in operator["args"] if a.startswith("--pilot-agent-image")], [
+            "--pilot-agent-image=ghcr.io/thaynes43/dev-env:2.52.0@sha256:87e8ab9346c2f656c0dfe19eb3d09ae89e220a341dd86e30e9ef0d43230204f9"])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--pilot-agent-session")], [
+            "--pilot-agent-session=dev-env-1027-111645/usage-pilot-1"])
+        self.assertFalse([a for a in operator["args"] if a.startswith(("--portal-send-target", "--portal-history-target", "--portal-launch"))])
         self.assertNotEqual(spec, pending_spec)
         for doc in by_kind(self.docs, "ExternalSecret"):
             self.assertNotIn("OPERATOR_TOKEN", remote_properties(doc))
