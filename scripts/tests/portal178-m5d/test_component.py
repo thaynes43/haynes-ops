@@ -1076,6 +1076,11 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(operator["image"]["tag"], OPERATOR_IMAGE)
         # Story178 S3: the reader is on, with the namespace it requires stated.
         self.assertIn("--enable-portal-reader", operator["args"])
+        # Measured conversation usage (2026-10-28): reported to the portal reader's activity view,
+        # once, with the reader on, and no portal action (send, history, launch) enabled by it.
+        self.assertEqual([a for a in operator["args"] if a.startswith("--portal-conversation-usage")],
+                         ["--portal-conversation-usage=true"])
+        self.assertFalse([a for a in operator["args"] if a.startswith(("--portal-send-target", "--portal-history-target", "--portal-launch"))])
         self.assertIn("--session-namespace=dev-agents", operator["args"])
         self.assertEqual(sum(arg.startswith("--session-namespace") for arg in operator["args"]), 1)
         self.assertFalse(any(arg.startswith("--enable-child-usage-capture") for arg in operator["args"]))

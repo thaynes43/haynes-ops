@@ -128,6 +128,16 @@ spec:
               # The operator refuses to start with the reader on unless the session namespace is
               # dev-agents (main.go:220), so that default is stated here.
               - '--enable-portal-reader'
+              # Measured usage (dev-env#588 and #591, DESIGN-029 "Interactive conversation usage"): add
+              # each interactive session's measured conversation usage to the portal reader's
+              # activity view as an allowlisted conversationUsage key (result, reason, per-model
+              # counters, counts, observedAt; no paths, ids or text). Task sessions and sessions
+              # without a valid figure send no key. It requires --enable-portal-reader (above). It
+              # is on only after the portal that reads the key is rolled (the portal's activity
+              # decoder is strict, so a portal from before dev-env#591 would read the view as
+              # unavailable). It changes no pod and no Secret, and grants nothing: the send,
+              # history and launch flags are not set.
+              - '--portal-conversation-usage=true'
               - '--session-namespace=dev-agents'
               # Story178 live IDE pilot (dev-env#576, docs/portal-session-runtime.md "Pilot agent
               # image for one session"): portal history binds only at a session's first launch on
