@@ -217,3 +217,34 @@ spec:
     ports:
       - port: 22
   maxTTL: 1h
+---
+# ---- node/drain role, agent-attested (D-88; Tom, 2026-10-28T02:57:14Z) ----
+# Standing scope for the full-profile haynes-ops class. The role is cluster-wide.
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: kube-nodes-attested
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Tom approved on 2026-10-28T02:57:14Z: every full-profile haynes-ops session and their
+    haynes-ops children may request the existing node/drain role, up to 3h per grant. The role
+    is CLUSTER-WIDE, not limited to GPU workers: it can patch ALL nodes (cordon, uncordon,
+    labels, taints) and evict pods in any namespace except dev-env-system, dev-agents and
+    dev-tools (the identity guard refuses those; a drain cannot evict session pods). A NoExecute
+    taint bypasses that guard and PDBs: the node controller then removes every untolerating pod
+    on that node, session pods included. The requesting agent decides when to use it; the
+    coordination lane will NOT drain. Approval is the agent's own claim (D-88), not verified
+    human identity. Removal of this policy is Tom's decision only; deleting it stops new
+    approvals but does not end Active grants (release those). Request with: agent-run grant
+    request --type kube --role dev-env-grant-nodes --ttl 3h --no-wait --reason "...", then
+    attest.
+  attested:
+    profiles: [full]
+    repos: [haynes-ops]
+  type: kube
+  kube:
+    roles: [dev-env-grant-nodes]
+  maxTTL: 3h
