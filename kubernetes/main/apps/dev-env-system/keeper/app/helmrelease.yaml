@@ -52,10 +52,13 @@ spec:
               # Source fd89b72e6eac3eaca8868406031358a29c1d0514 (v2.52.0, release #592); publish.yml run 40616512876 signed and verified keyless (Sign the image, Verify the signature: success); digest re-checked on ghcr by tag.
               # v2.52.0 adds the default-off hw-ssh lease (D-89, dev-env#590): --enable-hw-ssh-grants is NOT set by this pin, and it needs the Secret-get rule (a separate PR). Only this operator-image container moves: the dev-env-codex-login helper image below keeps sha-617ed15 (it is the login-only helper and v2.52.0 changes nothing in it), and the agent image keeps its pin.
               # Keeper binary with the Claude login worker and adoption socket (dev-env#452, #455).
-              # Source 617ed15fa850d8fff49a9d2c45fa11e4411cd077 (v2.39.1);
+              # Was source 617ed15fa850d8fff49a9d2c45fa11e4411cd077 (v2.39.1);
               # publish.yml run 39706772225 signed/verified. 2.39.1 makes a bad notice flag disable notices instead of stopping the keeper (dev-env#505). Was v2.39.0 (0c22cc0, run 39466593953), v2.38.3 (8f7311c, run 39391960144), v2.38.2 (2875abe, run 39387698019), v2.38.1 (fdf2542, run 39382009894), v2.38.0 (702a57f, run 39374328506). 2.38.0 adds the keeper control status
               # expiry times and SIGHUP cancel that the keeper-login routes need (dev-env#475):
-              # this container, claude-login and codex-login move together with the operator.
+              # this container, claude-login and codex-login moved together with the operator
+              # up to v2.39.1. As of v2.52.0 only this keeper app container moves: the helper
+              # protocols (the codex-login and claude-login control sockets) are unchanged since
+              # 617ed15 (verified), so the helper images keep their pins.
               # Previously source 585692bbe730b0c7d435496d304cffb2276a0d6f (v2.34.0), run 39302323514.
               # The broker pin is separate and unchanged.
               tag: sha-fd89b72@sha256:053d1905ecc6fb18c9a00189c50f1961949389264eaddd29b4e20c743eb8f5b3
