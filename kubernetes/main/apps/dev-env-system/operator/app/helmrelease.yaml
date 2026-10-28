@@ -72,6 +72,10 @@ spec:
                   seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
+              # Source 397f688ef1dfdfc433ee967bbcbde148578f1f60 (v2.62.1, dev-env#630/#631); publish.yml 40783327912 operator job signed and verified this digest.
+              # Remote Control sessions are excluded from automatic template-revision drain, including the uncached pre-stop check; already-stopped recovery and explicit owner lifecycle operations remain supported.
+              # Only this operator image moves. All flags, templates, task-worker/pilot images, mounts and permissions stay unchanged; no RC adoption, restart or new session is requested.
+              # Intervening Reminder API remains default-off without its CRD/Role; no reminders flag is enabled. Existing rescue diagnostics and exact Codex model admission ship with the reviewed release.
               # Source fd89b72e6eac3eaca8868406031358a29c1d0514 (v2.52.0, release #592); publish.yml run 40616512876 signed and verified keyless (Sign the image, Verify the signature: success); digest re-checked on ghcr by tag.
               # v2.52.0 adds (all default off, none enabled by this pin): attested grants (D-88, dev-env#586: --enable-grant-attestation on the operator API, --enable-attested-grants on the broker; GrantPolicy spec.attested), hw-ssh credential grants (D-89, dev-env#590: --enable-hw-ssh-grants on the broker and the keeper), the usage unit B backend (dev-env#588), and the opwork link. CRD changes: credentialjobs, grantpolicies and agentsessions, so dev-env-crds must carry the v2.52.0 schemas first (haynes-ops PR "CRDs for v2.52.0"). Only the operator moves in this file; the broker and keeper pins move in the same PR.
               # Source 11be6eda454d34904e053a0d01c0ba13bfa5d749 (v2.50.0, dev-env#580 and #582, release #581, 2026-10-27); Publish 40597197081 signed/verified.
@@ -109,7 +113,7 @@ spec:
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates. The executor stop (H3) is on since NB-06b (below).
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-fd89b72@sha256:053d1905ecc6fb18c9a00189c50f1961949389264eaddd29b4e20c743eb8f5b3
+              tag: sha-397f688@sha256:5b4526802554d844b864b6090185f6f1f40f449116aa29ed9790e7ac34bd8a8a
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
