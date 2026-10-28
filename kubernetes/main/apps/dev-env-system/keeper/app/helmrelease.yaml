@@ -49,8 +49,11 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Source fd89b72e6eac3eaca8868406031358a29c1d0514 (v2.52.0, release #592); publish.yml run 40616512876 signed and verified keyless (Sign the image, Verify the signature: success); digest re-checked on ghcr by tag.
-              # v2.52.0 adds the default-off hw-ssh lease (D-89, dev-env#590): --enable-hw-ssh-grants is NOT set by this pin, and it needs the Secret-get rule (a separate PR). Only this operator-image container moves: the dev-env-codex-login helper image below keeps sha-617ed15 (it is the login-only helper and v2.52.0 changes nothing in it), and the agent image keeps its pin.
+              # Source 4deca6e615beab468920bdd2b24b4ca299ab8464 (v2.53.0, release dev-env#601); publish.yml run 40638019892 signed and verified keyless (Sign the image, Verify the signature: success); digest re-checked on ghcr by tag.
+              # v2.53.0 records each keeper page before it is sent (DESIGN-031, dev-env#599) under pages.json in the existing ConfigMap dev-env-keeper-notices (Role dev-env-keeper-notices: get, update, patch); keeper pages only, not all Pushover history. It also ships the reminder scheduler (dev-env#600), default off: --enable-reminders is NOT set by this pin; turning it on needs its own CRD, Role and flag change and Tom's approval. Keeper-only rollout, Tom-approved 2026-10-28T11:11:38Z: the broker, operator and portal pins, both helper pins below (dev-env-codex-login sha-617ed15, claude-login dev-env:2.39.1) and the agent templates stay where they are.
+              # Rollback: tag sha-fd89b72@sha256:053d1905ecc6fb18c9a00189c50f1961949389264eaddd29b4e20c743eb8f5b3 (v2.52.0, publish.yml run 40616512876).
+              # Was source fd89b72e6eac3eaca8868406031358a29c1d0514 (v2.52.0, release #592).
+              # v2.52.0 added the default-off hw-ssh lease (D-89, dev-env#590); its pin did not set --enable-hw-ssh-grants, which #4366 set below with the Secret-get rule. Only this operator-image container moves: the dev-env-codex-login helper image below keeps sha-617ed15 (it is the login-only helper and v2.52.0 changes nothing in it), and the agent image keeps its pin.
               # Keeper binary with the Claude login worker and adoption socket (dev-env#452, #455).
               # Was source 617ed15fa850d8fff49a9d2c45fa11e4411cd077 (v2.39.1);
               # publish.yml run 39706772225 signed/verified. 2.39.1 makes a bad notice flag disable notices instead of stopping the keeper (dev-env#505). Was v2.39.0 (0c22cc0, run 39466593953), v2.38.3 (8f7311c, run 39391960144), v2.38.2 (2875abe, run 39387698019), v2.38.1 (fdf2542, run 39382009894), v2.38.0 (702a57f, run 39374328506). 2.38.0 adds the keeper control status
@@ -61,7 +64,7 @@ spec:
               # 617ed15 (verified), so the helper images keep their pins.
               # Previously source 585692bbe730b0c7d435496d304cffb2276a0d6f (v2.34.0), run 39302323514.
               # The broker pin is separate and unchanged.
-              tag: sha-fd89b72@sha256:053d1905ecc6fb18c9a00189c50f1961949389264eaddd29b4e20c743eb8f5b3
+              tag: sha-4deca6e@sha256:b478e768681294b3090e84c39982960f414a08a93b45f93a11c72c4175a17386
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:
