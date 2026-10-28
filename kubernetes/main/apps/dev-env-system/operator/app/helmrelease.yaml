@@ -211,6 +211,11 @@ spec:
               # ConfigMap and its Role are in dev-env-rbac (operator-standby.yaml).
               - '--enable-standby-session=true'
               - '--standby-profile=workbench'
+              # Agent attestation (D-88, dev-env#586): serve POST /v1/grants/{name}/attestation, where
+              # a grant's requesting session records its claim that the user or a coordinator
+              # approved it (agent attestation, not verified human identity). The broker flag and an
+              # attested GrantPolicy are what act on it. Tom's action-specific approval 2026-10-28T01:37:41Z.
+              - '--enable-grant-attestation=true'
               # Off by default and not set: --enable-child-usage-capture (dev-env#517).
               # The other flags keep their defaults:
               # --templates-name dev-env-templates in this namespace (the Lease lives

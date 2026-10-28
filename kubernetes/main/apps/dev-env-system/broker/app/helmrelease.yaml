@@ -67,6 +67,17 @@ spec:
               # policy credential-proxmox; no policy matches any other profile. The keeper
               # flag is set in the same change.
               - --enable-proxmox-grants=true
+              # Agent attestation (D-88, dev-env#586): a GrantPolicy with spec.attested approves
+              # only a request whose requesting session recorded its claim that the user or a
+              # coordinator approved it. The agent's claim, not verified human identity. Inert
+              # until an attested policy exists (see grant-policies).
+              - --enable-attested-grants=true
+              # hw-ssh credential grants (D-89, dev-env#590): the keeper leases the ONE shared
+              # hw-ssh key into the session pod. Anything in the pod can copy it while installed;
+              # removal is neither containment nor revocation (no cryptographic expiry). Needs the
+              # keeper flag and the dev-env-hw-ssh-secret get rule (rbac keeper-credentials). Tom's
+              # action-specific approval 2026-10-28T01:37:41Z.
+              - --enable-hw-ssh-grants=true
               # No metrics Service until the console/monitoring deployment follows.
               - --metrics-bind-address=0
               - --health-probe-bind-address=:8081
