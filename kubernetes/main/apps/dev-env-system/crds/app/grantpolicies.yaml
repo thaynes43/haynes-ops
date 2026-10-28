@@ -5,8 +5,8 @@
 # kustomization.yaml, so this file stays byte-identical to the generated one.
 #
 # Source: dev-env main 1fded9a (#586, D-88): adds spec.attested, the requesters of an
-# attested policy (an agent attestation, not verified human identity). To be re-verified
-# byte for byte against the v2.52.0 tag.
+# attested policy (an agent attestation, not verified human identity). Verified
+# byte for byte against tag v2.52.0 (fd89b72) below the header.
 #
 # Keep it in step with the operator and the broker, as agentsessions.yaml says: copy a
 # changed file here before (or with) the pin that writes its new fields.
