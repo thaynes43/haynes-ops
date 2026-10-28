@@ -82,6 +82,13 @@ spec:
               # in the same change. readyz reports proxmox-trust, so a bad trust file shows as
               # NotReady rather than a failed mint.
               - --enable-proxmox-grants=true
+              # hw-ssh credential grants (D-89, dev-env#590): lease the ONE shared hw-ssh key
+              # into the requesting pod. Reads Secret dev-agents/dev-env-hw-ssh-secret by name
+              # (rbac keeper-credentials, get only). Anything in the pod can copy the key while
+              # installed; removal is neither containment nor revocation. The broker flag is set
+              # in the same change. Tom's action-specific approval 2026-10-28T01:37:41Z.
+              - --enable-hw-ssh-grants=true
+              - --hw-ssh-key-secret=dev-env-hw-ssh-secret
             # Other flags retain the defaults: plan 01's names (--secret-namespace dev-agents,
             # --gh-token-secret dev-env-gh-token, --github-app-dir
             # /etc/dev-env-keeper/github-dev-bot, the Lease in POD_NAMESPACE, v1's
