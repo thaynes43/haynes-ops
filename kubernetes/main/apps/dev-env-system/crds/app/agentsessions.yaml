@@ -1437,6 +1437,191 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              conversationUsage:
+                description: |-
+                  ConversationUsage is the registered interactive conversation's cumulative
+                  token usage as agentd last measured it (DESIGN-029). It is separate from
+                  usageObservation, which covers a headless task's first invocation, and the
+                  two are never added. It is written only by the session's own heartbeat,
+                  replaced each time agentd reports, and absent for a task session and for an
+                  agentd that does not measure it.
+                properties:
+                  counterSemantics:
+                    enum:
+                    - ConversationCumulative
+                    maxLength: 64
+                    type: string
+                  coverage:
+                    enum:
+                    - RegisteredConversation
+                    maxLength: 64
+                    type: string
+                  models:
+                    description: Models are the served models, sorted by id.
+                    items:
+                      description: |-
+                        ConversationModelUsageStatus is one served model's cumulative counters over
+                        the registered conversation. Each counter keeps its own presence: Unknown is
+                        not zero. Cache counters are their own counters and are never added to input;
+                        for Codex, input already includes the cached tokens.
+                      properties:
+                        cacheCreationInputTokens:
+                          description: TokenObservationStatus preserves independent
+                            metric presence.
+                          properties:
+                            amount:
+                              format: int64
+                              maximum: 1000000000000000
+                              minimum: 0
+                              type: integer
+                            state:
+                              enum:
+                              - Unknown
+                              - Reported
+                              maxLength: 64
+                              type: string
+                          required:
+                          - state
+                          type: object
+                          x-kubernetes-validations:
+                          - message: reported token count requires an amount; Unknown
+                              omits it
+                            rule: (self.state == 'Reported') == has(self.amount)
+                        cacheReadInputTokens:
+                          description: TokenObservationStatus preserves independent
+                            metric presence.
+                          properties:
+                            amount:
+                              format: int64
+                              maximum: 1000000000000000
+                              minimum: 0
+                              type: integer
+                            state:
+                              enum:
+                              - Unknown
+                              - Reported
+                              maxLength: 64
+                              type: string
+                          required:
+                          - state
+                          type: object
+                          x-kubernetes-validations:
+                          - message: reported token count requires an amount; Unknown
+                              omits it
+                            rule: (self.state == 'Reported') == has(self.amount)
+                        inputTokens:
+                          description: TokenObservationStatus preserves independent
+                            metric presence.
+                          properties:
+                            amount:
+                              format: int64
+                              maximum: 1000000000000000
+                              minimum: 0
+                              type: integer
+                            state:
+                              enum:
+                              - Unknown
+                              - Reported
+                              maxLength: 64
+                              type: string
+                          required:
+                          - state
+                          type: object
+                          x-kubernetes-validations:
+                          - message: reported token count requires an amount; Unknown
+                              omits it
+                            rule: (self.state == 'Reported') == has(self.amount)
+                        model:
+                          maxLength: 256
+                          minLength: 1
+                          type: string
+                        outputTokens:
+                          description: TokenObservationStatus preserves independent
+                            metric presence.
+                          properties:
+                            amount:
+                              format: int64
+                              maximum: 1000000000000000
+                              minimum: 0
+                              type: integer
+                            state:
+                              enum:
+                              - Unknown
+                              - Reported
+                              maxLength: 64
+                              type: string
+                          required:
+                          - state
+                          type: object
+                          x-kubernetes-validations:
+                          - message: reported token count requires an amount; Unknown
+                              omits it
+                            rule: (self.state == 'Reported') == has(self.amount)
+                      required:
+                      - cacheCreationInputTokens
+                      - cacheReadInputTokens
+                      - inputTokens
+                      - model
+                      - outputTokens
+                      type: object
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - model
+                    x-kubernetes-list-type: map
+                  observedAt:
+                    format: date-time
+                    type: string
+                  provider:
+                    enum:
+                    - claude
+                    - codex
+                    maxLength: 64
+                    type: string
+                  reasonCode:
+                    maxLength: 32
+                    pattern: ^[a-z][a-z_]*$
+                    type: string
+                  resultState:
+                    enum:
+                    - Final
+                    - Partial
+                    - Unknown
+                    maxLength: 64
+                    type: string
+                  skipped:
+                    description: Skipped counts records that could not be counted.
+                    format: int64
+                    maximum: 1000000000
+                    minimum: 0
+                    type: integer
+                  turns:
+                    description: Turns counts the provider calls that were counted.
+                    format: int64
+                    maximum: 1000000000
+                    minimum: 0
+                    type: integer
+                  version:
+                    enum:
+                    - 1
+                    format: int32
+                    type: integer
+                required:
+                - counterSemantics
+                - coverage
+                - observedAt
+                - provider
+                - resultState
+                - skipped
+                - turns
+                - version
+                type: object
+                x-kubernetes-validations:
+                - message: models are listed exactly when the result is not Unknown
+                  rule: 'self.resultState == ''Unknown'' ? (!has(self.models) || size(self.models)
+                    == 0) : (has(self.models) && size(self.models) > 0)'
+                - message: a reason is given exactly when the result is not Final
+                  rule: (self.resultState == 'Final') == !has(self.reasonCode)
               decisionAnswer:
                 description: |-
                   DecisionAnswer is written only by the authenticated direct-parent API route.

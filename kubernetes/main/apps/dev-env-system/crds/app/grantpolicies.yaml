@@ -4,6 +4,10 @@
 # run `make generate`, and copy the result. The prune-disabled annotation is added by
 # kustomization.yaml, so this file stays byte-identical to the generated one.
 #
+# Source: dev-env main 1fded9a (#586, D-88): adds spec.attested, the requesters of an
+# attested policy (an agent attestation, not verified human identity). To be re-verified
+# byte for byte against the v2.52.0 tag.
+#
 # Keep it in step with the operator and the broker, as agentsessions.yaml says: copy a
 # changed file here before (or with) the pin that writes its new fields.
 ---
@@ -76,6 +80,54 @@ spec:
                 maxItems: 3
                 type: array
                 x-kubernetes-list-type: set
+              attested:
+                description: |-
+                  Attested makes this an attested policy: it approves only a request whose
+                  requesting session also recorded an agent attestation that it obtained the
+                  user's or a coordinator's approval for exactly this grant. The attestation
+                  is the agent's claim under delegated trust. It is not verified human
+                  identity. The requesters are named here and nowhere else: profiles, repos
+                  and agents above stay empty, which every broker that predates attestation
+                  reads as "names no requester" and so matches nobody (fail closed on a
+                  rollback). A broker approves through it only with --enable-attested-grants.
+                properties:
+                  agents:
+                    description: Agents are the requester agent CLIs it matches; empty
+                      means any.
+                    items:
+                      description: AgentKind is the agent CLI a session runs.
+                      enum:
+                      - claude
+                      - codex
+                      - opencode
+                      type: string
+                    maxItems: 3
+                    type: array
+                    x-kubernetes-list-type: set
+                  profiles:
+                    description: |-
+                      Profiles are the requester profiles it matches. Profile ops never
+                      matches (D-18).
+                    items:
+                      maxLength: 63
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                      x-kubernetes-validations:
+                      - message: no policy matches profile ops (D-18)
+                        rule: self != 'ops'
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-type: set
+                  repos:
+                    description: Repos are the requester repos it matches.
+                    items:
+                      maxLength: 100
+                      pattern: ^[A-Za-z0-9_.-]+$
+                      type: string
+                    maxItems: 32
+                    type: array
+                    x-kubernetes-list-type: set
+                type: object
               credential:
                 description: Credential is the credentials it approves.
                 properties:
@@ -306,9 +358,15 @@ spec:
               rule: (self.type == 'egress') == has(self.egress)
             - message: credential is set for type credential, and only there
               rule: (self.type == 'credential') == has(self.credential)
-            - message: 'name the requesters: profiles, repos or both'
-              rule: '(has(self.profiles) ? size(self.profiles) : 0) + (has(self.repos)
-                ? size(self.repos) : 0) > 0'
+            - message: 'name the requesters: profiles, repos or both; an attested
+                policy names them only under attested and leaves profiles, repos and
+                agents empty, so a broker that predates attestation matches nobody'
+              rule: 'has(self.attested) ? ((has(self.profiles) ? size(self.profiles)
+                : 0) + (has(self.repos) ? size(self.repos) : 0) == 0 && (has(self.agents)
+                ? size(self.agents) : 0) == 0 && (has(self.attested.profiles) ? size(self.attested.profiles)
+                : 0) + (has(self.attested.repos) ? size(self.attested.repos) : 0)
+                > 0) : ((has(self.profiles) ? size(self.profiles) : 0) + (has(self.repos)
+                ? size(self.repos) : 0) > 0)'
             - message: maxTTL runs from 10m to 8h
               rule: duration(self.maxTTL) >= duration('10m') && duration(self.maxTTL)
                 <= duration('8h')
