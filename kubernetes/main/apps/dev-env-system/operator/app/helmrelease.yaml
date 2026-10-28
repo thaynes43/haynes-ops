@@ -139,21 +139,24 @@ spec:
               # history and launch flags are not set.
               - '--portal-conversation-usage=true'
               - '--session-namespace=dev-agents'
-              # Story178 live IDE pilot (dev-env#576, docs/portal-session-runtime.md "Pilot agent
-              # image for one session"): portal history binds only at a session's first launch on
-              # agentd 2.47 or later, and the templates image is still 2.45.0. These two flags put
-              # the sessions that dev-env-1027-111645 creates with idempotency key live-ide-pilot-1
-              # on the signed 2.47.0 agent image (publish-agent 40549555659). The operator selects
-              # only a Claude remote or local session on repo dev-env with no workspace, project
-              # canary or private pilot; a task or --project session with that key would start on
-              # the templates image. It matches every such session while these lines stay: using
-              # the new key for one session only is the operating rule, not a limit. No such
-              # session exists yet, and no existing pod changes.
+              # Measured-usage pilot (Tom, 2026-10-28; dev-env#576 mechanism, docs/portal-session-runtime.md
+              # "Pilot agent image for one session"): measured conversation usage needs agentd from
+              # dev-env#584 and #588, and the templates image is still 2.45.0. These two flags put
+              # the sessions that dev-env-1027-111645 creates with idempotency key usage-pilot-1 on
+              # the signed 2.52.0 agent image (publish-agent 40616532878, sign and verify passed).
+              # The operator selects only a Claude remote or local session on repo dev-env with no
+              # workspace, project canary or private pilot. It matches every such session while
+              # these lines stay: using the key for one session only is the operating rule, not a
+              # limit. They are read only when a pod is built, so no existing pod is recreated,
+              # restarted or drained: the earlier pilot dev-env-1027-185745 (key live-ide-pilot-1,
+              # on 2.47.0) keeps its running pod, and on a future recreation it gets the templates
+              # image, because its key no longer matches. Existing 2.45 sessions report no
+              # conversation usage and show as not measured.
               # This is code version only: profile, Secrets, egress and grants are the parent's, and
-              # it authorizes no portal send or history (those stay off). Remove both lines when the
-              # pilot ends.
-              - '--pilot-agent-image=ghcr.io/thaynes43/dev-env:2.47.0@sha256:44141eeb5be1a34a6dc47ea4fbfe2ac4de4c90dd271c6ba41c4f5d8a05a5cb89'
-              - '--pilot-agent-session=dev-env-1027-111645/live-ide-pilot-1'
+              # it authorizes no portal send, history or launch (those stay off). Remove both lines
+              # when the pilot ends.
+              - '--pilot-agent-image=ghcr.io/thaynes43/dev-env:2.52.0@sha256:87e8ab9346c2f656c0dfe19eb3d09ae89e220a341dd86e30e9ef0d43230204f9'
+              - '--pilot-agent-session=dev-env-1027-111645/usage-pilot-1'
               # Explicit sole zero-task fixture; ordinary native hosts remain closed.
               - '--enable-coordinator-callers'
               - '--enable-managed-codex-tasks'
