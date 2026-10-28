@@ -49,6 +49,8 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
+              # Source <v2.52.0 commit> (v2.52.0, release #592); Publish <run> signed/verified (cosign verify passed) -- PLACEHOLDER until #592 publishes.
+              # v2.52.0 adds the default-off hw-ssh lease (D-89, dev-env#590): --enable-hw-ssh-grants is NOT set by this pin, and it needs the Secret-get rule (a separate PR). Only this operator-image container moves: the dev-env-codex-login helper image below keeps sha-617ed15 (it is the login-only helper and v2.52.0 changes nothing in it), and the agent image keeps its pin.
               # Keeper binary with the Claude login worker and adoption socket (dev-env#452, #455).
               # Source 617ed15fa850d8fff49a9d2c45fa11e4411cd077 (v2.39.1);
               # publish.yml run 39706772225 signed/verified. 2.39.1 makes a bad notice flag disable notices instead of stopping the keeper (dev-env#505). Was v2.39.0 (0c22cc0, run 39466593953), v2.38.3 (8f7311c, run 39391960144), v2.38.2 (2875abe, run 39387698019), v2.38.1 (fdf2542, run 39382009894), v2.38.0 (702a57f, run 39374328506). 2.38.0 adds the keeper control status
@@ -56,7 +58,7 @@ spec:
               # this container, claude-login and codex-login move together with the operator.
               # Previously source 585692bbe730b0c7d435496d304cffb2276a0d6f (v2.34.0), run 39302323514.
               # The broker pin is separate and unchanged.
-              tag: sha-617ed15@sha256:888c2a0cd1057091cd2bbac7ac743933a4819e100c4570b6eb9b7579afddd34b
+              tag: sha-REPLACE_WITH_V2_52_0_SHORT@sha256:REPLACE_WITH_V2_52_0_DIGEST
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:

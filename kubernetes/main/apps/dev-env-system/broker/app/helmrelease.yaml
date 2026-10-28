@@ -51,9 +51,11 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # thaynes43/dev-env main eeb15e3, signed/verified keyless
+              # Source <v2.52.0 commit> (v2.52.0, release #592); Publish <run> signed/verified (cosign verify passed) -- PLACEHOLDER until #592 publishes.
+              # v2.52.0 brings attested grants (D-88) and hw-ssh credential grants (D-89), both default off: this pin sets neither --enable-attested-grants nor --enable-hw-ssh-grants.
+              # Was thaynes43/dev-env main eeb15e3, signed/verified keyless
               # by publish.yml on main (run 37798469467).
-              tag: sha-eeb15e3@sha256:491bfd05e101843d1bb31250841095a23901cf1eeb51566398ddc416ccbcef3c
+              tag: sha-REPLACE_WITH_V2_52_0_SHORT@sha256:REPLACE_WITH_V2_52_0_DIGEST
               pullPolicy: IfNotPresent
             args:
               - broker
