@@ -73,7 +73,7 @@ spec:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
               # Source 3a22ca9b0463279d1fa312c14538a996d2096838 (v2.63.0, dev-env#632/#633); publish.yml40793043582 signed and verified this exact digest.
-              # Adds the independently paired Codex TASK pilot source flags; neither --task-pilot-agent-image nor --task-pilot-agent-session is set here, so the new selector remains off.
+              # The #4390 binary-only installation left the new Codex TASK selector off. The separate future parent/key configuration below now enables it without starting a Session.
               # Existing RC automatic-drain guard, all current flags/pilot mapping, templates/worker images, mounts, permissions and rollout strategy are unchanged; this pin starts or replaces no agent Session.
               # Source 397f688ef1dfdfc433ee967bbcbde148578f1f60 (v2.62.1, dev-env#630/#631); publish.yml 40783327912 operator job signed and verified this digest.
               # Remote Control sessions are excluded from automatic template-revision drain, including the uncached pre-stop check; already-stopped recovery and explicit owner lifecycle operations remain supported.
@@ -164,6 +164,16 @@ spec:
               # when the pilot ends.
               - '--pilot-agent-image=ghcr.io/thaynes43/dev-env:2.52.0@sha256:87e8ab9346c2f656c0dfe19eb3d09ae89e220a341dd86e30e9ef0d43230204f9'
               - '--pilot-agent-session=dev-env-1027-111645/usage-pilot-1'
+              # Separate ordinary Codex TASK image selector (dev-env#632, signed v2.63.0).
+              # Exact future parent/key only; no current Session has this key. It changes only
+              # the image of a first newly constructed, UID-owned ordinary dev-env task pod.
+              # Existing pods are not replaced; retained executor/HOME identity and all API,
+              # profile, capacity and budget-image checks remain enforced. It is not a grant.
+              # Use this key once operationally: the selector is not a lifetime launch cap.
+              # Keep the older remote/local pilot above and templates unchanged. Remove both
+              # task-pilot lines when the separately authorized future worker is complete.
+              - '--task-pilot-agent-image=ghcr.io/thaynes43/dev-env:2.63.0@sha256:010ce2db9371e0de7f12e9b2d5243a182f7c684faea2aab874c67e8a328a3a9f'
+              - '--task-pilot-agent-session=dev-env-1019-205125/terra61-next-worker-20261029-01'
               # Explicit sole zero-task fixture; ordinary native hosts remain closed.
               - '--enable-coordinator-callers'
               - '--enable-managed-codex-tasks'
