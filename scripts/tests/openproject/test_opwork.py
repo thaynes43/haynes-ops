@@ -603,6 +603,25 @@ class CheckinTests(Base):
         self.assertEqual(self.posts("/activities"), [])
 
 
+    def test_uncertain_readback_reports_queued_token_and_dedupes(self):
+        self.story(10)
+        original = self.fake.handle
+        def hide_readback(method, url, payload):
+            code, data = original(method, url, payload)
+            if method == "GET" and url.path.endswith("/activities"):
+                return code, {"total": 0, "_embedded": {"elements": []}}
+            return code, data
+        self.fake.handle = hide_readback
+        code, _, err = self.run_cli("checkpoint-update", "10", "--next-action", "x", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "x")
+        self.assertEqual(code, 6)
+        self.assertIn("Queued locally:", err)
+        self.assertIn("Do not rerun checkpoint-update", err)
+        self.assertIn("same token", err)
+        self.fake.handle = original
+        self.assertIn("flushed", self.run_cli("flush")[1])
+        self.assertEqual(len(self.fake.acts[10]), 1)
+
+
 class LinkTests(Base):
     BASE = "https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/"
 

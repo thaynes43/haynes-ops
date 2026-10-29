@@ -370,7 +370,8 @@ def cmd_checkpoint_update(t, a, session):
         raise
     except Fail as error:
         if error.code == 6:
-            save_pending("structured_note", token, wp=a.id, session=session, text=text)
+            path, _ = save_pending("structured_note", token, wp=a.id, session=session, text=text)
+            raise Fail("%s\nQueued locally: %s. Do not rerun checkpoint-update; `flush` deduplicates using the same token." % (error, path), 6)
         raise
     try:
         refresh(t, w, None)
