@@ -35,7 +35,9 @@ class FakeEntries:
                                                                       state=ConfigEntryState.LOADED, subentries={}))
             entry.subentries[subentry_id] = ConfigSubentry(subentry_id=subentry_id, subentry_type="conversation",
                 title="Synthetic agent", unique_id=None, data=MappingProxyType({
-                    "city": "Synthetic changed city", "prompt": "Synthetic old prompt", "chat_model": "fixture-model",
+                    "city": "Synthetic changed city", "region": "Synthetic region", "country": "US",
+                    "timezone": "America/New_York", "reasoning_effort": "none",
+                    "prompt": "Synthetic old prompt", "chat_model": "fixture-model",
                     "web_search": True, "user_location": True, "nested_setting": {"preserve": [1, 2]},
                     "llm_hass_api": ["assist", "fixture-before", component.WATCH_API, "fixture-after"],
                 }))
@@ -125,7 +127,8 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
         cases = ((component.status, {"agent": "movie"}),
                  (component.restore_city, {"agent": "movie", "expected_sha256": "0" * 64}),
                  (component.replace_prompt, {"agent": "movie", "prompt": "Synthetic", "expected_sha256": "0" * 64}),
-                 (component.set_watch_attachment, {"attached": False, "expected_sha256": "0" * 64}))
+                 (component.set_watch_attachment, {"attached": False, "expected_sha256": "0" * 64}),
+                 (component.set_voice_profile, {"agent": "kitchen", "profile": "terra61_westford", "expected_sha256": "0" * 64}))
         for handler, payload in cases:
             with self.subTest(operation=handler._ws_command), self.assertRaises(Unauthorized):
                 await self.dispatch(handler, payload, FakeConnection(admin=False))
@@ -200,10 +203,55 @@ class MaintenanceTests(unittest.IsolatedAsyncioTestCase):
             (component.replace_prompt, {"agent": "movie", "prompt": "x" * 8001, "expected_sha256": "0" * 64}),
             (component.replace_prompt, {"agent": "movie", "prompt": "Synthetic", "city": "Injected", "expected_sha256": "0" * 64}),
             (component.replace_prompt, {"agent": "movie", "prompt": "Synthetic", "expected_sha256": "0" * 64 + "\n"}),
-            (component.set_watch_attachment, {"agent": "phone", "attached": False, "expected_sha256": "0" * 64}))
+            (component.set_watch_attachment, {"agent": "phone", "attached": False, "expected_sha256": "0" * 64}),
+            (component.replace_prompt, {"agent": "kitchen", "prompt": "Synthetic", "expected_sha256": "0" * 64}),
+            (component.set_voice_profile, {"agent": "jarvis", "profile": "terra61_westford", "expected_sha256": "0" * 64}),
+            (component.set_voice_profile, {"agent": "kitchen", "profile": "gpt-7", "expected_sha256": "0" * 64}),
+            (component.set_voice_profile, {"agent": "kitchen", "profile": "terra61_westford", "city": "Injected",
+                                           "expected_sha256": "0" * 64}))
         for handler, payload in cases:
             with self.subTest(operation=handler._ws_command, payload_keys=list(payload)), self.assertRaises(vol.Invalid):
                 await self.dispatch(handler, payload)
+        self.assertEqual(self.hass.config_entries.writes, [])
+
+
+    async def test_voice_profile_changes_only_model_effort_and_location(self):
+        for agent in component.VOICE_AGENTS:
+            with self.subTest(agent=agent):
+                before = self.current(agent)
+                await self.dispatch(component.set_voice_profile, {"agent": agent, "profile": "terra61_westford",
+                    "expected_sha256": component.data_hash(before["data"])})
+                after = self.current(agent)
+                self.unchanged_except(before, after, set(component.VOICE_PROFILES["terra61_westford"]))
+                self.assertEqual({k: after["data"][k] for k in component.VOICE_PROFILES["terra61_westford"]}, {
+                    "chat_model": "gpt-6.1-terra", "reasoning_effort": "low", "city": "Westford",
+                    "region": "Massachusetts", "country": "US", "timezone": "America/New_York"})
+                self.assertEqual(self.hass.config_entries.reloads[-1], component.AGENTS[agent][0])
+        self.assertEqual(len(self.hass.config_entries.writes), len(component.VOICE_AGENTS))
+        self.assertEqual(self.connection.errors, [])
+
+    async def test_voice_profile_rollback_keeps_the_house_location(self):
+        before = self.current("kitchen")
+        await self.dispatch(component.set_voice_profile, {"agent": "kitchen", "profile": "terra61_westford",
+            "expected_sha256": component.data_hash(before["data"])})
+        swapped = self.current("kitchen")
+        await self.dispatch(component.set_voice_profile, {"agent": "kitchen", "profile": "terra56_westford",
+            "expected_sha256": component.data_hash(swapped["data"])})
+        after = self.current("kitchen")
+        self.assertEqual((after["data"]["chat_model"], after["data"]["reasoning_effort"], after["data"]["city"]),
+                         ("gpt-5.6-terra", "none", "Westford"))
+        self.unchanged_except(before, after, set(component.VOICE_PROFILES["terra56_westford"]))
+
+    async def test_voice_profile_refuses_agents_without_web_search_location(self):
+        entry_id, subentry_id, _ = component.AGENTS["bedroom"]
+        entry = self.hass.config_entries.entries[entry_id]
+        old = entry.subentries[subentry_id]
+        entry.subentries[subentry_id] = replace(old, data=MappingProxyType({**old.data, "user_location": False}))
+        before = self.current("bedroom")
+        await self.dispatch(component.set_voice_profile, {"agent": "bedroom", "profile": "terra61_westford",
+            "expected_sha256": component.data_hash(before["data"])})
+        self.assertEqual(self.connection.errors[0][0], "maintenance_refused")
+        self.assertEqual(self.current("bedroom"), before)
         self.assertEqual(self.hass.config_entries.writes, [])
 
 

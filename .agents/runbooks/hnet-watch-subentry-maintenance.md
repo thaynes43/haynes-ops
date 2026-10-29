@@ -4,6 +4,13 @@ Use this temporary admin integration when a Watch history prompt or API attachme
 
 The integration calls Home Assistant Core `async_update_subentry` on its event loop. It accepts only known Movie Room, Rumpus Room, Phone standby and Jarvis subentries. It exposes no general code execution or arbitrary field update. Each write requires the SHA-256 of the complete current subentry data and administrator authentication. A stale hash changes nothing. Responses contain status, changed flag and resulting hash only.
 
+**Voice profiles (2026-10-29).** `set_voice_profile` writes one fixed profile into one of the five OpenAI room agents (`kitchen`, `bedroom`, `movie`, `rumpus`, `phone`). Each agent must have web search with user location enabled. The profile sets `chat_model`, `reasoning_effort` and the web-search location: `city`, `region`, `country` and `timezone`. Every other field stays as it is. Two profiles exist:
+
+- `terra61_westford`: `gpt-6.1-terra` with effort `low`, the lowest that Home Assistant 2026.10 offers for that model.
+- `terra56_westford`: the rollback, `gpt-5.6-terra` with effort `none`.
+
+Both set Westford, Massachusetts, US, America/New_York, because every agent is in the same house. No private city file is involved. Prompt replacement stays limited to its original four agents. After `set_voice_profile`, do not edit these agents through the official reconfigure flow: it would guess the city again.
+
 Allowed operations are restoring the original city for the three OpenAI subentries from a protected fixed snapshot, replacing a known subentry's prompt with an optional atomic Watch history attach/detach, and a standalone Watch history attachment toggle for Movie Room's latency comparison. City restoration reads `/config/hnet_watch_maintenance_private/original-city.json`; the directory is mode 700 and file mode 600. The file contains only known entry/subentry IDs and original cities. Never commit it, log its values or expose a configurable file path. Prompt input is bounded to 8,000 characters. The optional `watch_attachment` accepts only `keep`, `attach` or `detach` and changes membership of the single fixed Watch history API. Every other API identifier and field is preserved.
 
 1. Preserve a fresh complete original subentry snapshot privately on the dev-env PVC before any rollout; Home Assistant `/tmp` is an emptyDir. Capture helper backup output privately because it contains unrelated conversation settings and location. Prepare the minimal private city snapshot on the persistent configuration volume only when restoring city, and verify its permissions. Prompt-only replacement requires no city file and preserves the original city in the complete-data verification.
