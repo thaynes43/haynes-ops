@@ -7,6 +7,14 @@
 # - No admission or witness keys: Tom dropped the admission witness and recovery
 #   fence (2026-10-26), and the portal no longer reads them (dev-env#560).
 # - No subject file: the portal authorizes by Authentik group membership.
+# - session-actions.json: 2026-10-29, Tom: send and history for the group that admits
+#   portal login; one pilot target; no subject (OP #244). It names only the target
+#   session (name and UID, which are not secret) for each action, never a person: any
+#   user the portal already admits may use it. The operator's own --portal-send-target
+#   and --portal-history-target flags (operator/app/helmrelease.yaml) are the second,
+#   independent allowlist for the same session. Launch is not listed, so it stays off.
+#   A file with an issuer or subject is refused by the portal (dev-env#649). Kill switch:
+#   a PR removing the two operator flags and this key.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -28,3 +36,4 @@ data:
   fresh-for: 1m
   clock-skew: 0s
   pages-alertmanager.json: '{"source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts"}'
+  session-actions.json: '{"send":{"targets":[{"name":"dev-env-1028-031951","uid":"5da21936-7781-4760-82ce-2a0689b891f7"}]},"history":{"targets":[{"name":"dev-env-1028-031951","uid":"5da21936-7781-4760-82ce-2a0689b891f7"}]}}'
