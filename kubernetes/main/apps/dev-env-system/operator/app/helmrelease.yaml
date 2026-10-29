@@ -173,7 +173,7 @@ spec:
               # Keep the older remote/local pilot above and templates unchanged. Remove both
               # task-pilot lines when the separately authorized future worker is complete.
               - '--task-pilot-agent-image=ghcr.io/thaynes43/dev-env:2.63.0@sha256:010ce2db9371e0de7f12e9b2d5243a182f7c684faea2aab874c67e8a328a3a9f'
-              - '--task-pilot-agent-session=dev-env-1019-205125/terra61-next-worker-20261029-01'
+              - '--task-pilot-agent-session=dev-env-1019-205125/provider-child-cap-20261029-01'
               # Explicit sole zero-task fixture; ordinary native hosts remain closed.
               - '--enable-coordinator-callers'
               - '--enable-managed-codex-tasks'
