@@ -5,8 +5,8 @@ was `edgew01` in the
 retired edge cluster (Omni machine `77d65c00-5811-11ef-b65b-a8751caa6100`). In `main` it is a
 **GPU test worker**: suspect cards go on the dock, get tested, and either go back into
 service or get binned. Results go on #3052, one comment per stage. During the October 2026
-repair program, it also hosts Muse on card C so local voice remains available while card A
-is tested in the rack. This temporary production placement requires the precautions below.
+repair program, it also hosts Muse on card B (card C until 2026-10-17) so local voice
+remains available while cards A and C run in the rack. This temporary production placement requires the precautions below.
 
 Cards so far (Tom's identification is ground truth; NVML UUIDs are the software identity):
 
@@ -14,7 +14,7 @@ Cards so far (Tom's identification is ground truth; NVML UUIDs are the software 
 |---|---|---|---|
 | A | `GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a` | Repaired card; Tom identified two broken original fans. All three replacement fans visibly spun under load. | 2026-10-13: replacement fans, 2 mm front/rear memory pads and PhaseSheet installed. Short stock-power tests showed no Xid/AER; rack performance was thermally limited compared with the dock. Now in talosw01/VM103 on HaynesIntelligence. Sustained rack validation is tracked in #3052; thermal throttling alone is not Tom's rejection criterion. |
 | B (was "#0" in older records) | `GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b` | A **later** card: in HaynesIntelligence slot 01:00.0 from 2026-09-18, dropped 09-23, pulled 09-25. Tom's latest assessment is an intact-looking fan that did not spin; replacement fans are already owned. | 2026-10-17: fans and pads repaired, then Xid 79 again in the dock at 350 W (84 s) and 300 W (34 s), cool and unthrottled; 600 s clean at 250 W. It power-limits about 25 W early at 350 W (319 W against A's 343 W), which points at one power input (8-pin socket or contact, shunt, or power stage). On the dock at 250 W; recovery from a bus drop is a power cycle (a Talos kexec reboot hangs). See #3052. |
-| C | `GPU-d8a856f1-f955-f683-bc24-654561496774` | Previously the Muse card in talosw01; now in the talosw04 dock. | 2026-10-17: out of the dock for repadding (about a week), then joins A in the rack. Muse moved to card B (#3052). Earlier: stock tests ran much better on the dock than in the rack, with thermal slowdown flags still set (289/290 loaded samples; about 1% Muse decode cost). |
+| C | `GPU-d8a856f1-f955-f683-bc24-654561496774` | Previously the Muse card in talosw01, then in the talosw04 dock; back in talosw01/VM103 beside A by 2026-10-27. | 2026-10-27/28: in the rack it runs about 10 °C hotter than A at 350 W (88–90 °C, up to 21% heat throttling) because of its slot; the PCIe re-layout is OpenProject #221, handoff `.agents/handoffs/2026-10-29-gpu-pcie-relayout.md`. 2026-10-17: out of the dock for repadding (about a week), then joins A in the rack. Muse moved to card B (#3052). Earlier: stock tests ran much better on the dock than in the rack, with thermal slowdown flags still set (289/290 loaded samples; about 1% Muse decode cost). |
 | talosm04 A2000 (#3348) | `GPU-75697ff0-783e-9a2d-6859-3d5ffef0325f` | RTX A2000 12GB (VBIOS 94.06.32.00.18, serial 1712324009904), pulled from talosm04 where it never enumerated. | 2026-10-06: **faulty.** In the dock it linked at 16 GT/s x4, but one boot dropped its link after 11 s and a clean boot hit Xid 119 (GSP RPC timeout) after 9 min at idle, with the link up and AER 0. |
 
 How it is kept apart from the rest of the cluster:
