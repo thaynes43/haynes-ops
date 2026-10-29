@@ -102,7 +102,7 @@ spec:
           exporter:
             image:
               repository: ghcr.io/esanchezm/prometheus-qbittorrent-exporter
-              tag: v1.7.1
+              tag: v1.8.0
             env:
               QBITTORRENT_HOST: localhost
               QBITTORRENT_PORT: *port
