@@ -5,8 +5,8 @@ was `edgew01` in the
 retired edge cluster (Omni machine `77d65c00-5811-11ef-b65b-a8751caa6100`). In `main` it is a
 **GPU test worker**: suspect cards go on the dock, get tested, and either go back into
 service or get binned. Results go on #3052, one comment per stage. During the October 2026
-repair program, it also hosts Muse on card C so local voice remains available while card A
-is tested in the rack. This temporary production placement requires the precautions below.
+repair program, it also hosts Muse on card B (card C until 2026-10-17) so local voice
+remains available while cards A and C run in the rack. This temporary production placement requires the precautions below.
 
 Cards so far (Tom's identification is ground truth; NVML UUIDs are the software identity):
 

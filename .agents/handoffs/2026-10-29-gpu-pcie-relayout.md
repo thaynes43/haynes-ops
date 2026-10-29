@@ -278,8 +278,16 @@ fresh grant for each window.
     - Acceptance for OP#221: both cards at or below 83 °C with no throttle, or recorded
       numbers plus a power-cap decision.
 
-**Rollback:** shut down, put the cards back, then restore `hostpci1 0000:41:00` and vmbr1
-`bridge_ports enp132s0f1np1` from the step 3 baseline.
+**Rollback:**
+1. Shut down and put the cards back. The PCIe 4.0 lock can stay: a 3090 can't use 5.0, and
+   the lock is part of the drop mitigation (H4). Revert it only if Tom asks.
+2. After boot, restore from the step 3 baseline: `hostpci1 0000:41:00,pcie=1` and vmbr1
+   `bridge_ports enp132s0f1np1`. Apply the network change.
+3. Finish the way steps 12–14 do. `noup` and `noout` are cluster-wide, and VM 103 has
+   `onboot: 0`, so a rollback that stops early leaves OSDs down everywhere and talosw01 off.
+   - Unset `noup`, wait for the 10 OSDs, then unset `noout`.
+   - `qm start 103`, uncordon talosw01 once it is Ready.
+   - End the activity declaration and release the grants.
 
 ## 6. Safety constraints
 - GPU load runs only on Tom's go: 75 s bursts with `SOAK_ABORT_C=90`, and one run at a time.
