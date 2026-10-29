@@ -36,14 +36,16 @@ spec:
             severity: critical
           annotations:
             summary: >-
-              dev-env session {{ $labels.session }}: its rescue failed, so its volume is
+              dev-env session {{ $labels.session }}: recovery failed, so its volume is
               kept and its archive is blocked (D-10).
             description: >-
               `agent-run show {{ $labels.session }}`, or `kubectl get agentsession -n
-              dev-agents {{ $labels.session }} -o yaml`, gives the RescueFailed reason
-              (WorktreeRefused, BundleFailed, FetchFailed, NotProven, ...). If the
-              session has a hold pod (D-55), the operator retries the rescue every 15
-              minutes, and a human can exec in to fix the worktree. The kept volume is
+              dev-agents {{ $labels.session }} -o yaml`, gives the recovery failure reason
+              (technical condition RescueFailed: WorktreeRefused, BundleFailed,
+              FetchFailed, NotProven, BootstrapInterrupted, ...). If the session has a
+              hold pod (D-55), the operator retries recovery every 15 minutes, and a
+              human can exec in to fix the worktree. A retry is not a new incident.
+              The kept volume is
               the point: never lift a finalizer or delete the volume or the session
               without Tom's decision (D-45). An automated responder reports this and
               changes nothing.
