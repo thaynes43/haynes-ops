@@ -166,8 +166,12 @@ spec:
               # This is code version only: profile, Secrets, egress and grants are the parent's, and
               # it authorizes no portal send, history or launch (those stay off). Remove both lines
               # when the pilot ends.
-              - '--pilot-agent-image=ghcr.io/thaynes43/dev-env:2.52.0@sha256:87e8ab9346c2f656c0dfe19eb3d09ae89e220a341dd86e30e9ef0d43230204f9'
-              - '--pilot-agent-session=dev-env-1027-111645/usage-pilot-1'
+              # OP191 temporary passive statusLine test: Tom approved 2026-10-29T12:52:26Z.
+              # Restore the exact previous 2.52.0 / dev-env-1027-111645/usage-pilot-1 pair after test.
+              # Existing pilot/user RC Pods stay untouched; their future reconstruction uses
+              # normal templates until restoration. No task selector/profile/credential change.
+              - '--pilot-agent-image=ghcr.io/thaynes43/dev-env:2.64.0@sha256:e7aa366e2facb2de7e19cf78facbbfe33fa0abaa0aa604dc7258cf7b0f4131a4'
+              - '--pilot-agent-session=dev-env-1019-205125/claude-passive-statusline-191-20261029-01'
               # Separate ordinary Codex TASK image selector (dev-env#632, signed v2.63.0).
               # Exact future parent/key only; no current Session has this key. It changes only
               # the image of a first newly constructed, UID-owned ordinary dev-env task pod.
