@@ -597,6 +597,9 @@ class CheckinTests(Base):
         for action, evidence, handoff in ((" ", "x", "ok"), ("x", "", "ok"), ("x", "x", " ")):
             code, _, _ = self.run_cli("checkpoint-update", "10", "--next-action", action, "--check-after", "2030-01-01T00:00:00Z", "--evidence", evidence, "--handoff", handoff)
             self.assertEqual(code, 1)
+        for value in ("", " "):
+            code, _, _ = self.run_cli("checkpoint-update", "10", "--next-action", "x", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "x", "--last-verified", value)
+            self.assertEqual(code, 1)
         self.assertEqual(self.posts("/activities"), [])
 
 

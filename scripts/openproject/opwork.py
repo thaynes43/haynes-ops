@@ -354,7 +354,7 @@ def cmd_checkpoint_update(t, a, session):
         raise Fail("handoff must not be empty")
     if not utc_time(a.check_after):
         raise Fail("check-after must be an ISO 8601 timestamp with timezone")
-    if a.last_verified and not utc_time(a.last_verified):
+    if a.last_verified is not None and not utc_time(a.last_verified):
         raise Fail("last-verified must be an ISO 8601 timestamp with timezone")
     meta = {"next_action": a.next_action, "check_after": a.check_after, "evidence": a.evidence, "last_verified": a.last_verified, "handoff": a.handoff,
             "ack": a.ack, "stale": a.stale, "blocked": a.blocked, "deployed": a.deployed}
