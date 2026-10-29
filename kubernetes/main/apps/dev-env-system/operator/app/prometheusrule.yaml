@@ -43,9 +43,9 @@ spec:
               dev-agents {{ $labels.session }} -o yaml`, gives the recovery failure reason
               (technical condition RescueFailed: WorktreeRefused, BundleFailed,
               FetchFailed, NotProven, BootstrapInterrupted, ...). If the session has a
-              hold pod (D-55), the operator retries the recovery report every 15
-              minutes; a retry is not a new incident. A human can inspect the reported
-              reason before deciding the next action. The kept volume is
+              hold pod (D-55), the operator retries recovery every 15 minutes, and a
+              human can exec in to fix the worktree. A retry is not a new incident.
+              The kept volume is
               the point: never lift a finalizer or delete the volume or the session
               without Tom's decision (D-45). An automated responder reports this and
               changes nothing.
