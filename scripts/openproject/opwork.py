@@ -26,7 +26,7 @@ else "<OPWORK_AGENT or agent> | worktree <name> | branch <branch>". Project defa
 OPWORK_PROJECT or haynes-engineering. A mutation is reported done only after a read back.
 Exit codes: 0 ok, 1 error, 3 conflict/refused (nothing overwritten), 4 needs a decision
 (possible duplicate), 5 tracker unavailable (saved locally), 6 uncertain (verify first),
-7 evidence recorded but the workflow denies Accepted to this role (read-back state reported).
+7 evidence recorded but Accepted is not allowed from the current state (read-back state reported).
 """
 import argparse
 from datetime import datetime, timezone
@@ -457,14 +457,18 @@ def cmd_complete(t, a, session):
         return "already Accepted: " + line(w)
     guard(w, session, a.force)
     allowed = t.allowed_statuses(w)
-    if allowed is not None and "Accepted" not in allowed:  # native workflow: this role cannot accept
+    if allowed is not None and "Accepted" not in allowed:
         t.comment(a.id, "Ready for acceptance; evidence: " + a.evidence, session)
-        now = refresh(t, w, None)
+        now = refresh(t, w, a.expect_lock)
         if now["_links"]["status"]["title"] != "In review" and "In review" in allowed:
-            now = t.patch(now, status="In review")
-        raise Fail("EVIDENCE RECORDED, NOT ACCEPTED: the OpenProject workflow does not let this role set Accepted. Actual state after read back: %s. An authorized accepter (Tom/Meatball) decides." % line(now), 7)
-    t.comment(a.id, "Completion evidence: " + a.evidence, session)  # first: a lost evidence note is never hidden by "already Accepted"
-    now = t.patch(refresh(t, w, a.expect_lock), status="Accepted", lock=a.expect_lock)  # the lock may move if the note bumped it
+            now = t.patch(now, status="In review", lock=a.expect_lock)
+            allowed = t.allowed_statuses(now)  # the new state/lock can unlock the next transition
+        if allowed is not None and "Accepted" not in allowed:
+            raise Fail("EVIDENCE RECORDED, NOT ACCEPTED: Accepted is not allowed from the current state [%s]. Actual state after read back: %s. Allowed next statuses: %s. An authorized accepter may be needed." % (now["_links"]["status"]["title"], line(now), ", ".join(allowed) or "(none)"), 7)
+        now = t.patch(now, status="Accepted")
+    else:
+        t.comment(a.id, "Completion evidence: " + a.evidence, session)  # first: a lost evidence note is never hidden by "already Accepted"
+        now = t.patch(refresh(t, w, a.expect_lock), status="Accepted", lock=a.expect_lock)  # the lock may move if the note bumped it
     return "completed (read back): " + line(now)
 
 
