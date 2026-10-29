@@ -42,7 +42,9 @@ class Fake:
 
     def __init__(self):
         self.wps, self.acts, self.rels, self.calls, self.fail, self.next_id, self.next_act = {}, {}, [], [], {}, 100, 1000
-        self.deny = set()  # statuses the role may not reach (the live workflow denies Accepted)
+        self.deny = set()  # statuses denied regardless of the current state
+        self.transitions = {}  # optional current-state -> allowed next statuses
+        self.form_checks, self.status_changes = [], []
         self.add(5, "Epic", "Epic five", None)
         self.add(6, "Saga", "Saga six", None)
 
@@ -56,6 +58,9 @@ class Fake:
 
     def hrefid(self, href):
         return int(href.rsplit("/", 1)[-1])
+
+    def allowed_statuses(self, wp):
+        return [n for n in self.transitions.get(wp["_links"]["status"]["title"], STATUSES) if n not in self.deny]
 
     def request(self, method, path, payload=None):
         self.calls.append((method, path))
@@ -94,13 +99,16 @@ class Fake:
             if sub == "/available_assignees":
                 return 200, {"_embedded": {"elements": [{"id": 5}, {"id": 6}]}}
             if sub == "/form" and method == "POST":
-                names = [n for n in STATUSES if n not in self.deny]
+                if payload["lockVersion"] != wp["lockVersion"]:
+                    return 409, {"errorIdentifier": "UpdateConflict"}
+                self.form_checks.append((wp["_links"]["status"]["title"], payload["lockVersion"]))
+                names = self.allowed_statuses(wp)
                 return 200, {"_embedded": {"schema": {"status": {"_embedded": {"allowedValues": [{"name": n} for n in names]}}}}}
             if sub is None and method == "PATCH":
                 if payload["lockVersion"] != wp["lockVersion"]:
                     return 409, {"errorIdentifier": "UpdateConflict"}
                 target = self.hrefid(payload.get("_links", {}).get("status", {"href": "/0"})["href"])
-                if any(STATUSES[n] == target for n in self.deny):
+                if target and target not in [STATUSES[n] for n in self.allowed_statuses(wp)]:
                     return 422, {"message": "no valid transition exists from old to new status"}
                 for k, v in payload.items():
                     if k.startswith("customField"):
@@ -111,6 +119,8 @@ class Fake:
                         continue
                     name = next(n for n, s in STATUSES.items() if s == self.hrefid(v["href"]))
                     wp["_links"][k] = {"href": v["href"], "title": name}
+                    if k == "status":
+                        self.status_changes.append(name)
                 wp["lockVersion"] += 1
                 return 200, wp
             if sub == "/activities" and method == "GET":
@@ -295,10 +305,139 @@ class LifecycleTests(Base):
 
     def test_complete_by_non_owner_and_during_hold_is_refused_before_any_write(self):
         self.story(10, status="In review", **{op.OWNER: "someone else"})
-        self.story(11, status="Needs approval")
-        for i in (10, 11):
+        for i, status in enumerate(op.HOLDS, 11):
+            self.story(i, status=status)
+        for i in range(10, 11 + len(op.HOLDS)):
             self.assertEqual(self.run_cli("complete", str(i), "--evidence", "x")[0], 3)
             self.assertEqual(self.fake.acts[i], [])
+            self.assertEqual(self.fake.wps[i]["lockVersion"], 1)
+        self.assertFalse(self.posts())
+        self.assertEqual(self.fake.status_changes, [])
+
+    def complete_through_review(self, status, *extra):
+        self.story(10, status=status, **{op.OWNER: os.environ["OPWORK_SESSION"]})
+        self.fake.transitions = {status: ["In review"], "In review": ["Accepted"]}
+        code, out, err = self.run_cli("complete", "10", "--evidence", "tests green", *extra)
+        self.assertEqual(code, 0, err)
+        self.assertIn("completed (read back)", out)
+        self.assertEqual(self.fake.wps[10]["_links"]["status"]["title"], "Accepted")
+        self.assertEqual(self.fake.status_changes, ["In review", "Accepted"])
+        self.assertEqual(self.fake.form_checks, [(status, 1), ("In review", 2)])
+        self.assertEqual(len(self.fake.acts[10]), 1)
+        self.assertIn("evidence: tests green", self.fake.acts[10][0]["comment"]["raw"])
+
+    def test_complete_from_ungroomed_rechecks_workflow_and_accepts_in_one_call(self):
+        self.complete_through_review("Ungroomed")
+
+    def test_complete_through_review_uses_new_lock_after_valid_expected_lock(self):
+        self.complete_through_review("Ungroomed", "--expect-lock", "1")
+
+    def test_complete_through_review_refuses_stale_expected_lock(self):
+        self.story(10, lockVersion=4)
+        self.fake.transitions = {"Ungroomed": ["In review"], "In review": ["Accepted"]}
+        code, _, err = self.run_cli("complete", "10", "--expect-lock", "1", "--evidence", "ev")
+        self.assertEqual(code, 3)
+        self.assertIn("CONFLICT", err)
+        self.assertIn("lock 1 -> 4", err)
+        self.assertEqual(self.fake.wps[10]["_links"]["status"]["title"], "Ungroomed")
+        self.assertEqual(len(self.fake.acts[10]), 1)
+        self.assertEqual(self.fake.status_changes, [])
+
+    def test_complete_from_approval_hold_rechecks_workflow_with_explicit_force(self):
+        self.complete_through_review("Needs approval", "--force")
+
+    def test_complete_force_overrides_owner_guard_without_changing_owner(self):
+        self.story(10, status="In review", **{op.OWNER: "someone else"})
+        self.fake.transitions = {"In review": ["Accepted"]}
+        code, _, err = self.run_cli("complete", "10", "--force", "--evidence", "ev")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.fake.wps[10][op.OWNER], "someone else")
+        self.assertEqual(self.fake.status_changes, ["Accepted"])
+
+    def test_complete_denied_after_review_reports_current_allowed_statuses(self):
+        self.story(10)
+        self.fake.transitions = {"Ungroomed": ["In review"], "In review": ["In review", "Needs approval"]}
+        code, _, err = self.run_cli("complete", "10", "--evidence", "tests green")
+        self.assertEqual(code, 7)
+        self.assertIn("EVIDENCE RECORDED, NOT ACCEPTED", err)
+        self.assertIn("current state [In review]", err)
+        self.assertIn("Allowed next statuses: In review, Needs approval.", err)
+        self.assertIn("An authorized accepter may be needed", err)
+        self.assertNotIn("this role", err)
+        self.assertEqual(self.fake.form_checks, [("Ungroomed", 1), ("In review", 2)])
+        self.assertEqual(self.fake.status_changes, ["In review"])
+        self.assertEqual(len(self.fake.acts[10]), 1)
+        self.assertIn("evidence: tests green", self.fake.acts[10][0]["comment"]["raw"])
+
+    def test_complete_form_recheck_failure_reports_evidence_and_review_state(self):
+        self.story(10)
+        self.fake.transitions = {"Ungroomed": ["In review"], "In review": ["Accepted"]}
+        original = self.fake.handle
+        def failing_recheck(method, url, payload):
+            result = original(method, url, payload)
+            if method == "POST" and url.path.endswith("/form") and self.fake.status_changes == ["In review"]:
+                return 500, {"message": "form unavailable"}
+            return result
+        self.fake.handle = failing_recheck
+        code, out, err = self.run_cli("complete", "10", "--evidence", "tests green")
+        self.assertEqual(code, 7)
+        self.assertEqual(out, "")
+        self.assertIn("EVIDENCE RECORDED, NOT ACCEPTED", err)
+        self.assertIn("#10 is [In review]; form re-check failed", err)
+        self.assertIn("HTTP 500", err)
+        self.assertIn("Actual state after read back: " + op.line(self.fake.wps[10]), err)
+        self.assertIn("Do not re-run complete; check with `opwork show 10`", err)
+        self.assertEqual(self.fake.form_checks, [("Ungroomed", 1), ("In review", 2)])
+        self.assertEqual(self.fake.status_changes, ["In review"])
+        self.assertEqual(len(self.fake.acts[10]), 1)
+        self.assertIn("Ready for acceptance; evidence: tests green", self.fake.acts[10][0]["comment"]["raw"])
+
+    def test_complete_acceptance_conflict_reports_evidence_and_review_transition(self):
+        self.story(10)
+        self.fake.transitions = {"Ungroomed": ["In review"], "In review": ["Accepted"]}
+        original = self.fake.handle
+        def racing_recheck(method, url, payload):
+            result = original(method, url, payload)
+            if method == "POST" and url.path.endswith("/form") and self.fake.status_changes == ["In review"]:
+                self.fake.wps[10]["lockVersion"] += 1
+            return result
+        self.fake.handle = racing_recheck
+        code, out, err = self.run_cli("complete", "10", "--evidence", "tests green")
+        self.assertEqual(code, 3)
+        self.assertEqual(out, "")
+        self.assertIn("EVIDENCE RECORDED", err)
+        self.assertIn("#10 was in [In review] after read back; acceptance conflicted", err)
+        self.assertIn("CONFLICT", err)
+        self.assertIn("Not overwritten. Now: " + op.line(self.fake.wps[10]), err)
+        self.assertIn("lock 2 -> 3", err)
+        self.assertIn("Do not re-run complete; check with `opwork show 10`", err)
+        self.assertEqual(self.fake.status_changes, ["In review"])
+        self.assertEqual(len(self.fake.acts[10]), 1)
+
+    def test_complete_without_transition_displays_fresh_lock_despite_expected_lock(self):
+        original = self.fake.handle
+        for status in ("Ungroomed", "In review"):
+            with self.subTest(status=status):
+                self.fake.handle = original
+                self.story(10, status=status)
+                self.fake.transitions = {status: []}
+                self.concurrent_change_during_note()
+                code, _, err = self.run_cli("complete", "10", "--expect-lock", "1", "--evidence", "ev")
+                self.assertEqual(code, 7)
+                self.assertIn("Actual state after read back: " + op.line(self.fake.wps[10]), err)
+                self.assertEqual(self.fake.wps[10]["lockVersion"], 2)
+                self.assertEqual(self.fake.status_changes, [])
+                self.assertEqual(len(self.fake.acts[10]), 1)
+
+    def test_complete_force_does_not_override_workflow_with_no_allowed_statuses(self):
+        self.story(10, status="In review")
+        self.fake.transitions = {"In review": []}
+        code, _, err = self.run_cli("complete", "10", "--force", "--evidence", "ev")
+        self.assertEqual(code, 7)
+        self.assertIn("current state [In review]", err)
+        self.assertIn("Allowed next statuses: (none)", err)
+        self.assertEqual(len(self.fake.acts[10]), 1)
+        self.assertEqual(self.fake.status_changes, [])
 
     def test_status_note_is_only_posted_after_the_change_took_effect(self):
         self.story()
