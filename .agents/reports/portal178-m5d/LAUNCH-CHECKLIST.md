@@ -261,3 +261,15 @@ configuration. The future separately authorized worker must request
 serving stays Unknown until a supported runtime/provider receipt exists.
 Installation and five-target metadata continuity are recorded under OpenProject
 #104; active selector readiness is not a task launch or live model acceptance.
+
+### Next separately authorized source task, 2026-10-29
+
+The earlier `terra61-next-worker-20261029-01` key was consumed by the successful
+one-turn provider-reported Terra acceptance. Do not reuse it. Story235 now owns
+one ordinary managed `gpt-6.1-terra` / `medium` source worker under the fresh exact
+`dev-env-1019-205125/provider-child-cap-20261029-01` pair. Only the TASK selector
+key changes; its signed2.63.0 agent digest and old remote/local mapping remain
+unchanged. Existing smoke pod/retention proof, templates, permissions, profiles,
+budget-image and active-child admission stay unchanged by this rotation.
+The cap source task may change admission only through its own reviewed PR;
+this configuration does not itself expand the current cap or start a Session.
