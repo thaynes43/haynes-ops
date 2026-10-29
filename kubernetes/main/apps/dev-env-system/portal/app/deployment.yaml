@@ -4,6 +4,8 @@
 # The binary takes no flags and reads everything from /etc/dev-env-portal
 # (dev-env web/portal/session/production.go, LoadProduction, after dev-env#560):
 #   config/<key>        ConfigMap dev-env-v2-portal-config, one file per key
+#   config/session-actions.json  optional: Secret dev-env-v2-portal-actions (Tom's private
+#                       send and history scope for one pilot session; absent means both are off)
 #   secrets/OIDC_*      Secret dev-env-v2-portal-oidc (dev-env-secrets owns its ExternalSecret)
 #   secrets/DB_*, SESSION_*   Secret dev-env-v2-portal-runtime
 #   secrets/OPENPROJECT_TOKEN optional: absent means Tasks shows "not connected"
@@ -16,7 +18,9 @@
 #
 # It loads every file once at start. Reloader restarts it when one changes. A Secret
 # created after the pod starts (OPENPROJECT_TOKEN) needs a template change instead:
-# Reloader does not act on a create.
+# Reloader does not act on a create. The same holds for dev-env-v2-portal-actions: the
+# PR that mounts it is merged only after its ExternalSecret is SecretSynced, so the pod
+# that PR rolls starts with the file present.
 #
 # dev-agents enforces Pod Security "restricted" and a Kyverno CPU limit. The S1 policy
 # selects app.kubernetes.io/name and needs ClusterFirst DNS with ndots 1.
@@ -29,7 +33,7 @@ metadata:
     app.kubernetes.io/name: dev-env-v2-portal
   annotations:
     configmap.reloader.stakater.com/reload: dev-env-v2-portal-config,dev-env-v2-portal-postgres-ca,dev-env-v2-portal-issuer-ca,dev-env-v2-portal-openproject-ca,dev-env-api-ca
-    secret.reloader.stakater.com/reload: dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-openproject,dev-env-v2-portal-tls
+    secret.reloader.stakater.com/reload: dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-actions,dev-env-v2-portal-openproject,dev-env-v2-portal-tls
 spec:
   replicas: 1
   revisionHistoryLimit: 2
@@ -134,9 +138,23 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        # The ConfigMap, whole, plus the private action scope as config/session-actions.json.
+        # That Secret is optional: until Tom writes PORTAL_ACTION_SUBJECT it does not exist,
+        # the file is absent and send and history stay off (actions-externalsecret.yaml).
+        # Reloader restarts the portal when the Secret changes, not when it is first created.
+        # Removing the 1Password property does not revoke a running portal; the operator
+        # flags are the kill switch.
         - name: config
-          configMap:
-            name: dev-env-v2-portal-config
+          projected:
+            sources:
+              - configMap:
+                  name: dev-env-v2-portal-config
+              - secret:
+                  name: dev-env-v2-portal-actions
+                  optional: true
+                  items:
+                    - key: session-actions.json
+                      path: session-actions.json
         - name: secrets
           projected:
             sources:

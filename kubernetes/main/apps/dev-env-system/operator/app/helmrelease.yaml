@@ -168,6 +168,18 @@ spec:
               # when the pilot ends.
               - '--pilot-agent-image=ghcr.io/thaynes43/dev-env:2.52.0@sha256:87e8ab9346c2f656c0dfe19eb3d09ae89e220a341dd86e30e9ef0d43230204f9'
               - '--pilot-agent-session=dev-env-1027-111645/usage-pilot-1'
+              # 2026-10-29, Tom chose target dev-env-1028-031951 (AskUserQuestion,
+              # OpenProject #244); the 2026-10-27 approval for dev-env-1027-185745 is not reused.
+              # This separate scope enables portal Send and history for ONE session, UID
+              # 5da21936-7781-4760-82ce-2a0689b891f7, and supersedes the default-off comments above.
+              # The operator registers the message and conversation routes only with these flags,
+              # still only for the portal ServiceAccount. The portal's private scope binds Tom's
+              # principal alone (portal/app/actions-externalsecret.yaml). Merge only after that
+              # ExternalSecret is SecretSynced. No automatic expiry: the immediate kill switch is
+              # a PR removing both target flags. Full removal also removes the ExternalSecret and
+              # the portal Deployment's projection.
+              - '--portal-send-target=dev-env-1028-031951=5da21936-7781-4760-82ce-2a0689b891f7'
+              - '--portal-history-target=dev-env-1028-031951=5da21936-7781-4760-82ce-2a0689b891f7'
               # Separate ordinary Codex TASK image selector (dev-env#632, signed v2.63.0).
               # Exact future parent/key only; no current Session has this key. It changes only
               # the image of a first newly constructed, UID-owned ordinary dev-env task pod.
