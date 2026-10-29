@@ -582,6 +582,24 @@ class CheckinTests(Base):
         self.assertIn("Do not blindly retry", err)
 
 
+    def test_same_timestamp_orders_numeric_activity_ids(self):
+        self.story(10)
+        args = ("checkpoint-update", "10", "--next-action", "old", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "x")
+        self.run_cli(*args)
+        self.fake.acts[10][0]["id"] = 9
+        self.run_cli("checkpoint-update", "10", "--next-action", "new", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "x")
+        self.fake.acts[10][1]["id"] = 10
+        item = next(x for x in json.loads(self.run_cli("checkins", "-o", "json")[1])["items"] if x["id"] == 10)
+        self.assertEqual(item["next_action"], "new")
+
+    def test_empty_checkpoint_fields_refused_before_post(self):
+        self.story(10)
+        for action, evidence, handoff in ((" ", "x", "ok"), ("x", "", "ok"), ("x", "x", " ")):
+            code, _, _ = self.run_cli("checkpoint-update", "10", "--next-action", action, "--check-after", "2030-01-01T00:00:00Z", "--evidence", evidence, "--handoff", handoff)
+            self.assertEqual(code, 1)
+        self.assertEqual(self.posts("/activities"), [])
+
+
 class LinkTests(Base):
     BASE = "https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/"
 

@@ -308,12 +308,12 @@ def cmd_checkins(t, a, session):
             continue
         acts, complete = activity_page(t, w["id"])
         candidates = [x for x in acts if CHECKIN_MARKER in text_of(x.get("comment"))]
-        candidates.sort(key=lambda x: (utc_time(x.get("createdAt")) or datetime.min.replace(tzinfo=timezone.utc), str(x.get("id") or "")), reverse=True)
+        candidates.sort(key=lambda x: (utc_time(x.get("createdAt")) or datetime.min.replace(tzinfo=timezone.utc), x.get("id") if isinstance(x.get("id"), int) and not isinstance(x.get("id"), bool) else -1), reverse=True)
         meta, source, malformed = {}, None, False
         if candidates:
             act = candidates[0]
             try:
-                if any(not utc_time(x.get("createdAt")) for x in candidates):
+                if any(not utc_time(x.get("createdAt")) or not isinstance(x.get("id"), int) or isinstance(x.get("id"), bool) for x in candidates):
                     raise ValueError("invalid activity timestamp")
                 comment = text_of(act.get("comment"))
                 if not re.match(r"^\*\*\[[^]\n]+\]\*\* Structured checkpoint\n\n", comment) or not re.search(r"\(opwork:note=[0-9a-f]{12}\)", comment) or not utc_time(act.get("createdAt")) or not (act.get("_links", {}).get("user") or {}).get("title"):
@@ -348,6 +348,10 @@ def cmd_checkins(t, a, session):
 def cmd_checkpoint_update(t, a, session):
     w = t.wp(a.id)
     guard(w, session, False)
+    if not a.next_action.strip() or not a.evidence.strip():
+        raise Fail("next-action and evidence must not be empty")
+    if a.handoff is not None and not a.handoff.strip():
+        raise Fail("handoff must not be empty")
     if not utc_time(a.check_after):
         raise Fail("check-after must be an ISO 8601 timestamp with timezone")
     if a.last_verified and not utc_time(a.last_verified):
