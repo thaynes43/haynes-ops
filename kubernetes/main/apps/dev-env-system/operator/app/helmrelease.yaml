@@ -73,7 +73,7 @@ spec:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
               # Source 3a22ca9b0463279d1fa312c14538a996d2096838 (v2.63.0, dev-env#632/#633); publish.yml40793043582 signed and verified this exact digest.
-              # Adds the independently paired Codex TASK pilot source flags; neither --task-pilot-agent-image nor --task-pilot-agent-session is set here, so the new selector remains off.
+              # The #4390 binary-only installation left the new Codex TASK selector off. The separate future parent/key configuration below now enables it without starting a Session.
               # Existing RC automatic-drain guard, all current flags/pilot mapping, templates/worker images, mounts, permissions and rollout strategy are unchanged; this pin starts or replaces no agent Session.
               # Source 397f688ef1dfdfc433ee967bbcbde148578f1f60 (v2.62.1, dev-env#630/#631); publish.yml 40783327912 operator job signed and verified this digest.
               # Remote Control sessions are excluded from automatic template-revision drain, including the uncached pre-stop check; already-stopped recovery and explicit owner lifecycle operations remain supported.
