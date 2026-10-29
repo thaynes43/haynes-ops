@@ -146,8 +146,9 @@ spec:
               # without a valid figure send no key. It requires --enable-portal-reader (above). It
               # is on only after the portal that reads the key is rolled (the portal's activity
               # decoder is strict, so a portal from before dev-env#591 would read the view as
-              # unavailable). It changes no pod and no Secret, and grants nothing: the send,
-              # history and launch flags are not set.
+              # unavailable). It changes no pod and no Secret, and grants nothing. It does not
+              # enable send or history: the 2026-10-29 target flags below do that for one
+              # session. Launch stays off.
               - '--portal-conversation-usage=true'
               - '--session-namespace=dev-agents'
               # Measured-usage pilot (Tom, 2026-10-28; dev-env#576 mechanism, docs/portal-session-runtime.md
@@ -164,8 +165,8 @@ spec:
               # image, because its key no longer matches. Existing 2.45 sessions report no
               # conversation usage and show as not measured.
               # This is code version only: profile, Secrets, egress and grants are the parent's, and
-              # it authorizes no portal send, history or launch (those stay off). Remove both lines
-              # when the pilot ends.
+              # it authorizes no portal send or history (see the two portal target flags below);
+              # launch stays off. Remove both lines when the pilot ends.
               - '--pilot-agent-image=ghcr.io/thaynes43/dev-env:2.52.0@sha256:87e8ab9346c2f656c0dfe19eb3d09ae89e220a341dd86e30e9ef0d43230204f9'
               - '--pilot-agent-session=dev-env-1027-111645/usage-pilot-1'
               # 2026-10-29, Tom chose target dev-env-1028-031951 (AskUserQuestion,
