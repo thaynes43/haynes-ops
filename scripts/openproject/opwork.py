@@ -13,6 +13,8 @@ scope, the routine lifecycle writes are yours. Run `opwork.py --help` for the co
   opwork.py complete 97 --evidence "tests ..."  # evidence comment + Accepted
   opwork.py create --epic 95 --origin 97 --source-key followup:97:x --subject "..."
   opwork.py checkpoint 97 "state..."            # explicit local record, no tracker needed
+  opwork.py checkins [--owner OWNER] [--status S] -o json
+  opwork.py checkpoint-update 97 --next-action TEXT --check-after UTC --evidence TEXT
   opwork.py pending | flush                     # tracker was down: list / replay notes
 
 Every item line carries the canonical OpenProject link, for example
@@ -27,6 +29,7 @@ Exit codes: 0 ok, 1 error, 3 conflict/refused (nothing overwritten), 4 needs a d
 7 evidence recorded but the workflow denies Accepted to this role (read-back state reported).
 """
 import argparse
+from datetime import datetime, timezone
 import importlib.util
 import json
 import os
@@ -268,6 +271,93 @@ def cmd_search(t, a, session):
     return "\n".join(out)
 
 
+# Check-in metadata is an attributed comment, not a workflow transition. The latest
+# visible structured comment wins; an incomplete activity page never proves absence.
+CHECKIN_MARKER = "opwork:checkin="
+
+
+def utc_time(value):
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.astimezone(timezone.utc) if parsed.tzinfo else None
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def activity_page(t, wp_id):
+    data = t.get("/api/v3/work_packages/%d/activities?pageSize=100&offset=1" % wp_id)
+    rows = data.get("_embedded", {}).get("elements", [])
+    total = data.get("total")
+    return rows, isinstance(total, int) and total <= len(rows)
+
+
+def cmd_checkins(t, a, session):
+    filters = [{"status": {"operator": "=", "values": [str(t.resolve("statuses", x)) for x in a.status.split(",")]}}] if a.status else [{"status": {"operator": "o", "values": []}}]
+    data = t.listing(filters, a.page, a.limit)
+    rows = data.get("_embedded", {}).get("elements", [])
+    now = datetime.now(timezone.utc)
+    result = []
+    for w in rows:
+        owner = text_of(w.get(OWNER))
+        if a.owner and a.owner.lower() not in owner.lower():
+            continue
+        acts, complete = activity_page(t, w["id"])
+        candidates = [x for x in acts if CHECKIN_MARKER in text_of(x.get("comment"))]
+        candidates.sort(key=lambda x: (x.get("createdAt", ""), x.get("id", 0)), reverse=True)
+        meta, source, malformed = {}, None, False
+        if candidates:
+            act = candidates[0]
+            try:
+                meta = json.loads(text_of(act.get("comment")).split(CHECKIN_MARKER, 1)[1].split("\n", 1)[0])
+                if not isinstance(meta, dict):
+                    raise ValueError("not an object")
+                source = {"activity_id": act.get("id"), "created_at": act.get("createdAt"), "author": (act.get("_links", {}).get("user") or {}).get("title")}
+            except (ValueError, TypeError):
+                meta, malformed = {}, True
+        check = utc_time(meta.get("check_after"))
+        status = w.get("_links", {}).get("status", {}).get("title") or "Unknown"
+        reasons = []
+        if check and check <= now: reasons.append("due")
+        if meta.get("ack") is False: reasons.append("missing_ack")
+        if meta.get("stale") is True: reasons.append("stale")
+        if meta.get("blocked") is True or status in HOLDS: reasons.append("blocked")
+        if meta.get("deployed") is True and status != "Accepted": reasons.append("deployed_not_accepted")
+        if not reasons: reasons.append("unknown")
+        result.append({"id": w["id"], "subject": w.get("subject"), "url": wp_url(w["id"]), "status": status, "owner": owner or "Unknown", "reasons": reasons,
+                       "next_action": meta.get("next_action") or "Unknown", "check_after": meta.get("check_after") if check else "Unknown",
+                       "evidence": meta.get("evidence") or "Unknown", "last_verified": meta.get("last_verified") or "Unknown", "handoff": meta.get("handoff") or "Unknown",
+                       "provenance": text_of(w.get(PROVENANCE)) or "Unknown", "comment_source": source,
+                       "metadata": "malformed" if malformed else ("present" if candidates else ("absent" if complete else "unknown")), "history_complete": complete})
+    return json.dumps({"items": result, "page": a.page, "page_size": a.limit, "total_before_owner_filter": data.get("total"), "has_more": a.page * a.limit < data.get("total", 0)}, sort_keys=True)
+
+
+def cmd_checkpoint_update(t, a, session):
+    w = t.wp(a.id)
+    guard(w, session, False)
+    if not utc_time(a.check_after):
+        raise Fail("check-after must be an ISO 8601 timestamp with timezone")
+    if a.last_verified and not utc_time(a.last_verified):
+        raise Fail("last-verified must be an ISO 8601 timestamp with timezone")
+    meta = {"next_action": a.next_action, "check_after": a.check_after, "evidence": a.evidence, "last_verified": a.last_verified, "handoff": a.handoff,
+            "ack": a.ack, "stale": a.stale, "blocked": a.blocked, "deployed": a.deployed}
+    text = "Structured checkpoint\n\n" + CHECKIN_MARKER + json.dumps(meta, separators=(",", ":"), sort_keys=True)
+    # Re-read before posting, refusing an owner/status race.
+    refresh(t, w, None)
+    token = uuid.uuid4().hex[:12]
+    body = "**[%s]** %s\n\n(opwork:note=%s)" % (session, text, token)
+    try:
+        found = t.post_note(a.id, body, token)
+    except t.unavailable:
+        save_pending("structured_note", token, wp=a.id, session=session, text=text)
+        raise
+    except Fail as error:
+        if error.code == 6:
+            save_pending("structured_note", token, wp=a.id, session=session, text=text)
+        raise
+    refresh(t, w, None)
+    return "checkpoint %s recorded on #%d (read back)" % (found.get("id"), a.id)
+
+
 def clip(text, limit, full):
     return text if full or len(text) <= limit else "%s [truncated %d chars; use --full]" % (text[:limit], len(text) - limit)
 
@@ -429,12 +519,22 @@ def cmd_flush(t, a, session):
     for name in sorted(os.listdir(state_dir())):
         path = os.path.join(state_dir(), name)
         rec = json.load(open(path))
-        if rec["kind"] != "note":
+        if rec["kind"] not in ("note", "structured_note"):
             out.append("kept (re-run it yourself): %s" % " ".join(rec["argv"]))
             continue
         body = "**[%s]** Deferred checkpoint (written %s during a tracker outage): %s\n\n(opwork:note=%s)" % (rec["session"], rec["created"], rec["text"], rec["token"])
         try:
-            if not any("opwork:note=" + rec["token"] in text_of(x.get("comment")) for x in t.activities(rec["wp"])):
+            if rec["kind"] == "structured_note":
+                w = t.wp(rec["wp"])
+                guard(w, rec["session"], False)
+                refresh(t, w, None)
+                acts, complete = activity_page(t, rec["wp"])
+                seen = any("opwork:note=" + rec["token"] in text_of(x.get("comment")) for x in acts)
+                if not seen and not complete:
+                    raise Fail("Incomplete history; cannot safely deduplicate checkpoint", 6)
+            else:
+                seen = any("opwork:note=" + rec["token"] in text_of(x.get("comment")) for x in t.activities(rec["wp"]))
+            if not seen:
                 t.post_note(int(rec["wp"]), body, rec["token"])
         except Fail as failure:
             out.append("kept %s: %s" % (name, failure))
@@ -459,6 +559,8 @@ def build_parser():
     add("ping", cmd_ping, help="check the tracker, show the session identity")
     add("search", cmd_search, (("text",), {"nargs": "?"}), (("--status",), {}), (("--type",), {}), (("--parent",), {"type": int}), (("--source-key",), {}), (("--owner",), {}),
         (("--all",), {"action": "store_true", "help": "include closed"}), (("--page",), {"type": int, "default": 1}), (("--limit",), {"type": int, "default": 20}), help="search work items")
+    add("checkins", cmd_checkins, (("--owner",), {}), (("--status",), {}), (("-o", "--output"), {"choices": ["json"], "required": True}), (("--page",), {"type": int, "default": 1}), (("--limit",), {"type": int, "default": 100}), help="bounded check-in view")
+    add("checkpoint-update", cmd_checkpoint_update, wp, (("--next-action",), {"required": True}), (("--check-after",), {"required": True}), (("--evidence",), {"required": True}), (("--last-verified",), {}), (("--handoff",), {}), (("--ack",), {"action": "store_true", "default": None}), (("--missing-ack",), {"dest": "ack", "action": "store_false"}), (("--stale",), {"action": "store_true", "default": None}), (("--blocked",), {"action": "store_true", "default": None}), (("--deployed",), {"action": "store_true", "default": None}), help="post attributed structured checkpoint")
     add("show", cmd_show, wp, (("--history",), {"action": "store_true"}), (("--relations",), {"action": "store_true"}), (("--full",), {"action": "store_true", "help": "no truncation of history text"}), help="read one item (read-only)")
     add("claim", cmd_claim, wp, (("--note",), {}), (("--assignee",), {"help": "also set the native assignee: me, or a user id available on the item"}), lock, force, help="set Execution owner to this session, In progress")
     add("comment", cmd_comment, wp, (("text",), {"help": "or - to read stdin"}), help="attributed progress note")
@@ -478,6 +580,9 @@ def main(argv=None, tracker=None, unavailable=None):
     global LINK_PROJECT, LINK_BASE
     args = build_parser().parse_args(argv)
     LINK_PROJECT = args.project
+    if args.cmd == "checkins" and (args.page < 1 or not 1 <= args.limit <= 100):
+        print("page must be positive and limit must be 1..100", file=sys.stderr)
+        return 1
     session = session_id()
     if getattr(args, "text", None) == "-":
         args.text = sys.stdin.read().strip()
@@ -495,6 +600,9 @@ def main(argv=None, tracker=None, unavailable=None):
         print(failure, file=sys.stderr)
         return failure.code
     except (unavailable or ()) as down:
+        if args.fn is cmd_checkpoint_update and hasattr(down, "token"):
+            print("TRACKER UNAVAILABLE: structured checkpoint queued locally; write is unconfirmed and flush deduplicates by token.", file=sys.stderr)
+            return 5
         mutating = args.fn in (cmd_claim, cmd_comment, cmd_status, cmd_complete, cmd_create, cmd_relate)
         if args.fn is cmd_comment:
             path, rec = save_pending("note", getattr(down, "token", None), wp=args.id, session=session, text=args.text)

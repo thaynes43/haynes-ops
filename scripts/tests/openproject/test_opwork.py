@@ -491,6 +491,48 @@ class CreateTests(Base):
         self.assertEqual((code, "#30" in out, "#31" in out, self.posts("/projects/")), (0, True, True, []))
 
 
+class CheckinTests(Base):
+    def test_structured_checkpoint_and_bounded_view(self):
+        self.story(10, status="In progress", **{op.OWNER: os.environ["OPWORK_SESSION"]})
+        args = ("checkpoint-update", "10", "--next-action", "verify", "--check-after", "2020-01-01T00:00:00Z", "--evidence", "run", "--missing-ack", "--deployed")
+        self.assertEqual(self.run_cli(*args)[0], 0)
+        code, out, _ = self.run_cli("checkins", "--owner", "codex-test", "--status", "In progress", "-o", "json")
+        item = json.loads(out)["items"][0]
+        self.assertEqual(code, 0)
+        self.assertEqual(item["reasons"], ["due", "missing_ack", "deployed_not_accepted"])
+        self.assertEqual(item["comment_source"]["author"], "openproject-agent")
+        self.assertFalse(item["history_complete"])
+        self.assertEqual(item["last_verified"], "Unknown")
+
+    def test_bad_time_guard_and_incomplete_metadata(self):
+        self.story(10, status="Paused")
+        args = ("checkpoint-update", "10", "--next-action", "x", "--check-after", "2020-01-01", "--evidence", "x")
+        self.assertEqual(self.run_cli(*args)[0], 3)
+        self.fake.wps[10]["_links"]["status"]["title"] = "In progress"
+        self.assertEqual(self.run_cli(*args)[0], 1)
+        code, out, _ = self.run_cli("checkins", "--owner", "missing", "-o", "json")
+        self.assertEqual(json.loads(out)["items"], [])
+        self.assertEqual(self.run_cli("checkins", "--limit", "101", "-o", "json")[0], 1)
+
+    def test_uncertain_checkpoint_is_queued_and_not_replayed_on_partial_history(self):
+        self.story(10)
+        self.fake.fail["POST /activities"] = "after"
+        args = ("checkpoint-update", "10", "--next-action", "x", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "x")
+        self.assertEqual(self.run_cli(*args)[0], 5)
+        self.assertEqual(len(self.fake.acts[10]), 1)
+        self.fake.fail.clear()
+        self.assertIn("flushed", self.run_cli("flush")[1])
+        self.assertEqual(len(self.fake.acts[10]), 1)
+
+    def test_malformed_metadata_is_truthful(self):
+        self.story(10)
+        self.fake.acts[10].append({"id": 1, "createdAt": "2020", "comment": {"raw": "opwork:checkin={broken"}})
+        out = self.run_cli("checkins", "-o", "json")[1]
+        item = next(x for x in json.loads(out)["items"] if x["id"] == 10)
+        self.assertEqual(item["metadata"], "malformed")
+        self.assertEqual(item["next_action"], "Unknown")
+
+
 class LinkTests(Base):
     BASE = "https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/"
 
