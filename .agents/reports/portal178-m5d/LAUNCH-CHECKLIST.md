@@ -233,3 +233,31 @@ The historical v2.62.1 operator pin is `sha-397f688@sha256:5b4526802554d844b864b
 ### Default-off task-pilot operator binary, 2026-10-29
 
 The current operator pin is `sha-3a22ca9@sha256:a02da1535aa083678419c9b65368da6191d264fc96a62c31e6c9bd9a59de797b`, signed v2.63.0 source `3a22ca9b0463279d1fa312c14538a996d2096838` (dev-env#632/#633; publish40793043582 keyless Sign/Verify success). It adds a separate default-off Codex TASK image tuple in source. Neither `--task-pilot-agent-image` nor `--task-pilot-agent-session` is configured here: no new task pilot is enabled. The prior RC drain guard remains, as do every current flag and the original Claude local/remote and Codex remote pilot mapping. Templates, agent/pilot worker images, mounts, profiles, permissions, credentials, capacity and active sessions are unchanged. No API or CRD schema changes occur between2.62.1 and2.63.0. Operator-only rollout and filtered original RC/local-pilot metadata continuity readback are recorded on OpenProject104; this is not phone/private-history or live Terra-serving acceptance.
+
+## Separate future Codex TASK image selector, 2026-10-29
+
+The operator-only v2.63.0 installation (#4390) left the new selector off. The
+subsequent independently reviewed configuration selects only the future
+`dev-env-1019-205125/terra61-next-worker-20261029-01` parent/idempotency pair for
+`ghcr.io/thaynes43/dev-env:2.63.0@sha256:010ce2db9371e0de7f12e9b2d5243a182f7c684faea2aab874c67e8a328a3a9f`.
+Normal tag publication40793066742 signed and verified that exact agent digest.
+A targeted preflight found no existing Session with this key. Controller/API
+qualification is dev-env#632 and release v2.63.0, not a new security entitlement.
+
+Only ordinary Codex TASK pods for repository dev-env qualify, with exact
+parent/key and Session UID ownership. Existing Pod early-return, original HOME
+binding, executor reservation and retained/uncertain-attempt checks remain in
+force. Workspace, project-canary, private-pilot, hold and budget-bound paths are
+excluded. The API still derives the parent from authenticated identity and
+retains admission/profile, idempotency, depth/capacity and budget enforcement.
+The selector is not a lifetime one-use limit; using this key once and removing
+both task-pilot flags afterward are operating rules.
+
+The old remote/local image pair, global templates/default agent image, current
+Sessions and task-budget worker-image guard are unchanged. No Session creation,
+capacity polling, eviction, credential/grant or HASS operation is part of this
+configuration. The future separately authorized worker must request
+`gpt-6.1-terra` / `medium`; configured is not served-model evidence. Model
+serving stays Unknown until a supported runtime/provider receipt exists.
+Installation and five-target metadata continuity are recorded under OpenProject
+#104; active selector readiness is not a task launch or live model acceptance.
