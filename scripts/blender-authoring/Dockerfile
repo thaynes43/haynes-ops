@@ -2,7 +2,7 @@
 # Dedicated amd64 authoring worker. Build context: scripts/blender-authoring/.
 # The same Debian/Node base and verified authoring pins as dev-env, without its
 # agent credentials, cluster tools, startup scripts or mounted home directory.
-FROM node:24-slim
+FROM node:26-slim
 ARG BLENDER_VERSION=4.5.13
 ARG BLENDER_SERIES=4.5
 ARG BLENDER_MCP_REVISION=5f8ddaf6e987c4aa0c3467fcc548838b28f64477
