@@ -72,6 +72,10 @@ spec:
                   seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
+              # Source 3e3e93d3cace4d8a02af08c442f80aae557d0e68 (v2.63.1; dev-env#634/#635/#636 and Kubernetes client-library patch #638).
+              # Publish40810610315 succeeded; this exact digest was independently keyless-verified against dev-env publish.yml on main.
+              # Four unfinished children per parent/canonical agent; unknown legacy agents charge every bucket. Existing admission/depth/profile rules and replica-local race limitation remain.
+              # Operator image only: flags, pilot/worker images, templates, permissions, volumes and existing Session pods stay unchanged.
               # Source 3a22ca9b0463279d1fa312c14538a996d2096838 (v2.63.0, dev-env#632/#633); publish.yml40793043582 signed and verified this exact digest.
               # The #4390 binary-only installation left the new Codex TASK selector off. The separate future parent/key configuration below now enables it without starting a Session.
               # Existing RC automatic-drain guard, all current flags/pilot mapping, templates/worker images, mounts, permissions and rollout strategy are unchanged; this pin starts or replaces no agent Session.
@@ -116,7 +120,7 @@ spec:
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates. The executor stop (H3) is on since NB-06b (below).
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-3a22ca9@sha256:a02da1535aa083678419c9b65368da6191d264fc96a62c31e6c9bd9a59de797b
+              tag: sha-3e3e93d@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
