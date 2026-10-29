@@ -8,6 +8,7 @@ resources:
   - ./grantpolicies.yaml
   - ./activities.yaml
   - ./credentialjobs.yaml
+  - ./coordination.dev-env.haynesops.com_asks.yaml
   - ./coordination.dev-env.haynesops.com_taskclaims.yaml
   - ./taskclaims-operator.yaml
   - ./coordination.dev-env.haynesops.com_publishedcontexts.yaml

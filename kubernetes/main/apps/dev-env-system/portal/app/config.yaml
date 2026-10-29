@@ -15,6 +15,9 @@
 #   independent allowlist for the same session. Launch is not listed, so it stays off.
 #   A file with an issuer or subject is refused by the portal (dev-env#649). Kill switch:
 #   a PR removing the two operator flags and this key.
+# - asks.json: opt in to the Asks board and answer forms (Epic #254, dev-env#669).
+#   The only accepted key is enabled. It uses operator-api-url and the existing
+#   projected OPERATOR_TOKEN and operator CA; no new host or credential is needed.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -37,3 +40,4 @@ data:
   clock-skew: 0s
   pages-alertmanager.json: '{"source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts"}'
   session-actions.json: '{"send":{"targets":[{"name":"dev-env-1028-031951","uid":"5da21936-7781-4760-82ce-2a0689b891f7"}]},"history":{"targets":[{"name":"dev-env-1028-031951","uid":"5da21936-7781-4760-82ce-2a0689b891f7"}]}}'
+  asks.json: '{"enabled":true}'
