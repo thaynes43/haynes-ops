@@ -99,8 +99,8 @@ PORTAL_IMAGE = (
 OPENPROJECT_ORIGIN = "https://openproject-web.frontend.svc.cluster.local:8443"
 OPENPROJECT_TASKS_QUERY = "/api/v3/projects/3/work_packages?offset=<page>&pageSize=50&filters=%5B%5D"
 OPERATOR_IMAGE = (
-    "sha-3a22ca9"
-    "@sha256:a02da1535aa083678419c9b65368da6191d264fc96a62c31e6c9bd9a59de797b"
+    "sha-3e3e93d"
+    "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
@@ -1738,7 +1738,7 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertEqual(deployment["spec"]["strategy"], {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}})
         image = deployment["spec"]["template"]["spec"]["containers"][0]["image"]
         self.assertRegex(image, REGISTERED_PORTAL_IMAGE)
-        self.assertEqual(image, "ghcr.io/thaynes43/dev-env-portal:sha-f7e06be@sha256:0598e284d01cd0c9a98ca96caae7eea8066e64684469760bd86eadac4eacd25e")
+        self.assertEqual(image, "ghcr.io/thaynes43/dev-env-portal:sha-8e2064b@sha256:612b83d2b57d9ed9f9a72f856bd7c6760ced057d2223067a409257f1681113a5")
         self.assertEqual(expand_config_files(mounted_files(deployment), self.docs), PRODUCTION_FILES)
 
     def test_public_ca_bundles_are_pinned_certificates_only(self):
