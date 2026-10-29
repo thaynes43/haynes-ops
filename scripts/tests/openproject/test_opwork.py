@@ -117,7 +117,7 @@ class Fake:
                 return 200, {"total": len(self.acts[i]), "_embedded": {"elements": self.acts[i]}}
             if sub == "/activities" and method == "POST":
                 self.next_act += 1
-                self.acts[i].append({"id": self.next_act, "createdAt": "2026-10-29T00:00:00Z", "comment": payload["comment"], "details": [], "_links": {"user": {"title": "openproject-agent"}}})
+                self.acts[i].append({"id": self.next_act, "createdAt": "2026-10-29T00:00:00Z", "comment": payload["comment"], "details": [], "_links": {"user": {"href": "/api/v3/users/5", "title": "openproject-agent"}}})
                 return 201, self.acts[i][-1]
             if sub == "/relations" and method == "POST":
                 self.rels.append({"type": payload["type"], "_links": {"from": {"href": "/api/v3/work_packages/%d" % i}, "to": payload["_links"]["to"]}})
@@ -503,6 +503,19 @@ class CheckinTests(Base):
         self.assertEqual(item["comment_source"]["author"], "openproject-agent")
         self.assertTrue(item["history_complete"])
         self.assertEqual(item["last_verified"], "Unknown")
+
+    def test_actor_href_without_title_and_invalid_actor(self):
+        self.story(10)
+        self.assertEqual(self.run_cli("checkpoint-update", "10", "--next-action", "verify", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "run")[0], 0)
+        act = self.fake.acts[10][0]
+        act["_links"]["user"] = {"href": "/api/v3/users/5"}
+        def item():
+            return next(x for x in json.loads(self.run_cli("checkins", "-o", "json")[1])["items"] if x["id"] == 10)
+        self.assertEqual((item()["metadata"], item()["comment_source"]["author"]), ("present", "user#5"))
+        for user in ({}, {"title": "name"}, {"href": "/api/v3/users/not-a-number"}, None):
+            act["_links"]["user"] = user
+            self.assertEqual((item()["metadata"], item()["next_action"]), ("malformed", "Unknown"))
+
 
     def test_bad_time_guard_and_incomplete_metadata(self):
         self.story(10, status="Paused")

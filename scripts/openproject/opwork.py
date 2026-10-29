@@ -316,14 +316,17 @@ def cmd_checkins(t, a, session):
                 if any(not utc_time(x.get("createdAt")) or not isinstance(x.get("id"), int) or isinstance(x.get("id"), bool) for x in candidates):
                     raise ValueError("invalid activity timestamp")
                 comment = text_of(act.get("comment"))
-                if not re.match(r"^\*\*\[[^]\n]+\]\*\* Structured checkpoint\n\n", comment) or not re.search(r"\(opwork:note=[0-9a-f]{12}\)", comment) or not utc_time(act.get("createdAt")) or not (act.get("_links", {}).get("user") or {}).get("title"):
+                links = act.get("_links")
+                user = links.get("user") if isinstance(links, dict) else None
+                actor = re.fullmatch(r"/api/v3/users/([1-9][0-9]*)", user.get("href", "")) if isinstance(user, dict) and isinstance(user.get("href"), str) else None
+                if not re.match(r"^\*\*\[[^]\n]+\]\*\* Structured checkpoint\n\n", comment) or not re.search(r"\(opwork:note=[0-9a-f]{12}\)", comment) or not utc_time(act.get("createdAt")) or not actor:
                     raise ValueError("invalid envelope")
                 meta = json.loads(comment.split(CHECKIN_MARKER, 1)[1].split("\n", 1)[0])
                 if not isinstance(meta, dict) or any(not isinstance(meta.get(k), str) or not meta[k].strip() for k in ("next_action", "check_after", "evidence")) or not utc_time(meta["check_after"]):
                     raise ValueError("invalid required fields")
                 if any(meta.get(k) is not None and (not isinstance(meta[k], str) or not meta[k].strip()) for k in ("last_verified", "handoff")) or (meta.get("last_verified") and not utc_time(meta["last_verified"])) or any(meta.get(k) is not None and not isinstance(meta[k], bool) for k in ("ack", "stale", "blocked", "deployed")):
                     raise ValueError("invalid optional fields")
-                source = {"activity_id": act.get("id"), "created_at": act.get("createdAt"), "author": (act.get("_links", {}).get("user") or {}).get("title")}
+                source = {"activity_id": act.get("id"), "created_at": act.get("createdAt"), "author": user.get("title") or "user#%s" % actor.group(1)}
             except (ValueError, TypeError):
                 meta, malformed = {}, True
         if not complete:
