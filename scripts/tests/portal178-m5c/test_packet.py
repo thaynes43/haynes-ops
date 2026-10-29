@@ -518,6 +518,9 @@ class Packet(unittest.TestCase):
                         self.assertEqual(doc["spec"], load("runtime-externalsecret.yaml")["spec"], str(path))
                     elif doc["metadata"]["name"] == "dev-env-v2-portal-openproject":
                         self.assertEqual(component.approved_portal_openproject_violations(path, doc), [], str(path))
+                    elif doc["metadata"]["name"] == "dev-env-v2-portal-actions":
+                        # 2026-10-29 (OpenProject #244): Tom-only send and history for the one pilot session.
+                        self.assertEqual(component.approved_portal_actions_violations(path, doc), [], str(path))
                     else:
                         self.assertEqual(approved_portal_oidc_violations(path, doc), [], str(path))
                         self.assertEqual(path.resolve(), PORTAL_OIDC.resolve(), str(path))
