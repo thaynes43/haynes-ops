@@ -1709,6 +1709,10 @@ class RegisteredInputsTest(unittest.TestCase):
         # and the installed CRD has no rootCAs field.
         self.assertEqual(packet["spec"].pop("rootCAs"), [{"secret": "dev-env-v2-portal-serving-ca"}])
         packet["spec"]["rootCAsSecrets"] = ["dev-env-v2-portal-tls"]
+        # Second reviewed delta (OP246): the registered header timeout sits above the portal's
+        # 12 s read deadline and under its 20 s write timeout; the packet keeps its original 10s.
+        self.assertEqual(packet["spec"]["forwardingTimeouts"]["responseHeaderTimeout"], "10s")
+        packet["spec"]["forwardingTimeouts"]["responseHeaderTimeout"] = "15s"
         self.assertEqual(transport, packet)
         self.assertNotIn("rootCAs", transport["spec"])
         leaf = self.by_key[("Certificate", "dev-env-v2-portal-serving")]

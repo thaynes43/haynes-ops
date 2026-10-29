@@ -29,5 +29,6 @@ spec:
   maxIdleConnsPerHost: 2
   forwardingTimeouts:
     dialTimeout: 5s
-    responseHeaderTimeout: 10s
+    # Above the portal's 12 s read deadline, under its 20 s write timeout.
+    responseHeaderTimeout: 15s
     idleConnTimeout: 30s
