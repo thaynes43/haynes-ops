@@ -179,7 +179,8 @@ spec:
               # still only for the portal ServiceAccount. The portal's own scope is the
               # session-actions.json key in portal/app/config.yaml: targets only, no issuer and
               # no subject, so no ExternalSecret. Merge only after the portal runs a release that
-              # contains dev-env#649; an older portal refuses that file and keeps the actions off.
+              # contains dev-env#649; an older portal refuses that file and exits at startup.
+              # Main now pins v2.65.0 (sha-d475456), which accepts the targets-only file.
               # No automatic expiry: the immediate kill switch is a PR removing both target flags
               # and that ConfigMap key.
               - '--portal-send-target=dev-env-1028-031951=5da21936-7781-4760-82ce-2a0689b891f7'
