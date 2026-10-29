@@ -88,6 +88,16 @@ spec:
           code-server:
             port: 12321
     persistence:
+      # Temporary: voice-agent subentry maintenance (.agents/runbooks/hnet-watch-subentry-maintenance.md).
+      # Remove with the configMapGenerator once the maintenance entry is deleted.
+      watch-maintenance:
+        type: configMap
+        name: home-assistant-hnet-watch-maintenance
+        advancedMounts:
+          home-assistant:
+            app:
+              - path: /config/custom_components/hnet_watch_maintenance
+                readOnly: true
       config:
         existingClaim: home-assistant
         globalMounts:

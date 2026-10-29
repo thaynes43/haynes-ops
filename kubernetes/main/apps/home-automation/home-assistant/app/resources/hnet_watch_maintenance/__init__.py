@@ -1,4 +1,4 @@
-"""Temporary, administrator-only Watch history subentry maintenance."""
+"""Temporary, administrator-only Watch history and voice-agent subentry maintenance."""
 
 import asyncio
 from copy import deepcopy
@@ -19,10 +19,22 @@ DOMAIN = "hnet_watch_maintenance"
 WATCH_API = "mcp-01M381GTWER1BG9K4MWG3GDEGR"
 CITY_SNAPSHOT = Path("/config/hnet_watch_maintenance_private/original-city.json")
 AGENTS = {
+    "kitchen": ("01JBM33KVTM1FHF795G01R2C4X", "01JZ8DWMCR7G2EJN8KVNVCR7QF", "openai_conversation"),
+    "bedroom": ("01JBM33KVTM1FHF795G01R2C4X", "01M2TXW9MYTV11R6B8S138SY22", "openai_conversation"),
     "movie": ("01JK456T3JV6CPBG2ZQ2FS10GE", "01JZ8DWMCRND9599AR8EFJVN0A", "openai_conversation"),
     "rumpus": ("01JK456T3JV6CPBG2ZQ2FS10GE", "01JZ8DWMCR5ZFTVM61SG13HVFR", "openai_conversation"),
     "phone": ("01JBM33KVTM1FHF795G01R2C4X", "01M3FWW3MMFE079D9A7F2NF66F", "openai_conversation"),
     "jarvis": ("01M34TQMBVCKW0BG0KZW5JG5YM", "01M34TQMBVMNR9CJZX892KD8VJ", "llama_cpp"),
+}
+# Prompt replacement keeps its original four agents; voice profiles cover the five OpenAI room agents.
+PROMPT_AGENTS = ("movie", "rumpus", "phone", "jarvis")
+VOICE_AGENTS = ("kitchen", "bedroom", "movie", "rumpus", "phone")
+# The OpenAI flow re-guesses city on every save; every agent is in the same house in Westford, MA.
+HOME_LOCATION = {"city": "Westford", "region": "Massachusetts", "country": "US", "timezone": "America/New_York"}
+VOICE_PROFILES = {
+    "terra61_westford": {"chat_model": "gpt-6.1-terra", "reasoning_effort": "low", **HOME_LOCATION},
+    # Rollback: the settings before 2026-10-29, with the house location.
+    "terra56_westford": {"chat_model": "gpt-5.6-terra", "reasoning_effort": "none", **HOME_LOCATION},
 }
 HASH_SCHEMA = vol.All(str, vol.Length(min=64, max=64), vol.Match(r"^[0-9a-f]{64}$"))
 
@@ -116,6 +128,14 @@ def target_data(agent: str, current: dict, operation: str, value=None, watch_att
         if not isinstance(apis, list) or "assist" not in apis:
             raise Refused("Movie Room must retain its Assist API")
         target["llm_hass_api"] = attachment_apis(apis, value)
+    elif operation == "set_voice_profile":
+        if agent not in VOICE_AGENTS or value not in VOICE_PROFILES:
+            raise Refused("Voice profiles are limited to the five OpenAI room agents")
+        if current.get("web_search") is not True or current.get("user_location") is not True:
+            raise Refused("Voice profiles need web search with user location enabled")
+        if any(key not in current for key in VOICE_PROFILES[value]):
+            raise Refused("Current voice settings are unavailable")
+        target.update(VOICE_PROFILES[value])
     else:
         raise Refused("Unknown maintenance operation")
     return target
@@ -139,7 +159,8 @@ async def perform(hass: HomeAssistant, connection, message: dict, operation: str
             if current_hash != message["expected_sha256"]:
                 connection.send_error(message["id"], "conflict", "Current subentry data changed")
                 return
-            value = message.get("prompt") if operation == "replace_prompt" else message.get("attached")
+            value = {"replace_prompt": message.get("prompt"),
+                     "set_voice_profile": message.get("profile")}.get(operation, message.get("attached"))
             target = target_data(agent, current, operation, value, message.get("watch_attachment", "keep"))
             if operation == "set_watch_attachment":
                 original_apis = runtime.get("movie_original_apis")
@@ -189,7 +210,7 @@ async def restore_city(hass, connection, message):
     await perform(hass, connection, message, "restore_city")
 
 
-@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/replace_prompt", vol.Required("agent"): vol.In(AGENTS),
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/replace_prompt", vol.Required("agent"): vol.In(PROMPT_AGENTS),
                                   vol.Required("prompt"): vol.All(str, vol.Length(min=1, max=8000)),
                                   vol.Optional("watch_attachment", default="keep"): vol.In(("keep", "attach", "detach")),
                                   vol.Required("expected_sha256"): HASH_SCHEMA})
@@ -207,7 +228,17 @@ async def set_watch_attachment(hass, connection, message):
     await perform(hass, connection, message, "set_watch_attachment")
 
 
-HANDLERS = (status, restore_city, replace_prompt, set_watch_attachment)
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/set_voice_profile",
+                                  vol.Required("agent"): vol.In(VOICE_AGENTS),
+                                  vol.Required("profile"): vol.In(VOICE_PROFILES),
+                                  vol.Required("expected_sha256"): HASH_SCHEMA})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def set_voice_profile(hass, connection, message):
+    await perform(hass, connection, message, "set_voice_profile")
+
+
+HANDLERS = (status, restore_city, replace_prompt, set_watch_attachment, set_voice_profile)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
