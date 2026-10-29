@@ -45,7 +45,7 @@
       "save_queries",
       "work_package_assigned"
     ],
-    "workflow_observed_2026_10_19": "Native workflow lets this role reach Draft, Ungroomed, Needs answer, Needs approval, In progress, In review and Paused. It denies Approved and Accepted (HTTP 422). This is existing role configuration, not a rule added here; opwork complete records evidence and leaves the item In review. Letting agents self-accept needs a workflow decision by Tom, not a CLI change."
+    "workflow_observed_2026_10_19": "Historical observation: this role could reach Draft, Ungroomed, Needs answer, Needs approval, In progress, In review and Paused; Approved and Accepted returned HTTP 422 from the tested state. This is not a permanent workflow limit. opwork complete records evidence, moves to In review when permitted, re-checks the form with the read-back lock, and continues to Accepted when the workflow allows. Otherwise it exits 7 with the recorded evidence, actual read-back state and allowed next statuses, or a stage-specific form re-check failure advising show instead of repeating complete. Native workflow rules still apply."
   },
   "metadata_fields": [
     "Accountable owner",
@@ -89,7 +89,7 @@
       "work_package": 129,
       "parent": "Epic 95",
       "related_to": "Story 97",
-      "state": "In review (workflow denies Accepted to the agent role); never delete"
+      "state": "Recorded 2026-10-19: In review (Accepted was denied from the tested state); historical observation, not a current workflow limit; never delete"
     },
     "earlier_2026_10_15": {
       "prefix": "OP-ACCEPTANCE-20261015",

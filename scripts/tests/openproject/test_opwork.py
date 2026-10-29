@@ -369,6 +369,66 @@ class LifecycleTests(Base):
         self.assertEqual(len(self.fake.acts[10]), 1)
         self.assertIn("evidence: tests green", self.fake.acts[10][0]["comment"]["raw"])
 
+    def test_complete_form_recheck_failure_reports_evidence_and_review_state(self):
+        self.story(10)
+        self.fake.transitions = {"Ungroomed": ["In review"], "In review": ["Accepted"]}
+        original = self.fake.handle
+        def failing_recheck(method, url, payload):
+            result = original(method, url, payload)
+            if method == "POST" and url.path.endswith("/form") and self.fake.status_changes == ["In review"]:
+                return 500, {"message": "form unavailable"}
+            return result
+        self.fake.handle = failing_recheck
+        code, out, err = self.run_cli("complete", "10", "--evidence", "tests green")
+        self.assertEqual(code, 7)
+        self.assertEqual(out, "")
+        self.assertIn("EVIDENCE RECORDED, NOT ACCEPTED", err)
+        self.assertIn("#10 is [In review]; form re-check failed", err)
+        self.assertIn("HTTP 500", err)
+        self.assertIn("Actual state after read back: " + op.line(self.fake.wps[10]), err)
+        self.assertIn("Do not re-run complete; check with `opwork show 10`", err)
+        self.assertEqual(self.fake.form_checks, [("Ungroomed", 1), ("In review", 2)])
+        self.assertEqual(self.fake.status_changes, ["In review"])
+        self.assertEqual(len(self.fake.acts[10]), 1)
+        self.assertIn("Ready for acceptance; evidence: tests green", self.fake.acts[10][0]["comment"]["raw"])
+
+    def test_complete_acceptance_conflict_reports_evidence_and_review_transition(self):
+        self.story(10)
+        self.fake.transitions = {"Ungroomed": ["In review"], "In review": ["Accepted"]}
+        original = self.fake.handle
+        def racing_recheck(method, url, payload):
+            result = original(method, url, payload)
+            if method == "POST" and url.path.endswith("/form") and self.fake.status_changes == ["In review"]:
+                self.fake.wps[10]["lockVersion"] += 1
+            return result
+        self.fake.handle = racing_recheck
+        code, out, err = self.run_cli("complete", "10", "--evidence", "tests green")
+        self.assertEqual(code, 3)
+        self.assertEqual(out, "")
+        self.assertIn("EVIDENCE RECORDED", err)
+        self.assertIn("#10 was in [In review] after read back; acceptance conflicted", err)
+        self.assertIn("CONFLICT", err)
+        self.assertIn("Not overwritten. Now: " + op.line(self.fake.wps[10]), err)
+        self.assertIn("lock 2 -> 3", err)
+        self.assertIn("Do not re-run complete; check with `opwork show 10`", err)
+        self.assertEqual(self.fake.status_changes, ["In review"])
+        self.assertEqual(len(self.fake.acts[10]), 1)
+
+    def test_complete_without_transition_displays_fresh_lock_despite_expected_lock(self):
+        original = self.fake.handle
+        for status in ("Ungroomed", "In review"):
+            with self.subTest(status=status):
+                self.fake.handle = original
+                self.story(10, status=status)
+                self.fake.transitions = {status: []}
+                self.concurrent_change_during_note()
+                code, _, err = self.run_cli("complete", "10", "--expect-lock", "1", "--evidence", "ev")
+                self.assertEqual(code, 7)
+                self.assertIn("Actual state after read back: " + op.line(self.fake.wps[10]), err)
+                self.assertEqual(self.fake.wps[10]["lockVersion"], 2)
+                self.assertEqual(self.fake.status_changes, [])
+                self.assertEqual(len(self.fake.acts[10]), 1)
+
     def test_complete_force_does_not_override_workflow_with_no_allowed_statuses(self):
         self.story(10, status="In review")
         self.fake.transitions = {"In review": []}
