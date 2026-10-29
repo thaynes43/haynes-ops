@@ -558,6 +558,11 @@ def cmd_flush(t, a, session):
                 seen = any("opwork:note=" + rec["token"] in text_of(x.get("comment")) for x in acts)
                 if not seen and not complete:
                     raise Fail("Incomplete history; cannot safely deduplicate checkpoint", 6)
+                if not seen:
+                    created = utc_time(rec.get("created"))
+                    checkpoints = [x for x in acts if CHECKIN_MARKER in text_of(x.get("comment"))]
+                    if not created or any(not utc_time(x.get("createdAt")) or utc_time(x.get("createdAt")) >= created for x in checkpoints):
+                        raise Fail("Checkpoint may be superseded by newer or unordered history; retained for manual review", 6)
             else:
                 seen = any("opwork:note=" + rec["token"] in text_of(x.get("comment")) for x in t.activities(rec["wp"]))
             if not seen:

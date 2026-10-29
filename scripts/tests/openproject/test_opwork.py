@@ -622,6 +622,19 @@ class CheckinTests(Base):
         self.assertEqual(len(self.fake.acts[10]), 1)
 
 
+    def test_deferred_checkpoint_does_not_supersede_newer_checkpoint(self):
+        self.story(10)
+        args = ("checkpoint-update", "10", "--next-action", "old", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "x")
+        self.fake.fail["POST /activities"] = "before"
+        self.assertEqual(self.run_cli(*args)[0], 5)
+        self.fake.fail.clear()
+        self.assertEqual(self.run_cli("checkpoint-update", "10", "--next-action", "new", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "x")[0], 0)
+        self.fake.acts[10][0]["createdAt"] = "2099-01-01T00:00:00Z"
+        self.assertIn("superseded", self.run_cli("flush")[1])
+        self.assertEqual(len(self.fake.acts[10]), 1)
+        self.assertIn("old", self.run_cli("pending")[1])
+
+
 class LinkTests(Base):
     BASE = "https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/"
 
