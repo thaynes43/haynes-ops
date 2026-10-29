@@ -114,10 +114,10 @@ class Fake:
                 wp["lockVersion"] += 1
                 return 200, wp
             if sub == "/activities" and method == "GET":
-                return 200, {"_embedded": {"elements": self.acts[i]}}
+                return 200, {"total": len(self.acts[i]), "_embedded": {"elements": self.acts[i]}}
             if sub == "/activities" and method == "POST":
                 self.next_act += 1
-                self.acts[i].append({"id": self.next_act, "createdAt": "t", "comment": payload["comment"], "details": [], "_links": {"user": {"title": "openproject-agent"}}})
+                self.acts[i].append({"id": self.next_act, "createdAt": "2026-10-29T00:00:00Z", "comment": payload["comment"], "details": [], "_links": {"user": {"title": "openproject-agent"}}})
                 return 201, self.acts[i][-1]
             if sub == "/relations" and method == "POST":
                 self.rels.append({"type": payload["type"], "_links": {"from": {"href": "/api/v3/work_packages/%d" % i}, "to": payload["_links"]["to"]}})
@@ -501,7 +501,7 @@ class CheckinTests(Base):
         self.assertEqual(code, 0)
         self.assertEqual(item["reasons"], ["due", "missing_ack", "deployed_not_accepted"])
         self.assertEqual(item["comment_source"]["author"], "openproject-agent")
-        self.assertFalse(item["history_complete"])
+        self.assertTrue(item["history_complete"])
         self.assertEqual(item["last_verified"], "Unknown")
 
     def test_bad_time_guard_and_incomplete_metadata(self):
@@ -526,11 +526,60 @@ class CheckinTests(Base):
 
     def test_malformed_metadata_is_truthful(self):
         self.story(10)
-        self.fake.acts[10].append({"id": 1, "createdAt": "2020", "comment": {"raw": "opwork:checkin={broken"}})
+        self.fake.acts[10].append({"id": 1, "createdAt": "2020-01-01T00:00:00Z", "comment": {"raw": "opwork:checkin={broken"}})
         out = self.run_cli("checkins", "-o", "json")[1]
         item = next(x for x in json.loads(out)["items"] if x["id"] == 10)
         self.assertEqual(item["metadata"], "malformed")
         self.assertEqual(item["next_action"], "Unknown")
+
+
+    def test_partial_history_hides_visible_old_values(self):
+        self.story(10)
+        self.run_cli("checkpoint-update", "10", "--next-action", "old", "--check-after", "2020-01-01T00:00:00Z", "--evidence", "old")
+        original = self.fake.handle
+        def partial(method, url, payload):
+            code, data = original(method, url, payload)
+            if method == "GET" and url.path.endswith("/activities"):
+                data["total"] += 1
+            return code, data
+        self.fake.handle = partial
+        item = next(x for x in json.loads(self.run_cli("checkins", "-o", "json")[1])["items"] if x["id"] == 10)
+        self.assertEqual((item["next_action"], item["reasons"], item["metadata"]), ("Unknown", ["unknown"], "unknown"))
+
+    def test_malformed_collections_fail_and_page_filter_is_explicit(self):
+        self.story(10, **{op.OWNER: "target"})
+        out = json.loads(self.run_cli("checkins", "--owner", "target", "--limit", "1", "-o", "json")[1])
+        self.assertEqual((out["items"], out["owner_filter_scope"], out["has_more"]), ([], "selected page", True))
+        original = self.fake.handle
+        def broken(method, url, payload):
+            code, data = original(method, url, payload)
+            if url.path.endswith("/activities") and method == "GET":
+                data.pop("total")
+            return code, data
+        self.fake.handle = broken
+        self.assertEqual(self.run_cli("checkins", "-o", "json")[0], 1)
+
+    def test_malformed_envelope_and_optional_timestamp(self):
+        self.story(10)
+        self.run_cli("checkpoint-update", "10", "--next-action", "x", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "x")
+        act = self.fake.acts[10][0]
+        act["comment"]["raw"] = act["comment"]["raw"].replace('"last_verified":null', '"last_verified":"nonsense"')
+        item = next(x for x in json.loads(self.run_cli("checkins", "-o", "json")[1])["items"] if x["id"] == 10)
+        self.assertEqual((item["metadata"], item["last_verified"]), ("malformed", "Unknown"))
+
+    def test_post_readback_then_refresh_conflict_reports_recorded(self):
+        self.story(10)
+        original = self.fake.handle
+        def changed(method, url, payload):
+            result = original(method, url, payload)
+            if method == "POST" and url.path.endswith("/activities"):
+                self.fake.wps[10][op.OWNER] = "other"
+            return result
+        self.fake.handle = changed
+        code, _, err = self.run_cli("checkpoint-update", "10", "--next-action", "x", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "x")
+        self.assertEqual(code, 6)
+        self.assertIn("recorded", err)
+        self.assertIn("Do not blindly retry", err)
 
 
 class LinkTests(Base):

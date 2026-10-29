@@ -286,15 +286,20 @@ def utc_time(value):
 
 def activity_page(t, wp_id):
     data = t.get("/api/v3/work_packages/%d/activities?pageSize=100&offset=1" % wp_id)
-    rows = data.get("_embedded", {}).get("elements", [])
+    rows = (data.get("_embedded") if isinstance(data.get("_embedded"), dict) else {}).get("elements")
     total = data.get("total")
-    return rows, isinstance(total, int) and total <= len(rows)
+    if not isinstance(rows, list) or any(not isinstance(x, dict) for x in rows) or not isinstance(total, int) or isinstance(total, bool) or total < len(rows):
+        raise Fail("Malformed activity collection: elements or total missing/invalid")
+    return rows, total <= len(rows)
 
 
 def cmd_checkins(t, a, session):
     filters = [{"status": {"operator": "=", "values": [str(t.resolve("statuses", x)) for x in a.status.split(",")]}}] if a.status else [{"status": {"operator": "o", "values": []}}]
     data = t.listing(filters, a.page, a.limit)
-    rows = data.get("_embedded", {}).get("elements", [])
+    rows = (data.get("_embedded") if isinstance(data.get("_embedded"), dict) else {}).get("elements")
+    total = data.get("total")
+    if not isinstance(rows, list) or any(not isinstance(x, dict) for x in rows) or not isinstance(total, int) or isinstance(total, bool) or total < 0:
+        raise Fail("Malformed work item collection: elements or total missing/invalid")
     now = datetime.now(timezone.utc)
     result = []
     for w in rows:
@@ -303,17 +308,26 @@ def cmd_checkins(t, a, session):
             continue
         acts, complete = activity_page(t, w["id"])
         candidates = [x for x in acts if CHECKIN_MARKER in text_of(x.get("comment"))]
-        candidates.sort(key=lambda x: (x.get("createdAt", ""), x.get("id", 0)), reverse=True)
+        candidates.sort(key=lambda x: (utc_time(x.get("createdAt")) or datetime.min.replace(tzinfo=timezone.utc), str(x.get("id") or "")), reverse=True)
         meta, source, malformed = {}, None, False
         if candidates:
             act = candidates[0]
             try:
-                meta = json.loads(text_of(act.get("comment")).split(CHECKIN_MARKER, 1)[1].split("\n", 1)[0])
-                if not isinstance(meta, dict):
-                    raise ValueError("not an object")
+                if any(not utc_time(x.get("createdAt")) for x in candidates):
+                    raise ValueError("invalid activity timestamp")
+                comment = text_of(act.get("comment"))
+                if not re.match(r"^\*\*\[[^]\n]+\]\*\* Structured checkpoint\n\n", comment) or not re.search(r"\(opwork:note=[0-9a-f]{12}\)", comment) or not utc_time(act.get("createdAt")) or not (act.get("_links", {}).get("user") or {}).get("title"):
+                    raise ValueError("invalid envelope")
+                meta = json.loads(comment.split(CHECKIN_MARKER, 1)[1].split("\n", 1)[0])
+                if not isinstance(meta, dict) or any(not isinstance(meta.get(k), str) or not meta[k].strip() for k in ("next_action", "check_after", "evidence")) or not utc_time(meta["check_after"]):
+                    raise ValueError("invalid required fields")
+                if any(meta.get(k) is not None and (not isinstance(meta[k], str) or not meta[k].strip()) for k in ("last_verified", "handoff")) or (meta.get("last_verified") and not utc_time(meta["last_verified"])) or any(meta.get(k) is not None and not isinstance(meta[k], bool) for k in ("ack", "stale", "blocked", "deployed")):
+                    raise ValueError("invalid optional fields")
                 source = {"activity_id": act.get("id"), "created_at": act.get("createdAt"), "author": (act.get("_links", {}).get("user") or {}).get("title")}
             except (ValueError, TypeError):
                 meta, malformed = {}, True
+        if not complete:
+            meta = {}  # an unseen newer comment may supersede every visible value
         check = utc_time(meta.get("check_after"))
         status = w.get("_links", {}).get("status", {}).get("title") or "Unknown"
         reasons = []
@@ -327,8 +341,8 @@ def cmd_checkins(t, a, session):
                        "next_action": meta.get("next_action") or "Unknown", "check_after": meta.get("check_after") if check else "Unknown",
                        "evidence": meta.get("evidence") or "Unknown", "last_verified": meta.get("last_verified") or "Unknown", "handoff": meta.get("handoff") or "Unknown",
                        "provenance": text_of(w.get(PROVENANCE)) or "Unknown", "comment_source": source,
-                       "metadata": "malformed" if malformed else ("present" if candidates else ("absent" if complete else "unknown")), "history_complete": complete})
-    return json.dumps({"items": result, "page": a.page, "page_size": a.limit, "total_before_owner_filter": data.get("total"), "has_more": a.page * a.limit < data.get("total", 0)}, sort_keys=True)
+                       "metadata": "unknown" if not complete else ("malformed" if malformed else ("present" if candidates else "absent")), "history_complete": complete})
+    return json.dumps({"items": result, "page": a.page, "page_size": a.limit, "total_before_owner_filter": data.get("total"), "has_more": a.page * a.limit < total, "owner_filter_scope": "selected page", "owner_match_total": "Unknown"}, sort_keys=True)
 
 
 def cmd_checkpoint_update(t, a, session):
@@ -354,7 +368,12 @@ def cmd_checkpoint_update(t, a, session):
         if error.code == 6:
             save_pending("structured_note", token, wp=a.id, session=session, text=text)
         raise
-    refresh(t, w, None)
+    try:
+        refresh(t, w, None)
+    except t.unavailable as error:
+        raise Fail("Checkpoint %s recorded on #%d (read back); final owner/status refresh unavailable: %s. Do not blindly retry." % (found.get("id"), a.id, error), 6)
+    except Fail as error:
+        raise Fail("Checkpoint %s recorded on #%d (read back); final refresh: %s. Do not blindly retry." % (found.get("id"), a.id, error), 6)
     return "checkpoint %s recorded on #%d (read back)" % (found.get("id"), a.id)
 
 
@@ -523,6 +542,8 @@ def cmd_flush(t, a, session):
             out.append("kept (re-run it yourself): %s" % " ".join(rec["argv"]))
             continue
         body = "**[%s]** Deferred checkpoint (written %s during a tracker outage): %s\n\n(opwork:note=%s)" % (rec["session"], rec["created"], rec["text"], rec["token"])
+        if rec["kind"] == "structured_note":
+            body = "**[%s]** %s\n\n(opwork:note=%s)" % (rec["session"], rec["text"], rec["token"])
         try:
             if rec["kind"] == "structured_note":
                 w = t.wp(rec["wp"])
@@ -559,7 +580,7 @@ def build_parser():
     add("ping", cmd_ping, help="check the tracker, show the session identity")
     add("search", cmd_search, (("text",), {"nargs": "?"}), (("--status",), {}), (("--type",), {}), (("--parent",), {"type": int}), (("--source-key",), {}), (("--owner",), {}),
         (("--all",), {"action": "store_true", "help": "include closed"}), (("--page",), {"type": int, "default": 1}), (("--limit",), {"type": int, "default": 20}), help="search work items")
-    add("checkins", cmd_checkins, (("--owner",), {}), (("--status",), {}), (("-o", "--output"), {"choices": ["json"], "required": True}), (("--page",), {"type": int, "default": 1}), (("--limit",), {"type": int, "default": 100}), help="bounded check-in view")
+    add("checkins", cmd_checkins, (("--owner",), {}), (("--status",), {}), (("-o", "--output"), {"choices": ["json"], "required": True}), (("--page",), {"type": int, "default": 1}), (("--limit",), {"type": int, "default": 100}), help="bounded check-in view; owner filter applies to selected page, use has_more for global continuation")
     add("checkpoint-update", cmd_checkpoint_update, wp, (("--next-action",), {"required": True}), (("--check-after",), {"required": True}), (("--evidence",), {"required": True}), (("--last-verified",), {}), (("--handoff",), {}), (("--ack",), {"action": "store_true", "default": None}), (("--missing-ack",), {"dest": "ack", "action": "store_false"}), (("--stale",), {"action": "store_true", "default": None}), (("--blocked",), {"action": "store_true", "default": None}), (("--deployed",), {"action": "store_true", "default": None}), help="post attributed structured checkpoint")
     add("show", cmd_show, wp, (("--history",), {"action": "store_true"}), (("--relations",), {"action": "store_true"}), (("--full",), {"action": "store_true", "help": "no truncation of history text"}), help="read one item (read-only)")
     add("claim", cmd_claim, wp, (("--note",), {}), (("--assignee",), {"help": "also set the native assignee: me, or a user id available on the item"}), lock, force, help="set Execution owner to this session, In progress")
