@@ -14,6 +14,14 @@ metadata:
   name: dev-env-operator
   namespace: dev-agents
 rules:
+  # Asks (Epic #254, DESIGN-034): immutable requests and set-once answers in
+  # dev-agents only. Patch repairs state labels; update writes the status answer.
+  - apiGroups: [coordination.dev-env.haynesops.com]
+    resources: [asks]
+    verbs: [get, list, create, patch]
+  - apiGroups: [coordination.dev-env.haynesops.com]
+    resources: [asks/status]
+    verbs: [update]
   # Exact public inputs for the single approved owned root; no list/watch/write.
   - apiGroups: [""]
     resources: [configmaps]

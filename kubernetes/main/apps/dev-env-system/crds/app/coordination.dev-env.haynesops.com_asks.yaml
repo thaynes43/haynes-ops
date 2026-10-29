@@ -1,0 +1,246 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: asks.coordination.dev-env.haynesops.com
+spec:
+  group: coordination.dev-env.haynesops.com
+  names:
+    kind: Ask
+    listKind: AskList
+    plural: asks
+    singular: ask
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Ask is one agent question or approval request (OpenProject Epic #254). The
+          spec is immutable. The status carries the lifecycle, and its answer is set
+          once. v1 stores no inbox delivery: the requester reads the answer from the ask.
+          A root rule stops a status write from dropping a stored answer. The status
+          type's own rule does not run once status itself is gone.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: AskSpec is the ask as it was created. Nothing in it changes.
+            properties:
+              allowFreeText:
+                type: boolean
+              context:
+                description: AskContext names the session that created the ask.
+                properties:
+                  links:
+                    items:
+                      maxLength: 300
+                      minLength: 1
+                      type: string
+                    maxItems: 5
+                    type: array
+                  sessionName:
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                    type: string
+                  sessionUID:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                  workPackage:
+                    maximum: 2000000000
+                    minimum: 0
+                    type: integer
+                required:
+                - sessionName
+                - sessionUID
+                type: object
+              createdAt:
+                format: date-time
+                type: string
+              expiresAt:
+                format: date-time
+                type: string
+              id:
+                maxLength: 20
+                minLength: 20
+                pattern: ^ask-[0-9a-f]{16}$
+                type: string
+              options:
+                items:
+                  description: AskOption is one choice on an ask.
+                  properties:
+                    description:
+                      maxLength: 1200
+                      type: string
+                    id:
+                      maxLength: 24
+                      minLength: 1
+                      pattern: ^[a-z0-9-]{1,24}$
+                      type: string
+                    label:
+                      maxLength: 320
+                      minLength: 1
+                      type: string
+                  required:
+                  - id
+                  - label
+                  type: object
+                maxItems: 6
+                type: array
+              question:
+                description: Question is 1 to 1000 runes. The byte ceiling is four
+                  bytes per rune.
+                maxLength: 4000
+                minLength: 1
+                type: string
+              recommended:
+                maxLength: 24
+                pattern: ^[a-z0-9-]{0,24}$
+                type: string
+              requestDigest:
+                description: RequestDigest is the server's sha256 of the normalized
+                  create body.
+                maxLength: 64
+                minLength: 64
+                pattern: ^[a-f0-9]{64}$
+                type: string
+              requestId:
+                maxLength: 64
+                minLength: 8
+                pattern: ^[A-Za-z0-9-]{8,64}$
+                type: string
+              scope:
+                description: AskScope is the single action an approval ask names.
+                  Info asks omit it.
+                properties:
+                  action:
+                    maxLength: 800
+                    minLength: 1
+                    type: string
+                  expiresAt:
+                    format: date-time
+                    type: string
+                  target:
+                    maxLength: 800
+                    minLength: 1
+                    type: string
+                required:
+                - action
+                - expiresAt
+                - target
+                type: object
+              type:
+                enum:
+                - info
+                - approval
+                type: string
+            required:
+            - allowFreeText
+            - context
+            - createdAt
+            - expiresAt
+            - id
+            - question
+            - requestDigest
+            - requestId
+            - type
+            type: object
+            x-kubernetes-validations:
+            - message: ask spec is immutable
+              rule: self == oldSelf
+          status:
+            description: |-
+              AskStatus is the lifecycle. An answer is written once and never replaced
+              (contract v1.2.1). Open can become answered, withdrawn or expired; those
+              three do not change again.
+              An optional answer is absent, not null. The set-once rule uses has() and
+              requires the new object to still carry the answer, so clearing the field
+              does not skip the comparison.
+            properties:
+              answer:
+                description: AskAnswer is the one answer recorded for an ask.
+                properties:
+                  answeredAt:
+                    format: date-time
+                    type: string
+                  answeredBy:
+                    description: |-
+                      AskActor is the portal principal the operator was given. Session responses
+                      omit issuer and subject; the stored record keeps them.
+                    properties:
+                      displayName:
+                        maxLength: 480
+                        type: string
+                      issuer:
+                        maxLength: 1200
+                        type: string
+                      subject:
+                        maxLength: 800
+                        type: string
+                    type: object
+                  approved:
+                    type: boolean
+                  optionId:
+                    maxLength: 24
+                    pattern: ^[a-z0-9-]{0,24}$
+                    type: string
+                  text:
+                    maxLength: 8000
+                    type: string
+                required:
+                - answeredAt
+                - answeredBy
+                type: object
+              state:
+                enum:
+                - open
+                - answered
+                - withdrawn
+                - expired
+                type: string
+            required:
+            - state
+            type: object
+            x-kubernetes-validations:
+            - message: an ask answer is set once
+              rule: '!has(oldSelf.answer) || (has(self.answer) && self.answer == oldSelf.answer)'
+            - message: an answered, withdrawn or expired ask does not change state
+              rule: '!(oldSelf.state in [''answered'', ''withdrawn'', ''expired''])
+                || self.state == oldSelf.state'
+            - message: an answered ask has an answer
+              rule: self.state != 'answered' || has(self.answer)
+            - message: only an answered ask has an answer
+              rule: self.state == 'answered' || !has(self.answer)
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: the ask's name is its id
+          rule: self.metadata.name == self.spec.id
+        - message: an ask answer cannot be dropped with status
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.answer) || (has(self.status)
+            && has(self.status.answer))'
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -64,8 +64,10 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # dev-env v2.66.0 (main 45da7cd, release #653; publish run 40944134349 signed and verified the portal image).
-          image: ghcr.io/thaynes43/dev-env-portal:sha-45da7cd@sha256:d7f36b7a6e2d12033c994d3572056a1bba987684f13be88802d8d26f3eaef595
+          # dev-env main 7a4243808c1abad95dfe71bd4058e0e68f5918ff (Asks lane D, dev-env#669).
+          # Publish 40966068204 succeeded; its cosign verify step verified this digest
+          # against dev-env publish.yml on main. config/asks.json opts in to the board.
+          image: ghcr.io/thaynes43/dev-env-portal:sha-7a42438@sha256:a722121a4a7c9eed2c0b4d14b8a00cb5f16f23e037bec1c9595aeb0b86f3db6d
           imagePullPolicy: IfNotPresent
           ports:
             - name: https

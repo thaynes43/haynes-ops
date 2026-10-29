@@ -240,7 +240,7 @@ The current operator pin is `sha-3e3e93d@sha256:8cf8a2ba541033280563cb483aa891f4
 
 ### Current portal pin, 2026-10-29
 
-The current portal pin is `ghcr.io/thaynes43/dev-env-portal:sha-d475456@sha256:54d93968c4f12ebc71c08514ded1557888ff26acc25e42dba8838f14e9c270f8`, dev-env v2.65.0 (release #647, publish run 40916234549). It is the single image line in `kubernetes/main/apps/dev-env-system/portal/app/deployment.yaml` (haynes-ops#4414). The earlier portal pins in this file are historical.
+The current portal pin in this held activation draft is `ghcr.io/thaynes43/dev-env-portal:sha-7a42438@sha256:a722121a4a7c9eed2c0b4d14b8a00cb5f16f23e037bec1c9595aeb0b86f3db6d`, from dev-env main `7a4243808c1abad95dfe71bd4058e0e68f5918ff` (Asks lanes A/C/D; publish run 40966068204 succeeded and its cosign verify step verified this digest). It is the single image line in `kubernetes/main/apps/dev-env-system/portal/app/deployment.yaml`. `config/asks.json` enables the board alongside the operator's `--enable-asks`, Ask CRD and narrow RBAC. Pushover notifications and the expiry sweeper (lane B) are not built, and the keeper is unchanged. **HELD: merge only after Tom approves activation.** This draft is not deployed; the earlier portal pins in this file are historical.
 
 The portal bounds a Sessions read at request start plus 12 s and has a 20 s server write timeout. The ServersTransport `responseHeaderTimeout` is 15 s (OP246), above the read deadline and under the write timeout, so a slow read reaches the portal's own "timed out" page with Retry instead of a Traefik 504.
 

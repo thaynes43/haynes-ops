@@ -72,6 +72,11 @@ spec:
                   seconds: 5
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
+              # Source 7a4243808c1abad95dfe71bd4058e0e68f5918ff (Epic #254, Asks lanes A/C/D).
+              # Publish 40966068204 succeeded; its cosign verify step verified this digest
+              # against dev-env publish.yml on main. --enable-asks below is the only new flag.
+              # Lane B (Pushover notifications and expiry sweeper) is not built; no keeper change.
+              # Earlier pin history follows.
               # Source 3e3e93d3cace4d8a02af08c442f80aae557d0e68 (v2.63.1; dev-env#634/#635/#636 and Kubernetes client-library patch #638).
               # Publish40810610315 succeeded; this exact digest was independently keyless-verified against dev-env publish.yml on main.
               # Four unfinished children per parent/canonical agent; unknown legacy agents charge every bucket. Existing admission/depth/profile rules and replica-local race limitation remain.
@@ -120,7 +125,7 @@ spec:
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates. The executor stop (H3) is on since NB-06b (below).
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-3e3e93d@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10
+              tag: sha-7a42438@sha256:0e605257a02174ab7eb005c9509de7ba463ceadbb0114bef451a378171d3ed73
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -151,6 +156,11 @@ spec:
               # session. Launch stays off.
               - '--portal-conversation-usage=true'
               - '--session-namespace=dev-agents'
+              # Asks (Epic #254): session create/read/withdraw and portal read/answer.
+              # Requires the API, dev-agents, the Ask CRD and narrow operator RBAC.
+              # The portal reader above is already enabled. Lane B (pushes/sweeper)
+              # is not built; this does not grant or execute an approved action.
+              - '--enable-asks'
               # Measured-usage pilot (Tom, 2026-10-28; dev-env#576 mechanism, docs/portal-session-runtime.md
               # "Pilot agent image for one session"): measured conversation usage needs agentd from
               # dev-env#584 and #588, and the templates image is still 2.45.0. These two flags put
