@@ -92,7 +92,7 @@ spec:
               # Source 8b854b94079f585dc349fcaf35d6ca6ffd9e8c6c (dev-env#576 merge on main, 2026-10-27); Publish 40561618362 signed/verified.
               # 8b854b9 adds the default-off pilot agent image (dev-env#576): --pilot-agent-image and --pilot-agent-session make the pods of the sessions with one parent and idempotency key run another digest-pinned agent image. Only the image line of such a session's own pod changes; existing pods are never compared or replaced, and the revision label stays the templates'. No API type or CRD change. Only the operator moves; keeper, broker, task worker image and templates image keep their pins.
               # Source 7af05eff410b61bc9bac491c102348d0d58c4eaf (v2.47.0, dev-env#574 and release #575, 2026-10-27); Publish 40549518186 signed/verified.
-              # 7af05ef adds the default-off portal message and conversation routes (dev-env#574). They register only with --portal-send-target or --portal-history-target, and neither is set here, so the portal reader still may only list session summaries. No change to existing routes, the controller, the templates package, API types or CRDs. Only the operator moves; keeper, broker, task worker image and templates image keep their pins.
+              # 7af05ef adds the default-off portal message and conversation routes (dev-env#574). They register only with --portal-send-target or --portal-history-target, and at this pin neither was set, so the portal reader could only list session summaries; the 2026-10-29 flags below now set both for one session. No change to existing routes, the controller, the templates package, API types or CRDs. Only the operator moves; keeper, broker, task worker image and templates image keep their pins.
               # Source 0134c30f (dev-env#568 merge on main, 2026-10-27); Publish 40452436157 signed/verified.
               # 0134c30 changes only the portal reader: it lists every repository's sessions in dev-agents and adds provider, launchedBy (spec.parent, pattern-checked) and taskResult to view=activity (OpenProject #178). No other operator or keeper code changed since af402e5; no API type or CRD change. The portal must already run sha-0134c30 (haynes-ops#4331): older portals refuse the new keys. Only the operator moves; keeper, broker, task worker image and templates image keep their pins.
               # Source af402e533379bddd81e9266ee80ec6c565b81f29 (v2.45.0-2-gaf402e5, dev-env main after release 2.45.0); Publish 40368529556 signed/verified.
@@ -146,8 +146,9 @@ spec:
               # without a valid figure send no key. It requires --enable-portal-reader (above). It
               # is on only after the portal that reads the key is rolled (the portal's activity
               # decoder is strict, so a portal from before dev-env#591 would read the view as
-              # unavailable). It changes no pod and no Secret, and grants nothing: the send,
-              # history and launch flags are not set.
+              # unavailable). It changes no pod and no Secret, and grants nothing. It does not
+              # enable send or history: the 2026-10-29 target flags below do that for one
+              # session. Launch stays off.
               - '--portal-conversation-usage=true'
               - '--session-namespace=dev-agents'
               # Measured-usage pilot (Tom, 2026-10-28; dev-env#576 mechanism, docs/portal-session-runtime.md
@@ -164,10 +165,25 @@ spec:
               # image, because its key no longer matches. Existing 2.45 sessions report no
               # conversation usage and show as not measured.
               # This is code version only: profile, Secrets, egress and grants are the parent's, and
-              # it authorizes no portal send, history or launch (those stay off). Remove both lines
-              # when the pilot ends.
+              # it authorizes no portal send or history (see the two portal target flags below);
+              # launch stays off. Remove both lines when the pilot ends.
               - '--pilot-agent-image=ghcr.io/thaynes43/dev-env:2.52.0@sha256:87e8ab9346c2f656c0dfe19eb3d09ae89e220a341dd86e30e9ef0d43230204f9'
               - '--pilot-agent-session=dev-env-1027-111645/usage-pilot-1'
+              # 2026-10-29, Tom chose target dev-env-1028-031951 (AskUserQuestion,
+              # OpenProject #244); the 2026-10-27 approval for dev-env-1027-185745 is not reused.
+              # Tom ruled that send and history follow the existing Authentik group that admits
+              # portal login, with no per-person subject (OP #244, journals 2421, 2422, 2426).
+              # These flags enable portal Send and history for ONE session, UID
+              # 5da21936-7781-4760-82ce-2a0689b891f7, and supersede the default-off comments above.
+              # The operator registers the message and conversation routes only with these flags,
+              # still only for the portal ServiceAccount. The portal's own scope is the
+              # session-actions.json key in portal/app/config.yaml: targets only, no issuer and
+              # no subject, so no ExternalSecret. Merge only after the portal runs a release that
+              # contains dev-env#649; an older portal refuses that file and keeps the actions off.
+              # No automatic expiry: the immediate kill switch is a PR removing both target flags
+              # and that ConfigMap key.
+              - '--portal-send-target=dev-env-1028-031951=5da21936-7781-4760-82ce-2a0689b891f7'
+              - '--portal-history-target=dev-env-1028-031951=5da21936-7781-4760-82ce-2a0689b891f7'
               # Separate ordinary Codex TASK image selector (dev-env#632, signed v2.63.0).
               # Exact future parent/key only; no current Session has this key. It changes only
               # the image of a first newly constructed, UID-owned ordinary dev-env task pod.

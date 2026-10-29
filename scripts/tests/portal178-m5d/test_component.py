@@ -38,7 +38,8 @@ PRODUCTION_FILES = {
     **{"config/" + key: ("ConfigMap", "dev-env-v2-portal-config", key)
        for key in ("origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
                    "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
-                   "absolute-ttl", "fresh-for", "clock-skew", "pages-alertmanager.json")},
+                   "absolute-ttl", "fresh-for", "clock-skew", "pages-alertmanager.json",
+                   "session-actions.json")},
     "secrets/OIDC_CLIENT_ID": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_ID"),
     "secrets/OIDC_CLIENT_SECRET": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_SECRET"),
     "secrets/DB_USERNAME": ("Secret", "dev-env-v2-portal-runtime", "DB_USERNAME"),
@@ -62,9 +63,20 @@ READY_EXPR = "status.conditions.exists(e, e.type == 'Ready' && e.status == 'True
 PRODUCTION_CONFIG_FILES = {
     "origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
     "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
-    "absolute-ttl", "fresh-for", "clock-skew", "pages-alertmanager.json",
+    "absolute-ttl", "fresh-for", "clock-skew", "pages-alertmanager.json", "session-actions.json",
 }
 PAGES_CONFIG = '{"source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts"}'
+# 2026-10-29 (OpenProject #244, Tom): send and history for the group that admits portal login,
+# for one pilot target. The file names only the target (name and UID, not secret): no issuer,
+# no subject, no person, and no launch entry (dev-env#649 accepted shape).
+PILOT_TARGET = {"name": "dev-env-1028-031951", "uid": "5da21936-7781-4760-82ce-2a0689b891f7"}
+PILOT_TARGET_FLAGS = [
+    "--portal-send-target=dev-env-1028-031951=5da21936-7781-4760-82ce-2a0689b891f7",
+    "--portal-history-target=dev-env-1028-031951=5da21936-7781-4760-82ce-2a0689b891f7",
+]
+ACTIONS_CONFIG = json.dumps(
+    {"send": {"targets": [PILOT_TARGET]}, "history": {"targets": [PILOT_TARGET]}},
+    separators=(",", ":"))
 ADMISSION_CONFIG_FILES = {"admission-api-url", "admission-uid", "admission-token-file"}
 # The witness's API rate limits, in the reviewed packet and no longer registered.
 WITNESS_CONFIG_FILES = {"witness-gets-per-second", "witness-get-burst"}
@@ -622,6 +634,8 @@ def registered_input_violations(docs):
                 violations.append("admission-config")
             if data.get("pages-alertmanager.json") != PAGES_CONFIG:
                 violations.append("pages-config")
+            if data.get("session-actions.json") != ACTIONS_CONFIG:
+                violations.append("actions-config")
         if doc.get("kind") == "ServersTransport" and "rootCAs" in doc.get("spec", {}):
             violations.append("rootCAs-pruned-by-installed-crd")
         if (doc.get("kind") == "ExternalSecret" and approved_portal_runtime_violations(PORTAL_RUNTIME, doc)
@@ -1080,20 +1094,22 @@ class ComponentRenderTest(unittest.TestCase):
         # Story178 S3: the reader is on, with the namespace it requires stated.
         self.assertIn("--enable-portal-reader", operator["args"])
         # Measured conversation usage (2026-10-28): reported to the portal reader's activity view,
-        # once, with the reader on, and no portal action (send, history, launch) enabled by it.
+        # once, with the reader on; it enables no portal action by itself (the pilot target flags below do).
         self.assertEqual([a for a in operator["args"] if a.startswith("--portal-conversation-usage")],
                          ["--portal-conversation-usage=true"])
-        self.assertFalse([a for a in operator["args"] if a.startswith(("--portal-send-target", "--portal-history-target", "--portal-launch"))])
+        # Group-based pilot (2026-10-29, OP #244): exactly one send and one history target, no launch.
+        self.assertEqual([a for a in operator["args"] if a.startswith(("--portal-send-target", "--portal-history-target", "--portal-launch"))],
+                         PILOT_TARGET_FLAGS)
         self.assertIn("--session-namespace=dev-agents", operator["args"])
         self.assertEqual(sum(arg.startswith("--session-namespace") for arg in operator["args"]), 1)
         self.assertFalse(any(arg.startswith("--enable-child-usage-capture") for arg in operator["args"]))
         # The measured-usage pilot (2026-10-28): one new key and the signed 2.52.0 agent image,
-        # each flag once. The parent is the coordinator session and no portal action is enabled.
+        # each flag once. The parent is the coordinator session; launch stays off.
         self.assertEqual([a for a in operator["args"] if a.startswith("--pilot-agent-image")], [
             "--pilot-agent-image=ghcr.io/thaynes43/dev-env:2.52.0@sha256:87e8ab9346c2f656c0dfe19eb3d09ae89e220a341dd86e30e9ef0d43230204f9"])
         self.assertEqual([a for a in operator["args"] if a.startswith("--pilot-agent-session")], [
             "--pilot-agent-session=dev-env-1027-111645/usage-pilot-1"])
-        self.assertFalse([a for a in operator["args"] if a.startswith(("--portal-send-target", "--portal-history-target", "--portal-launch"))])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--portal-launch")], [])
         self.assertNotEqual(spec, pending_spec)
         for doc in by_kind(self.docs, "ExternalSecret"):
             self.assertNotIn("OPERATOR_TOKEN", remote_properties(doc))
@@ -1652,6 +1668,16 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertIn("subject-key", mutated(*config, lambda d: d["data"].update(subject="x")))
         self.assertIn("config-keys", mutated(*config, lambda d: d["data"].update(subject="x")))
         self.assertIn("config-keys", mutated(*config, lambda d: d["data"].pop("origin")))
+        self.assertIn("config-keys", mutated(*config, lambda d: d["data"].pop("session-actions.json")))
+        for bad in (
+            json.dumps({"send": {"issuer": "https://x", "subject": "s", "targets": [PILOT_TARGET]}}),
+            json.dumps({"send": {"subject": "s", "targets": [PILOT_TARGET]}}),
+            json.dumps({"send": {"targets": [PILOT_TARGET]}, "history": {"targets": [PILOT_TARGET]},
+                        "launch": {"repos": ["dev-env"]}}),
+            json.dumps({"send": {"targets": [PILOT_TARGET]}}),
+            json.dumps({"send": {"targets": [{**PILOT_TARGET, "uid": "other"}]}, "history": {"targets": [PILOT_TARGET]}}),
+        ):
+            self.assertIn("actions-config", mutated(*config, lambda d, bad=bad: d["data"].update({"session-actions.json": bad})))
         self.assertIn("admission-config", mutated(*config, lambda d: d["data"].update({"admission-uid": "x"})))
         self.assertIn("admission-config", mutated(*config, lambda d: d["data"].update({"witness-get-burst": "57"})))
         self.assertIn("text:PORTAL_SUBJECT", mutated(*config, lambda d: d["data"].update(origin="PORTAL_SUBJECT")))
@@ -1708,6 +1734,7 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertTrue(WITNESS_CONFIG_FILES <= set(packet["data"]))
         expected = {k: v for k, v in packet["data"].items() if k not in dropped}
         expected["pages-alertmanager.json"] = PAGES_CONFIG
+        expected["session-actions.json"] = ACTIONS_CONFIG
         self.assertEqual(config["data"], expected)
         self.assertEqual(set(config["data"]), PRODUCTION_CONFIG_FILES)
         self.assertTrue(dropped.isdisjoint(config["data"]))
@@ -1718,6 +1745,28 @@ class RegisteredInputsTest(unittest.TestCase):
             self.assertLess(len(value.encode()), 4096, key)
             self.assertEqual(value, value.strip(), key)
             self.assertNotIn("\n", value, key)
+
+    def test_session_actions_name_only_the_pilot_target(self):
+        config = self.by_key[("ConfigMap", "dev-env-v2-portal-config")]
+        raw = config["data"]["session-actions.json"]
+        self.assertEqual(raw, ACTIONS_CONFIG)
+        parsed = json.loads(raw)
+        # The accepted dev-env#649 shape: per action only "targets" (name, uid). Launch stays forbidden.
+        self.assertEqual(set(parsed), {"send", "history"})
+        for action in ("send", "history"):
+            self.assertEqual(parsed[action], {"targets": [PILOT_TARGET]})
+        self.assertNotIn("launch", parsed)
+        for needle in ("issuer", "subject", "principal", "launch", "repos"):
+            self.assertNotIn(needle, raw)
+        # The ConfigMap is projected whole, so the key is the file config/session-actions.json,
+        # and Reloader restarts the portal when the ConfigMap changes.
+        deployment = self.by_key[("Deployment", "dev-env-v2-portal")]
+        volume = next(v for v in deployment["spec"]["template"]["spec"]["volumes"] if v["name"] == "config")
+        self.assertEqual(volume["configMap"], {"name": "dev-env-v2-portal-config"})
+        self.assertIn("dev-env-v2-portal-config",
+                      deployment["metadata"]["annotations"]["configmap.reloader.stakater.com/reload"].split(","))
+        self.assertEqual(expand_config_files(mounted_files(deployment), self.docs)["config/session-actions.json"],
+                         ("ConfigMap", "dev-env-v2-portal-config", "session-actions.json"))
 
     def test_pages_config_is_exact_and_rejects_drift(self):
         self.assertEqual(registered_input_violations(self.docs), [])
