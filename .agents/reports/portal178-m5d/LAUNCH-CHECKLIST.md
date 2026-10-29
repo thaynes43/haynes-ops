@@ -234,7 +234,7 @@ The historical v2.62.1 operator pin is `sha-397f688@sha256:5b4526802554d844b864b
 
 ### Default-off task-pilot operator binary, 2026-10-29
 
-The current operator pin is `sha-3a22ca9@sha256:a02da1535aa083678419c9b65368da6191d264fc96a62c31e6c9bd9a59de797b`, signed v2.63.0 source `3a22ca9b0463279d1fa312c14538a996d2096838` (dev-env#632/#633; publish40793043582 keyless Sign/Verify success). It adds a separate default-off Codex TASK image tuple in source. Neither `--task-pilot-agent-image` nor `--task-pilot-agent-session` is configured here: no new task pilot is enabled. The prior RC drain guard remains, as do every current flag and the original Claude local/remote and Codex remote pilot mapping. Templates, agent/pilot worker images, mounts, profiles, permissions, credentials, capacity and active sessions are unchanged. No API or CRD schema changes occur between2.62.1 and2.63.0. Operator-only rollout and filtered original RC/local-pilot metadata continuity readback are recorded on OpenProject104; this is not phone/private-history or live Terra-serving acceptance.
+The v2.63.0 operator pin was `sha-3a22ca9@sha256:a02da1535aa083678419c9b65368da6191d264fc96a62c31e6c9bd9a59de797b`, signed v2.63.0 source `3a22ca9b0463279d1fa312c14538a996d2096838` (dev-env#632/#633; publish40793043582 keyless Sign/Verify success). It adds a separate default-off Codex TASK image tuple in source. Neither `--task-pilot-agent-image` nor `--task-pilot-agent-session` is configured here: no new task pilot is enabled. The prior RC drain guard remains, as do every current flag and the original Claude local/remote and Codex remote pilot mapping. Templates, agent/pilot worker images, mounts, profiles, permissions, credentials, capacity and active sessions are unchanged. No API or CRD schema changes occur between2.62.1 and2.63.0. Operator-only rollout and filtered original RC/local-pilot metadata continuity readback are recorded on OpenProject104; this is not phone/private-history or live Terra-serving acceptance.
 
 ## Separate future Codex TASK image selector, 2026-10-29
 
@@ -275,3 +275,7 @@ unchanged. Existing smoke pod/retention proof, templates, permissions, profiles,
 budget-image and active-child admission stay unchanged by this rotation.
 The cap source task may change admission only through its own reviewed PR;
 this configuration does not itself expand the current cap or start a Session.
+
+### Operator-only v2.63.1 pin, 2026-10-29
+
+The current operator pin is `sha-3e3e93d@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10`, dev-env v2.63.1 source `3e3e93d3cace4d8a02af08c442f80aae557d0e68` (dev-env#634/#635/#636 and the Kubernetes client-library patch #638). Publish40810610315 succeeded and this exact digest was independently keyless-verified. Only the operator image moves; flags, pilot and worker images, templates, permissions, volumes and existing Sessions are unchanged. The previous pin was the v2.63.0 `sha-3a22ca9` above.
