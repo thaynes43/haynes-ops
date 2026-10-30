@@ -238,9 +238,9 @@ The v2.63.0 operator pin was `sha-3a22ca9@sha256:a02da1535aa083678419c9b65368da6
 
 The current operator pin is `sha-3e3e93d@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10`, dev-env v2.63.1 source `3e3e93d3cace4d8a02af08c442f80aae557d0e68` (dev-env#634/#635/#636 and the Kubernetes client-library patch #638). Publish40810610315 succeeded and this exact digest was independently keyless-verified. Only the operator image moves; flags, pilot and worker images, templates, permissions, volumes and existing Sessions are unchanged. The previous pin was the v2.63.0 `sha-3a22ca9` above.
 
-### Current portal pin, 2026-10-29
+### Current portal pin, 2026-10-30
 
-The current portal pin is `ghcr.io/thaynes43/dev-env-portal:sha-d475456@sha256:54d93968c4f12ebc71c08514ded1557888ff26acc25e42dba8838f14e9c270f8`, dev-env v2.65.0 (release #647, publish run 40916234549). It is the single image line in `kubernetes/main/apps/dev-env-system/portal/app/deployment.yaml` (haynes-ops#4414). The earlier portal pins in this file are historical.
+The current portal pin is `ghcr.io/thaynes43/dev-env-portal:sha-3cb1913@sha256:53dbbd7f97ffffcd96a39d1b80c0bda128d36826c00344fa0910b9f6456860ab`, dev-env main `3cb19139` (after v2.68.0; publish run 40988713467 signed and verified it). It is the single image line in `kubernetes/main/apps/dev-env-system/portal/app/deployment.yaml`. Since the previous pin (`sha-45da7cd`, v2.66.0) it adds the portal QA sweep fixes (dev-env#693) and the Asks board (dev-env#669). The Asks board shows 'Asks are not connected', because the portal Asks config and the operator `--enable-asks` flag are not set (haynes-ops#4418 is held). Send, history and launch settings are unchanged. The earlier portal pins in this file are historical.
 
 The portal bounds a Sessions read at request start plus 12 s and has a 20 s server write timeout. The ServersTransport `responseHeaderTimeout` is 15 s (OP246), above the read deadline and under the write timeout, so a slow read reaches the portal's own "timed out" page with Retry instead of a Traefik 504.
 
