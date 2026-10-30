@@ -53,8 +53,9 @@ Tom retired the `edge` cluster outright. Its nodes were **bare metal**, not VMs 
   `edgem02`, is reassigned to another use; it is not a talosm02 standby.
 - `edgew01` (machine `77d65c00-5811-11ef-b65b-a8751caa6100`) was a mini PC with an
   OCuLink eGPU dock (a direct PCIe x4 cable; Tom, 2026-10-02). Its edge template carried
-  `thunderbolt` and the NVIDIA LTS extensions and no Intel extensions. It rejoins `main` as
-  the tainted GPU test worker `talosw04`
+  `thunderbolt` and the NVIDIA LTS extensions and no Intel extensions. It rejoined `main` as
+  the tainted GPU test worker `talosw04`, which became an ordinary worker hosting Muse when
+  Tom retired the test role on 2026-10-30 (#279)
   ([`../runbooks/egpu-test-node.md`](../runbooks/egpu-test-node.md)).
 
 None of the four was ever registered with the SaaS Omni; they lived in the self-hosted

@@ -7,17 +7,11 @@ metadata:
 spec:
   loadBalancerIPs: true
   interfaces: ["^eth.*"]
-  # Every node may announce LB VIPs except the eGPU test node (talosw04, label set in
-  # its Omni machine block): a suspect card can hang that box, and a VIP it holds stays
-  # dark until the lease times out. For every other node this matches what the old
-  # `kubernetes.io/os: linux` matchLabels did.
+  # Every node may announce LB VIPs. talosw04 was opted out while it was the eGPU test
+  # node (a suspect card could hang it); that role ended on 2026-10-30 (#279).
   nodeSelector:
-    matchExpressions:
-      - key: kubernetes.io/os
-        operator: In
-        values: ["linux"]
-      - key: haynesops.com/gpu-test
-        operator: DoesNotExist
+    matchLabels:
+      kubernetes.io/os: linux
 ---
 apiVersion: cilium.io/v2alpha1
 kind: CiliumLoadBalancerIPPool

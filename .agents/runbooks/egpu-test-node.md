@@ -1,5 +1,13 @@
 # eGPU test node (talosw04)
 
+> **Status, 2026-10-30: the test role is retired** (Tom; OpenProject
+> [#279](https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/279)).
+> talosw04 is back in the rack as an ordinary worker hosting Muse on card B at 250 W. The
+> gpu-test taint and label are coming off, and it pages for GPU and node outages like any
+> other GPU node. The rest of this page is the history and the dock procedure, kept in case
+> the dock is ever used for testing again; that would need the isolation below restored
+> first (git history before #279 has it).
+
 `talosw04` is a bare-metal mini PC with an **OCuLink** eGPU dock (a direct PCIe x4 cable). It
 was `edgew01` in the
 retired edge cluster (Omni machine `77d65c00-5811-11ef-b65b-a8751caa6100`). In `main` it is a
@@ -15,9 +23,11 @@ Cards so far (Tom's identification is ground truth; NVML UUIDs are the software 
 | A | `GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a` | Repaired card; Tom identified two broken original fans. All three replacement fans visibly spun under load. | 2026-10-13: replacement fans, 2 mm front/rear memory pads and PhaseSheet installed. Short stock-power tests showed no Xid/AER; rack performance was thermally limited compared with the dock. Now in talosw01/VM103 on HaynesIntelligence. Sustained rack validation is tracked in #3052; thermal throttling alone is not Tom's rejection criterion. |
 | B (was "#0" in older records) | `GPU-18bf6eab-c76a-26ba-74c8-76093b705b8b` | A **later** card: in HaynesIntelligence slot 01:00.0 from 2026-09-18, dropped 09-23, pulled 09-25. Tom's latest assessment is an intact-looking fan that did not spin; replacement fans are already owned. | 2026-10-17: fans and pads repaired, then Xid 79 again in the dock at 350 W (84 s) and 300 W (34 s), cool and unthrottled; 600 s clean at 250 W. It power-limits about 25 W early at 350 W (319 W against A's 343 W), which points at one power input (8-pin socket or contact, shunt, or power stage). On the dock at 250 W; recovery from a bus drop is a power cycle (a Talos kexec reboot hangs). See #3052. |
 | C | `GPU-d8a856f1-f955-f683-bc24-654561496774` | Previously the Muse card in talosw01, then in the talosw04 dock; back in talosw01/VM103 beside A by 2026-10-27. | 2026-10-27/28: in the rack it runs about 10 °C hotter than A at 350 W (88–90 °C, up to 21% heat throttling) because of its slot; the PCIe re-layout is OpenProject #221, handoff `.agents/handoffs/2026-10-29-gpu-pcie-relayout.md`. 2026-10-17: out of the dock for repadding (about a week), then joins A in the rack. Muse moved to card B (#3052). Earlier: stock tests ran much better on the dock than in the rack, with thermal slowdown flags still set (289/290 loaded samples; about 1% Muse decode cost). |
-| talosm04 A2000 (#3348) | `GPU-75697ff0-783e-9a2d-6859-3d5ffef0325f` | RTX A2000 12GB (VBIOS 94.06.32.00.18, serial 1712324009904), pulled from talosm04 where it never enumerated. | 2026-10-06: **faulty.** In the dock it linked at 16 GT/s x4, but one boot dropped its link after 11 s and a clean boot hit Xid 119 (GSP RPC timeout) after 9 min at idle, with the link up and AER 0. |
+| talosm04 A2000 (#3348) | `GPU-75697ff0-783e-9a2d-6859-3d5ffef0325f` | RTX A2000 12GB (VBIOS 94.06.32.00.18, serial 1712324009904), pulled from talosm04 where it never enumerated. | 2026-10-30: **dead.** Back on its original heatsink and fan, it never enumerated in three dock boots (no device, "NVRM: No NVIDIA GPU found") though its fans spun; warranty claim is OpenProject #270, verdict on #266. 2026-10-06: **faulty.** In the dock it linked at 16 GT/s x4, but one boot dropped its link after 11 s and a clean boot hit Xid 119 (GSP RPC timeout) after 9 min at idle, with the link up and AER 0. |
 
-How it is kept apart from the rest of the cluster:
+How it was kept apart from the rest of the cluster until #279 (none of this applies now:
+the taint and label are removed, NFD labels the node like any other GPU worker, and the alert
+exclusions and `GpuTestNodeGpuMissing` are gone):
 
 | Mechanism | Where | Effect |
 |---|---|---|
@@ -39,15 +49,10 @@ pod on talosw04 and no CUDA process remains before giving a test Job exclusive a
 the card. Restore and verify voice after the work. Never benchmark the dock card alongside
 its resident Muse model.
 
-Taint caveat: a registration taint is applied when the Node object is created. If someone
-removes it by hand it stays gone until `kubectl delete node talosw04` makes the kubelet
-re-register. Talos `machine.nodeTaints` would not work here: NodeRestriction stops a worker's
-kubelet from changing taints on an existing Node, and Talos says so in its config docs.
-
-`NodeRebooted` skips talosw04 too, and GPU/node outage paging remains excluded even while
-Muse runs here. Muse service availability must be checked independently; absence of a
-node/GPU page does not prove local voice is healthy. Reboots still show in
-`node_boot_time_seconds`.
+Taint caveat (if the role ever returns): a registration taint is applied when the Node object
+is created. Removed by hand, it stays gone until `kubectl delete node talosw04` makes the
+kubelet re-register. Talos `machine.nodeTaints` would not work here: NodeRestriction stops a
+worker's kubelet from changing taints on an existing Node, and Talos says so in its config docs.
 
 ### Card B startup cap — prepared, 2026-10-24 (OpenProject #199)
 
@@ -179,7 +184,8 @@ stalls at "waiting for the cluster to be ready"** until the box joins or leaves 
    `declare-activity start "join talosw04" --scope talosw04 --ttl 45m`.
 4. Verify:
    - `kubectl get node talosw04 -o wide` shows Ready.
-     `kubectl get node talosw04 -o jsonpath='{.spec.taints}'` shows the gpu-test taint.
+     `kubectl get node talosw04 -o jsonpath='{.spec.taints}'` is empty (the gpu-test taint
+     was removed with the test role, #279).
    - `kubectl get pods -A -o wide --field-selector spec.nodeName=talosw04` lists the
      DaemonSets named above, approved test Jobs, and Muse only while its temporary
      production placement is configured. Muse and a GPU test must not run together.
@@ -342,7 +348,8 @@ length. Results: `kubectl logs -n ai job/<name>` while the Job exists (7 days), 
 `{namespace="ai", app="gpu-soak"} |= "R,"`. The line format is in the `soak.py` docstring.
 Run `pcie` after every stage and compare it with the baseline.
 A card that drops off the bus shows as `CUDA_ERROR` plus Xid 79 in dmesg, and after 10 min
-as `GpuTestNodeGpuMissing`. Before anyone power-cycles, run `pcie` and post the time, its
+as `GpuTestNodeGpuMissing` (gone since #279: talosw04 now pages through `GpuMissing`, so
+restore the exclusion before testing here again). Before anyone power-cycles, run `pcie` and post the time, its
 output and the dmesg lines on #3052; that reading is what tells cable from card. Then power
 down in OCuLink order: PC off, dock off and on, PC on.
 
