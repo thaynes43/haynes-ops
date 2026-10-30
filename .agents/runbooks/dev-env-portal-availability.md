@@ -90,3 +90,17 @@ PVCs do not establish node-loss tolerance or recoverability.
 Source, required tests, deployment, actual failover and real OIDC/RC recovery
 acceptance must be reported separately in OP280. The portal manifest PR alone
 completes none of the wider story's keeper or node-loss acceptance criteria.
+
+## Deployment hold found during independent source qualification
+
+The login-start admission limiter in dev-env `web/portal/session/engine.go` is
+per process, burst four / sustained one per second. Two replicas therefore allow
+aggregate burst eight / two per second. This changes a security-relevant limit;
+Tom's routine replica-deployment authorization does not silently approve it.
+Deployment/merge of this PR stays held pending an explicit ruling on that exact
+effect, or a separately reviewed implementation preserving the aggregate limit.
+The native Codex question was issued, but phone delivery remains unverified;
+the question alone is neither an answer nor permission. The feature lead was
+notified. Keep this PR ready for CI/review, without auto-merge. Do not claim
+OP280 accepted or deployed from it. Also, /readyz only checks process readiness;
+a healthy endpoint does not independently prove database or OIDC availability.
