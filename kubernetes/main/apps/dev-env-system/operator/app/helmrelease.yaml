@@ -120,7 +120,10 @@ spec:
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates. The executor stop (H3) is on since NB-06b (below).
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              tag: sha-3e3e93d@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10
+              # OP252 (Tom approved packet bf6cbafe, 2026-10-30): source dddc2c1b0d822ba6c4e8067fa97f88462a496888 (v2.70.0, dev-env#711: #706 guard via 2.69.0, #710, #715, #720).
+              # publish.yml run 41038627263 signed and verified this exact digest; post-merge CI run 41038627431 green.
+              # Operator image only: keeper, broker, portal, templates, CRDs and existing Session pods stay unchanged.
+              tag: sha-dddc2c1@sha256:48c8e215968ee6bf3dd8ff86d3b6acd0ccd4e5e2620c9c180b4877b026e0d318
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -195,6 +198,15 @@ spec:
               # task-pilot lines when the separately authorized future worker is complete.
               - '--task-pilot-agent-image=ghcr.io/thaynes43/dev-env:2.63.0@sha256:010ce2db9371e0de7f12e9b2d5243a182f7c684faea2aab874c67e8a328a3a9f'
               - '--task-pilot-agent-session=dev-env-1019-205125/provider-child-cap-20261029-01'
+              # OP252 (Tom approval): separate ordinary Codex REMOTE pilot image (dev-env#715, v2.70.0).
+              # Exact parent|key: matches only dev-agents/dev-env-1019-205125 (UID e9a76314-3064-4dce-b4a6-5bb783105bf3).
+              # Keep both lines while that Session carries the original-home-binding annotation and the
+              # templates image lacks agentd home-verify (below 2.69.0): without them its next pod fails closed.
+              - '--remote-pilot-agent-image=ghcr.io/thaynes43/dev-env:2.70.0@sha256:234b73da73041a8691d3d7bd6a86e73a610998b5870db10888344c2dbf42aa15'
+              - '--remote-pilot-agent-session=dev/dev-env|v2-codex-host-1019-01'
+              # OP252 (Tom approval): exact default-off original-HOME guard for one Session (dev-env#706).
+              # Removing this line later is safe: the admitted annotation keeps the guard (homeguard.Select).
+              - '--original-home-binding={"namespace":"dev-agents","session":"dev-env-1019-205125","sessionUID":"e9a76314-3064-4dce-b4a6-5bb783105bf3","pvcUID":"03912a1c-df4d-4b72-811f-2c34dd3abe25","pv":"pvc-03912a1c-df4d-4b72-811f-2c34dd3abe25","pvUID":"b9455c08-72e0-43d2-9a88-04c389c27a74"}'
               # Explicit sole zero-task fixture; ordinary native hosts remain closed.
               - '--enable-coordinator-callers'
               - '--enable-managed-codex-tasks'
