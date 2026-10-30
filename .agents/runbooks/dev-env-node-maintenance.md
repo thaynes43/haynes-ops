@@ -35,6 +35,44 @@ full-JSON fallback, using this pod's existing identity. Both were denied. No
 alternative credential, identity or route was tried. The missing values above
 are unknown, not zero, and readiness is not a substitute for them.
 
+## Current placement addendum: 2026-10-30, about 07:00 UTC
+
+Owner: lead session `dev-env-1029-132039`. Docs only. The baseline above stays as
+the 05:08–05:11 snapshot. The post-hoc session-continuity reference for the
+#4443 rollout (#284 journal 3175) is separate and is not a baseline.
+
+| Component | Newer observation |
+| --- | --- |
+| Portal | haynes-ops #4443 moved the portal to `dev-env-portal:sha-74fcfd2`, signed digest `sha256:f11f8f0366ad312b74f47abf79c262bb55e57a8e1e802b1861c5afdbeddc9bac`. Its two Ready pods are `dev-env-v2-portal-569c787f9c-b92c6` on **talosm01** and `dev-env-v2-portal-569c787f9c-zhmc6` on **talosw01**. This reuses the verified #4443 evidence (#239 journal 3170, #284 journal 3171, Root's #252 journal 3179): 2/2 Ready, two endpoints, PDB minAvailable 1, healthy 2, disruptionsAllowed 1. No rollout check was repeated. |
+| Keeper | Same pod as the baseline: `dev-env-keeper-57f57d47dd-xqrjt`, UID prefix `64be3697`, on talosm01, three containers Ready, zero restarts, started `03:03:40Z`. Lease holder present, renew time `07:03:40Z`. Pod and Lease metadata only. |
+| Operator | Two pods, on talosw03 and talosm02. Placement only. |
+
+What this changes:
+
+- **One portal replica now runs on talosw01, the maintenance worker.** The
+  baseline's talosm05/talosw03 placement no longer holds. Both replicas are
+  **not** off the maintenance worker.
+- During a talosw01 drain, the surviving replica on **talosm01** gives the
+  redundancy. The PDB allows that one eviction. Required hostname anti-affinity
+  sends the evicted replica to another eligible node. Until it is Ready there,
+  the portal runs on one replica.
+- The keeper still runs off talosw01, so the keeper section below still needs no
+  keeper move on this observation. Placement can change; read it again at the
+  window.
+- Lease renewal is not a credential refresh. No fresh-refresh proof is inferred.
+  No projection metadata was requested again (it returns 403), and no other route
+  was tried.
+
+Every gate below still applies. This addendum meets none of them, and it is
+not a maintenance, drain or physical-host GO:
+
+- Tom approves the exact operation;
+- the keeper fresh-refresh metadata gate;
+- fresh external Ceph qualification;
+- a fresh session custody list for talosw01, with owner checkpoints;
+- the DNS canary expectation;
+- `declare-activity` before any disruptive step.
+
 ## Keeper: preserve the one credential owner
 
 The [keeper manifest](../../kubernetes/main/apps/dev-env-system/keeper/app/helmrelease.yaml)
