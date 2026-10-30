@@ -110,9 +110,15 @@ PORTAL_IMAGE = (
 )
 OPENPROJECT_ORIGIN = "https://openproject-web.frontend.svc.cluster.local:8443"
 OPENPROJECT_TASKS_QUERY = "/api/v3/projects/3/work_packages?offset=<page>&pageSize=50&filters=%5B%5D"
+# Historical portal checklist evidence remains pinned separately from the registered operator.
 OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
+)
+# Approved maintenance source dev-env#739; publish run 41129212774 signed and verified this digest.
+APPROVED_OPERATOR_IMAGE = (
+    "sha-386317b"
+    "@sha256:a080796f71def7f45e9153e0ea806d1be963afff742eee1850241385fc38e3e9"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
@@ -1096,7 +1102,7 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(api["controller"], "dev-env-operator")
         self.assertEqual(api["ports"]["https"]["port"], 8443)
         operator = release["spec"]["values"]["controllers"]["dev-env-operator"]["containers"]["app"]
-        self.assertEqual(operator["image"]["tag"], OPERATOR_IMAGE)
+        self.assertEqual(operator["image"]["tag"], APPROVED_OPERATOR_IMAGE)
         # Story178 S3: the reader is on, with the namespace it requires stated.
         self.assertIn("--enable-portal-reader", operator["args"])
         # Measured conversation usage (2026-10-28): reported to the portal reader's activity view,
