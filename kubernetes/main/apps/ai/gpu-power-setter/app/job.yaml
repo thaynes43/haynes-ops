@@ -3,7 +3,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: egpu-test-cap-cardc-20261030-200w
+  name: egpu-test-cap-cardc-20261030-350w
   namespace: ai
   labels: {app: gpu-power-setter}
   annotations: {haynes-ops/op: "221", haynes-ops/gpu: "GPU-d8a856f1-f955-f683-bc24-654561496774"}
@@ -28,7 +28,7 @@ spec:
             - {name: NVIDIA_VISIBLE_DEVICES, value: "GPU-d8a856f1-f955-f683-bc24-654561496774"}
             - {name: NVIDIA_DRIVER_CAPABILITIES, value: "utility"}
             - {name: HOME, value: /tmp}
-            - {name: TARGET_W, value: "200"}
+            - {name: TARGET_W, value: "350"}
             - name: POD_NODE_NAME
               valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
           resources:
@@ -54,9 +54,6 @@ spec:
               [ "$(printf '%s\n' "$state" | cut -d, -f1 | tr -d ' ')" = "$gpu" ] || fail 'unexpected GPU identity'
               processes=$(smi --query-compute-apps=pid --format=csv,noheader,nounits) || fail 'cannot verify idle GPU'
               [ -z "$processes" ] || fail 'GPU has compute processes; no changes made'
-              # Card C runs with persistence off, which can drop the limit once this pod exits.
-              # The restore Job sets it back to off.
-              smi -pm 1 || fail 'persistence mode failed'
               smi -pl "$TARGET_W" || fail 'power limit write failed'
               state=$(q) || fail 'read-back failed'
               echo "card-c-power: after $state"
