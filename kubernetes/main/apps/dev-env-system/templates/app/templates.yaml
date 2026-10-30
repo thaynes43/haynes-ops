@@ -10,10 +10,11 @@
 # tracks this line with its own regex manager (.renovate/customManagers.json5), and the
 # dev-env manual-merge rule applies. A change here reaches NEW sessions only: running
 # pods keep their image and are reported Outdated (D-44).
-# v2.45.0 source 86cef5bb619bbde29610e3436299a3a4362b7a88; dev-env#555 retains the own-SA default kubeconfig at zero grants.
-# publish-agent.yml run 40311542914 smoke-tested/signed/verified on refs/tags/v2.45.0.
+# v2.71.0 source 030133dc9dd9ac24a2c61f30f12ee8e402bd4bf2 (OP302, deploying OP291): agentd records the task's exit source,
+# the proof the operator's terminal task pod reclaim needs (dev-env#729; the reclaim flag stays off until its own PR).
+# publish-agent.yml run 41088393425 smoke-tested/signed/verified on refs/tags/v2.71.0. Supersedes v2.45.0 (86cef5bb, dev-env#555).
 # New sessions use it at once; running pods keep their image and show Outdated, and the operator drains idle, unattached sessions onto the new revision (designed preserving path).
-image: ghcr.io/thaynes43/dev-env:2.45.0@sha256:9578576cfef3dcf87f28189508ad28154deb109c8dbeee6bee308e1406d496eb
+image: ghcr.io/thaynes43/dev-env:2.71.0@sha256:a9421cd1c837f236a9d7f0ee8dd2c2574e21faaa30ef2733a38daf6d0a8b9023
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
