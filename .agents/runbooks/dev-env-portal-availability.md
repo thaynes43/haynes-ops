@@ -18,7 +18,10 @@ This is synthetic database evidence, not real browser OIDC acceptance.
 Both replicas use the same runtime Secret reference for SESSION_AEAD_KEY and
 SESSION_GENERATION, the same OIDC and serving TLS references, and the fixed
 Postgres read-write endpoint. No migration runs at portal startup. Each process
-has two database connections maximum (four steady-state; six during a surge).
+has two database connections maximum (four steady-state; six for a nominal
+three-process surge). Terminating pods can overlap beyond replicas + maxSurge;
+these connection counts are not hard rollout maxima. The existing runtime role
+connection limit must also be checked against overlap before deployment.
 No HOME, history or pairing volume is mounted. Launch stays disabled in
 `config.yaml`: its process-local dispatch mutex requires separate qualification
 before enabling launch with multiple replicas. Send/history remain configured
@@ -68,7 +71,9 @@ of replacement pods must be observed after normal Flux deployment.
    Report any concurrent owner action separately; UID continuity alone proves
    neither retained history recovery nor a completed remote-control interaction.
 6. On failed rollout/admission, first preserve events and the surviving endpoint.
-   The maxUnavailable 0 rollout retains available old capacity. Roll back through
+   maxUnavailable 0 preserves Kubernetes-Ready capacity only. Startup opens no
+   database connection and /readyz is unconditional, so it does not guarantee
+   retaining a database-connected endpoint. Roll back through
    a reviewed Git revert of this PR (replicas 1, remove anti-affinity and PDB),
    with the same CI/QA and continuity checks. Do not use direct scale, delete,
    rollout undo, auth repair or admission changes. End the activity in either case.
