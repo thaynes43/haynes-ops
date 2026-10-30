@@ -1850,6 +1850,17 @@ class RegisteredInputsTest(unittest.TestCase):
 
     def test_deployment_mounts_exactly_what_the_portal_reads(self):
         deployment = self.by_key[("Deployment", "dev-env-v2-portal")]
+        self.assertEqual(deployment["spec"]["replicas"], 2)
+        self.assertEqual(deployment["spec"]["template"]["spec"]["affinity"], {
+            "podAntiAffinity": {
+                "requiredDuringSchedulingIgnoredDuringExecution": [{
+                    "labelSelector": {
+                        "matchLabels": {"app.kubernetes.io/name": "dev-env-v2-portal"},
+                    },
+                    "topologyKey": "kubernetes.io/hostname",
+                }],
+            },
+        })
         self.assertEqual(deployment_violations(deployment, self.docs), [])
         self.assertEqual(expand_config_files(mounted_files(deployment), self.docs), PRODUCTION_FILES)
         # Every source the pod needs is registered here, by dev-env-secrets or by dev-env-pki,

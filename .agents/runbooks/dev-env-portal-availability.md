@@ -8,9 +8,13 @@ storage and recovery acceptance.
 
 ## Replica contract and prerequisites
 
-The deployed portal source is dev-env `3cb19139fad2b0e3e2d5c09c6f6ebcdaa831b615`.
-Its required CI passed, including the disposable PostgreSQL integration gate:
-[run 40988713602](https://github.com/thaynes43/dev-env/actions/runs/40988713602).
+The deployed portal source is dev-env `aad7340e5e7dcee361f2146147d1e6180f02fefa`
+([dev-env #703](https://github.com/thaynes43/dev-env/pull/703), deployed at one replica
+by [haynes-ops #4438](https://github.com/thaynes43/haynes-ops/pull/4438)). Its required
+CI passed, including #703's disposable **Portal PostgreSQL gate**:
+[run 40998312259, job 123876535827](https://github.com/thaynes43/dev-env/actions/runs/40998312259/job/123876535827).
+The `two-pools-aggregate-burst-and-process-recreation` test proves shared login
+admission across independent pools and a recreated process.
 `web/portal/session/postgres_integration_test.go` exercises two independent pools:
 one-use login consumption, shared sessions/revocation and concurrent send receipts.
 This is synthetic database evidence, not real browser OIDC acceptance.
@@ -97,18 +101,20 @@ Source, required tests, deployment, actual failover and real OIDC/RC recovery
 acceptance must be reported separately in OP280. The portal manifest PR alone
 completes none of the wider story's keeper or node-loss acceptance criteria.
 
-## Deployment hold found during independent source qualification
+## Login-limit hold resolved (2026-10-30)
 
-The login-start admission limiter in dev-env `web/portal/session/engine.go` is
-per process, burst four / sustained one per second. Two replicas therefore allow
-aggregate burst eight / two per second at steady state, and burst twelve /
-three per second during a three-process rolling surge. The existing singleton
-also permits a two-process surge today. This changes a security-relevant limit;
-Tom's routine replica-deployment authorization does not silently approve it.
-Deployment/merge of this PR stays held pending an explicit ruling on that exact
-effect, or a separately reviewed implementation preserving the aggregate limit.
-The native Codex question was issued, but phone delivery remains unverified;
-the question alone is neither an answer nor permission. The feature lead was
-notified. Keep this PR ready for CI/review, without auto-merge. Do not claim
-OP280 accepted or deployed from it. Also, /readyz only checks process readiness;
-a healthy endpoint does not independently prove database or OIDC availability.
+Tom chose “Wait for the fix” before deploying two replicas (OP280 journal2986).
+The reviewed fix, dev-env #703 (`aad7340e`), was deployed by haynes-ops #4438 at
+one replica; the old portal process ended before this availability rollout
+(OP280 journal3076). This satisfies the login-limit prerequisite for the
+authorized reviewed two-replica deployment; exact-head review and CI still apply.
+
+Each process retains its own login-start limiter as a database-load filter and
+also draws from one shared PostgreSQL bucket. The aggregate allowance remains
+burst four, refilling one token per second, across replicas, rolling surges and
+process restarts. Database errors and uncertain commits fail closed. The Portal
+PostgreSQL gate above exercises independent pools and process recreation against
+a real disposable database. This is synthetic evidence, not real OIDC acceptance.
+`/readyz` only checks process readiness; a healthy endpoint does not independently
+prove database or OIDC availability. Record deployment evidence separately from
+OP280's wider failover and recovery acceptance.
