@@ -1,8 +1,9 @@
 ---
 # The operator, dev-env-system/dev-env-operator (DESIGN-001 6.11, the operator row; D-44,
 # D-45, D-46). Namespaced Roles only, plus TokenReview and, for DESIGN-025 H2 (at the
-# end), `get` on Nodes and on Leases in kube-node-lease: no cluster-wide pod or PVC
-# rights, no Secrets, no bind. The manager's cache is scoped to dev-agents and the one
+# end), `get` on Nodes and on Leases in kube-node-lease, and, for OP252 (last), `get` on
+# one named PersistentVolume: no cluster-wide pod or PVC rights, no other PV rights, no
+# Secrets, no bind. The manager's cache is scoped to dev-agents and the one
 # templates ConfigMap (internal/controller/reconciler.go, CacheOptions), so namespaced
 # Roles cover every list and watch it makes.
 #
@@ -248,6 +249,35 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: dev-env-operator-node-lease-read
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
+---
+# OP252 (Tom review): the original-HOME guard's uncached read of ONE PersistentVolume,
+# the bound HOME of dev-agents/dev-env-1019-205125 (thaynes43/dev-env #706:
+# internal/controller/original_home.go CheckOriginalHome; used by the /v1 resume and the
+# controller). get by name only: no list, no watch, no write, no other PV. Keep it while
+# that Session carries dev-env.haynesops.com/original-home-binding: without it every
+# later pod creation and guarded resume fails closed (Forbidden -> backoff / 409).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-operator-original-home-pv-read
+rules:
+  - apiGroups: [""]
+    resources: [persistentvolumes]
+    resourceNames: [pvc-03912a1c-df4d-4b72-811f-2c34dd3abe25]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-operator-original-home-pv-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-operator-original-home-pv-read
 subjects:
   - kind: ServiceAccount
     name: dev-env-operator
