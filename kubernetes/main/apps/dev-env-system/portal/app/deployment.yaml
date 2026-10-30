@@ -74,8 +74,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # dev-env v2.70.1 release merge df2927c7 (adds dev-env#718 and #722 honest Sessions/Tasks freshness; keeps #707 focus and #703 shared login limiter; publish run 41045893374 signed and verified the portal image).
-          image: ghcr.io/thaynes43/dev-env-portal:sha-df2927c@sha256:df2b90a6575ca9db5f0bb6bd518f08e50f7fae736bfd830e0b9de678d5fc8b03
+          # dev-env v2.72.0 release merge fb4e6927 (adds dev-env#725 and #728 Tasks read failure and deadline, #735 account allowance shown Not connected; keeps #707 focus and #703 shared login limiter; publish run 41119959193 signed and verified the portal image).
+          image: ghcr.io/thaynes43/dev-env-portal:sha-fb4e692@sha256:ff2494be7ad976ded209a2f5fdc286b7342dd64f93077e010b6b2c75b275c32a
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
