@@ -247,6 +247,12 @@ spec:
               # To turn it off, set it false. Never pin the operator below 2.71.0 once a reclaim was recorded (taskTerminal CEL).
               - '--enable-terminal-task-pod-reclaim=true'
               - '--terminal-task-pod-reclaim-grace=10m'
+              # DESIGN-025 section 24.1 (OP308, dev-env#738 in this sha-386317b build; Tom chose 'Build it, on after tests' 2026-10-30):
+              # also accept the retained usage receipt as exit proof for pre-2.71 task executors (both versions below 2.71.0, exit
+              # not 127, receipt bound to Session/Pod/provider/model, heartbeat <=2m while running, 0 restarts). Same stop path,
+              # grace and guarded delete; HOME, PVC and history stay. All current targets act about 10m after this rolls out.
+              # No new legacy executors appear (templates pin 2.71.0), so retire this flag once they clear. Off: set it false.
+              - '--enable-legacy-terminal-task-reclaim=true'
               # Off with the canary route (main.go:252). Ordinary project tasks get no retained common rules.
               - '--enable-retained-common-rules=false'
               # Off: main.go:259 refuses canaries together with general private admission. The
