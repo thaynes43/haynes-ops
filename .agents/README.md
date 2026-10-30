@@ -13,6 +13,7 @@ guards whose degraded state is fail-open. Append findings there as you hit them;
 is worth more attention than a red.
 
 ## runbooks/ — step-by-step procedures
+- [dev-env-node-maintenance.md](runbooks/dev-env-node-maintenance.md) — morning maintenance gates, keeper ownership and fresh-refresh proof, session checkpoints, pinned DNS canary, conditional Ceph tolerance and Tom's remaining actions (OP280).
 - [dev-env-portal-availability.md](runbooks/dev-env-portal-availability.md) — portal replica prerequisites, shared login limits, reviewed rollout, Git rollback and remaining failover acceptance (OP280).
 - [cursor-v1-worker.md](runbooks/cursor-v1-worker.md) — **Cursor My Machines worker on dev-env v1**: the pinned CLI install and post-ready tmux supervisor (bounded retries, breaker, disabled marker), the rendered shared Cursor rule, the staged MCP adapters whose activation is still parked, nonportable capabilities, restart acceptance and rollback.
 - [lazylibrarian-epub-metadata.md](runbooks/lazylibrarian-epub-metadata.md) — gated metadata removal, inventories, collision Holds, staged Jobs and verified backup restore.
