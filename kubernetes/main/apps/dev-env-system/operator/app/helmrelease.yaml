@@ -120,10 +120,12 @@ spec:
               # D-92 shares archived history among existing trusted callers; authentication and mutation guards remain.
               # HOME archive, history reads and HOME deletion remain absent/default off until their H7/H8 gates. The executor stop (H3) is on since NB-06b (below).
               # Requires the v2.29.4 AgentSession schema in dev-env-crds; a sealed pilot is limited by its explicit policy window.
-              # OP252 (Tom approved packet bf6cbafe, 2026-10-30): source dddc2c1b0d822ba6c4e8067fa97f88462a496888 (v2.70.0, dev-env#711: #706 guard via 2.69.0, #710, #715, #720).
-              # publish.yml run 41038627263 signed and verified this exact digest; post-merge CI run 41038627431 green.
-              # Operator image only: keeper, broker, portal, templates, CRDs and existing Session pods stay unchanged.
-              tag: sha-dddc2c1@sha256:48c8e215968ee6bf3dd8ff86d3b6acd0ccd4e5e2620c9c180b4877b026e0d318
+              # OP302 (deploys OP291): source 030133dc9dd9ac24a2c61f30f12ee8e402bd4bf2 (v2.71.0, dev-env#727: #729 terminal task pod reclaim and #730 codex-rc image flags, both default off).
+              # Supersedes the OP252 pin dddc2c1 (v2.70.0, Tom approved packet bf6cbafe); every OP252 arg below is kept unchanged.
+              # publish.yml run 41088359336 signed and verified this exact digest; post-merge CI run 41088359765 green.
+              # Requires the v2.71.0 AgentSession schema in dev-env-crds (haynes-ops #4450). Reclaim stays off until Tom's activation ruling.
+              # Operator image only: keeper, broker, portal, templates and existing Session pods stay unchanged.
+              tag: sha-030133d@sha256:02e7b3bd452649e1418cfb0e80035fa63679a9a5438697f688ef3742fe1a58b5
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
