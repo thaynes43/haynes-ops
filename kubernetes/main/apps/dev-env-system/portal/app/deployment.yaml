@@ -74,8 +74,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # dev-env main aad7340e (dev-env#703 shared login limiter; publish run 40999851812 signed and verified the portal image).
-          image: ghcr.io/thaynes43/dev-env-portal:sha-aad7340@sha256:14ad599cb1e2dff40a4ff1fc060ad5b46ef63780a92dff97634695784202497c
+          # dev-env v2.69.0 release merge 74fcfd2b (adds dev-env#707 keyboard focus; keeps #703 shared login limiter; publish run 41014014615 signed and verified the portal image).
+          image: ghcr.io/thaynes43/dev-env-portal:sha-74fcfd2@sha256:f11f8f0366ad312b74f47abf79c262bb55e57a8e1e802b1861c5afdbeddc9bac
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
