@@ -1,0 +1,26 @@
+name: PR disposition fixtures
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/pr-disposition.yml
+      - scripts/pr-disposition-test.cjs
+      - .github/workflows/pr-disposition-test.yml
+      - .github/renovate.json5
+      - .renovate/autoMerge.json5
+      - .renovate/groups.json5
+      - .renovate/holds.json5
+permissions:
+  contents: read
+concurrency:
+  group: pr-disposition-fixtures-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  fixtures:
+    name: PR disposition truth table
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: node scripts/pr-disposition-test.cjs

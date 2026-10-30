@@ -86,6 +86,8 @@ jobs:
             // (or shepherd where the shepherd owns it) — NEVER claim auto-merge. Matched by
             // each package's unique app path.
             const CARVEOUTS = [
+              // Later group overrides keep HA, its companion, and Zigbee2MQTT supervised.
+              { re: /^kubernetes\/[^/]+\/apps\/home-automation\/(home-assistant|ha-mcp|zigbee2mqtt)\//, dispo: 'disposition:manual-only' },
               // plex — automerge:false; the upgrade-shepherd owns it (Kometa-idle preflight).
               { re: /^kubernetes\/[^/]+\/apps\/media\/plex\//, dispo: 'disposition:shepherd', skipMajor: true },
               // dev-env — automerge:false, NEVER (pod Recreate kills in-flight agent
@@ -111,104 +113,97 @@ jobs:
               { re: /^kubernetes\/[^/]+\/apps\/media\/kometa\//, dispo: 'disposition:manual-only' },
             ];
             const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded', 'disposition:manual-only'];
-            // Exact login: a substring match let any account with "renovate" in its
-            // name (e.g. a fork PR from `renovate-helper`) be triaged as Renovate.
-            const isRenovate = (l) => l === 'renovate[bot]';
-            // Only the shepherd's own vet markers count. This is a public repo, so a
-            // marker comment from anyone else could relabel a PR or fake a verdict.
+            const isRenovate = login => login === 'renovate[bot]';
             const VET_AUTHOR = 'haynes-ops-bot[bot]';
-            const tier2Path = (p) => {
+            const tier2Path = p => {
               const m = p.match(/^kubernetes\/[^/]+\/apps\/([^/]+)\/(.+)$/);
-              if (!m) return false;
-              if (TIER2_DOMAINS.includes(m[1])) return true;
-              return CURATED_LEAVES.includes(m[1] + '/' + m[2].split('/')[0]);
+              return !!m && (TIER2_DOMAINS.includes(m[1]) || CURATED_LEAVES.includes(m[1] + '/' + m[2].split('/')[0]));
             };
-
-            const prs = await github.paginate(github.rest.pulls.list, { owner: OWNER, repo: REPO, state: 'open', per_page: 100 });
+            const mergeState = pr => {
+              if (!Object.hasOwn(pr, 'auto_merge')) return 'Unknown';
+              if (pr.auto_merge === null) return 'disabled';
+              const m = pr.auto_merge;
+              return m && typeof m === 'object' && !Array.isArray(m) &&
+                typeof m.enabled_by?.login === 'string' && m.enabled_by.login.length > 0 &&
+                typeof m.commit_title === 'string' && typeof m.commit_message === 'string' &&
+                ['merge','squash','rebase'].includes(m.merge_method) ? 'enabled' : 'Unknown';
+            };
+            const labelKey = labels => Array.isArray(labels) && labels.every(l => typeof l?.name === 'string')
+              ? JSON.stringify(labels.map(l => l.name).sort()) : null;
+            const listed = await github.paginate(github.rest.pulls.list, { owner: OWNER, repo: REPO, state: 'open', per_page: 100 });
+            if (!Array.isArray(listed)) throw new Error('PR list incomplete; no classification');
             let n = 0;
-            for (const pr of prs) {
-              if (!isRenovate(pr.user && pr.user.login)) continue;
+            for (const item of listed) {
+              if (!isRenovate(item.user?.login)) continue;
+              let pr, files, comments;
+              try {
+                ({ data: pr } = await github.rest.pulls.get({ owner: OWNER, repo: REPO, pull_number: item.number }));
+                if (!pr || pr.number !== item.number || pr.state !== 'open' || !isRenovate(pr.user?.login)) throw new Error('PR identity/state unavailable');
+                if (!/^[0-9a-f]{40}$/.test(pr.head?.sha || '') || typeof pr.head?.ref !== 'string' || typeof pr.title !== 'string' || labelKey(pr.labels) === null) throw new Error('PR fields incomplete');
+                files = await github.paginate(github.rest.pulls.listFiles, { owner: OWNER, repo: REPO, pull_number: pr.number, per_page: 100 });
+                comments = await github.paginate(github.rest.issues.listComments, { owner: OWNER, repo: REPO, issue_number: pr.number, per_page: 100 });
+                if (!Number.isSafeInteger(pr.changed_files) || pr.changed_files < 0 || !Array.isArray(files) || files.length !== pr.changed_files || !files.every(f => typeof f?.filename === 'string' && f.filename.length > 0)) throw new Error('file list incomplete');
+                if (!Number.isSafeInteger(pr.comments) || pr.comments < 0 || !Array.isArray(comments) || comments.length !== pr.comments || !comments.every(c => c && typeof c === 'object' && typeof c.body === 'string')) throw new Error('comment list incomplete');
+                const { data: latest } = await github.rest.pulls.get({ owner: OWNER, repo: REPO, pull_number: pr.number });
+                if (latest?.number !== pr.number || latest.state !== 'open' || latest.user?.login !== pr.user.login ||
+                    latest.head?.sha !== pr.head.sha || latest.head?.ref !== pr.head.ref || latest.title !== pr.title ||
+                    latest.changed_files !== pr.changed_files || latest.comments !== pr.comments ||
+                    labelKey(latest.labels) !== labelKey(pr.labels) ||
+                    JSON.stringify(latest.auto_merge) !== JSON.stringify(pr.auto_merge)) throw new Error('PR changed during reads');
+              } catch (error) {
+                core.warning(`#${item.number} actual=Unknown reason=read-failure; no label changes`);
+                continue;
+              }
               n++;
-              const files = await github.paginate(github.rest.pulls.listFiles, { owner: OWNER, repo: REPO, pull_number: pr.number, per_page: 100 });
               const paths = files.map(f => f.filename);
-              const labelNames = (pr.labels || []).map(l => l.name);
+              const labelNames = pr.labels.map(l => l.name);
+              const isMajor = labelNames.includes('type/major'), isDigest = labelNames.includes('type/digest');
               const brtitle = (pr.head.ref + ' ' + pr.title).toLowerCase();
-              const isMajor = labelNames.includes('type/major');
-              // A github-actions digest-only update is a re-pointed upstream tag; Renovate
-              // no longer auto-merges it (.renovate/autoMerge.json5), so don't predict it.
-              const isDigest = labelNames.includes('type/digest');
-              const isImmich = paths.some(p => p.startsWith(IMMICH));
-              const inCleanRamp = paths.some(p => RAMP_CLEAN.some(r => p.startsWith(r)));
-              // Tier-2 auto-merge PREDICTION (Renovate will enable GH auto-merge on its
-              // next run even if pr.auto_merge is not set yet): every changed file is
-              // Tier-2-eligible, it's not a major, and nothing is held.
               const allTier2 = paths.length > 0 && paths.every(tier2Path);
               const ownImage = /thaynes43/.test(brtitle) || /kube-prometheus-stack/.test(brtitle);
               const ghActions = paths.length > 0 && paths.every(p => p.startsWith('.github/'));
-
-              // Shepherd verdict at the CURRENT head, if any (the vet-once marker the
-              // shepherd leaves: first line '<!-- shepherd-vet sha=<oid> -->', then
-              // 'VERDICT: <word>'). A recorded verdict outranks path-based guesses —
-              // without this, a durable HOLD sits labeled "shepherd, nothing for you"
-              // forever (authentik #2005 sat 8 days that way).
-              let verdict = null;
-              const comments = await github.paginate(github.rest.issues.listComments, { owner: OWNER, repo: REPO, issue_number: pr.number, per_page: 100 });
-              for (const c of comments) {
-                if (!c.user || c.user.login !== VET_AUTHOR) continue;
-                const m = (c.body || '').match(/^<!-- shepherd-vet sha=([0-9a-f]{40}) -->\s*\n+\s*VERDICT:\s*([A-Za-z-]+)/);
-                if (m && m[1] === pr.head.sha) verdict = m[2].toUpperCase();   // chronological: latest wins
-              }
               const nonK8s = paths.length > 0 && !ghActions && !paths.some(p => p.startsWith('kubernetes/'));
-
-              // Name-matched carve-out (see CARVEOUTS): a package Renovate will NOT
-              // auto-merge must not be captured by the path-tier auto-merge prediction
-              // below. Sits AFTER pr.auto_merge (ground truth) + a shepherd verdict (more
-              // specific) but BEFORE the path-tier guess. Update-type comes from Renovate's
-              // type/* labels.
+              let verdict = null;
+              for (const c of comments) {
+                if (c.user?.login !== VET_AUTHOR) continue;
+                const m = c.body.match(/^<!-- shepherd-vet sha=([0-9a-f]{40}) -->\s*\n+\s*VERDICT:\s*([A-Za-z-]+)/);
+                if (m && m[1] === pr.head.sha) verdict = m[2].toUpperCase();
+              }
+              // Any manual member keeps a mixed update supervised, regardless of rule order.
               let carve = null;
               for (const c of CARVEOUTS) {
-                if (!paths.some(p => c.re.test(p))) continue;
-                if (c.skipMajor && isMajor) break;                    // e.g. plex major → fall through (unchanged: stranded)
-                if (c.patchAuto && labelNames.includes('type/patch')) break; // qbittorrent patch → path-tier auto-merge (correct)
+                if (!paths.some(p => c.re.test(p)) || (c.skipMajor && isMajor) || (c.patchAuto && labelNames.includes('type/patch'))) continue;
                 carve = c.dispo;
-                break;
+                if (carve === 'disposition:manual-only') break;
               }
-
-              let want;
-              if (pr.auto_merge) {
-                want = 'disposition:auto-merge';                       // ground truth
+              const actual = mergeState(pr);
+              let want, reason, predictedOwner = 'Unknown';
+              if (actual === 'Unknown') {
+                want = 'disposition:stranded'; reason = 'merge-state-unavailable';
+              } else if (actual === 'enabled') {
+                want = 'disposition:auto-merge'; reason = 'merge-request-enabled'; predictedOwner = 'GitHub';
+                if (verdict === 'HOLD') core.warning(`#${pr.number} current-head hold conflicts with enabled auto-merge; no merge state changed`);
               } else if (verdict === 'HOLD') {
-                want = 'disposition:stranded';                         // shepherd wanted it but a gap blocked it — fix the gap
+                want = 'disposition:stranded'; reason = 'current-head-hold'; predictedOwner = 'Shepherd';
               } else if (verdict && verdict !== 'AUTO-MERGE') {
-                want = 'disposition:manual-only';                      // examined and declined (OUT-OF-SCOPE etc.) — mindless merge
+                want = 'disposition:manual-only'; reason = 'current-head-declined'; predictedOwner = 'Manual';
               } else if (carve) {
-                want = carve;                                         // name-matched automerge:false carve-out (.renovate/autoMerge.json5) — path-tier must not claim auto-merge
-              } else if (isImmich && isMajor) {
-                want = 'disposition:shepherd';                         // immich major → shepherd
+                want = carve; reason = 'known-policy-carve-out'; predictedOwner = carve === 'disposition:shepherd' ? 'Shepherd' : 'Manual';
+              } else if (verdict === 'AUTO-MERGE' || (isMajor && paths.some(p => p.startsWith(IMMICH)))) {
+                want = 'disposition:shepherd'; reason = 'shepherd-owned'; predictedOwner = 'Shepherd';
               } else if ((ghActions && !isDigest) || (!isMajor && (allTier2 || ownImage))) {
-                want = 'disposition:auto-merge';                       // Renovate Tier-0/2 (GHA incl. majors since 2026-07-08, not digest-only; pending its next run)
-              } else if (!isMajor && inCleanRamp) {
-                want = 'disposition:shepherd';                         // clean-tier ramp → shepherd
-              } else if (!isMajor && paths.some(p => RAMP_INFRA.some(r => p.startsWith(r)))) {
-                want = 'disposition:shepherd';                         // revertible cluster-infra PATCH/minor → shepherd
+                want = 'disposition:stranded'; reason = 'eligible-without-merge-request'; predictedOwner = 'Renovate';
+              } else if (!isMajor && paths.some(p => RAMP_CLEAN.some(r => p.startsWith(r)) || RAMP_INFRA.some(r => p.startsWith(r)))) {
+                want = 'disposition:shepherd'; reason = 'shepherd-ramp'; predictedOwner = 'Shepherd';
               } else if (nonK8s) {
-                want = 'disposition:manual-only';                      // repo tooling — no health gate can ever own it
+                want = 'disposition:manual-only'; reason = 'repository-tooling'; predictedOwner = 'Manual';
               } else {
-                // remaining: one-way MAJORS (Ceph/PG/cilium/authentik) the shepherd
-                // authors for human confirm, plus non-ramp majors and anything
-                // off-ramp. Needs your judgment — but for ramp-infra majors the shepherd
-                // will hand you a one-click-ready 'ONE-WAY — human confirm' PR.
-                want = 'disposition:stranded';
+                want = 'disposition:stranded'; reason = 'no-existing-owner';
               }
-
               for (const d of DISPOS) {
-                if (d !== want && labelNames.includes(d)) {
-                  try { await github.rest.issues.removeLabel({ owner: OWNER, repo: REPO, issue_number: pr.number, name: d }); } catch (e) {}
-                }
+                if (d !== want && labelNames.includes(d)) await github.rest.issues.removeLabel({ owner: OWNER, repo: REPO, issue_number: pr.number, name: d });
               }
-              if (!labelNames.includes(want)) {
-                await github.rest.issues.addLabels({ owner: OWNER, repo: REPO, issue_number: pr.number, labels: [want] });
-              }
-              core.info(`#${pr.number} ${pr.title.slice(0,60)} -> ${want}`);
+              if (!labelNames.includes(want)) await github.rest.issues.addLabels({ owner: OWNER, repo: REPO, issue_number: pr.number, labels: [want] });
+              core.info(JSON.stringify({ pullRequest: pr.number, head: pr.head.sha, actualAutoMerge: actual, predictedOwner, reason, disposition: want }));
             }
             core.info(`Classified ${n} open Renovate PR(s).`);
