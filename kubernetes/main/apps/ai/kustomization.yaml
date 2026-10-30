@@ -6,7 +6,6 @@ resources:
   # Pre Flux-Kustomizations
   - ./namespace.yaml
   # Flux-Kustomizations
-  - ./gpu-power-setter/ks.yaml
   - ./llama-server/ks.yaml
   - ./ollama/
   - ./wyoming-protocol/ks.yaml
