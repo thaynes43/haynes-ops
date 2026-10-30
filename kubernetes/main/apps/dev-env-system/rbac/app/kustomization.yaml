@@ -33,3 +33,5 @@ resources:
   - ./native-lifecycle-serviceaccount.yaml
   - ./session-directory-guard.yaml
   - ./portal-serviceaccount.yaml
+  - ./maintenance-rbac.yaml
+  - ./maintenance-annotations.yaml

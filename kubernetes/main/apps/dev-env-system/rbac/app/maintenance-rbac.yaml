@@ -1,0 +1,81 @@
+# UNAPPLIED review input. No Namespace, credential or deployment change.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dev-env-maintenance
+  namespace: dev-agents
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-broker-maintenance
+  namespace: dev-agents
+rules:
+  - apiGroups: ['']
+    resources: [pods]
+    verbs: [get, create, patch, delete]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, create, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-broker-maintenance
+  namespace: dev-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-broker-maintenance
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-broker
+    namespace: dev-env-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-broker-maintenance-target
+rules:
+  - apiGroups: ['']
+    resources: [nodes]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-broker-maintenance-target
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-broker-maintenance-target
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-broker
+    namespace: dev-env-system
+---
+# Read-only node heartbeat evidence, never a session grant or execution identity.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-broker-maintenance-stop-evidence
+  namespace: kube-node-lease
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-broker-maintenance-stop-evidence
+  namespace: kube-node-lease
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-broker-maintenance-stop-evidence
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-broker
+    namespace: dev-env-system

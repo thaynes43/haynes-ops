@@ -1,0 +1,159 @@
+# UNAPPLIED. All broker Pod writes and any maintenance identity are narrowed here.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: dev-env-maintenance-executor
+spec:
+  failurePolicy: Fail
+  validationActions: [Deny]
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ['']
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [pods, pods/ephemeralcontainers]
+  matchConditions:
+    - name: broker-or-maintenance
+      expression: >-
+        request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-broker' ||
+        (object != null && (object.spec.?serviceAccountName.orValue('') == 'dev-env-maintenance' || 'dev-env.haynesops.com/maintenance' in object.metadata.?labels.orValue({}))) ||
+        (oldObject != null && (oldObject.spec.?serviceAccountName.orValue('') == 'dev-env-maintenance' || 'dev-env.haynesops.com/maintenance' in oldObject.metadata.?labels.orValue({})))
+  variables:
+    - name: pod
+      expression: 'object == null ? oldObject : object'
+    - name: grant
+      expression: resource.Get('dev-env.haynesops.com/v1alpha1', 'accessgrants', request.namespace, variables.pod.metadata.name)
+    - name: task
+      expression: variables.grant.spec.maintenance
+    - name: node
+      expression: resource.Get('v1', 'nodes', '', variables.task.node)
+    - name: container
+      expression: variables.pod.spec.containers[0]
+    - name: mounts
+      expression: variables.task.?readOnlyMounts.orValue([])
+    - name: devices
+      expression: variables.task.?devices.orValue([])
+  validations:
+    - expression: >-
+        request.namespace == 'dev-agents' && request.?subResource.orValue('') == '' &&
+        request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-broker' &&
+        variables.grant.spec.type == 'maintenance' &&
+        variables.pod.metadata.labels['dev-env.haynesops.com/maintenance'] == variables.grant.metadata.uid &&
+        variables.pod.metadata.labels['dev-env.haynesops.com/grant'] == variables.grant.metadata.name &&
+        size(variables.pod.metadata.ownerReferences) == 1 &&
+        variables.pod.metadata.ownerReferences[0].uid == variables.grant.metadata.uid &&
+        variables.pod.metadata.ownerReferences[0].kind == 'AccessGrant' &&
+        variables.pod.metadata.ownerReferences[0].apiVersion == 'dev-env.haynesops.com/v1alpha1' &&
+        variables.pod.metadata.ownerReferences[0].name == variables.grant.metadata.name &&
+        variables.pod.metadata.ownerReferences[0].controller
+      message: only the broker owns the exact maintenance grant executor; ephemeral containers are refused
+    - expression: >-
+        request.operation != 'CREATE' ||
+        (variables.grant.status.phase == 'Active' &&
+         variables.node.metadata.uid == variables.task.nodeUID &&
+         !('node-role.kubernetes.io/control-plane' in variables.node.metadata.?labels.orValue({})) &&
+         !('node-role.kubernetes.io/master' in variables.node.metadata.?labels.orValue({})) &&
+         !variables.node.spec.?taints.orValue([]).exists(t, t.key in ['node-role.kubernetes.io/control-plane','node-role.kubernetes.io/master']) && !variables.grant.spec.?release.orValue(false) &&
+         variables.pod.spec.nodeName == variables.task.node &&
+         variables.pod.spec.serviceAccountName == 'dev-env-maintenance' &&
+         !variables.pod.spec.automountServiceAccountToken &&
+         !variables.pod.spec.?hostPID.orValue(false) && !variables.pod.spec.?hostIPC.orValue(false) &&
+         !variables.pod.spec.?hostNetwork.orValue(false) &&
+         ((!has(variables.task.runtimeProfile) && !has(variables.pod.spec.runtimeClassName) && !has(variables.container.env)) ||
+          (variables.task.?runtimeProfile.orValue('') == 'nvidia-utility' &&
+           variables.task.resource.matches('^GPU-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$') &&
+           size(variables.devices) == 0 && variables.pod.spec.?runtimeClassName.orValue('') == 'nvidia' &&
+           size(variables.pod.spec.?overhead.orValue({})) == 0 &&
+           size(variables.pod.spec.?nodeSelector.orValue({})) == 0 &&
+           variables.pod.spec.?tolerations.orValue([]).all(t,
+             t.?key.orValue('') in ['node.kubernetes.io/not-ready','node.kubernetes.io/unreachable'] &&
+             t.operator == 'Exists' && t.effect == 'NoExecute' && t.tolerationSeconds == 300 &&
+             t.?value.orValue('') == '') &&
+           variables.container.?env.orValue([]) == [
+             {'name':'NVIDIA_VISIBLE_DEVICES','value':string(variables.task.resource)},
+             {'name':'NVIDIA_DRIVER_CAPABILITIES','value':'utility'}])) &&
+         !has(variables.pod.spec.initContainers) && !has(variables.pod.spec.ephemeralContainers) &&
+         variables.pod.spec.restartPolicy == 'Never' && !variables.pod.spec.enableServiceLinks &&
+         variables.pod.spec.activeDeadlineSeconds >= 1 && variables.pod.spec.activeDeadlineSeconds <= 3600 &&
+         variables.pod.spec.terminationGracePeriodSeconds == 10 &&
+         size(variables.pod.spec.containers) == 1 && variables.container.name == 'maintenance' &&
+         variables.container.image == variables.task.image &&
+         variables.container.command == ['/bin/sleep','infinity'] &&
+         !has(variables.container.args) && !has(variables.container.envFrom) &&
+         !has(variables.container.lifecycle) && !has(variables.container.livenessProbe) && !has(variables.container.startupProbe) &&
+         !has(variables.container.ports) && !has(variables.container.volumeDevices) &&
+         !variables.container.securityContext.privileged && !variables.container.securityContext.allowPrivilegeEscalation &&
+         variables.container.securityContext.readOnlyRootFilesystem && variables.container.securityContext.runAsUser == 0 &&
+         variables.container.securityContext.capabilities.drop == ['ALL'] &&
+         variables.container.securityContext.capabilities.?add.orValue([]) == variables.task.?capabilities.orValue([]) &&
+         variables.pod.spec.securityContext.seccompProfile.type == 'RuntimeDefault' &&
+         variables.container.resources.limits == variables.container.resources.requests &&
+         size(variables.container.resources.limits) == 2 &&
+         quantity(variables.container.resources.limits.cpu) == quantity(string(variables.task.cpuMillis) + 'm') &&
+         quantity(variables.container.resources.limits.memory) == quantity(string(variables.task.memoryMiB) + 'Mi') &&
+         size(variables.pod.spec.?volumes.orValue([])) == size(variables.devices) + size(variables.mounts) &&
+         size(variables.container.?volumeMounts.orValue([])) == size(variables.devices) + size(variables.mounts) &&
+         variables.pod.spec.?volumes.orValue([]).all(v, has(v.hostPath) &&
+           ((v.hostPath.path in variables.devices && v.hostPath.type == 'CharDevice') ||
+            (v.hostPath.path in variables.mounts && v.hostPath.type == 'File'))) &&
+         variables.container.?volumeMounts.orValue([]).all(m,
+           variables.pod.spec.volumes.exists(v, v.name == m.name && v.hostPath.path == m.mountPath &&
+             m.?readOnly.orValue(false) == (v.hostPath.path in variables.mounts)) &&
+           !has(m.subPath) && !has(m.subPathExpr) && !has(m.mountPropagation)))
+      message: maintenance creation must match the approved bounded task shape and no other host/API access
+    - expression: >-
+        request.operation != 'UPDATE' ||
+        (object.metadata.uid == oldObject.metadata.uid &&
+         object.metadata.name == oldObject.metadata.name &&
+         object.metadata.namespace == oldObject.metadata.namespace &&
+         object.metadata.?labels.orValue({}) == oldObject.metadata.?labels.orValue({}) &&
+         object.metadata.?annotations.orValue({}) == oldObject.metadata.?annotations.orValue({}) &&
+         object.metadata.?ownerReferences.orValue([]) == oldObject.metadata.?ownerReferences.orValue([]) &&
+         object.metadata.?finalizers.orValue([]) == oldObject.metadata.?finalizers.orValue([]) &&
+         object.metadata.all(k, k in ['uid','name','namespace','labels','annotations','ownerReferences','finalizers','generation','managedFields','resourceVersion'] ||
+           (k in oldObject.metadata && object.metadata[k] == oldObject.metadata[k])) &&
+         oldObject.metadata.all(k, k in ['uid','name','namespace','labels','annotations','ownerReferences','finalizers','generation','managedFields','resourceVersion'] || k in object.metadata) &&
+         oldObject.spec.activeDeadlineSeconds > 1 && object.spec.activeDeadlineSeconds == 1 &&
+         size(object.spec) == size(oldObject.spec) &&
+         object.spec.all(k, k == 'activeDeadlineSeconds' || (k in oldObject.spec && object.spec[k] == oldObject.spec[k])))
+      message: broker updates may only shorten the owned executor deadline to one second
+    - expression: >-
+        request.operation != 'DELETE' || oldObject.status.phase in ['Succeeded','Failed']
+      message: cleanup waits for a terminal executor observation; deletion is not stop proof
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: dev-env-maintenance-network
+spec:
+  failurePolicy: Fail
+  validationActions: [Deny]
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [networking.k8s.io]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [networkpolicies]
+  matchConditions:
+    - name: broker-network
+      expression: "request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-broker'"
+  variables:
+    - name: policy
+      expression: 'object == null ? oldObject : object'
+    - name: grant
+      expression: resource.Get('dev-env.haynesops.com/v1alpha1', 'accessgrants', request.namespace, variables.policy.metadata.name)
+  validations:
+    - expression: >-
+        request.namespace == 'dev-agents' && request.operation != 'UPDATE' &&
+        variables.grant.spec.type == 'maintenance' &&
+        variables.policy.metadata.ownerReferences.exists(o, o.uid == variables.grant.metadata.uid && o.kind == 'AccessGrant') &&
+        variables.policy.spec.podSelector == {'matchLabels': {'dev-env.haynesops.com/maintenance': variables.grant.metadata.uid}} &&
+        variables.policy.spec.policyTypes == ['Ingress','Egress'] &&
+        size(variables.policy.spec.?ingress.orValue([])) == 0 && size(variables.policy.spec.?egress.orValue([])) == 0
+      message: broker may manage only its grant-owned deny-all maintenance network policy

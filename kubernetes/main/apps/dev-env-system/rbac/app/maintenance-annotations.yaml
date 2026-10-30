@@ -1,0 +1,44 @@
+# UNAPPLIED. Protects authenticated operator-to-broker decision provenance.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-maintenance-annotations
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [dev-env.haynesops.com]
+        apiVersions: [v1alpha1]
+        operations: [CREATE, UPDATE]
+        resources: [accessgrants, accessgrants/status]
+  variables:
+    - name: decision
+      expression: "object.metadata.?annotations['dev-env.haynesops.com/maintenance-decision'].orValue('')"
+    - name: priorDecision
+      expression: "oldObject == null ? '' : oldObject.metadata.?annotations['dev-env.haynesops.com/maintenance-decision'].orValue('')"
+    - name: restore
+      expression: "object.metadata.?annotations['dev-env.haynesops.com/maintenance-restore'].orValue('')"
+    - name: priorRestore
+      expression: "oldObject == null ? '' : oldObject.metadata.?annotations['dev-env.haynesops.com/maintenance-restore'].orValue('')"
+  validations:
+    - expression: >-
+        variables.decision == variables.priorDecision ||
+        (request.operation == 'UPDATE' && request.subResource == '' &&
+         request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator' &&
+         object.spec.type == 'maintenance' && object.spec == oldObject.spec &&
+         variables.priorDecision == '' && size(variables.decision) <= 2048)
+      message: only the authenticated operator adapter may set a maintenance decision once
+    - expression: >-
+        variables.restore == variables.priorRestore ||
+        (request.operation == 'UPDATE' && request.subResource == '' &&
+         request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator' &&
+         object.spec.type == 'maintenance' && object.spec == oldObject.spec && size(variables.restore) <= 1000)
+      message: only the scoped operator execution route may record a restore report
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-maintenance-annotations
+spec:
+  policyName: dev-env-maintenance-annotations
+  validationActions: [Deny]

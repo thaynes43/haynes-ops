@@ -55,7 +55,9 @@ spec:
               # v2.52.0 brings attested grants (D-88) and hw-ssh credential grants (D-89), both default off: this pin sets neither --enable-attested-grants nor --enable-hw-ssh-grants.
               # Was thaynes43/dev-env main eeb15e3, signed/verified keyless
               # by publish.yml on main (run 37798469467).
-              tag: sha-fd89b72@sha256:053d1905ecc6fb18c9a00189c50f1961949389264eaddd29b4e20c743eb8f5b3
+              # Source dev-env#739 merge 386317b84e97817c511cc54ac9a75470f6538840; publish run 41129212774.
+              # Operator job 124315516957 signed at 21:15:23Z and verified keyless at 21:15:24Z on 2026-10-30.
+              tag: sha-386317b@sha256:a080796f71def7f45e9153e0ea806d1be963afff742eee1850241385fc38e3e9
               pullPolicy: IfNotPresent
             args:
               - broker
@@ -78,6 +80,8 @@ spec:
               # keeper flag and the dev-env-hw-ssh-secret get rule (rbac keeper-credentials). Tom's
               # action-specific approval 2026-10-28T01:37:41Z.
               - --enable-hw-ssh-grants=true
+              - --enable-maintenance-grants=true
+              - --maintenance-human-service-account=dev-env-system/dev-env-human
               # No metrics Service until the console/monitoring deployment follows.
               - --metrics-bind-address=0
               - --health-probe-bind-address=:8081

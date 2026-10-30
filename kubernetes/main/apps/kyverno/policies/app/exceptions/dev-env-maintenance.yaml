@@ -1,0 +1,65 @@
+# UNAPPLIED. Requires the separate fail-closed maintenance shape/owner/exec guards.
+# No controller/autogen, namespace-wide or ordinary-session exception.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: pss-baseline-dev-env-maintenance
+  namespace: kyverno
+spec:
+  background: false
+  exceptions:
+    - policyName: pod-security-baseline
+      ruleNames: [baseline]
+  match:
+    any:
+      - resources:
+          kinds: [Pod]
+          namespaces: [dev-agents]
+          selector:
+            matchExpressions:
+              - key: dev-env.haynesops.com/maintenance
+                operator: Exists
+        subjects:
+          - kind: ServiceAccount
+            name: dev-env-broker
+            namespace: dev-env-system
+  conditions:
+    all:
+      - key: "{{ request.object.spec.serviceAccountName || '' }}"
+        operator: Equals
+        value: dev-env-maintenance
+      - key: "{{ request.object.metadata.labels.\"dev-env.haynesops.com/maintenance\" || '' }}"
+        operator: NotEquals
+        value: ""
+      - key: "{{ request.object.metadata.labels.\"dev-env.haynesops.com/grant\" || '' }}"
+        operator: Equals
+        value: "{{ request.object.metadata.name }}"
+      - key: "{{ length(request.object.metadata.ownerReferences || `[]`) }}"
+        operator: Equals
+        value: 1
+      - key: "{{ request.object.metadata.ownerReferences[0].apiVersion || '' }}"
+        operator: Equals
+        value: dev-env.haynesops.com/v1alpha1
+      - key: "{{ request.object.metadata.ownerReferences[0].kind || '' }}"
+        operator: Equals
+        value: AccessGrant
+      - key: "{{ request.object.metadata.ownerReferences[0].name || '' }}"
+        operator: Equals
+        value: "{{ request.object.metadata.name }}"
+      - key: "{{ request.object.metadata.ownerReferences[0].uid || '' }}"
+        operator: Equals
+        value: "{{ request.object.metadata.labels.\"dev-env.haynesops.com/maintenance\" }}"
+      - key: "{{ request.object.metadata.ownerReferences[0].controller || `false` }}"
+        operator: Equals
+        value: true
+  podSecurity:
+    - controlName: Capabilities
+      images: ["*"]
+      restrictedField: spec.containers[*].securityContext.capabilities.add
+      values: [SYS_ADMIN, SYS_RAWIO]
+    - controlName: HostPath Volumes
+      restrictedField: spec.volumes[*].hostPath
+      values:
+        - /dev/nvidia*
+        - /dev/dri/renderD*
+        - /var/lib/maintenance-inputs/*
