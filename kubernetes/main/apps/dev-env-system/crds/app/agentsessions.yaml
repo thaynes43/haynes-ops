@@ -841,6 +841,39 @@ spec:
                         description: ExitCode is the CLI's exit code.
                         format: int32
                         type: integer
+                      exitSource:
+                        description: ExitSource binds a post-Wait result to the original
+                          provider attempt.
+                        properties:
+                          attemptID:
+                            maxLength: 64
+                            pattern: ^[0-9a-f]{64}$
+                            type: string
+                          podUID:
+                            maxLength: 128
+                            minLength: 1
+                            type: string
+                          provider:
+                            enum:
+                            - claude
+                            - codex
+                            maxLength: 64
+                            type: string
+                          requestedModel:
+                            maxLength: 256
+                            minLength: 1
+                            type: string
+                          sessionUID:
+                            maxLength: 128
+                            minLength: 1
+                            type: string
+                        required:
+                        - attemptID
+                        - podUID
+                        - provider
+                        - requestedModel
+                        - sessionUID
+                        type: object
                       finishedAt:
                         description: FinishedAt is when the CLI exited.
                         format: date-time
@@ -856,6 +889,7 @@ spec:
                         description: |-
                           Subtype is the result event's subtype: success, error_max_turns or
                           error_during_execution.
+                        maxLength: 256
                         type: string
                       timedOut:
                         description: TimedOut is set when agentd stopped the task
@@ -1796,7 +1830,7 @@ spec:
                       Pod named by lastExecutor.podUID reached a terminal phase, every container
                       terminated, on a Ready node with a fresh lease. It sits beside
                       lastExecutor, which every observation rebuilds. It is evidence for HOME
-                      expiry only: stopState stays Unknown, and it authorizes no claim
+                      expiry and gated compute reclaim: stopState stays Unknown, with no claim
                       transfer, resume or replacement. Once written it never changes or goes.
                     properties:
                       claudeConfigDir:
@@ -2161,10 +2195,99 @@ spec:
                   stopState:
                     description: |-
                       StopState stays Unknown: executorTerminal is evidence for HOME expiry
-                      only, never DESIGN-010's stop contract (DESIGN-025 3.1).
+                      and gated compute reclaim, never DESIGN-010's stop contract (DESIGN-025).
                     enum:
                     - Unknown
                     type: string
+                  taskTerminal:
+                    description: |-
+                      TaskTerminal is the confirmed original provider exit and outcome. It
+                      authorizes compute reclaim only with its separate default-off flag.
+                    properties:
+                      dueAt:
+                        format: date-time
+                        type: string
+                      observedAt:
+                        format: date-time
+                        type: string
+                      task:
+                        description: 'TaskStatus is how a task ended (D-42): the CLI''s
+                          exit and its result event.'
+                        properties:
+                          exitCode:
+                            description: ExitCode is the CLI's exit code.
+                            format: int32
+                            type: integer
+                          exitSource:
+                            description: ExitSource binds a post-Wait result to the
+                              original provider attempt.
+                            properties:
+                              attemptID:
+                                maxLength: 64
+                                pattern: ^[0-9a-f]{64}$
+                                type: string
+                              podUID:
+                                maxLength: 128
+                                minLength: 1
+                                type: string
+                              provider:
+                                enum:
+                                - claude
+                                - codex
+                                maxLength: 64
+                                type: string
+                              requestedModel:
+                                maxLength: 256
+                                minLength: 1
+                                type: string
+                              sessionUID:
+                                maxLength: 128
+                                minLength: 1
+                                type: string
+                            required:
+                            - attemptID
+                            - podUID
+                            - provider
+                            - requestedModel
+                            - sessionUID
+                            type: object
+                          finishedAt:
+                            description: FinishedAt is when the CLI exited.
+                            format: date-time
+                            type: string
+                          isError:
+                            description: IsError is the result event's is_error.
+                            type: boolean
+                          numTurns:
+                            description: NumTurns is the number of turns the task
+                              took.
+                            format: int32
+                            type: integer
+                          subtype:
+                            description: |-
+                              Subtype is the result event's subtype: success, error_max_turns or
+                              error_during_execution.
+                            maxLength: 256
+                            type: string
+                          timedOut:
+                            description: TimedOut is set when agentd stopped the task
+                              at limits.timeout.
+                            type: boolean
+                        required:
+                        - exitCode
+                        - finishedAt
+                        type: object
+                    required:
+                    - dueAt
+                    - observedAt
+                    - task
+                    type: object
+                    x-kubernetes-validations:
+                    - message: terminal task requires original provider exit proof
+                      rule: has(self.task.exitSource)
+                    - message: terminal task grace follows a real observed exit
+                      rule: self.dueAt > self.observedAt && self.task.finishedAt <=
+                        self.observedAt
                   version:
                     enum:
                     - 1
@@ -2233,6 +2356,14 @@ spec:
                     expiryClearedAt in the same write
                   rule: '!has(oldSelf.expiry) || has(self.expiry) || (has(self.expiryClearedAt)
                     && (!has(oldSelf.expiryClearedAt) || self.expiryClearedAt > oldSelf.expiryClearedAt))'
+                - message: the terminal task observation cannot change or be removed
+                  rule: '!has(oldSelf.taskTerminal) || (has(self.taskTerminal) &&
+                    self.taskTerminal == oldSelf.taskTerminal)'
+                - message: the terminal task must name the original Session and executor
+                  rule: '!has(self.taskTerminal) || (has(self.lastExecutor) && self.taskTerminal.task.exitSource.podUID
+                    == self.lastExecutor.podUID && self.taskTerminal.task.exitSource.sessionUID
+                    == self.sessionUID && self.taskTerminal.task.exitSource.provider
+                    == self.provider)'
               remoteControl:
                 description: |-
                   RemoteControl is the session's Remote Control entry, for remote mode
