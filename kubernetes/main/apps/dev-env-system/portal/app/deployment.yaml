@@ -65,7 +65,7 @@ spec:
       containers:
         - name: portal
           # dev-env v2.66.0 (main 45da7cd, release #653; publish run 40944134349 signed and verified the portal image).
-          image: ghcr.io/thaynes43/dev-env-portal:sha-45da7cd@sha256:d7f36b7a6e2d12033c994d3572056a1bba987684f13be88802d8d26f3eaef595
+          image: ghcr.io/thaynes43/dev-env-portal:sha-3cb1913@sha256:53dbbd7f97ffffcd96a39d1b80c0bda128d36826c00344fa0910b9f6456860ab
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
