@@ -1,0 +1,13 @@
+---
+# OP280: retain one serving portal during a voluntary disruption. This does not
+# make agent processes replica-safe or authorize draining a node.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dev-env-v2-portal
+  namespace: dev-agents
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-v2-portal

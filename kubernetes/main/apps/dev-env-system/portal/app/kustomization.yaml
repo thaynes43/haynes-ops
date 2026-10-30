@@ -13,6 +13,7 @@ resources:
   - ./runtime-externalsecret.yaml
   - ./openproject-externalsecret.yaml
   - ./deployment.yaml
+  - ./pdb.yaml
   - ./ingressroute.yaml
 configMapGenerator:
   # Public CA certificates only, one key ca.crt each. The portal mounts each key as

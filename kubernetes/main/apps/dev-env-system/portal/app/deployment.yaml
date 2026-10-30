@@ -1,5 +1,8 @@
 ---
-# Story178 S8: the internal portal (dev-env-portal), one replica for the demo.
+# OP280: two internal portal replicas on distinct hosts. Sessions and send
+# reservations use shared Postgres and the same projected key/generation.
+# Launch MUST remain disabled: its dispatch lock is process-local (dev-env
+# web/portal/session/launch.go); qualify cross-replica launch before enabling it.
 #
 # The binary takes no flags and reads everything from /etc/dev-env-portal
 # (dev-env web/portal/session/production.go, LoadProduction, after dev-env#560):
@@ -31,7 +34,7 @@ metadata:
     configmap.reloader.stakater.com/reload: dev-env-v2-portal-config,dev-env-v2-portal-postgres-ca,dev-env-v2-portal-issuer-ca,dev-env-v2-portal-openproject-ca,dev-env-api-ca
     secret.reloader.stakater.com/reload: dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-openproject,dev-env-v2-portal-tls
 spec:
-  replicas: 1
+  replicas: 2
   revisionHistoryLimit: 2
   strategy:
     type: RollingUpdate
@@ -46,6 +49,13 @@ spec:
       labels:
         app.kubernetes.io/name: dev-env-v2-portal
     spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: dev-env-v2-portal
+              topologyKey: kubernetes.io/hostname
       # Registered by dev-env-rbac (portal-serviceaccount.yaml); not duplicated here.
       serviceAccountName: dev-env-v2-portal
       automountServiceAccountToken: false
