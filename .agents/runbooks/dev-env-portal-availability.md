@@ -37,7 +37,8 @@ allocated requests were calculated as the maximum of regular-plus-restartable-in
 requests and each init phase, plus Pod overhead, excluding terminal pods. The
 portal has no init containers, overhead, PVC, node selector or tolerations.
 One extra steady replica requests 25m CPU / 64Mi, limits 200m / 256Mi, with 16Mi
-emptyDir. The peak three replicas request 75m / 192Mi. Off-maintenance workers
+emptyDir. The nominal three non-terminating replicas request 75m / 192Mi; terminating
+processes can temporarily add to that usage. Off-maintenance workers
 w02 and w03 had respectively 1.71 / 2.92 CPU, 11840 / 32847Mi and 36 / 42 pod
 slots free by requests. Other eligible hosts also had room; w04 had a NoSchedule
 taint in that snapshot and is not relied on. Node metrics showed low utilization.
