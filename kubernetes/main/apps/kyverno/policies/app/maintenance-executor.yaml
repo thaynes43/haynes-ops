@@ -19,11 +19,11 @@ spec:
     - name: broker-or-maintenance
       expression: >-
         request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-broker' ||
-        (object != null && (object.spec.?serviceAccountName.orValue('') == 'dev-env-maintenance' || 'dev-env.haynesops.com/maintenance' in object.metadata.?labels.orValue({}))) ||
-        (oldObject != null && (oldObject.spec.?serviceAccountName.orValue('') == 'dev-env-maintenance' || 'dev-env.haynesops.com/maintenance' in oldObject.metadata.?labels.orValue({})))
+        (request.operation != 'DELETE' && (object.spec.?serviceAccountName.orValue('') == 'dev-env-maintenance' || 'dev-env.haynesops.com/maintenance' in object.metadata.?labels.orValue({}))) ||
+        (request.operation != 'CREATE' && (oldObject.spec.?serviceAccountName.orValue('') == 'dev-env-maintenance' || 'dev-env.haynesops.com/maintenance' in oldObject.metadata.?labels.orValue({})))
   variables:
     - name: pod
-      expression: 'object == null ? oldObject : object'
+      expression: "request.operation == 'DELETE' ? oldObject : object"
     - name: grant
       expression: resource.Get('dev-env.haynesops.com/v1alpha1', 'accessgrants', request.namespace, variables.pod.metadata.name)
     - name: task
@@ -145,7 +145,7 @@ spec:
       expression: "request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-broker'"
   variables:
     - name: policy
-      expression: 'object == null ? oldObject : object'
+      expression: "request.operation == 'DELETE' ? oldObject : object"
     - name: grant
       expression: resource.Get('dev-env.haynesops.com/v1alpha1', 'accessgrants', request.namespace, variables.policy.metadata.name)
   validations:
