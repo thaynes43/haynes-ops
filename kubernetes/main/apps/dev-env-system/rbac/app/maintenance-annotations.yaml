@@ -23,14 +23,14 @@ spec:
   validations:
     - expression: >-
         variables.decision == variables.priorDecision ||
-        (request.operation == 'UPDATE' && request.subResource == '' &&
+        (request.operation == 'UPDATE' && request.?subResource.orValue('') == '' &&
          request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator' &&
          object.spec.type == 'maintenance' && object.spec == oldObject.spec &&
          variables.priorDecision == '' && size(variables.decision) <= 2048)
       message: only the authenticated operator adapter may set a maintenance decision once
     - expression: >-
         variables.restore == variables.priorRestore ||
-        (request.operation == 'UPDATE' && request.subResource == '' &&
+        (request.operation == 'UPDATE' && request.?subResource.orValue('') == '' &&
          request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator' &&
          object.spec.type == 'maintenance' && object.spec == oldObject.spec && size(variables.restore) <= 1000)
       message: only the scoped operator execution route may record a restore report
