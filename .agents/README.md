@@ -13,6 +13,7 @@ guards whose degraded state is fail-open. Append findings there as you hit them;
 is worth more attention than a red.
 
 ## runbooks/ — step-by-step procedures
+- [dev-env-node-maintenance.md](runbooks/dev-env-node-maintenance.md) — planned node maintenance: keeper mint checks, portal interruption, operator/broker PDBs, session preservation, Flux holds, rollback and approval gates (OpenProject #280; procedure not runtime-validated).
 - [cursor-v1-worker.md](runbooks/cursor-v1-worker.md) — **Cursor My Machines worker on dev-env v1**: the pinned CLI install and post-ready tmux supervisor (bounded retries, breaker, disabled marker), the rendered shared Cursor rule, the staged MCP adapters whose activation is still parked, nonportable capabilities, restart acceptance and rollback.
 - [lazylibrarian-epub-metadata.md](runbooks/lazylibrarian-epub-metadata.md) — gated metadata removal, inventories, collision Holds, staged Jobs and verified backup restore.
 - [self-hosted-runners.md](runbooks/self-hosted-runners.md) — private-only repository-scoped ARC runners: App credentials, isolated worker pools, workflow cutover, rotation and scaling.
