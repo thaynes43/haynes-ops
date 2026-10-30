@@ -441,6 +441,7 @@ INPUT_OBJECTS = {
     ("ExternalSecret", "dev-env-v2-portal-runtime"),
     ("ExternalSecret", "dev-env-v2-portal-openproject"),
     ("ServersTransport", "dev-env-v2-portal"),
+    ("PodDisruptionBudget", "dev-env-v2-portal"),
 }
 
 
@@ -619,6 +620,11 @@ def registered_input_violations(docs):
             violations.append("forbidden-kind:" + doc["kind"])
         if doc.get("kind") == "Deployment":
             violations += ["deployment:" + v for v in deployment_violations(doc, docs)]
+        if doc.get("kind") == "PodDisruptionBudget":
+            if doc.get("apiVersion") != "policy/v1" or doc.get("spec") != {
+                    "minAvailable": 1,
+                    "selector": {"matchLabels": {"app.kubernetes.io/name": "dev-env-v2-portal"}}}:
+                violations.append("portal-disruption-budget")
         if doc.get("kind") == "IngressRoute":
             violations += ["route:" + v for v in route_violations(doc)]
         if doc.get("kind") == "Service" and doc.get("spec", {}).get("type", "ClusterIP") != "ClusterIP":
@@ -1626,7 +1632,7 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertEqual(manifest["resources"], [
             "./certificates.yaml", "./service.yaml", "./serverstransport.yaml",
             "./config.yaml", "./runtime-externalsecret.yaml", "./openproject-externalsecret.yaml",
-            "./deployment.yaml", "./ingressroute.yaml",
+            "./deployment.yaml", "./pdb.yaml", "./ingressroute.yaml",
         ])
         self.assertNotIn("namespace", manifest)
         self.assertNotIn("components", manifest)
@@ -1634,7 +1640,7 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in PORTAL_INPUTS.iterdir()), sorted([
             "kustomization.yaml", "certificates.yaml", "service.yaml", "serverstransport.yaml",
             "config.yaml", "runtime-externalsecret.yaml", "openproject-externalsecret.yaml", "issuer-ca.crt", "openproject-ca.crt",
-            "postgres-ca.crt", "deployment.yaml", "ingressroute.yaml",
+            "postgres-ca.crt", "deployment.yaml", "pdb.yaml", "ingressroute.yaml",
         ]))
         self.assertEqual(registered_input_violations(self.docs), [])
         self.assertNotIn("portal-registration", self.rendered)
@@ -1892,6 +1898,16 @@ class RegisteredInputsTest(unittest.TestCase):
         policy = load(POLICY_KS.parent / "app/networkpolicy.yaml")
         self.assertEqual(policy["spec"]["endpointSelector"]["matchLabels"],
                          deployment["spec"]["template"]["metadata"]["labels"])
+
+    def test_disruption_budget_rejects_wrong_selector_and_unavailable_floor(self):
+        for spec in (
+            {"minAvailable": 0, "selector": {"matchLabels": {"app.kubernetes.io/name": "dev-env-v2-portal"}}},
+            {"minAvailable": 1, "selector": {"matchLabels": {"app.kubernetes.io/name": "other"}}},
+            {"maxUnavailable": 1, "selector": {"matchLabels": {"app.kubernetes.io/name": "dev-env-v2-portal"}}},
+        ):
+            docs = deepcopy(self.docs)
+            next(d for d in docs if d["kind"] == "PodDisruptionBudget")["spec"] = spec
+            self.assertIn("portal-disruption-budget", registered_input_violations(docs))
 
     def test_deployment_guard_rejects_drift(self):
         def mutated(change):

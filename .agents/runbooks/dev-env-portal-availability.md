@@ -95,7 +95,9 @@ completes none of the wider story's keeper or node-loss acceptance criteria.
 
 The login-start admission limiter in dev-env `web/portal/session/engine.go` is
 per process, burst four / sustained one per second. Two replicas therefore allow
-aggregate burst eight / two per second. This changes a security-relevant limit;
+aggregate burst eight / two per second at steady state, and burst twelve /
+three per second during a three-process rolling surge. The existing singleton
+also permits a two-process surge today. This changes a security-relevant limit;
 Tom's routine replica-deployment authorization does not silently approve it.
 Deployment/merge of this PR stays held pending an explicit ruling on that exact
 effect, or a separately reviewed implementation preserving the aggregate limit.
