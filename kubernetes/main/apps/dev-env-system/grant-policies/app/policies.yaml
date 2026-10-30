@@ -218,6 +218,40 @@ spec:
       - port: 22
   maxTTL: 1h
 ---
+# ---- PiKVM SSH, agent-attested (Tom, 2026-10-30T01:14:26Z; OP278) ----
+# Strict public pin delivery: scripts/pikvm-ssh/check.sh. OP278 journal2928 records
+# established v1 provenance; final review/CI and strict live verification are required.
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: egress-pikvm-ssh-attested
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Tom approved on 2026-10-30T01:14:26Z, replying to the 01:14:07Z packet:
+    on-request SSH to PiKVM at 192.168.40.33/32, TCP22 only, for full-profile
+    haynes-ops sessions, up to 1h per grant. Requires an independently verified
+    host-key pin and strict SSH checking before login. Use the existing separate
+    credential-hw-ssh-attested lease; its shared key has root/hardware-control
+    authority and release cannot revoke copied material. Approval is the requesting
+    agent's own attestation of user/coordinator approval, not verified human identity.
+    No web/API, KVM input, media, power or configuration actions are authorized by
+    this policy. Request with --type egress --cidr 192.168.40.33/32 --port 22 --ttl 1h,
+    then attest with the exact approval reference. Release both grants after use;
+    removing this policy prevents new approvals but does not end Active grants.
+  attested:
+    profiles: [full]
+    repos: [haynes-ops]
+  type: egress
+  egress:
+    cidrs: [192.168.40.33/32]
+    ports:
+      - port: 22
+        protocol: TCP
+  maxTTL: 1h
+---
 # ---- node/drain role, agent-attested (D-88; Tom, 2026-10-28T02:57:14Z) ----
 # Standing scope for the full-profile haynes-ops class. The role is cluster-wide.
 apiVersion: dev-env.haynesops.com/v1alpha1
