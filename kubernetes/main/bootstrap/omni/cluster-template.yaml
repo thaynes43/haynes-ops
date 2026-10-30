@@ -76,7 +76,7 @@ machines:
   - 83596797-0281-4927-94fb-f34bb869b1de
   - 2fe46add-9e72-401c-8ec1-b5fb6837ffa0
   - 960513a6-7a1d-4ece-949d-54a022fe85e5
-  # talosw04: the eGPU test node (ex-edgew01). Sync this only once the machine shows up
+  # talosw04: the OCuLink-eGPU worker (ex-edgew01). Sync this only once the machine shows up
   # in `omnictl get machines`; an unregistered entry leaves this machine set ScalingUp,
   # which stalls Kubernetes-version upgrades. See .agents/runbooks/egpu-test-node.md.
   - 77d65c00-5811-11ef-b65b-a8751caa6100
@@ -1325,12 +1325,10 @@ patches:
 # extension or authorization is involved), the ex-`edgew01` of the retired edge cluster (same
 # machine id; it was registered only with the decommissioned self-hosted Omni, so it re-joins
 # from SaaS-Omni boot media). OCuLink is not hot-pluggable: the dock must be cabled and
-# powered before the PC boots or the card does not enumerate. It is a swappable GPU TEST
-# node: the kubelet registers it with the NoSchedule taint `haynesops.com/gpu-test`, so only
-# pods that tolerate it land here (the nvidia device plugin, the GPU exporter, the
-# toleration-everything DaemonSets, and the test Jobs). First card on it: the suspect RTX
-# 3090 from #3052.
-# Procedure and test ladder: .agents/runbooks/egpu-test-node.md.
+# powered before the PC boots or the card does not enumerate. It was the tainted GPU TEST
+# node from 2026-10 until Tom retired that role on 2026-10-30 (OpenProject #279): it is now
+# an ordinary worker with no taint, hosting Muse on RTX 3090 card B (NFD labels it like any
+# other GPU node). History and dock procedure: .agents/runbooks/egpu-test-node.md.
 kind: Machine
 systemExtensions:
   # AMD Ryzen 9 8945HS (machinestatus, 2026-10-02).
@@ -1415,16 +1413,9 @@ patches:
             kubeReserved:
               cpu: 500m
               memory: 2Gi
-            # The test-node taint. It is set at kubelet REGISTRATION, not through
-            # machine.nodeTaints: NodeRestriction forbids a worker's kubelet from changing
-            # taints on an existing Node, which is the path Talos uses for nodeTaints on
-            # workers (Talos config docs say so). Registration taints are allowed. If the
-            # taint is ever removed by hand, it comes back only when the Node object is
-            # re-created (`kubectl delete node talosw04`, then the kubelet re-registers).
-            registerWithTaints:
-              - key: haynesops.com/gpu-test
-                value: "true"
-                effect: NoSchedule
+            # No registerWithTaints: the gpu-test taint went with the test role (#279).
+            # Removing it here does not untaint the existing Node object; that takes
+            # `kubectl taint nodes talosw04 haynesops.com/gpu-test-` once.
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -1476,9 +1467,4 @@ patches:
                 forwardKubeDNSToHost: false
         nodeLabels:
             topology.kubernetes.io/region: main
-            # Same zone as the other workers on purpose: a zone of its own would be a
-            # topology domain no untolerating pod can ever fill.
             topology.kubernetes.io/zone: w
-            # Selector for the GPU exporter and the test Jobs, and the opt-out for Cilium L2
-            # announcements (kube-system/cilium/config/cilium-l2.yaml).
-            haynesops.com/gpu-test: "true"
