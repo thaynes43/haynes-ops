@@ -219,8 +219,8 @@ spec:
   maxTTL: 1h
 ---
 # ---- PiKVM SSH, agent-attested (Tom, 2026-10-30T01:14:26Z; OP278) ----
-# HOLD: do not merge/activate until the independently verified public host key and
-# strict session trust delivery are reviewed. See .agents/handoffs/2026-10-30-pikvm-ssh.md.
+# Strict public pin delivery: scripts/pikvm-ssh/check.sh. OP278 journal2928 records
+# established v1 provenance; final review/CI and strict live verification are required.
 apiVersion: dev-env.haynesops.com/v1alpha1
 kind: GrantPolicy
 metadata:
