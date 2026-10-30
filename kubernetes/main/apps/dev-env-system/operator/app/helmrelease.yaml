@@ -123,7 +123,7 @@ spec:
               # OP302 (deploys OP291): source 030133dc9dd9ac24a2c61f30f12ee8e402bd4bf2 (v2.71.0, dev-env#727: #729 terminal task pod reclaim and #730 codex-rc image flags, both default off).
               # Supersedes the OP252 pin dddc2c1 (v2.70.0, Tom approved packet bf6cbafe); every OP252 arg below is kept unchanged.
               # publish.yml run 41088359336 signed and verified this exact digest; post-merge CI run 41088359765 green.
-              # Requires the v2.71.0 AgentSession schema in dev-env-crds (haynes-ops #4450). Reclaim stays off until Tom's activation ruling.
+              # Requires the v2.71.0 AgentSession schema in dev-env-crds (haynes-ops #4450). Reclaim is on since #4453 (OP302 step 4); see its flag block below.
               # Operator image only: keeper, broker, portal, templates and existing Session pods stay unchanged.
               tag: sha-030133d@sha256:02e7b3bd452649e1418cfb0e80035fa63679a9a5438697f688ef3742fe1a58b5
               pullPolicy: IfNotPresent
