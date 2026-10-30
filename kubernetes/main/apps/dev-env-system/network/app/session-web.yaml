@@ -26,6 +26,9 @@ spec:
     matchLabels:
       io.kubernetes.pod.namespace: dev-agents
     matchExpressions:
+      # Maintenance executors have no additive platform or public-web tier.
+      - key: dev-env.haynesops.com/maintenance
+        operator: DoesNotExist
       - key: dev-env.haynesops.com/project-canary
         operator: DoesNotExist
       # These fixtures have dedicated egress; no additive public-web tier.

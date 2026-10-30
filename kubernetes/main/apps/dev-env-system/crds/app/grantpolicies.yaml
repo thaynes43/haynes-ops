@@ -342,6 +342,7 @@ spec:
                 - egress
                 - credential
                 - breakglass
+                - maintenance
                 type: string
             required:
             - description
@@ -349,9 +350,9 @@ spec:
             - type
             type: object
             x-kubernetes-validations:
-            - message: 'no policy can approve break-glass: Tom approves every one
-                on the page (D-27)'
-              rule: self.type != 'breakglass'
+            - message: 'no standing policy approves break-glass or maintenance: authenticated
+                human approval is required'
+              rule: self.type != 'breakglass' && self.type != 'maintenance'
             - message: kube is set for type kube, and only there
               rule: (self.type == 'kube') == has(self.kube)
             - message: egress is set for type egress, and only there

@@ -125,7 +125,9 @@ spec:
               # publish.yml run 41088359336 signed and verified this exact digest; post-merge CI run 41088359765 green.
               # Requires the v2.71.0 AgentSession schema in dev-env-crds (haynes-ops #4450). Reclaim is on since #4453 (OP302 step 4); see its flag block below.
               # Operator image only: keeper, broker, portal, templates and existing Session pods stay unchanged.
-              tag: sha-030133d@sha256:02e7b3bd452649e1418cfb0e80035fa63679a9a5438697f688ef3742fe1a58b5
+              # Source dev-env#739 merge 386317b84e97817c511cc54ac9a75470f6538840; publish run 41129212774.
+              # Operator job 124315516957 signed at 21:15:23Z and verified keyless at 21:15:24Z on 2026-10-30.
+              tag: sha-386317b@sha256:a080796f71def7f45e9153e0ea806d1be963afff742eee1850241385fc38e3e9
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -289,6 +291,7 @@ spec:
               # approved it (agent attestation, not verified human identity). The broker flag and an
               # attested GrantPolicy are what act on it. Tom's action-specific approval 2026-10-28T01:37:41Z.
               - '--enable-grant-attestation=true'
+              - '--enable-maintenance-api=true'
               # Off by default and not set: --enable-child-usage-capture (dev-env#517).
               # The other flags keep their defaults:
               # --templates-name dev-env-templates in this namespace (the Lease lives

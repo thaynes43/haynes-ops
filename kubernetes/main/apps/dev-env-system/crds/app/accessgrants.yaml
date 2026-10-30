@@ -1,7 +1,7 @@
 ---
 # The AccessGrant CRD, generated in thaynes43/dev-env from api/v1alpha1.
-# Source: dev-env main eeb15e3, PR #111, including the immutable requester
-# sessionUID field. The code is reviewed and merged; runtime minting stays off.
+# Source: dev-env 976ae2a (merged PR #732), plus a858cac (source PR #739).
+# Source preparation only; runtime activation remains held.
 # The generated config/crd/dev-env.haynesops.com_accessgrants.yaml follows below.
 # Never edit the schema here: change api/v1alpha1 in dev-env, run `make generate`,
 # and copy the result. Keep it in step with the broker/operator image pins.
@@ -241,6 +241,152 @@ spec:
                     and take no namespaces; the other roles name at least one
                   rule: (self.role == 'dev-env-grant-nodes' || self.role == 'dev-env-grant-breakglass')
                     == (!has(self.namespaces) || size(self.namespaces) == 0)
+              maintenance:
+                description: Maintenance is an immutable task envelope.
+                properties:
+                  capabilities:
+                    items:
+                      enum:
+                      - SYS_ADMIN
+                      - SYS_RAWIO
+                      type: string
+                    maxItems: 2
+                    type: array
+                    x-kubernetes-list-type: set
+                  coordinator:
+                    description: MaintenanceIdentity pins an already authenticated
+                      session and original pod.
+                    properties:
+                      name:
+                        maxLength: 63
+                        minLength: 1
+                        type: string
+                      podUID:
+                        maxLength: 64
+                        minLength: 1
+                        type: string
+                      uid:
+                        maxLength: 64
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    - podUID
+                    - uid
+                    type: object
+                  cpuMillis:
+                    format: int64
+                    maximum: 2000
+                    minimum: 10
+                    type: integer
+                  devices:
+                    description: Devices are exact device files; cgroup/device runtime
+                      support is a held prerequisite.
+                    items:
+                      maxLength: 253
+                      type: string
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-type: set
+                  extensionOf:
+                    description: ExtensionOf requests more time via a new separately
+                      approved immutable grant.
+                    maxLength: 63
+                    type: string
+                  image:
+                    description: Image must be digest pinned; broker repeats the syntax
+                      check.
+                    maxLength: 512
+                    type: string
+                  memoryMiB:
+                    format: int64
+                    maximum: 4096
+                    minimum: 16
+                    type: integer
+                  node:
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                  nodeUID:
+                    maxLength: 64
+                    minLength: 1
+                    type: string
+                  operation:
+                    description: Operation is audit intent; arbitrary commands cannot
+                      be semantically confined.
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                  readOnlyMounts:
+                    description: ReadOnlyMounts are explicit host files under /var/lib/maintenance-inputs
+                      only.
+                    items:
+                      maxLength: 253
+                      type: string
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-type: set
+                  resource:
+                    description: Resource is an exact device/resource identity shown
+                      for approval.
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                  restore:
+                    description: Restore is the authorized restore/readback procedure,
+                      not automatic rollback.
+                    maxLength: 1000
+                    type: string
+                  runtimeProfile:
+                    description: RuntimeProfile selects a fixed broker-derived runtime;
+                      omission preserves host devices.
+                    enum:
+                    - nvidia-utility
+                    type: string
+                  workers:
+                    description: Workers are explicitly delegated direct children,
+                      sharing the same lease.
+                    items:
+                      description: MaintenanceIdentity pins an already authenticated
+                        session and original pod.
+                      properties:
+                        name:
+                          maxLength: 63
+                          minLength: 1
+                          type: string
+                        podUID:
+                          maxLength: 64
+                          minLength: 1
+                          type: string
+                        uid:
+                          maxLength: 64
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      - podUID
+                      - uid
+                      type: object
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-type: atomic
+                required:
+                - coordinator
+                - cpuMillis
+                - image
+                - memoryMiB
+                - node
+                - nodeUID
+                - operation
+                - resource
+                type: object
+                x-kubernetes-validations:
+                - message: immutable task scope
+                  rule: self == oldSelf
+                - message: nvidia-utility requires an exact GPU UUID and no explicit
+                    devices
+                  rule: '!has(self.runtimeProfile) || (self.resource.matches(''^GPU-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$'')
+                    && (!has(self.devices) || size(self.devices) == 0))'
               reason:
                 description: |-
                   Reason is why the agent asks, in its own words. The approval page shows
@@ -320,6 +466,7 @@ spec:
                 - egress
                 - credential
                 - breakglass
+                - maintenance
                 type: string
                 x-kubernetes-validations:
                 - message: immutable after create; only release may change
@@ -335,6 +482,8 @@ spec:
               rule: (self.type == 'kube' || self.type == 'breakglass') == has(self.kube)
             - message: egress is set for type egress, and only there
               rule: (self.type == 'egress') == has(self.egress)
+            - message: maintenance is set only for a maintenance task
+              rule: (self.type == 'maintenance') == has(self.maintenance)
             - message: credential is set for type credential, and only there
               rule: (self.type == 'credential') == has(self.credential)
             - message: type breakglass and role dev-env-grant-breakglass go together
@@ -350,10 +499,16 @@ spec:
               rule: self.type != 'breakglass' || duration(self.ttl) <= duration('1h')
             - message: immutable after create; only release may change
               rule: has(self.kube) == has(oldSelf.kube) && has(self.egress) == has(oldSelf.egress)
-                && has(self.credential) == has(oldSelf.credential)
+                && has(self.credential) == has(oldSelf.credential) && has(self.maintenance)
+                == has(oldSelf.maintenance)
             - message: release cannot be taken back
               rule: '!(has(oldSelf.release) && oldSelf.release) || (has(self.release)
                 && self.release)'
+            - message: maintenance requires the authenticated coordinator UID and
+                at most one hour
+              rule: self.type != 'maintenance' || (duration(self.ttl) <= duration('1h')
+                && has(self.requester.sessionUID) && self.maintenance.coordinator.name
+                == self.requester.session && self.maintenance.coordinator.uid == self.requester.sessionUID)
           status:
             description: |-
               AccessGrantStatus is the broker's record of the grant. Only the broker
@@ -398,6 +553,27 @@ spec:
                   pod (a resume, a drain) gets it installed again.
                 maxLength: 64
                 type: string
+              maintenance:
+                description: Maintenance keeps executor termination and restore evidence
+                  separate.
+                properties:
+                  executor:
+                    enum:
+                    - Running
+                    - StopPending
+                    - Terminated
+                    - Unknown
+                    - NotCreated
+                    type: string
+                  podUID:
+                    maxLength: 64
+                    type: string
+                  restoreEvidence:
+                    description: RestoreEvidence is an attributed agent report, not
+                      independently proven hardware state.
+                    maxLength: 1000
+                    type: string
+                type: object
               message:
                 description: Message says why a grant was denied or failed, in a line.
                 maxLength: 1024

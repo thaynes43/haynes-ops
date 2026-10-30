@@ -19,3 +19,7 @@ resources:
   - ./exceptions/egpu-test-capabilities.yaml
   - ./exceptions/llama-card-b-power-cap.yaml
   - ./exceptions/arc-dind.yaml
+  - ./maintenance-exec.yaml
+  - ./maintenance-executor.yaml
+  - ./exceptions/dev-env-maintenance.yaml
+  - ./maintenance-admission-lookups.yaml
