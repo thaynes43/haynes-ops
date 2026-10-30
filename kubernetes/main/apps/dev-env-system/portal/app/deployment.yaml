@@ -64,7 +64,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # dev-env v2.66.0 (main 45da7cd, release #653; publish run 40944134349 signed and verified the portal image).
+          # dev-env main 3cb19139 (after v2.68.0; dev-env#693; publish run 40988713467 signed and verified the portal image).
           image: ghcr.io/thaynes43/dev-env-portal:sha-3cb1913@sha256:53dbbd7f97ffffcd96a39d1b80c0bda128d36826c00344fa0910b9f6456860ab
           imagePullPolicy: IfNotPresent
           ports:
