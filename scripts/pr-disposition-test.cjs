@@ -25,13 +25,14 @@ async function classify(options={}, runner=run) {
   const files=(options.files || ['kubernetes/main/apps/media/tautulli/app/helmrelease.yaml']).map(filename=>({filename}));
   const comments=options.comments || [];
   let reads=0;
+  const listedItem=options.listed?{...pr,...options.listed}:pr;
   const rest={pulls:{list(){},listFiles(){},async get(){
     readCalls.push('pr');reads++;if(options.fail==='pr')throw Error('fixture failed PR read');
     return {data: reads>1 && options.latest ? {...pr,...options.latest}:pr};
   }},issues:{listComments(){},async removeLabel(d){labelCalls.push({method:'removeLabel',...d});writes.push({kind:'remove',name:d.name});},
     async addLabels(d){labelCalls.push({method:'addLabels',...d});writes.push({kind:'add',labels:d.labels});}}};
   const github={rest,async paginate(method){
-    if(method===rest.pulls.list)return [pr];
+    if(method===rest.pulls.list)return [listedItem];
     if(method===rest.pulls.listFiles){readCalls.push('files');if(options.fail==='files')throw Error('fixture failed files');return options.badFiles ?? files;}
     if(method===rest.issues.listComments){readCalls.push('comments');if(options.fail==='comments')throw Error('fixture failed comments');return options.badComments ?? comments;}
     throw Error('Unexpected GitHub request');
@@ -40,7 +41,8 @@ async function classify(options={}, runner=run) {
   if(baseline && runner===run) {
     const before=await classify(options,baseline);
     assert.equal(JSON.stringify(labelCalls),JSON.stringify(before.labelCalls),'byte-identical label API calls');
-    if(pr.user.login!=='haynes-ops-bot[bot]') {
+    const listedAsShepherd=listedItem.user?.login==='haynes-ops-bot[bot]' && listedItem.head?.ref?.startsWith('shepherd/');
+    if(pr.user.login!=='haynes-ops-bot[bot]' && !listedAsShepherd) {
       const legacyLogs=logs.map(line=>{
         if(!line.startsWith('{'))return line;
         const {repository,attempt,claim,claimBasis,...legacy}=JSON.parse(line);
@@ -135,6 +137,14 @@ const vet=(verdict,sha=SHA,login='haynes-ops-bot[bot]')=>({id:6540904846,body:`<
       assert(result.logs.some(s=>s.includes('actual=Unknown reason=read-failure')));
     });
   }
+  const readFailure=result=>{
+    assert.deepEqual(result.labelCalls,[]);assert.deepEqual(records(result),[]);
+    assert(result.logs.some(s=>s.includes('actual=Unknown reason=read-failure')));
+  };
+  const shepherdListed={user:{login:'haynes-ops-bot[bot]'},head:{ref:'shepherd/test-image',sha:SHA}};
+  await provenanceCheck('listed Shepherd fetched as Renovate',{listed:shepherdListed},readFailure);
+  await provenanceCheck('listed Shepherd fetched as human',{listed:shepherdListed,pr:{user:{login:'human'}}},readFailure);
+  await provenanceCheck('listed Renovate fetched as Shepherd',{listed:{user:{login:'renovate[bot]'},head:{ref:'renovate/test-image',sha:SHA}},pr:{user:{login:'haynes-ops-bot[bot]'},head:{ref:'shepherd/test-image',sha:SHA}}},readFailure,false);
   await provenanceCheck('human on a Shepherd branch',{pr:{...shepherd,user:{login:'human'}}},result=>{
     assert.deepEqual(records(result),[]);assert.deepEqual(result.labelCalls,[]);assert.deepEqual(result.readCalls,[]);
   },false);
