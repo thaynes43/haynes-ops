@@ -74,8 +74,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # dev-env v2.73.1 release merge 1a299f93 (adds dev-env#742 usable list at 701-960px and #743 top bar stays in place on selection; keeps #735 allowance, #707 focus and #703 shared login limiter; publish run 41137715579 signed and verified the portal image).
-          image: ghcr.io/thaynes43/dev-env-portal:sha-1a299f9@sha256:8fee78019852456ecd9b38a3d906a248f3ba75ab0c9a76becd05a54c6566c0a8
+          # dev-env v2.74.0 release merge 1a505231 (adds dev-env#748 selected item marked with aria-current, #746 Pages response fields that stay Unconfigured in production, #745 allowance conflicts refused; keeps #742/#743, #707 focus and #703 shared login limiter; publish run 41154176294 signed and verified the portal image).
+          image: ghcr.io/thaynes43/dev-env-portal:sha-1a50523@sha256:6620e5971f5d74cc17b93c654f73525b5e6893500404bd2890fd263f3b0a82fa
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
