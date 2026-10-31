@@ -45,8 +45,22 @@ keys.
 > - **not now**.
 
 **Lead's recommendation (dev-env-1029-132039):** approve as written, with `dev` deferred.
-That keeps every routine read audit-separable from Admin work, and adds no new reach to a
+That lets the audit log tell routine Talos access (`talos_access` events) apart from Admin
+work. Ordinary Omni GET reads are not audited at all (see below). It also adds no reach to a
 web-egress profile that has no Omni access today.
+
+**Read-only is not low sensitivity.** See "Narrowing assessment" below. Omni has no native
+scope narrower than Reader that still allows routine health reads. An access policy can only
+raise a role, and scoping to one cluster still exposes that cluster's secrets. A Reader key
+can read the NUT secondary password and a join token. The NUT password is in clear even in
+the *redacted* machine configs and diffs. Omni does not audit reads.
+- `full` and `workbench` already hold Admin, so the Reader key gives them **no additional
+  read capability**. It is still a **new persistent credential** in those pods, with its
+  own leak and rotation surface. Audit separation covers only the events Omni actually
+  records (`talos_access`, `k8s_access` and writes). Ordinary Omni GET reads are not
+  audited at all, so routine Reader reads leave only the account's "last active" time.
+- Giving it to `dev` WOULD add that exposure, to a profile with open web egress.
+  **Not recommended.**
 
 **Rollout impact:**
 - Tom's account creation has no cluster effect.
@@ -156,10 +170,14 @@ ServiceAccount.
 - **Join-token resources** (`canreadjointokens: true`). Assume a Reader can see the token.
 - **Machine configs:**
   - No role can read the unredacted machine config through the resource API.
-  - A Reader can read `RedactedClusterMachineConfig`.
-  - A Reader can also read `MachineConfigDiff`. I did not check whether it is redacted.
+  - A Reader can read `RedactedClusterMachineConfig` and `MachineConfigDiff`. **Both still
+    carry the NUT password in clear.** Talos redaction skips `ExtensionServiceConfig`; see the
+    Narrowing assessment below.
+- **The Talos kernel command line,** through `os:reader`. On talosm01 and talosw01 it carries a
+  join token.
 
-So handle the Reader key exactly like the other keys in `dev-env`.
+So handle the Reader key exactly like the other keys in `dev-env`. Extend the never-print rule
+to patch `spec.data`, redacted configs, config diffs, the kernel command line and boot `dmesg`.
 
 **Reads a Reader cannot do.** On Talos 1.12 and later, `talosctl read` and `cp` need
 `os:admin`, and Omni forwards them with `os:admin` only for Operator and higher. Several
@@ -196,8 +214,8 @@ Those reads stay on the Admin account, in a session that holds it.
 
 | Consumer | Gets | Why |
 |---|---|---|
-| v2 profile `dev` | the Reader key as `OMNI_SERVICE_ACCOUNT_KEY`, plus `OMNI_ENDPOINT` | It has no Omni access today. Plain `omnictl` and `talosctl` then run as the Reader with no wrapper. Its web egress tier already reaches the Omni SaaS endpoint on port 443. |
-| v2 profiles `full` and `workbench` | **Admin unchanged** as `OMNI_SERVICE_ACCOUNT_KEY`. Recommended, pending Tom's choice: the Reader key added as `OMNI_READER_KEY`. | Routine reads can then run as the Reader: `OMNI_SERVICE_ACCOUNT_KEY="$OMNI_READER_KEY" omnictl …`. `talosctl` reads the same variable. The audit log then separates routine inspection from Admin work. Nothing about Admin changes. |
+| v2 profile `dev` (**optional, NOT recommended**; see the Decision and the Narrowing assessment) | the Reader key as `OMNI_SERVICE_ACCOUNT_KEY`, plus `OMNI_ENDPOINT`, only if Tom chooses "also give dev" | It has no Omni access today. Plain `omnictl` and `talosctl` then run as the Reader with no wrapper. Its web egress tier already reaches the Omni SaaS endpoint on port 443. |
+| v2 profiles `full` and `workbench` | **Admin unchanged** as `OMNI_SERVICE_ACCOUNT_KEY`. Recommended, pending Tom's choice: the Reader key added as `OMNI_READER_KEY`. | Routine reads can then run as the Reader: `OMNI_SERVICE_ACCOUNT_KEY="$OMNI_READER_KEY" omnictl …`. `talosctl` reads the same variable. Recorded `talos_access` events then show the Reader identity for routine Talos access. Ordinary Omni GET reads are not audited. Nothing about Admin changes. |
 | v2 profile `ops` | nothing for now | Its egress tier has no web access, so it cannot reach Omni. Reaching it would take a network-policy change, which needs its own approval. |
 | `rule-canary-*` | nothing | These profiles carry as few credentials as possible by design. |
 | v1 pod (namespace `dev`) | nothing; it keeps Admin | v1 is being retired, and changing its wiring restarts the pod (a runtime hold). |
@@ -205,7 +223,8 @@ Those reads stay on the Admin account, in a session that holds it.
 
 **Risk of adding `dev`.** `dev` is a narrower profile than `full`, yet it has open web egress
 (`network/app/session-web.yaml`). The Reader key would give it reads that carry secrets: the
-NUT password in the config patches, and join tokens. Tom should weigh this when ruling on `dev`.
+NUT password, in the patches and also in the redacted configs and diffs, plus join tokens. The
+lead recommends against `dev`.
 
 ### Secret distribution (the existing route only)
 
@@ -221,7 +240,7 @@ controller, mount type or namespace.
      `OMNI_READER_KEY`.
    - It is its own ExternalSecret, following the isolation rule at the top of that file.
 3. **Profile wiring in `templates.yaml`:**
-   - in `dev`, the plain value `OMNI_ENDPOINT=https://haynes.na-west-1.omni.siderolabs.io:443`
+   - in `dev`, ONLY if Tom chooses "also give dev", which is not recommended: the plain value `OMNI_ENDPOINT=https://haynes.na-west-1.omni.siderolabs.io:443`
      and `OMNI_SERVICE_ACCOUNT_KEY` as a `secretKeyRef` with `optional: true`;
    - in `full` and `workbench`, if Tom chooses them, `OMNI_READER_KEY` the same way.
    - Do not use `envFrom`, and do not add the key to `dev-env-mcp-secret`, which other
@@ -267,7 +286,9 @@ The session rules forbid testing the role by trying a write. Acceptance therefor
 the server reports about the account. These are the options for Tom. I have run none of them.
 
 **A. Server-reported role and capabilities (recommended).** These are all reads. The
-implementation story runs them from a `dev` session, which holds only the Reader key.
+implementation story runs them from a fresh `full` or `workbench` session, with
+`OMNI_SERVICE_ACCOUNT_KEY="$OMNI_READER_KEY"` set for each command, so the Reader identity is the
+one checked. If Tom chose "also give dev", a `dev` session works too.
 
 1. `omnictl get currentuser -o yaml` shows `role: Reader`.
 2. `omnictl get permissions -o yaml` shows exactly six flags true: `canreadclusters`,
@@ -370,10 +391,11 @@ key through that session.
 3. Update the "Credentials in this pod" row in
    `apps/dev-env-system/session-config/app/config/claude/CLAUDE.md`, which restarts nothing.
    The new row says:
-   - on `dev`, sessions run as the Reader;
+   - on `dev`, ONLY if Tom chose "also give dev" (not recommended), sessions run as the Reader;
    - on `full` and `workbench`, routine reads use `OMNI_READER_KEY`, and the Admin key stays
      for authorized writes.
-4. Run acceptance A from a fresh `dev` session, and record the output on the story with no key
+4. Run acceptance A from a fresh `full` or `workbench` session with the Reader key selected
+   explicitly (or from `dev`, only if Tom chose it). Record the output on the story with no key
    material.
 5. Correct the outdated "Reader" wording listed below, keeping clear of the v1 restart path.
 
@@ -409,3 +431,62 @@ existed, a Reader kubeconfig would not allow `kubectl get` without an ACL.
 Fix these in the implementation story or in a small docs story. Hold the files mounted into
 the v1 pod. Because each of these asserts a safety property the cluster lacks, it also belongs in
 `.agents/HARDENING.md`.
+
+## Narrowing assessment (2026-10-31)
+
+Question: is there a native Omni scope narrower than Reader that allows routine health reads but not config-patch payloads or join tokens? Sources: Omni `v1.13.0` (`c688bb6`), Talos `v1.13.9` for node RBAC, and Talos machinery `3ba3d6a5e784` (Omni's `go.mod` pin) for redaction. Omni paths are relative to the Omni repository. Live checks used the existing Admin key for reads only. They printed names and counts, never a value: `accesspolicies` is empty, the service accounts are `dev-env-node-triage` (Admin), `dev-env-omni-operator` (Operator) and `haynes-m5max-ktlo` (Admin), and `dev-env-omni-reader` does not exist yet.
+
+**(a) No.**
+- The roles are a fixed ladder: None, InfraProvider, Reader, Auditor, Operator, Admin (`client/pkg/access/role/role.go`: `roles`, `Role.Check`). Auditor is Reader plus the audit log.
+- InfraProvider is the only role between None and Reader. `internal/pkg/auth/serviceaccount/serviceaccount.go:Create` allows it only for `infra-provider:` accounts. It can read `Machine`, `siderolink.APIConfig` and `ConnectionParams` (`internal/backend/runtime/omni/state_access.go:filterAccess`). `ConnectionParams.spec.join_token` holds the default join token. InfraProvider cannot read cluster or machine status.
+- Omni checks access by role and resource type only. No rule hides fields. `filterAccess` puts `ConfigPatch`, `ClusterMachineConfigPatches`, `JoinToken`, `DefaultJoinToken` and `ClusterStatus` in the same Reader case. `filterAccessByType` limits verbs, not fields.
+- The `permissions` and `clusterpermissions` flags are UI hints computed from the role (`internal/backend/runtime/omni/virtual/state.go:permissions`, `clusterPermissions`). They enforce nothing. For example, `canreadkubernetesmanifests` is false for Reader, yet `filterAccess` lets a Reader read `KubernetesManifestGroup`.
+
+**(b) ACLs only raise a role. Scoping to one cluster still exposes that cluster's secrets.**
+- `internal/pkg/auth/accesspolicy/accesspolicy.go:Check` returns the highest role among the rules that match. `cluster.go:RoleForCluster` and `ApplyClusterAccessPolicy` then return `role.Max(userRole, aclRole)`. An ACL cannot lower a Reader. The reviewer was right.
+- Cluster scoping works only from role None. You create the account with `--role None` and add an ACL rule that grants Reader on one cluster. `internal/pkg/auth/check.go:policyAssignableRoles` allows an ACL to assign None or Reader. `state_access.go:checkForRole` raises the role only for types in `clusterIDTypeSet` and `clusterLabelTypeSet`. The Talos proxy (`internal/backend/grpc/router/talos_backend.go:GetConnection`) and `management.go:MachineLogs` apply the same ACL.
+- That setup hides the account-wide join-token resources, `GetMachineJoinConfig`, `InstallationMediaConfig`, and the five machine-level `500-*` patches. Those patches carry no cluster label (live count). The account also loses `MachineStatus` and `Machine`, which the runbooks read. A list needs `-l omni.sidero.dev/cluster=<name>`, or an ACL cluster group with `match: "*"` (`checkForKindAccess`).
+- It still exposes that cluster's secrets:
+  - The cluster-labelled `ConfigPatch`, `ClusterMachineConfigPatches`, `RedactedClusterMachineConfig`, `ClusterMachineConfigStatus` and `MachineConfigDiff` stay readable.
+  - Talos calls still run as `os:reader`, so `KernelCmdline` and its join token stay readable.
+  - haynes-ops has only one cluster, so scoping removes nothing there.
+
+**(c) Secret-bearing reads for a Reader.** These are Reader cases in `state_access.go:filterAccess` unless noted.
+- `ConfigPatch` `spec.data` and `compressed_data`. `ClusterMachineConfigPatches` `spec.patches` and `compressed_patches`.
+- `RedactedClusterMachineConfig` `spec.data`, `ClusterMachineConfigStatus` `redacted_current_machine_config`, `MachineConfigDiff` data and `MachinePendingUpdates` diff.
+  - All four come from `config.RedactSecrets` (`controllers/omni/machineconfig/reconciliation_context.go:BuildReconciliationContext`, `redactedmachineconfig/redacted_cluster_machine_config.go:saveDiff`).
+  - Talos `pkg/machinery/config/container/container.go:RedactSecrets` redacts only v1alpha1 secrets and documents that implement `SecretDocument`. `ExtensionServiceConfig` does not (`types/runtime/extensions/service_config.go` has no `Redact`).
+  - So the NUT `upsmon.conf` password stays in clear. Live: 5 of the 9 redacted configs (the masters) hold an `ExtensionServiceConfig` whose `MONITOR` line is not redacted.
+- Join tokens:
+  - `JoinToken`: the resource ID is the token (`management.go:CreateJoinToken`). `JoinTokenStatus` uses the same ID.
+  - `DefaultJoinToken` `spec.token_id`.
+  - The RPC `GetMachineJoinConfig` (Reader, account-wide) returns the default token.
+  - `ConnectionParams` `spec.join_token` and `args` (InfraProvider and up).
+- Other reads that can hold secrets:
+  - `InstallationMediaConfig` `join_token`, `kernel_args` and `embedded_machine_config`: 3 exist, contents not read.
+  - `KubernetesManifestGroup` `data`: none exist.
+  - `ProviderJoinConfig` `join_token`, through `infraprovider/state.go:checkAccess`: no infra providers exist.
+- Talos through Omni, as `os:reader`:
+  - `KernelCmdline` is NonSensitive, and Talos `internal/app/resources/access.go:AccessPolicy` blocks only Sensitive types.
+  - Live: talosm01 and talosw01 each have one `siderolink.api=...jointoken=` argument. I did not check whether that token is still valid.
+  - `dmesg` and machine logs may also show the boot command line. Not checked.
+- Not readable by a Reader:
+  - `ClusterSecrets`, `ClusterMachineConfig`, `ClusterMachineSecrets`, `TalosConfig` and `Kubeconfig` fall to the default deny in `filterAccess`.
+  - `ImportedClusterSecrets` allows only create and destroy (`filterAccessByType`).
+  - `EtcdBackupS3Conf` and the BMC configs are Admin-only.
+  - On Talos, the Sensitive types (`MachineConfig`, `ExtensionServicesConfig`, `secrets.*`) need `os:admin`.
+- Correction to the proposal: `RedactedClusterMachineConfig` and `MachineConfigDiff` are not safe either. They carry the NUT password too.
+
+**(d) Residual risk and mitigation.**
+- Anyone with the Reader key can read the NUT secondary password and a join token.
+- Omni does not audit reads. Its only event types are create, update, destroy, teardown, `talos_access`, `k8s_access` and `audit_log_access` (`internal/backend/runtime/omni/audit/auditlog/auditlog.go:EventType`). A leaked key used only for reads leaves `LAST ACTIVE` and any `talos_access` events, nothing more.
+- The impact is limited:
+  - The NUT user `talos` is an `upsmon secondary` on a LAN server. Session pods cannot reach that server without an egress grant.
+  - A join token lets its holder register a machine with the account. Putting that machine in a cluster needs Operator.
+- Mitigations that need no new proxy or framework:
+  - Give the key only to `full` and `workbench`, which already hold Admin (no additional read
+    capability there, though it is still a new persistent credential), and not to `dev`.
+  - Keep the rule against printing `spec.data`, and extend it to redacted configs, diffs, `kernelcmdline` and boot `dmesg`.
+  - On a suspected leak, destroy the account at once and rotate the NUT password.
+  - Rotating the join token needs its own check first, because the nodes' kernel arguments carry it.
+- Role None with a cluster ACL is not worth it here. It exposes the same patches and configs, and it loses `MachineStatus`.
