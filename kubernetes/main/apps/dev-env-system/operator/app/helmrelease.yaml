@@ -125,9 +125,12 @@ spec:
               # publish.yml run 41088359336 signed and verified this exact digest; post-merge CI run 41088359765 green.
               # Requires the v2.71.0 AgentSession schema in dev-env-crds (haynes-ops #4450). Reclaim is on since #4453 (OP302 step 4); see its flag block below.
               # Operator image only: keeper, broker, portal, templates and existing Session pods stay unchanged.
-              # Source dev-env#739 merge 386317b84e97817c511cc54ac9a75470f6538840; publish run 41129212774.
-              # Operator job 124315516957 signed at 21:15:23Z and verified keyless at 21:15:24Z on 2026-10-30.
-              tag: sha-386317b@sha256:a080796f71def7f45e9153e0ea806d1be963afff742eee1850241385fc38e3e9
+              # v2.75.0 (OpenProject #326): release merge fac30c804b8fccda7530bce61c49df0910543741 (dev-env#752). Operator changes since 386317b
+              # (dev-env#739) are #759, which records a task's bounded status.taskOutcome once from its original pod, and #756, which counts
+              # retained usage once. No new flag and no arg change. Requires the v2.75.0 AgentSession schema in dev-env-crds (haynes-ops #4482).
+              # Rollback: once 2.75 records a taskOutcome, an operator below 2.75 cannot update those sessions' status ('cannot be erased').
+              # publish.yml run 41169338231, operator job 124443690997 signed at 04:40:58Z and verified keyless at 04:41:01Z on 2026-10-31.
+              tag: sha-fac30c8@sha256:f73bb7494987bc6600085e5f8a22c3e30ad8343aeb59187970cc883b507793da
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
