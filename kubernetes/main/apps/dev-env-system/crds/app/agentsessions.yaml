@@ -2661,6 +2661,53 @@ spec:
                   clears it.
                 format: date-time
                 type: string
+              taskOutcome:
+                description: TaskOutcome is the immutable task-authored exit snapshot.
+                properties:
+                  podUID:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$
+                    type: string
+                  record:
+                    description: TaskOutcomeRecordStatus is the bounded task-authored
+                      allowlist.
+                    properties:
+                      headSHAs:
+                        items:
+                          maxLength: 40
+                          pattern: ^[a-fA-F0-9]{40}$
+                          type: string
+                        maxItems: 3
+                        type: array
+                      prURLs:
+                        items:
+                          maxLength: 256
+                          pattern: ^https://github\.com/thaynes43/(?:\.?[A-Za-z0-9_-][A-Za-z0-9._-]*|\.\.[A-Za-z0-9._-]+)/pull/[0-9]{1,6}$
+                          type: string
+                        maxItems: 3
+                        type: array
+                      summary:
+                        maxLength: 200
+                        minLength: 1
+                        pattern: ^[\p{L}\p{M}\p{N}\p{P}\p{S}\p{Zs}]{1,200}$
+                        type: string
+                    required:
+                    - summary
+                    type: object
+                  sessionUID:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$
+                    type: string
+                required:
+                - podUID
+                - record
+                - sessionUID
+                type: object
+                x-kubernetes-validations:
+                - message: original task outcome cannot change
+                  rule: self == oldSelf
               taskResult:
                 description: |-
                   TaskResult is how a task-mode session's task ended, derived by the
@@ -3198,6 +3245,9 @@ spec:
         - message: original usage observation cannot be erased
           rule: '!has(oldSelf.status) || !has(oldSelf.status.usageObservation) ||
             (has(self.status) && has(self.status.usageObservation))'
+        - message: original task outcome cannot be erased
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.taskOutcome) || (has(self.status)
+            && has(self.status.taskOutcome))'
     served: true
     storage: true
     subresources:
