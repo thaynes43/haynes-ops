@@ -8,3 +8,8 @@ components:
 resources:
   - ./externalsecret.yaml
   - ./helmrelease.yaml
+  - ./mam-cookie-apply.yaml
+configMapGenerator:
+  - name: prowlarr-mam-cookie-apply
+    files:
+      - mam-cookie-apply.py
