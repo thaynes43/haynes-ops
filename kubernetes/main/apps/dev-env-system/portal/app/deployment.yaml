@@ -74,8 +74,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # dev-env v2.74.0 release merge 1a505231 (adds dev-env#748 selected item marked with aria-current, #746 Pages response fields that stay Unconfigured in production, #745 allowance conflicts refused; keeps #742/#743, #707 focus and #703 shared login limiter; publish run 41154176294 signed and verified the portal image).
-          image: ghcr.io/thaynes43/dev-env-portal:sha-1a50523@sha256:6620e5971f5d74cc17b93c654f73525b5e6893500404bd2890fd263f3b0a82fa
+          # dev-env v2.75.0 release merge fac30c80 (adds dev-env#750 allowance strip folds on short windows, #756 retained usage counted once across pages, #757 Pages evidence origins deny-by-default and one batch per source, still Unconfigured in production; keeps v2.74.0's #748, #746, #745, #742/#743, #707 and #703; publish run 41169338231 signed and verified the portal image).
+          image: ghcr.io/thaynes43/dev-env-portal:sha-fac30c8@sha256:099b852bb4830a6b03b45cf07238c1c9a669e1f95c37742c440e57ab6e1c0b5c
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
