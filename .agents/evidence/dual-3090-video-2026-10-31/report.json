@@ -1,0 +1,97 @@
+{
+  "story": "OpenProject #339",
+  "config_commit": "2edd85ad1f4aa5013b3a57fee6d23e47e07026cf",
+  "job_id": "8c1d4c6eed93491d86b010d4d4c16c77",
+  "result": "succeeded",
+  "model": "Wan2.2 TI2V 5B fp16",
+  "preset": "720p",
+  "steps": 20,
+  "cfg": 5,
+  "seed": 43,
+  "video_url": "https://video.haynesops.com/videos/8c1d4c6eed93491d86b010d4d4c16c77/file",
+  "status_url": "https://video.haynesops.com/videos/8c1d4c6eed93491d86b010d4d4c16c77",
+  "video": {
+    "codec": "h264",
+    "width": 1280,
+    "height": 704,
+    "fps": "24/1",
+    "duration_seconds": 3.375,
+    "declared_frames": 81,
+    "decoded_frames": 81
+  },
+  "video_bytes": 3124436,
+  "sha256": "25977d3991fbc72511646b6f060abfc6b4f30109a1cb41b7c272e8a580f8e521",
+  "engine_elapsed_seconds": 158.7,
+  "api_elapsed_seconds": 161.4689404964447,
+  "telemetry_samples": 33,
+  "simultaneous_utilization_at_least_90_percent_samples": 14,
+  "peaks": {
+    "GPU-d8a856f1-f955-f683-bc24-654561496774": {
+      "memory_mib": 24106.0,
+      "utilization_percent": 100.0,
+      "power_w": 348.9,
+      "temperature_c": 90.0
+    },
+    "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a": {
+      "memory_mib": 11868.0,
+      "utilization_percent": 100.0,
+      "power_w": 349.3,
+      "temperature_c": 80.0
+    }
+  },
+  "thermal_readback": {
+    "phase": "during denoising",
+    "exact_timestamp_captured": false,
+    "card_c": {
+      "temperature_c": 88,
+      "power_w": 272.23,
+      "sm_mhz": 1515,
+      "software_thermal_slowdown": true
+    },
+    "card_a": {
+      "temperature_c": 80,
+      "power_w": 348.96,
+      "sm_mhz": 1770,
+      "software_power_cap": true,
+      "software_thermal_slowdown": false
+    }
+  },
+  "post_job": {
+    "api_ready": true,
+    "active_job": null,
+    "gpu_utilization_percent": [
+      0,
+      0
+    ],
+    "configured_and_enforced_power_w": [
+      350,
+      350
+    ],
+    "wan_video_helm_ready": true,
+    "open_webui_helm_ready": true,
+    "existing_comfyui_helm_ready": true,
+    "existing_llama_server_helm_ready": true
+  },
+  "ui_verification": {
+    "pipeline_loaded": true,
+    "adapter_configmap_mount_verified": true,
+    "video_url_reachable_from_pipelines": true,
+    "dropdown_confirmation": "pending user response; not claimed verified"
+  },
+  "prior_attempt": {
+    "id": "d5bfa3018ad24ae7bc8f958601676ed3",
+    "state": "cancelled/failed",
+    "reason": "CPU VAE decoding bottleneck; no completed MP4; record preserved"
+  },
+  "validation": [
+    "13 CPU-only protocol tests pass",
+    "required Flux Local and Diff Scope CI passed on delivery PRs",
+    "independent native review findings fixed and rereview clear",
+    "advisory Claude findings fixed; final reviews clear",
+    "decoded all81 frames and visually inspected the middle frame",
+    "private ingress served matching MP4 SHA-256 from Pipelines"
+  ],
+  "runtime_audit_note": "The reused digest-pinned ComfyUI image emitted a Kyverno signature trust-root audit warning. Admission allowed it; no verification policy or exception was changed.",
+  "denoising_elapsed_seconds_approx": 112,
+  "prompt": "A red fox pads along a mossy woodland path in warm morning sunlight, its bushy tail swaying as it turns toward the camera. Slow low-angle tracking shot, a gentle breeze moves the fern leaves. Realistic cinematic wildlife footage, natural motion, soft golden light."
+}
