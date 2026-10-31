@@ -10,6 +10,7 @@ import errno
 import http.client
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -21,6 +22,7 @@ ALLOWED = ("/api/v3/projects", "/api/v3/work_packages", "/api/v3/types", "/api/v
 
 GET_BUDGET = 120
 BACKOFF_CAP = 16
+RETRY_FLOOR = 1  # seconds: no further GET attempt starts with less than this left of the budget
 DESTINATION_HOST = "openproject-web.frontend.svc.cluster.local"
 TRANSIENT_ERRNOS = {errno.ECONNREFUSED, errno.EHOSTUNREACH, errno.ENETUNREACH,
                     errno.ETIMEDOUT, errno.ECONNRESET}
@@ -75,34 +77,40 @@ def request(method, path, payload=None):
             cause = error.reason if isinstance(error, urllib.error.URLError) else error
             number = getattr(cause, "errno", None)
             number = number if isinstance(number, int) else None
-            category = "timeout" if isinstance(cause, TimeoutError) else "connection_error"
-            transient = isinstance(cause, (TimeoutError, ConnectionResetError)) or number in TRANSIENT_ERRNOS
+            if isinstance(cause, TimeoutError):
+                category = "timeout"
+            elif isinstance(cause, socket.gaierror):
+                category = "dns_failure"
+            elif isinstance(cause, http.client.IncompleteRead):
+                category = "incomplete_read"
+            else:
+                category = "connection_error"
+            transient = isinstance(cause, (TimeoutError, ConnectionResetError, http.client.IncompleteRead)) or number in TRANSIENT_ERRNOS \
+                or (isinstance(cause, socket.gaierror) and number == socket.EAI_AGAIN)
             if response is not None and 400 <= response.code < 500:
                 category, transient = "http_%d" % response.code, False
             result = None
         finally:
             if response is not None:
                 response.close()
-        if category:
-            # Fixed, bounded fields only: never format exception text, URLs, or bodies.
-            stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            print("%s %s host=%s category=%s errno=%s" % (
-                stamp, method, DESTINATION_HOST, category, number if number is not None else "none"), file=sys.stderr)
-        if not category or (category.startswith("http_") and result is not None and result[0] < 500):
+        if result is not None:  # an API answer, including an expected 404/409/422: no diagnostic
             code, raw = result
             try:
                 return code, json.loads(raw) if raw else None
             except ValueError:
                 return code, {"_type": "NonJson", "raw": raw[:200].decode(errors="replace")}
         remaining = deadline - time.monotonic()
-        if method != "GET" or not transient or remaining <= 0:
-            detail = "120 s retry budget exhausted" if method == "GET" and transient and remaining <= 0 else "unavailable"
+        retrying = method == "GET" and transient and remaining > RETRY_FLOOR
+        # Fixed, bounded fields only: never format exception text, URLs, or bodies. One line per
+        # attempt that will be retried or that ends the call as ApiUnavailable.
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        print("%s %s host=%s category=%s errno=%s" % (
+            stamp, method, DESTINATION_HOST, category, number if number is not None else "none"), file=sys.stderr)
+        if not retrying:
+            detail = "%d s retry budget exhausted" % GET_BUDGET if method == "GET" and transient else "unavailable"
             raise ApiUnavailable("OpenProject API %s %s (%s, errno=%s)" % (
                 method, detail, category, number if number is not None else "none"))
-        time.sleep(min(backoff, remaining))
-        if time.monotonic() >= deadline:
-            raise ApiUnavailable("OpenProject API GET 120 s retry budget exhausted (%s, errno=%s)" % (
-                category, number if number is not None else "none"))
+        time.sleep(min(backoff, remaining - RETRY_FLOOR))  # the last attempt keeps at least the floor as its timeout
         backoff = min(backoff * 2, BACKOFF_CAP)
 
 if __name__ == "__main__":

@@ -27,14 +27,17 @@ OPWORK_PROJECT or haynes-engineering. A mutation is reported done only after a r
 Exit codes: 0 ok, 1 error, 3 conflict/refused (nothing overwritten), 4 needs a decision
 (possible duplicate), 5 tracker unavailable (saved locally), 6 uncertain (verify first),
 7 evidence recorded but Accepted is not allowed or the form re-check failed (read-back state reported).
-GET retries transient connection failures and HTTP 502/503/504 within about 120 seconds,
-with capped exponential backoff on the same destination and credential. Denials and other
-4xx stop immediately. POST/PATCH are never automatically retried (DELETE is forbidden).
-UNCONFIRMED notes retain their exact body and token locally; `pending` lists them and
-`flush` deduplicates and reads them back before removal. Other mutation intents stay
-pending for manual inspection, including any existing note token; never blindly replay.
+GET retries transient connection failures (refused, unreachable, timeout, reset, temporary DNS,
+incomplete read) and HTTP 502/503/504 within about 120 seconds, with capped exponential backoff on
+the same destination and credential. Denials and other 4xx stop immediately. POST/PATCH are never
+automatically retried (DELETE is forbidden). UNCONFIRMED notes retain their exact body and token
+locally (private 0700/0600 store, atomic writes); `pending` lists them with the token. A note whose
+POST got a 2xx is never reposted: `flush` only checks history for its token, else keeps it for manual
+review. Only a record with no recorded 2xx is posted by `flush`, with read back before removal. Other
+mutation intents stay pending for manual inspection, including any existing note token.
 """
 import argparse
+import contextlib
 from datetime import datetime, timezone
 import importlib.util
 import json
@@ -42,6 +45,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.parse
 import uuid
@@ -217,16 +221,29 @@ class Tracker:
             return next((a for a in self.activities(wp_id) if "opwork:note=" + token in text_of(a.get("comment"))), None)
         try:
             code, data = self.call("POST", "/api/v3/work_packages/%d/activities" % wp_id, {"comment": {"raw": body}})
-            if code >= 400:
-                raise Fail("Comment on #%d rejected HTTP %s: %s" % (wp_id, code, data.get("message", "")))
-            found = seen()  # success is the read back, not the 201
         except self.unavailable as down:
             down.token, down.body = token, body  # preserve the exact post for idempotent flush
             raise
+        if code >= 400:
+            raise Fail("Comment on #%d rejected HTTP %s: %s" % (wp_id, code, data.get("message", "")))
+        # A 2xx means the server accepted the note: remember that, so no later flush reposts it.
+        posted = {}
+        if 200 <= code < 300:
+            posted = {"post_status": code, "activity_id": data["id"] if isinstance(data.get("id"), int) and not isinstance(data.get("id"), bool) else None}
+
+        def uncertain(message):
+            failure = Fail(message, 6)
+            failure.token, failure.body, failure.posted = token, body, posted
+            return failure
+        try:
+            found = seen()  # success is the read back, not the 201
+        except self.unavailable as down:
+            down.token, down.body, down.posted = token, body, posted
+            raise
+        except (Fail, KeyError, TypeError, AttributeError, ValueError) as error:
+            raise uncertain("UNCONFIRMED: comment on #%d was posted (HTTP %s) but the read back failed (%s); note token %s may have landed. Do not repost; inspect with `show %d --history`" % (wp_id, code, type(error).__name__, token, wp_id)) from error
         if not found:
-            failure = Fail("UNCONFIRMED: comment on #%d not visible on read back; use `flush` to recover with the same token" % wp_id, 6)
-            failure.token, failure.body = token, body
-            raise failure
+            raise uncertain("UNCONFIRMED: comment on #%d not visible on read back (HTTP %s); note token %s may have landed. `flush` only checks history for it and never reposts it; inspect with `show %d --history`" % (wp_id, code, token, wp_id))
         return found
 
     def find_relation(self, from_id, to_id, kind):
@@ -376,12 +393,12 @@ def cmd_checkpoint_update(t, a, session):
     body = "**[%s]** %s\n\n(opwork:note=%s)" % (session, text, token)
     try:
         found = t.post_note(a.id, body, token)
-    except t.unavailable:
-        save_pending("structured_note", token, wp=a.id, session=session, text=text)
+    except t.unavailable as down:
+        save_pending("structured_note", token, wp=a.id, session=session, text=text, **posted_fields(down))
         raise
     except Fail as error:
         if error.code == 6:
-            path, _ = save_pending("structured_note", token, wp=a.id, session=session, text=text)
+            path, _ = save_pending("structured_note", token, wp=a.id, session=session, text=text, **posted_fields(error))
             raise Fail("%s\nQueued locally: %s. Do not rerun checkpoint-update; `flush` deduplicates using the same token." % (error, path), 6)
         raise
     try:
@@ -442,7 +459,7 @@ def cmd_comment(t, a, session):
         found = t.comment(a.id, a.text, session)
     except Fail as error:
         if error.code == 6 and hasattr(error, "token"):
-            path, _ = save_pending("note", error.token, wp=a.id, session=session, text=a.text, body=error.body)
+            path, _ = save_pending("note", error.token, wp=a.id, session=session, text=a.text, body=error.body, **posted_fields(error))
             raise Fail("%s. Saved locally: %s" % (error, path), 6)
         raise
     return "comment %s recorded on #%d (read back)" % (found.get("id"), a.id)
@@ -543,18 +560,81 @@ def cmd_create(t, a, session):
 
 # ---- tracker down: explicit local record, no daemon --------------------------------------
 
+PENDING_KINDS = ("note", "structured_note", "intent")
+
+
 def state_dir():
+    """The private pending store: directories 0700, record files 0600."""
     path = os.path.join(os.environ.get("OPWORK_STATE_DIR") or os.path.expanduser("~/.local/state/opwork"), "pending")
-    os.makedirs(path, exist_ok=True)
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    os.makedirs(path, mode=0o700, exist_ok=True)
+    os.chmod(path, 0o700)
     return path
+
+
+def write_record(path, record):
+    """Atomic: a temp file in the same directory, then os.replace. A crash leaves the old record or none."""
+    handle, temp = tempfile.mkstemp(prefix=".tmp-", suffix=".part", dir=os.path.dirname(path))
+    try:
+        with os.fdopen(handle, "w") as out:
+            json.dump(record, out, indent=1)
+            out.flush()
+            os.fsync(out.fileno())
+        os.chmod(temp, 0o600)
+        os.replace(temp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(temp)
+        raise
 
 
 def save_pending(kind, token=None, **fields):
     record = dict(fields, kind=kind, created=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), token=token or uuid.uuid4().hex[:12])
     path = os.path.join(state_dir(), "%d-%s.json" % (time.time() * 1000, record["token"]))
-    with open(path, "w") as handle:
-        json.dump(record, handle, indent=1)
+    write_record(path, record)
     return path, record
+
+
+def posted_fields(error):
+    """What an error says about a POST the server accepted (2xx): {post_status, activity_id}, else {}."""
+    return dict(getattr(error, "posted", None) or {})
+
+
+def record_problem(rec):
+    """Why a pending record cannot be used, in fixed words (never its content), else None."""
+    if not isinstance(rec, dict):
+        return "not a JSON object"
+    if rec.get("kind") not in PENDING_KINDS:
+        return "unknown kind"
+    if not isinstance(rec.get("token"), str) or not isinstance(rec.get("created"), str):
+        return "missing token or created"
+    if rec["kind"] == "intent":
+        if not isinstance(rec.get("argv"), list) or not all(isinstance(x, str) for x in rec["argv"]):
+            return "bad argv"
+    elif not isinstance(rec.get("wp"), int) or not isinstance(rec.get("session"), str) or not isinstance(rec.get("text"), str) \
+            or not isinstance(rec.get("body", ""), str):
+        return "missing wp, session or text"
+    return None
+
+
+def load_records():
+    """([(name, path, record)], [(name, problem)]): a corrupt or unreadable record is reported, never fatal."""
+    good, bad = [], []
+    for name in sorted(os.listdir(state_dir())):
+        if not name.endswith(".json"):  # also skips an interrupted write's temp file
+            continue
+        path = os.path.join(state_dir(), name)
+        try:
+            with open(path) as handle:
+                rec = json.load(handle)
+            problem = record_problem(rec)
+        except (OSError, ValueError) as error:
+            problem = "unreadable: %s" % type(error).__name__
+        if problem:
+            bad.append((name, problem))
+        else:
+            good.append((name, path, rec))
+    return good, bad
 
 
 def cmd_checkpoint(t, a, session):
@@ -563,49 +643,68 @@ def cmd_checkpoint(t, a, session):
 
 
 def cmd_pending(t, a, session):
-    rows = [json.load(open(os.path.join(state_dir(), f))) | {"file": f} for f in sorted(os.listdir(state_dir()))]
-    return "\n".join("%s #%s %s %s" % (r["created"], r.get("wp", "-"), r["kind"], r.get("text") or " ".join(r.get("argv", []))) for r in rows) or "no pending records"
+    good, bad = load_records()
+    rows = ["%s #%s %s token=%s%s %s" % (r["created"], r.get("wp", "-"), r["kind"], r["token"],
+                                          " [POST accepted HTTP %s, not visible on read back]" % r["post_status"] if r.get("post_status") else "",
+                                          r.get("text") or " ".join(r.get("argv", []))) for _, _, r in good]
+    rows += ["corrupt record %s (%s); skipped, left in place" % item for item in bad]
+    return "\n".join(rows) or "no pending records"
+
+
+def flush_note(t, path, rec):
+    """Post one saved note once, or confirm it already landed; remove the record only after a read back.
+    A record whose POST was accepted (2xx) is never reposted: history is checked, else it needs manual review."""
+    wp, token, structured, accepted = int(rec["wp"]), rec["token"], rec["kind"] == "structured_note", rec.get("post_status")
+    if structured and not accepted:
+        w = t.wp(wp)
+        guard(w, rec["session"], False)
+        refresh(t, w, None)
+    acts, complete = activity_page(t, wp)
+    seen = any("opwork:note=" + token in text_of(x.get("comment")) for x in acts)
+    if not seen:
+        if accepted:
+            raise Fail("needs manual review: the POST was accepted (HTTP %s, activity id %s) but note token %s is not in the history (%s). Never reposted automatically; check `show %d --history`" % (
+                accepted, rec.get("activity_id") or "unknown", token, "complete" if complete else "incomplete", wp), 6)
+        if not complete:
+            raise Fail("Incomplete history; cannot safely deduplicate %s" % ("checkpoint" if structured else "note"), 6)
+        if structured:
+            created = utc_time(rec.get("created"))
+            checkpoints = [x for x in acts if CHECKIN_MARKER in text_of(x.get("comment"))]
+            if not created or any(not utc_time(x.get("createdAt")) or utc_time(x.get("createdAt")) >= created for x in checkpoints):
+                raise Fail("Checkpoint may be superseded by newer or unordered history; retained for manual review", 6)
+        body = rec.get("body") or ("**[%s]** %s\n\n(opwork:note=%s)" % (rec["session"], rec["text"], token) if structured else
+                                   "**[%s]** Deferred checkpoint (written %s during a tracker outage): %s\n\n(opwork:note=%s)" % (rec["session"], rec["created"], rec["text"], token))
+        try:
+            t.post_note(wp, body, token)
+        except (Fail, t.unavailable) as error:
+            posted = posted_fields(error)
+            if posted:  # remember the accepted POST so the next flush cannot repost it
+                write_record(path, dict(rec, **posted))
+            raise
+    os.remove(path)
+    return "flushed #%s (read back)" % rec["wp"]
 
 
 def cmd_flush(t, a, session):
-    out = []
-    for name in sorted(os.listdir(state_dir())):
-        path = os.path.join(state_dir(), name)
-        rec = json.load(open(path))
-        if rec["kind"] not in ("note", "structured_note"):
-            out.append("kept (re-run it yourself): %s" % " ".join(rec["argv"]))
+    records, corrupt = load_records()
+    out = ["skipped corrupt record %s (%s); left in place" % item for item in corrupt]
+    for index, (name, path, rec) in enumerate(records):
+        if rec["kind"] == "intent":
+            token = "; note token %s may have landed" % rec["token"] if rec.get("body") else ""
+            out.append("kept %s for manual inspection (show/search before repeating%s): %s" % (name, token, " ".join(rec["argv"])))
             continue
-        body = "**[%s]** Deferred checkpoint (written %s during a tracker outage): %s\n\n(opwork:note=%s)" % (rec["session"], rec["created"], rec["text"], rec["token"])
-        if rec.get("body"):
-            body = rec["body"]
-        elif rec["kind"] == "structured_note":
-            body = "**[%s]** %s\n\n(opwork:note=%s)" % (rec["session"], rec["text"], rec["token"])
         try:
-            if rec["kind"] == "structured_note":
-                w = t.wp(rec["wp"])
-                guard(w, rec["session"], False)
-                refresh(t, w, None)
-                acts, complete = activity_page(t, rec["wp"])
-                seen = any("opwork:note=" + rec["token"] in text_of(x.get("comment")) for x in acts)
-                if not seen and not complete:
-                    raise Fail("Incomplete history; cannot safely deduplicate checkpoint", 6)
-                if not seen:
-                    created = utc_time(rec.get("created"))
-                    checkpoints = [x for x in acts if CHECKIN_MARKER in text_of(x.get("comment"))]
-                    if not created or any(not utc_time(x.get("createdAt")) or utc_time(x.get("createdAt")) >= created for x in checkpoints):
-                        raise Fail("Checkpoint may be superseded by newer or unordered history; retained for manual review", 6)
-            else:
-                acts, complete = activity_page(t, rec["wp"])
-                seen = any("opwork:note=" + rec["token"] in text_of(x.get("comment")) for x in acts)
-                if not seen and not complete:
-                    raise Fail("Incomplete history; cannot safely deduplicate note", 6)
-            if not seen:
-                t.post_note(int(rec["wp"]), body, rec["token"])
+            out.append(flush_note(t, path, rec))
         except Fail as failure:
             out.append("kept %s: %s" % (name, failure))
-            continue
-        os.remove(path)
-        out.append("flushed #%s (read back)" % rec["wp"])
+        except t.unavailable as down:
+            out.append("UNCONFIRMED %s: tracker unavailable during flush (%s); record kept, note token %s may have landed; check `show %s --history` before repeating" % (name, down, rec["token"], rec["wp"]))
+            later = len(records) - index - 1
+            if later:
+                out.append("%d later record(s) not attempted; run `flush` again when the tracker is back" % later)
+            failure = Fail("TRACKER UNAVAILABLE: flush stopped at %s" % name, 5)
+            failure.output = "\n".join(out)
+            raise failure
     return "\n".join(out) or "nothing pending"
 
 
@@ -665,8 +764,10 @@ def main(argv=None, tracker=None, unavailable=None):
     except Fail as failure:
         if failure.code == 6 and args.fn in (cmd_claim, cmd_status, cmd_complete, cmd_create, cmd_relate):
             path, _ = save_pending("intent", getattr(failure, "token", None), wp=getattr(args, "id", None),
-                                   session=session, argv=command_argv, body=getattr(failure, "body", None))
+                                   session=session, argv=command_argv, body=getattr(failure, "body", None), **posted_fields(failure))
             print("UNCONFIRMED: intent retained locally: %s. Inspect with `search`/`show` before repeating." % path, file=sys.stderr)
+        if getattr(failure, "output", None):
+            print(failure.output)  # partial results (e.g. the notes flush had already recorded)
         print(failure, file=sys.stderr)
         return failure.code
     except (unavailable or ()) as down:
@@ -675,17 +776,17 @@ def main(argv=None, tracker=None, unavailable=None):
             return 5
         mutating = args.fn in (cmd_claim, cmd_comment, cmd_status, cmd_complete, cmd_create, cmd_relate)
         if args.fn is cmd_comment:
-            path, rec = save_pending("note", getattr(down, "token", None), wp=args.id, session=session, text=args.text, body=getattr(down, "body", None))
+            path, rec = save_pending("note", getattr(down, "token", None), wp=args.id, session=session, text=args.text, body=getattr(down, "body", None), **posted_fields(down))
         elif mutating:
             path, rec = save_pending("intent", getattr(down, "token", None), wp=getattr(args, "id", None),
-                                     session=session, argv=command_argv, body=getattr(down, "body", None))
+                                     session=session, argv=command_argv, body=getattr(down, "body", None), **posted_fields(down))
         else:
             path = None
         if not mutating:
             print("TRACKER UNAVAILABLE: %s. The read failed; authorized bounded work can continue." % down, file=sys.stderr)
         else:
             print("TRACKER UNAVAILABLE: %s.\nWhether the write reached OpenProject is UNCONFIRMED. Saved locally: %s\n%s\nAuthorized bounded work can continue." % (
-                down, path, "`flush` posts it unless it already landed (deduped by token)." if args.fn is cmd_comment else "When the tracker is back, `search`/`show` the item, then re-run the command only if the change is missing."), file=sys.stderr)
+                down, path, "`flush` posts it unless it already landed (deduped by token); it never reposts a note whose POST was accepted." if args.fn is cmd_comment else "When the tracker is back, `search`/`show` the item, then re-run the command only if the change is missing."), file=sys.stderr)
         return 5
 
 
