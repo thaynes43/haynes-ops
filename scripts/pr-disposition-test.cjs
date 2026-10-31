@@ -5,17 +5,20 @@ const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/pr-disposition.yml'), 'utf8');
-const script = workflow.split('          script: |\n')[1].split('\n').map(s => s.replace(/^            /, '')).join('\n');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-const run = new AsyncFunction('github', 'context', 'core', script);
+const compile = source => new AsyncFunction('github', 'context', 'core', source.split('          script: |\n')[1].split('\n').map(s => s.replace(/^            /, '')).join('\n'));
+const run = compile(workflow);
+// Optional pinned main source: compare every fixture's complete label API calls.
+const baseline = process.env.PR_DISPOSITION_BASELINE ? compile(fs.readFileSync(process.env.PR_DISPOSITION_BASELINE, 'utf8')) : null;
+let parityCases = 0, negativeCases = 0;
 const config = p => vm.runInNewContext('(' + fs.readFileSync(path.join(root, p), 'utf8') + ')');
 const rules = config('.renovate/autoMerge.json5').packageRules;
 const groups = config('.renovate/groups.json5').packageRules;
 const SHA = 'a'.repeat(40), OTHER = 'b'.repeat(40);
 const enabled = { enabled_by: { login: 'renovate[bot]' }, merge_method: 'squash', commit_title: 'Merge fixture', commit_message: 'Synthetic fixture only' };
 let cases = 0;
-async function classify(options={}) {
-  const writes=[], logs=[];
+async function classify(options={}, runner=run) {
+  const writes=[], logs=[], labelCalls=[], readCalls=[];
   const pr={number:3707,state:'open',user:{login:'renovate[bot]'},labels:[{name:'type/minor'}],
     head:{ref:'renovate/test-image',sha:SHA},title:'Update image',auto_merge:null,changed_files:1,comments:(options.comments || []).length,...options.pr};
   if(options.missingMerge)delete pr.auto_merge;
@@ -23,18 +26,32 @@ async function classify(options={}) {
   const comments=options.comments || [];
   let reads=0;
   const rest={pulls:{list(){},listFiles(){},async get(){
-    reads++;if(options.fail==='pr')throw Error('fixture failed PR read');
+    readCalls.push('pr');reads++;if(options.fail==='pr')throw Error('fixture failed PR read');
     return {data: reads>1 && options.latest ? {...pr,...options.latest}:pr};
-  }},issues:{listComments(){},async removeLabel(d){writes.push({kind:'remove',name:d.name});},
-    async addLabels(d){writes.push({kind:'add',labels:d.labels});}}};
+  }},issues:{listComments(){},async removeLabel(d){labelCalls.push({method:'removeLabel',...d});writes.push({kind:'remove',name:d.name});},
+    async addLabels(d){labelCalls.push({method:'addLabels',...d});writes.push({kind:'add',labels:d.labels});}}};
   const github={rest,async paginate(method){
     if(method===rest.pulls.list)return [pr];
-    if(method===rest.pulls.listFiles){if(options.fail==='files')throw Error('fixture failed files');return options.badFiles ?? files;}
-    if(method===rest.issues.listComments){if(options.fail==='comments')throw Error('fixture failed comments');return options.badComments ?? comments;}
+    if(method===rest.pulls.listFiles){readCalls.push('files');if(options.fail==='files')throw Error('fixture failed files');return options.badFiles ?? files;}
+    if(method===rest.issues.listComments){readCalls.push('comments');if(options.fail==='comments')throw Error('fixture failed comments');return options.badComments ?? comments;}
     throw Error('Unexpected GitHub request');
   }};
-  await run(github,{repo:{owner:'test',repo:'test'}},{info(s){logs.push(String(s));},warning(s){logs.push(String(s));},error(s){logs.push(String(s));}});
-  return {writes,logs,label:writes.find(w=>w.kind==='add')?.labels[0]};
+  await runner(github,{repo:{owner:'test',repo:'test'}},{info(s){logs.push(String(s));},warning(s){logs.push(String(s));},error(s){logs.push(String(s));}});
+  if(baseline && runner===run) {
+    const before=await classify(options,baseline);
+    assert.equal(JSON.stringify(labelCalls),JSON.stringify(before.labelCalls),'byte-identical label API calls');
+    if(pr.user.login!=='haynes-ops-bot[bot]') {
+      const legacyLogs=logs.map(line=>{
+        if(!line.startsWith('{'))return line;
+        const {repository,attempt,claim,claimBasis,...legacy}=JSON.parse(line);
+        return JSON.stringify(legacy);
+      });
+      assert.deepEqual(legacyLogs,before.logs,'existing log fields and values unchanged');
+      assert.deepEqual(readCalls,before.readCalls,'no additional per-PR reads');
+    }
+    parityCases++;
+  }
+  return {writes,logs,labelCalls,readCalls,label:writes.find(w=>w.kind==='add')?.labels[0]};
 }
 async function check(name,options,label,reason) {
   const result=await classify(options);cases++;
@@ -42,7 +59,7 @@ async function check(name,options,label,reason) {
   if(reason)assert(result.logs.some(s=>s.includes(reason)),name+': missing reason '+reason);
   return result;
 }
-const vet=(verdict,sha=SHA,login='haynes-ops-bot[bot]')=>({body:`<!-- shepherd-vet sha=${sha} -->\nVERDICT: ${verdict}`,user:{login}});
+const vet=(verdict,sha=SHA,login='haynes-ops-bot[bot]')=>({id:6540904846,body:`<!-- shepherd-vet sha=${sha} -->\nVERDICT: ${verdict}`,user:{login}});
 (async()=>{
   // Keep the existing carve-out policy checks; these tests do not change policy.
   for(const [image,file] of [['kometateam/kometa','media/kometa/app/helmrelease.yaml'],['linuxserver/lazylibrarian','downloads/lazylibrarian/app/helmrelease.yaml'],['linuxserver/calibre','downloads/lazylibrarian/app/epub-convert-cronjob.yaml']]) {
@@ -78,5 +95,48 @@ const vet=(verdict,sha=SHA,login='haynes-ops-bot[bot]')=>({body:`<!-- shepherd-v
     const result=await classify(options);cases++;assert.deepEqual(result.writes,[],JSON.stringify(options)+': must not mutate labels');
   }
   await check('label order alone does not change classification',{pr:{labels:[{name:'type/minor'},{name:'renovate'}]},latest:{labels:[{name:'renovate'},{name:'type/minor'}]}},'disposition:stranded');
-  console.log(`PR disposition truth table: ${cases} cases passed`);
+  const records = result => result.logs.filter(s=>s.startsWith('{')).map(s=>JSON.parse(s));
+  const shepherd = {user:{login:'haynes-ops-bot[bot]'},head:{ref:'shepherd/test-image',sha:SHA},labels:[{name:'disposition:stranded'}]};
+  async function provenanceCheck(name,options,verify,regression=true) {
+    verify(await classify(options));cases++;
+    if(baseline && regression) {
+      const before=await classify(options,baseline);
+      assert.throws(()=>verify(before),assert.AssertionError,name+': must fail on pinned main');negativeCases++;
+    }
+  }
+  const identity = record => {
+    assert.equal(record.repository,'test/test');
+    assert.equal(record.attempt.headSha,SHA);
+    assert.equal(record.claim,'Unknown');
+    assert.equal(record.claimBasis,'no-supported-upgrade-claim-actor');
+  };
+  await provenanceCheck('current-head provenance',{comments:[vet('auto-merge')]},result=>{
+    const rows=records(result);assert.equal(rows.length,1);identity(rows[0]);
+    assert.deepEqual(rows[0].attempt.vet,{commentId:6540904846,sha:SHA,verdict:'AUTO-MERGE'});
+    assert.equal(rows[0].predictedOwner,'Shepherd');
+  });
+  for(const [name,comment] of [['older head',vet('HOLD',OTHER)],['non-bot',vet('HOLD',SHA,'someone-else')]]) {
+    await provenanceCheck(name,{comments:[comment]},result=>{
+      const rows=records(result);assert.equal(rows.length,1);identity(rows[0]);assert.equal(rows[0].attempt.vet,null);
+    });
+  }
+  await provenanceCheck('Shepherd log only',{pr:shepherd,comments:[vet('HOLD')]},result=>{
+    assert.deepEqual(result.labelCalls,[]);
+    assert.deepEqual(records(result),[{pullRequest:3707,repository:'test/test',attempt:{headSha:SHA,vet:{commentId:6540904846,sha:SHA,verdict:'HOLD'}},claim:'Unknown',claimBasis:'no-supported-upgrade-claim-actor',disposition:null,labelPolicy:'not-classified'}]);
+    assert.deepEqual(result.readCalls,['pr','files','comments','pr']);
+    assert(result.logs.includes('Classified 0 open Renovate PR(s).'));
+  });
+  await provenanceCheck('Shepherd without vet',{pr:shepherd},result=>{
+    const rows=records(result);assert.equal(rows.length,1);identity(rows[0]);assert.equal(rows[0].attempt.vet,null);assert.deepEqual(result.labelCalls,[]);
+  });
+  for(const failure of [{fail:'pr'},{fail:'files'},{fail:'comments'},{pr:{...shepherd,changed_files:2}},{pr:{...shepherd,comments:1}},{latest:{head:{ref:'shepherd/test-image',sha:OTHER}}},{latest:{head:{ref:'other',sha:SHA}}},{latest:{labels:[]}},{latest:{auto_merge:enabled}},{latest:{user:{login:'human'}}}]) {
+    await provenanceCheck('Shepherd failed or changed reads',{...failure,pr:failure.pr || shepherd},result=>{
+      assert.deepEqual(result.labelCalls,[]);assert.deepEqual(records(result),[]);
+      assert(result.logs.some(s=>s.includes('actual=Unknown reason=read-failure')));
+    });
+  }
+  await provenanceCheck('bot outside Shepherd branch',{pr:{...shepherd,head:{ref:'other',sha:SHA}}},result=>{
+    assert.deepEqual(records(result),[]);assert.deepEqual(result.labelCalls,[]);assert.deepEqual(result.readCalls,[]);
+  },false);
+  console.log(`PR disposition truth table: ${cases} cases passed; ${parityCases} byte-identical label-call comparisons; ${negativeCases} new checks rejected pinned main`);
 })().catch(error=>{console.error(error);process.exitCode=1;});
