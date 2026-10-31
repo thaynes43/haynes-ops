@@ -379,6 +379,13 @@ while [ "$u" -lt "${u_count:-0}" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
   ans="$(printf '%s' "$unit" | jq -r '.members[0].ans // ""')"
   n="$(printf '%s' "$unit" | jq -r '.members | length')"
   alert="$(printf '%s' "$unit" | jq -c '.members[0].alert')"
+  # Exact identity is separate from the lossy context below. Aggregates have
+  # no single incident identity; missing fields stay absent (never inferred).
+  alert_identity="$(printf '%s' "$unit" | jq -c '
+    if .type == "single" and (.members | length) == 1 then
+      .members[0].alert | if (.fingerprint | type) == "string" and (.startsAt | type) == "string"
+        then {fingerprint, startsAt} else null end
+    else null end')"
   fps="$(printf '%s' "$unit" | jq -c '[.members[].fp]')"
   # Spend guard governs the METERED path only — a plan-served diagnosis is $0, so a
   # high (stale) monthly counter must not block it. The guard still protects the
@@ -501,6 +508,7 @@ while [ "$u" -lt "${u_count:-0}" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
         # 400 and would truncate the FIX section mid-sentence (caught live by the
         # 2026-08-23 synthetic run, which lost its final constraint that way).
         if ESCALATE_SIG="${aname}@${ans}" \
+           REMEDIATE_ALERT_IDENTITY="$alert_identity" \
            REMEDIATE_DIAGNOSIS="$REPORT" \
            REMEDIATE_ALERT="$(printf '%s' "$alert" | jq -c '{labels, annotations, startsAt}' 2>/dev/null)" \
            bash "$REMEDIATE_SH" responder "job:${HOSTNAME:-unknown}" \
@@ -525,7 +533,7 @@ while [ "$u" -lt "${u_count:-0}" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
     # completed diagnoses (ACTION: none/investigate/urgent) NEVER escalate.
     # BEST-EFFORT: a write failure only logs.
     if [ "$rc" -ne 0 ]; then
-      ESCALATE_SIG="${aname}@${ans}" bash /opt/coordination/escalate.sh responder "job:${HOSTNAME:-unknown}" \
+      ESCALATE_ALERT_IDENTITY="$alert_identity" ESCALATE_SIG="${aname}@${ans}" bash /opt/coordination/escalate.sh responder "job:${HOSTNAME:-unknown}" \
         "diagnosis FAILED rc=${rc} for ${aname}@${ans:-?} (${utype} n=${n}): incident claimed but no diagnosis produced (plan+fallback exhausted or run died) — Alertmanager's page stands uninvestigated. See the alert-responder Job logs." \
         || log "escalate.sh could not file the esc-responder entry (best-effort)"
     fi

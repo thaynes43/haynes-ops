@@ -83,9 +83,12 @@ case "$status" in
     # the same underlying condition.
     sig="$(kubectl -n "$NS" get cm "$CM" -o json 2>/dev/null \
       | jq -r --arg k "$key" '(.data[$k] // "{}") | (fromjson? // {}) | .sig // empty')"
+    # Copy only the parent's persisted identity. Legacy orders remain unjoined.
+    alert_identity="$(kubectl -n "$NS" get cm "$CM" -o json 2>/dev/null \
+      | jq -c --arg k "$key" '(.data[$k] // "{}") | (fromjson? // {}) | .alertIdentity // null')"
     [ -n "$sig" ] || sig="$key"
     if [ -x /opt/coordination/escalate.sh ] || [ -f /opt/coordination/escalate.sh ]; then
-      ESCALATE_SIG="$sig" bash /opt/coordination/escalate.sh rem "order:${key}" \
+      ESCALATE_ALERT_IDENTITY="$alert_identity" ESCALATE_SIG="$sig" bash /opt/coordination/escalate.sh rem "order:${key}" \
         "AUTONOMOUS REMEDIATION COULD NOT FINISH (${key}). ${note}" \
         && oplog escalated "$key" esc=filed sig="$sig" \
         || { oplog escalated "$key" esc=FAILED sig="$sig"
