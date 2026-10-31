@@ -230,8 +230,9 @@ not `Reader`. See the decision log.)* The only standing prerequisite:
 `omnictl serviceaccount create --use-user-role=false --role Reader --ttl 8760h
 dev-env-node-triage`, which prints `OMNI_ENDPOINT` +
 `OMNI_SERVICE_ACCOUNT_KEY=<base64 key>`.) *(This records the 2026-07-25 plan; the live
-account reports role Admin. Do not reuse this command to rotate its key: `--role Reader`
-would downgrade the account.)*
+account reports role Admin. Rotate its key with `omnictl serviceaccount renew
+dev-env-node-triage`, which keeps the role. `create` makes a new account, and recreating
+it with this command would make it Reader.)*
 
 ### Outside-agent deploy steps (merging PR B)
 
