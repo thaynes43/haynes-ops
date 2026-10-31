@@ -125,11 +125,12 @@ spec:
               # publish.yml run 41088359336 signed and verified this exact digest; post-merge CI run 41088359765 green.
               # Requires the v2.71.0 AgentSession schema in dev-env-crds (haynes-ops #4450). Reclaim is on since #4453 (OP302 step 4); see its flag block below.
               # Operator image only: keeper, broker, portal, templates and existing Session pods stay unchanged.
-              # v2.75.0 (OpenProject #326): release merge fac30c804b8fccda7530bce61c49df0910543741 (dev-env#752). Operator changes since 386317b
-              # (dev-env#739) are #759, which records a task's bounded status.taskOutcome once from its original pod, and #756, which counts
-              # retained usage once. No new flag and no arg change. Requires the v2.75.0 AgentSession schema in dev-env-crds (haynes-ops #4482).
-              # Rollback: once 2.75 records a taskOutcome, an operator below 2.75 cannot update those sessions' status ('cannot be erased').
-              # publish.yml run 41169338231, operator job 124443690997 signed at 04:40:58Z and verified keyless at 04:41:01Z on 2026-10-31.
+              # v2.75.0 (OpenProject #326): release merge fac30c804b8fccda7530bce61c49df0910543741 (dev-env#752). The one operator behaviour
+              # change since 386317b (dev-env#739) is #759: the API records a task's bounded status.taskOutcome once, from its original pod.
+              # #756 changes only comments and tests in the operator. No new flag and no arg change. Requires the v2.75.0 AgentSession schema
+              # in dev-env-crds (haynes-ops #4482). Rollback: once 2.75 records a taskOutcome, an operator below 2.75 cannot update those
+              # sessions' status ('cannot be erased'). publish.yml run 41169338231, operator job 124443690997: signature pushed at 04:40:58Z,
+              # verified keyless at 04:41:01Z on 2026-10-31.
               tag: sha-fac30c8@sha256:f73bb7494987bc6600085e5f8a22c3e30ad8343aeb59187970cc883b507793da
               pullPolicy: IfNotPresent
             args:
