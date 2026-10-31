@@ -63,7 +63,10 @@ spec:
               COMFYUI_INPUT_DIR: /workspace/input
               COMFYUI_OUTPUT_DIR: /workspace/output
               COMFYUI_TEMP_DIR: /workspace/temp
-              COMFYUI_ARGS: "--cpu-vae --preview-method none"
+              # Keep VAE on the normal GPU path. The initial CPU override made
+              # decoding take many minutes after the109s dual-GPU denoise.
+              # ComfyUI can offload the denoising model before VAE decoding.
+              COMFYUI_ARGS: "--preview-method none"
               OMP_NUM_THREADS: "2"
               MKL_NUM_THREADS: "2"
               OPENBLAS_NUM_THREADS: "2"

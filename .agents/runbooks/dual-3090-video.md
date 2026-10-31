@@ -22,8 +22,11 @@ The existing pinned ComfyUI image runs Wan2.2 TI2V 5B with native
 `MultiGPU_WorkUnits` (MultiGPU CFG Split). CFG is 5, so both conditional and
 unconditional denoising passes run on the pair during one job. Each GPU has its
 own model copy; this is parallel computation, not transparent 48 GiB pooling.
-VAE decoding runs on CPU to reserve GPU headroom. The first preset is a short
-demonstration, not a claim about maximum quality or two-card speedup.
+VAE decoding uses ComfyUI's normal GPU path, with model offloading managed by
+ComfyUI. The first unfinished attempt used a CPU VAE override: denoising took
+109 seconds across both GPUs, but CPU decoding then took many minutes. That
+override was removed before repeating the unfinished demonstration. The first
+preset is a short demonstration, not a maximum-quality or speedup claim.
 
 The graph follows Comfy-Org's `video_wan2_2_5B_ti2v` template, adding native
 MultiGPU CFG Split. The upstream reference graph is retained alongside the API
