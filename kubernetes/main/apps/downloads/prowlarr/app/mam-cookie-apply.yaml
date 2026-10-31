@@ -13,6 +13,9 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: prowlarr-mam-cookie-apply-20261031
+  annotations:
+    # The pod template is immutable: never re-apply a changed Job (for example a Renovate digest bump).
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
 spec:
   backoffLimit: 0
   activeDeadlineSeconds: 180
@@ -44,7 +47,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: prowlarr-secret
-                  key: PROWLARR_API_KEY
+                  key: PROWLARR__AUTH__APIKEY
           resources:
             requests:
               cpu: 10m
@@ -66,8 +69,9 @@ spec:
           configMap:
             name: prowlarr-mam-cookie-apply
 ---
-# Egress only to Prowlarr's pods on 9696 and to cluster DNS. The Job never contacts MAM;
-# Prowlarr's own save-time test does, from Prowlarr's normal egress.
+# Egress only to Prowlarr's pods on 9696 and to cluster DNS. The Job never contacts MAM.
+# Prowlarr validates on save only while the indexer is enabled; while it is disabled, HTTP 202
+# means stored, and the governor's next enabling PUT runs the MAM test from Prowlarr's egress.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -92,4 +96,3 @@ spec:
         - ports:
             - port: "53"
               protocol: ANY
-  ingress: []
