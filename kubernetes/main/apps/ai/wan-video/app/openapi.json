@@ -1,0 +1,111 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Dual RTX 3090 Wan Video",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/videos": {
+      "post": {
+        "operationId": "generate_video",
+        "summary": "Generate one short video using both rack GPUs",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "prompt"
+                ],
+                "properties": {
+                  "prompt": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "preset": {
+                    "type": "string",
+                    "enum": [
+                      "preview",
+                      "720p"
+                    ],
+                    "default": "preview"
+                  },
+                  "seed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991,
+                    "default": 43
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Job accepted; poll /videos/{id}"
+          },
+          "409": {
+            "description": "Worker busy"
+          }
+        }
+      }
+    },
+    "/videos/{job_id}": {
+      "get": {
+        "operationId": "video_status",
+        "summary": "Get video job status and GPU telemetry",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job status"
+          },
+          "404": {
+            "description": "Unknown job"
+          }
+        }
+      }
+    },
+    "/videos/{job_id}/file": {
+      "get": {
+        "operationId": "download_video",
+        "summary": "Download a completed MP4",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Video",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

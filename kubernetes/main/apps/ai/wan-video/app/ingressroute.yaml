@@ -1,0 +1,19 @@
+# Same internal ingress tier as the existing ComfyUI service. No public ingress.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: wan-video
+  annotations:
+    external-dns.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
+spec:
+  entryPoints: [websecure]
+  routes:
+    - kind: Rule
+      match: Host(`video.haynesops.com`)
+      services:
+        - kind: Service
+          name: wan-video
+          port: 8080
+  tls:
+    secretName: certificate-haynesops

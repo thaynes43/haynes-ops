@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - helmrelease.yaml
+  - pvc.yaml
+  - ingressroute.yaml
+components:
+  - ../../../../../shared/components/common/repos/app-template
+configMapGenerator:
+  - name: wan-video-config
+    files:
+      - api.py
+      - workflow.json
+      - openapi.json
+      - models.yaml
+  - name: wan-video-workflow
+    files:
+      - upstream-wan5b.json
+generatorOptions:
+  disableNameSuffixHash: true
+  annotations:
+    kustomize.toolkit.fluxcd.io/substitute: disabled
