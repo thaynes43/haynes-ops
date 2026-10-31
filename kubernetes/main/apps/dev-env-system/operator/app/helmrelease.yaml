@@ -127,7 +127,7 @@ spec:
               # Operator image only: keeper, broker, portal, templates and existing Session pods stay unchanged.
               # v2.76.0 (OpenProject #321, #322, #326): release merge 432fd2838ad0b109004f23bf46e5af58b15ce276 (dev-env#767). Operator changes
               # since fac30c8 (v2.75.0):
-              # - #769: the inbox ask and reply API behind the NEW flag --enable-inbox-questions, default off and not set here;
+              # - #769: the inbox ask and reply API behind the NEW flag --enable-inbox-questions (default off; turned on below by haynes-ops #4494);
               # - #765: the read-only TaskClaim join on session detail, only when a client sends X-Dev-Env-Session-Task-Claims: v1;
               # - #762: the portal reader returns activity.taskOutcome only when the portal sends X-Dev-Env-Task-Outcome: v1.
               # No existing arg changes. Requires the v2.76.0 InboxMessage CRD in dev-env-crds (haynes-ops #4490) and the v2.75.0 AgentSession CRD.
