@@ -15,7 +15,7 @@ if __name__=='__main__':
     assert validation['video']['decoded_frames']==384 and validation['duration_seconds']==16
     names=['crunchy-butter-short.mp4','crunchy-butter-soundtrack.wav','dialogue-only.wav','speech.json',
            'sfx-squish.wav','sfx-crunch.wav','sfx-squish.json','sfx-crunch.json','shots.json',
-           'validation.json','audio-loudness.json','contact-sheet.jpg','dialogue-transcript.json']
+           'validation.json','audio-loudness.json','contact-sheet.jpg','dialogue-transcript.json','dialogue-mixed-transcript.json']
     names += [f'voice-{i}.wav' for i in range(1,5)]
     shots=json.loads((OUT/'shots.json').read_text());sources=[]
     for shot in shots:
@@ -24,6 +24,9 @@ if __name__=='__main__':
         sources.append({'name':name,'id':j['id'],'sha256':hashlib.sha256((OUT/(name+'.mp4')).read_bytes()).hexdigest()})
     assert len(sources)==4
     assert hashlib.sha256((OUT/'crunchy-butter-short.mp4').read_bytes()).hexdigest()==validation['sha256']
+    missing=[name for name in names if not (OUT/name).is_file()]
+    if missing:raise RuntimeError('Missing production inputs before any upload: '+', '.join(missing))
+    digests={name:hashlib.sha256((OUT/name).read_bytes()).hexdigest() for name in names}
     code='''import hashlib,pathlib,sys,json
 p=pathlib.Path(sys.argv[1]);p.parent.mkdir(parents=True,exist_ok=True);h=hashlib.sha256()
 with p.open('xb') as f:
@@ -36,7 +39,7 @@ print(json.dumps({'path':str(p),'bytes':p.stat().st_size,'sha256':h.hexdigest()}
 '''
     assets=[]
     for name in names:
-        path=OUT/name;digest=hashlib.sha256(path.read_bytes()).hexdigest()
+        path=OUT/name;digest=digests[name]
         with path.open('rb') as f:
             r=subprocess.run(REMOTE+[code,'/workspace/output/productions/op341/'+name,digest],stdin=f,
                              capture_output=True,check=True,timeout=120)

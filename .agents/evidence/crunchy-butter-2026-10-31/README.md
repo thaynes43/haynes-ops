@@ -59,12 +59,24 @@ four speech clips, and a short original synthesized chime. SFX are smoothly
 ducked under speech with attack/release ramps. CPU editing/decoding uses at most
 two workers. Mastering leaves additional headroom for AAC, and validation
 checks the encoded audio rather than relying only on WAV measurements.
+The `sfx-*.json` evidence records contain the exact existing MCP `generate_sound`
+prompts, seconds, seeds and steps, with downloadable artifact paths and hashes.
+Those two cues are authored through the existing tool rather than a second
+HTTP client. `check_butter_dialogue.py` retains the bounded transcription recipe;
+`--mixed` checks the final movie, and existing transcript records block reruns.
 
 `preserve_butter.py` uses exclusive file creation, transferred SHA256 checks,
 and atomic creation of a new explicitly marked `edited_production` record.
 Its directory is `/workspace/output/productions/op341/` on the existing Wan
 PVC. Prior films, assets and inference records are never overwritten. Media
 stays private; source recipes and nonsecret evidence are retained in Git.
+
+Run order for an explicitly authorized new production: serial video recipe,
+speech recipe, MCP SFX authoring/download from recorded parameters, edit recipe,
+dialogue checks (pure and `--mixed`), then preservation. Editing/checking uses the
+existing task venv with `av`, `pillow`, `numpy` and `imageio-ffmpeg`; renderer,
+speech and preservation need only Python's standard library and managed kubectl.
+Existing artifacts deliberately block automatic render/speech/check reruns.
 
 ## Validation and delivery
 
