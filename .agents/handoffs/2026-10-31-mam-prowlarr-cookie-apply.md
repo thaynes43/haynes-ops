@@ -24,3 +24,7 @@ Order:
 4. A cleanup PR removes the four objects, and Flux prunes them. There is no TTL, because Flux would re-create a TTL-deleted Job.
 
 Tests: the kustomize render is clean. An offline fake-Prowlarr test passed: only `mamId` changes; HTTP 400 exits 1; a wrong implementation or a duplicate `mamId` makes no PUT; empty inputs are refused; no secret is printed.
+
+## Result (2026-10-31)
+
+Merged as e6f80c51 (#4501). Flux applied it at about 14:10Z. Job `prowlarr-mam-cookie-apply-20261031` is Complete; it logged `indexer enabled=False` and `PUT indexer 17: HTTP 202`, so the cookie is stored. Validation is the governor's next enabling PUT and the alert clearing; it is recorded on OpenProject #319. This cleanup removes the Job, ServiceAccount, script ConfigMap and CiliumNetworkPolicy, and Flux prunes them.
