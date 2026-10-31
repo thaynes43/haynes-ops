@@ -68,6 +68,10 @@ The dedicated 80 GiB Ceph PVC holds models, jobs and outputs. It has Flux prune
 disabled. Existing image model storage and output retention are untouched.
 There is no automatic deletion policy or backup for the new volume yet; inspect
 capacity before extending usage. Removing the service must preserve this claim.
+Fresh provisioning may exceed ten minutes. The Deployment progress deadline is
+30 minutes through a Helm post-renderer (app-template has no native field), and
+the Helm action allows 35 minutes. These deadlines do not extend a render's
+separate 20-minute limit or change the Pod template on an in-progress download.
 
 After an API restart, persisted jobs are never replayed. Queue ownership is
 matched by prompt ID and the recorded client ID, including lost acknowledgments.
