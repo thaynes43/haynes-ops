@@ -125,13 +125,15 @@ spec:
               # publish.yml run 41088359336 signed and verified this exact digest; post-merge CI run 41088359765 green.
               # Requires the v2.71.0 AgentSession schema in dev-env-crds (haynes-ops #4450). Reclaim is on since #4453 (OP302 step 4); see its flag block below.
               # Operator image only: keeper, broker, portal, templates and existing Session pods stay unchanged.
-              # v2.75.0 (OpenProject #326): release merge fac30c804b8fccda7530bce61c49df0910543741 (dev-env#752). The one operator behaviour
-              # change since 386317b (dev-env#739) is #759: the API records a task's bounded status.taskOutcome once, from its original pod.
-              # #756 changes only comments and tests in the operator. No new flag and no arg change. Requires the v2.75.0 AgentSession schema
-              # in dev-env-crds (haynes-ops #4482). Rollback: once 2.75 records a taskOutcome, an operator below 2.75 cannot update those
-              # sessions' status ('cannot be erased'). publish.yml run 41169338231, operator job 124443690997: signature pushed at 04:40:58Z,
-              # verified keyless at 04:41:01Z on 2026-10-31.
-              tag: sha-fac30c8@sha256:f73bb7494987bc6600085e5f8a22c3e30ad8343aeb59187970cc883b507793da
+              # v2.76.0 (OpenProject #321, #322, #326): release merge 432fd2838ad0b109004f23bf46e5af58b15ce276 (dev-env#767). Operator changes
+              # since fac30c8 (v2.75.0):
+              # - #769: the inbox ask and reply API behind the NEW flag --enable-inbox-questions, default off and not set here;
+              # - #765: the read-only TaskClaim join on session detail, only when a client sends X-Dev-Env-Session-Task-Claims: v1;
+              # - #762: the portal reader returns activity.taskOutcome only when the portal sends X-Dev-Env-Task-Outcome: v1.
+              # No existing arg changes. Requires the v2.76.0 InboxMessage CRD in dev-env-crds (haynes-ops #4490) and the v2.75.0 AgentSession CRD.
+              # Rollback: once any question or reply exists, keep the operator at 2.76 or later (DESIGN-014). The 2.75 taskOutcome floor also stands.
+              # publish.yml run 41179021429, operator job 124472412659: signature pushed at 07:06:16Z, verified keyless at 07:06:19Z on 2026-10-31.
+              tag: sha-432fd28@sha256:7b8374d8a8b45e0151ee37a1fdd9bd77e52ac6293a88ba3032cbdfe5a365d97a
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -251,7 +253,7 @@ spec:
               # To turn it off, set it false. Never pin the operator below 2.71.0 once a reclaim was recorded (taskTerminal CEL).
               - '--enable-terminal-task-pod-reclaim=true'
               - '--terminal-task-pod-reclaim-grace=10m'
-              # DESIGN-025 section 24.1 (OP308, dev-env#738, shipped since sha-386317b and carried by sha-fac30c8; Tom chose 'Build it, on after tests' 2026-10-30):
+              # DESIGN-025 section 24.1 (OP308, dev-env#738, shipped since sha-386317b and carried by sha-432fd28; Tom chose 'Build it, on after tests' 2026-10-30):
               # also accept the retained usage receipt as exit proof for pre-2.71 task executors (both versions below 2.71.0, exit
               # not 127, receipt bound to Session/Pod/provider/model, heartbeat <=2m while running, 0 restarts). Same stop path,
               # grace and guarded delete; HOME, PVC and history stay. All current targets act about 10m after this rolls out.
