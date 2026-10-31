@@ -125,15 +125,16 @@ spec:
               # publish.yml run 41088359336 signed and verified this exact digest; post-merge CI run 41088359765 green.
               # Requires the v2.71.0 AgentSession schema in dev-env-crds (haynes-ops #4450). Reclaim is on since #4453 (OP302 step 4); see its flag block below.
               # Operator image only: keeper, broker, portal, templates and existing Session pods stay unchanged.
-              # v2.76.0 (OpenProject #321, #322, #326): release merge 432fd2838ad0b109004f23bf46e5af58b15ce276 (dev-env#767). Operator changes
-              # since fac30c8 (v2.75.0):
-              # - #769: the inbox ask and reply API behind the NEW flag --enable-inbox-questions (default off; turned on below by haynes-ops #4494);
-              # - #765: the read-only TaskClaim join on session detail, only when a client sends X-Dev-Env-Session-Task-Claims: v1;
-              # - #762: the portal reader returns activity.taskOutcome only when the portal sends X-Dev-Env-Task-Outcome: v1.
-              # No existing arg changes. Requires the v2.76.0 InboxMessage CRD in dev-env-crds (haynes-ops #4490) and the v2.75.0 AgentSession CRD.
-              # Rollback: once any question or reply exists, keep the operator at 2.76 or later (DESIGN-014). The 2.75 taskOutcome floor also stands.
-              # publish.yml run 41179021429, operator job 124472412659: signature pushed at 07:06:16Z, verified keyless at 07:06:19Z on 2026-10-31.
-              tag: sha-432fd28@sha256:7b8374d8a8b45e0151ee37a1fdd9bd77e52ac6293a88ba3032cbdfe5a365d97a
+              # v2.77.0 (OpenProject #322, #324, #321): release merge 6c7f344ada642a9d92b61075c35c393ff8a4aac1 (dev-env#772). Operator changes
+              # since 432fd28 (v2.76.0):
+              # - #777: grant detail lists a maintenance grant requester's TaskClaims, only when a client sends X-Dev-Env-Grant-Task-Claims: v1;
+              # - #771: the inbox reply index lists metadata only and holds no reply text per list.
+              # Carried from v2.76.0: the inbox ask and reply (#769, on below since haynes-ops #4494), the TaskClaim join on session detail (#765)
+              # and the portal's taskOutcome reader (#762). No arg, API type or CRD change: the v2.76.0 InboxMessage CRD (haynes-ops #4490)
+              # and the v2.75.0 AgentSession CRD stay as they are.
+              # Rollback: questions and replies exist, so keep the operator at 2.76 or later (DESIGN-014). The 2.75 taskOutcome floor also stands.
+              # publish.yml run 41188272020, operator job 124499549335: signature pushed at 09:22:57Z, verified keyless at 09:23:01Z on 2026-10-31.
+              tag: sha-6c7f344@sha256:839bcaf17b3fc0db9bb38ea56fd98e831dd62ef104e29896006d63812fd64eba
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
@@ -253,7 +254,7 @@ spec:
               # To turn it off, set it false. Never pin the operator below 2.71.0 once a reclaim was recorded (taskTerminal CEL).
               - '--enable-terminal-task-pod-reclaim=true'
               - '--terminal-task-pod-reclaim-grace=10m'
-              # DESIGN-025 section 24.1 (OP308, dev-env#738, shipped since sha-386317b and carried by sha-432fd28; Tom chose 'Build it, on after tests' 2026-10-30):
+              # DESIGN-025 section 24.1 (OP308, dev-env#738, shipped since sha-386317b and carried by sha-6c7f344; Tom chose 'Build it, on after tests' 2026-10-30):
               # also accept the retained usage receipt as exit proof for pre-2.71 task executors (both versions below 2.71.0, exit
               # not 127, receipt bound to Session/Pod/provider/model, heartbeat <=2m while running, 0 restarts). Same stop path,
               # grace and guarded delete; HOME, PVC and history stay. All current targets act about 10m after this rolls out.
