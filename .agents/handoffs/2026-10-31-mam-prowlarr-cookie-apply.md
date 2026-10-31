@@ -1,6 +1,6 @@
-# HELD option: one-shot MAM cookie apply to Prowlarr indexer 17 (OpenProject #319)
+# One-shot MAM cookie apply to Prowlarr indexer 17 (OpenProject #319)
 
-**HELD DRAFT. Do not merge.** This is one held operational option inside the homelab operator access bundle (dev-env, Tom's correction 2026-10-31: "agents will need access to everything it's a home lab"). It is not a permanent service exception.
+**Approved by Tom, 2026-10-31 about 13:51Z** (his words in coordinator session dev-env-1027-010058, as relayed): 'GitOps one-shot Job' for indexer 17, and 'Restart is fine' for qBittorrent. It is one task inside the homelab operator access bundle (dev-env DESIGN-042, being drafted), not a permanent service exception. A cleanup PR removes it after the run.
 
 What it does: once, in `downloads`, a Job runs as its own ServiceAccount `prowlarr-mam-cookie-apply`. That account has `automountServiceAccountToken: false` and no RBAC.
 - It reads two existing keys as env: `myanonamouse-secret/MAM_ID_PROWLARR` and `prowlarr-secret/PROWLARR_API_KEY`.
@@ -18,7 +18,7 @@ Authority: this is the normal reviewed GitOps route, applied by Flux. It changes
 Shared-secret dependency (unavoidable): the Job uses whatever the Secret holds when it starts. Tom's 1Password change reaches `myanonamouse-secret` at the next ExternalSecret refresh (hourly, or a force-sync). qbittorrent mounts `MAM_ID_SEEDBOX` from the same Secret and has `reloader.stakater.com/auto: "true"`, so that refresh restarts the qbittorrent pod.
 
 Order:
-1. The ExternalSecret refreshes (qbittorrent restarts).
+1. The ExternalSecret refreshes (qbittorrent restarts). DONE 2026-10-31: the force-sync recorded refreshTime 13:54:01Z with a new syncedResourceVersion hash. qbittorrent pod 8b2483cb was replaced by 36b6b9d5 (started 13:54:32Z, 3/3 Ready by 13:54:48Z, 0 restarts), under declared activity act-135401-317727.
 2. Merge.
 3. Check the Job is `Complete` and logs `HTTP 202`. Check the governor's next 15-minute tick has no `actuationError` and the alert clears.
 4. A cleanup PR removes the four objects, and Flux prunes them. There is no TTL, because Flux would re-create a TTL-deleted Job.

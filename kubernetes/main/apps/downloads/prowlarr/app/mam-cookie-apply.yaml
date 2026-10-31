@@ -1,6 +1,6 @@
 ---
 # One-shot (OpenProject #319): load the saved MAM_ID_PROWLARR cookie into Prowlarr's
-# MyAnonamouse indexer 17. HELD DRAFT: see .agents/handoffs/2026-10-31-mam-prowlarr-cookie-apply.md.
+# MyAnonamouse indexer 17. Tom approved it 2026-10-31; see .agents/handoffs/2026-10-31-mam-prowlarr-cookie-apply.md.
 # No TTL on purpose: Flux would re-create a TTL-deleted Job. A follow-up PR removes these
 # objects and Flux prunes them.
 apiVersion: v1
