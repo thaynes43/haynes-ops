@@ -68,9 +68,35 @@ spec:
                 - podUID
                 - serviceAccount
                 type: object
+              inReplyTo:
+                description: |-
+                  InReplyTo is the question a reply answers. The API binds it from the
+                  live question, whose sender is the reply's recipient.
+                properties:
+                  name:
+                    maxLength: 80
+                    pattern: ^message\.[a-f0-9]{32}\.[a-f0-9]{32}$
+                    type: string
+                  uid:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                required:
+                - name
+                - uid
+                type: object
               key:
                 maxLength: 128
                 pattern: ^[a-z0-9]([a-z0-9._-]{0,126}[a-z0-9])?$
+                type: string
+              kind:
+                description: |-
+                  Kind marks a routine question or its reply (DESIGN-014, 2026-10-31).
+                  Absent is a plain message, as before. A reply is not an approval.
+                enum:
+                - question
+                - reply
                 type: string
               project:
                 maxLength: 63
@@ -207,6 +233,8 @@ spec:
               rule: self == oldSelf
             - message: only original Session senders publish
               rule: self.actor.kind == 'session'
+            - message: every reply, and only a reply, names the question it answers
+              rule: has(self.inReplyTo) == (has(self.kind) && self.kind == 'reply')
         required:
         - spec
         type: object
