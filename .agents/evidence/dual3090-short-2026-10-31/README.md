@@ -23,8 +23,11 @@ is retimed by 10/9 to 90 frames: eight 3.75-second cuts make **30 seconds** at
 
 Delivery is portrait 1080×1920 H.264/AAC. The installed API's native source is
 1280×704 landscape. Prompts favor centered subjects; the edit crops 396×704
-and uses Lanczos upscaling. This is explicitly an upscale, not native 1080p
-portrait generation. Text stays clear of the bottom controls region.
+and uses Lanczos upscaling. Shot seven shifts its crop right to keep the flower
+inside the frame. This is explicitly an upscale, not native 1080p portrait
+generation. Text stays clear of the bottom controls region. The sixth take
+moves up the building but does not reliably extinguish its windows; a short
+editorial fade supplies the blackout while its caption remains readable.
 
 ## Length and monetization research
 
@@ -64,7 +67,7 @@ monetized production has **not** been verified. No account, credential, or
 commercial registration is created by this PoC. Model-output ownership terms
 are not a guarantee against third-party claims.
 
-The WAV master targets −18 LUFS and −1.5 dBTP using two-pass loudness processing.
+The WAV master targets −18 LUFS and −2.5 dBTP using two-pass loudness processing.
 The final AAC is independently decoded and measured again; final values belong
 in `validation.json`. Objective audio checks do not substitute for human
 listening approval, which remains unverified.
@@ -93,5 +96,53 @@ successful creative output.
 
 ## Final evidence
 
-Production in progress; final media checks, artifact pointer, GPU summary and
-delivery state will be recorded here before story completion.
+- [Finished film — private network](https://video.haynesops.com/videos/ae3d7abb2d2b4cca90f7bc985252ce0c/file)
+- [Production record — private network](https://video.haynesops.com/videos/ae3d7abb2d2b4cca90f7bc985252ce0c)
+- Local movie: `/home/dev/artifacts/dual3090-short/dream-debt-short.mp4`.
+- Separate WAV master: `/home/dev/artifacts/dual3090-short/dream-debt-soundtrack.wav`.
+- Durable service copy: `/workspace/output/productions/op340/`, 30 checked assets.
+- [Source PR #4509](https://github.com/thaynes43/haynes-ops/pull/4509).
+
+The final movie is **30.00 seconds**, 1080×1920, H.264 at 24 fps, with stereo
+AAC at 48 kHz. All **720 video frames** and the complete audio stream decode.
+It is 17,020,552 bytes, SHA256
+`d059d699dc40b934160a8fd2e6a8ca0813f634f036a6da79367518b54654c238`.
+The existing Pipelines Pod downloaded the final private URL: HTTP 200,
+`video/mp4`, matching bytes and SHA256. Private access still requires the
+existing local-network path.
+
+The final AAC measures **−18.07 LUFS**, **−1.44 dBTP**, and zero full-scale
+samples. The first mux was rejected by our check at −0.66 dBTP after AAC
+overshoot. Lowering the WAV master ceiling from −1.5 to −2.5 dBTP fixed the
+encoded result; only audio was remixed/remuxed, with no additional GPU render.
+Selected portrait frames and the complete eight-panel storyboard were visually
+inspected. Human listening approval remains unverified.
+
+All **eight** source jobs succeeded, with **zero replacement renders** and no
+benchmark. Their total API running time was 1,045.33 seconds, with additional
+natural cooldown between jobs. Every job recorded both GPUs at least 90%
+utilization together; across the sequence there were 143 such five-second
+samples. Both GPUs individually peaked at 100%.
+
+| Card / UUID suffix | Peak GPU temperature | Peak used VRAM | Peak sampled power |
+| --- | --- | --- | --- |
+| Card C / `654561496774` | 91°C | 22,124 MiB | 349.41 W |
+| Card A / `00aa1924c55a` | 81°C | 11,854 MiB | 349.71 W |
+
+Configured and enforced limits were verified at **350 W on each card before
+and after**. No setting changed. These are observations from useful production,
+not sustained hardware acceptance, a speedup comparison, or pooled-VRAM proof.
+No thermal-flag snapshot was taken in this production; the earlier #339 thermal
+finding remains separate history.
+
+Final runtime readback: API ready, accepting jobs, active job null, GPUs idle.
+The Wan Pod remains on talosw01 with zero restarts. Wan, Open WebUI, existing
+ComfyUI and llama-server HelmReleases are Ready. Existing image/voice workloads,
+pairings and histories were not changed by this work.
+
+Independent native review findings were fixed: interrupted-run provenance,
+checkpoint placement, and final media assertions. Advisory Claude review found
+a PyAV metadata lifetime issue, also fixed and answered. Required source checks
+and final merge are recorded on the PR and canonical story. `validation.json`,
+`render-report.json`, source `jobs/`, audio metadata and `production.json` contain
+the detailed evidence; binary media remains private.

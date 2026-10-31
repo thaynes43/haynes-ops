@@ -1,0 +1,110 @@
+{
+  "story": "OP340",
+  "title": "DREAM DEBT",
+  "shot_count": 8,
+  "source_jobs": [
+    {
+      "name": "city",
+      "id": "ec619ed892de4612943cf257c754b2ac",
+      "duration_seconds": 126.27837896347046,
+      "sha256": "f0058ae118a82c1bed9150a3b2f56929c71f52c28e148f6504875077895d8235",
+      "simultaneous_utilization_ge90_samples": 17
+    },
+    {
+      "name": "machine",
+      "id": "81fb87c6193345adaadbde1f629ac5aa",
+      "duration_seconds": 131.28963685035706,
+      "sha256": "dc3881af56673e87bb28521b07131e3d3e5d6eacaa6dde420bf09792957178f1",
+      "simultaneous_utilization_ge90_samples": 18
+    },
+    {
+      "name": "dream",
+      "id": "89c9e7875d3c40ff9a76d40db21de964",
+      "duration_seconds": 131.295090675354,
+      "sha256": "ce7d3a5848223dc6960f65b6d40e72dbf623b3071f0e570a621be194ef437041",
+      "simultaneous_utilization_ge90_samples": 18
+    },
+    {
+      "name": "meter",
+      "id": "f151322b65954666a43cd561959140a9",
+      "duration_seconds": 131.28570413589478,
+      "sha256": "2e078ca779cdeb186b9d2bc8bfe27b18beb58a0570c48e8067d1ff86fe9e32ea",
+      "simultaneous_utilization_ge90_samples": 18
+    },
+    {
+      "name": "bottles",
+      "id": "5731584906b842e3b0f7f2199c10450c",
+      "duration_seconds": 131.2886791229248,
+      "sha256": "8747a5509eb2bd3632a48623a0d024f869d0bc747d6e972742bbdd61daf20f2a",
+      "simultaneous_utilization_ge90_samples": 18
+    },
+    {
+      "name": "blackout",
+      "id": "80ecefbfccf04410adf94fab22b9ee78",
+      "duration_seconds": 131.30217742919922,
+      "sha256": "b68450eb7922845819567c06b3b85767832f95a40d6e71b743ce5ae3b4582d2f",
+      "simultaneous_utilization_ge90_samples": 18
+    },
+    {
+      "name": "defiance",
+      "id": "f5a172446fc94dd7830944bc6315e5d5",
+      "duration_seconds": 131.2924098968506,
+      "sha256": "057959cee514b9f09bcd0265e894a6d15a76ebd7a376ee135842d7ea6b88000c",
+      "simultaneous_utilization_ge90_samples": 18
+    },
+    {
+      "name": "dawn",
+      "id": "67bf9f31ba28406fa1af4d60ac70c0c3",
+      "duration_seconds": 131.29540824890137,
+      "sha256": "794d5eaa80231b55409558c1a52a94e3829390ff9c94ad4467e85555a22338f0",
+      "simultaneous_utilization_ge90_samples": 18
+    }
+  ],
+  "gpu_peaks": {
+    "GPU-d8a856f1-f955-f683-bc24-654561496774": {
+      "memory_mib": 22124.0,
+      "temperature_c": 91.0,
+      "power_w": 349.41,
+      "utilization_percent": 100.0
+    },
+    "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a": {
+      "memory_mib": 11854.0,
+      "temperature_c": 81.0,
+      "power_w": 349.71,
+      "utilization_percent": 100.0
+    }
+  },
+  "simultaneous_ge90_samples": 143,
+  "total_inference_job_seconds": 1045.3274853229523,
+  "replacement_renders": 0,
+  "benchmarks": 0,
+  "hardware_acceptance": "Not established; Card C temperature concern remains separate from successful media generation.",
+  "youtube_assessment": "Original fictional story and intentional edit designed for advertiser suitability; platform/channel monetization and audio commercial-use readiness are not certified.",
+  "audio_audition": "Objective checks only; human listening approval unverified.",
+  "source_pr": "https://github.com/thaynes43/haynes-ops/pull/4509",
+  "private_video_url": "https://video.haynesops.com/videos/ae3d7abb2d2b4cca90f7bc985252ce0c/file",
+  "delivery_verification": {
+    "http": 200,
+    "content_type": "video/mp4",
+    "bytes": 17020552,
+    "sha256": "d059d699dc40b934160a8fd2e6a8ca0813f634f036a6da79367518b54654c238",
+    "vantage": "existing Open WebUI Pipelines Pod"
+  },
+  "final_runtime": {
+    "wan_ready": true,
+    "accepting_jobs": true,
+    "active_job": null,
+    "other_helmreleases_ready": [
+      "open-webui",
+      "comfyui",
+      "llama-server"
+    ],
+    "wan_pod": "wan-video-67897df954-8l8gz",
+    "node": "talosw01",
+    "restarts": 0,
+    "configured_and_enforced_power_w": [
+      350,
+      350
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "av": "18.1.0",
+  "pillow": "13.0.0",
+  "numpy": "2.4.6",
+  "imageio_ffmpeg": "0.7.0",
+  "worker_limit": 2
+}

@@ -1,0 +1,35 @@
+{
+  "file": "dream-debt-short.mp4",
+  "sha256": "d059d699dc40b934160a8fd2e6a8ca0813f634f036a6da79367518b54654c238",
+  "bytes": 17020552,
+  "duration_seconds": 30.0,
+  "video": {
+    "codec": "h264",
+    "width": 1080,
+    "height": 1920,
+    "fps": "24",
+    "original_shots": 8,
+    "source": "1280x704; 396x704 crop centered except shot7 x=540; Lanczos upscale; 10/9 retime",
+    "decoded_frames": 720
+  },
+  "audio": {
+    "codec": "aac",
+    "sample_rate": 48000,
+    "channels": 2,
+    "decoded_samples_per_channel": 1440768,
+    "decoded_peak_dbfs": -1.4667250783154366,
+    "full_scale_samples": 0,
+    "final_aac_loudness": {
+      "input_i": "-18.07",
+      "input_tp": "-1.44",
+      "input_lra": "12.50",
+      "input_thresh": "-28.87",
+      "output_i": "-18.34",
+      "output_tp": "-2.24",
+      "output_lra": "8.60",
+      "output_thresh": "-28.60",
+      "normalization_type": "dynamic",
+      "target_offset": "0.34"
+    }
+  }
+}

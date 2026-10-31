@@ -77,9 +77,9 @@ def mix_audio():
     write_wav(OUT/'soundtrack-premaster.wav', mixed)
     # Two-pass EBU loudness normalization; preserve the first pass measurement.
     first = ffmpeg(['-i', str(OUT/'soundtrack-premaster.wav'), '-af',
-                    'loudnorm=I=-18:TP=-1.5:LRA=9:print_format=json', '-f', 'null', '-'])
+                    'loudnorm=I=-18:TP=-2.5:LRA=9:print_format=json', '-f', 'null', '-'])
     measure = json.JSONDecoder().raw_decode(first[first.rfind('{'):])[0]
-    normalizer = ('loudnorm=I=-18:TP=-1.5:LRA=9:linear=true:print_format=json:'
+    normalizer = ('loudnorm=I=-18:TP=-2.5:LRA=9:linear=true:print_format=json:'
                   f'measured_I={measure["input_i"]}:measured_TP={measure["input_tp"]}:'
                   f'measured_LRA={measure["input_lra"]}:measured_thresh={measure["input_thresh"]}:'
                   f'offset={measure["target_offset"]}')
@@ -87,7 +87,7 @@ def mix_audio():
                      '-ar', '48000', '-c:a', 'pcm_s24le', str(OUT/'dream-debt-soundtrack.wav')])
     (OUT/'audio-loudness.json').write_text(json.dumps({
         'first_pass': measure, 'second_pass': json.JSONDecoder().raw_decode(second[second.rfind('{'):])[0],
-        'target_lufs': -18, 'target_true_peak_dbfs': -1.5,
+        'target_lufs': -18, 'target_true_peak_dbfs': -2.5,
         'audition': 'Objective checks only; not independently auditioned by a human.'}, indent=2)+'\n')
 
 
@@ -123,19 +123,24 @@ def edit_shot(shot):
     source = OUT/(shot['name']+'.mp4')
     target = OUT/(shot['name']+'-edit.mp4')
     overlay = make_overlay(shot)
-        # 1280x704 landscape source => centered 396x704 portrait crop. Delivery is
-        # an upscale, not native 1080p generation. 10/9 retime gives 90 frames.
+    # 1280x704 landscape source => centered 396x704 portrait crop. Delivery is
+    # an upscale, not native 1080p generation. 10/9 retime gives 90 frames.
+    crop_x = '540' if shot['name'] == 'defiance' else '(iw-396)/2'
+    visual = f'[0:v]crop=396:704:{crop_x}:0,scale=1080:1920:flags=lanczos,setsar=1,setpts=10/9*PTS,fps=24'
+    if shot['name'] == 'blackout':
+        # The take moves upward but does not reliably extinguish its windows.
+        # An editorial fade supplies the narrative blackout; captions stay lit.
+        visual += ',fade=t=out:st=2.75:d=0.75'
+    visual += '[v];[v][1:v]overlay=0:0:shortest=1:format=auto,format=yuv420p[out]'
     ffmpeg(['-i', str(source), '-loop', '1', '-i', str(overlay),
-                '-filter_complex', '[0:v]crop=396:704:(iw-396)/2:0,scale=1080:1920:flags=lanczos,setsar=1,setpts=10/9*PTS,fps=24[v];[v][1:v]overlay=0:0:shortest=1:format=auto,format=yuv420p[out]',
+                '-filter_complex', visual,
                 '-map', '[out]', '-frames:v', '90', '-an', '-c:v', 'libx264',
                 '-threads', '2', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p',
                 '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', str(target)])
     return target
 
 
-def edit_video():
-    shots = json.loads((OUT/'shots.json').read_text())
-    segments = [edit_shot(shot) for shot in shots]
+def assemble_video(shots, segments):
     concat = OUT/'segments.txt'
     concat.write_text(''.join("file '"+str(p)+"'\n" for p in segments))
     ffmpeg(['-f', 'concat', '-safe', '0', '-i', str(concat),
@@ -147,6 +152,11 @@ def edit_video():
     return shots
 
 
+def edit_video():
+    shots = json.loads((OUT/'shots.json').read_text())
+    return assemble_video(shots, [edit_shot(shot) for shot in shots])
+
+
 def validate(shots):
     path = OUT/'dream-debt-short.mp4'
     container = av.open(str(path))
@@ -155,7 +165,7 @@ def validate(shots):
     video_info = {'codec': stream.codec_context.name, 'width': stream.width,
                   'height': stream.height, 'fps': str(stream.average_rate),
                   'original_shots': len(shots),
-                  'source': '1280x704; centered 396x704 crop, Lanczos upscale; 10/9 retime'}
+                  'source': '1280x704; 396x704 crop centered except shot7 x=540; Lanczos upscale; 10/9 retime'}
     snapshots = []
     count = 0
     # Every video frame is actually decoded, rather than trusting metadata.

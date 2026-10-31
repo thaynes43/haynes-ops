@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "service_version": "0.2.0",
+  "model": {
+    "name": "Stable Audio 3 Small SFX",
+    "source_repository": "Stability-AI/stable-audio-3",
+    "source_revision": "779434a908193105335fd8d833418603625b2859",
+    "weights_repository": "stabilityai/stable-audio-3-optimized",
+    "weights_revision": "da6edc54ddba10bfd79a077102ded687f80e882b",
+    "device": "cpu",
+    "runtime": "LiteRT/XNNPACK",
+    "dit": "sm-sfx",
+    "decoder": "same-s",
+    "dit_precision": "fp32",
+    "decoder_precision": "w8a8",
+    "threads": 4
+  },
+  "id": "574c1094f6ae46d987ac7118c3f50993",
+  "status": "completed",
+  "prompt": "Close-up cinematic science fiction machine sound effect. A soft precision mechanical ratchet ticking steadily, a little glassy electrical resonance, a low motor whir slowly winding down and one small clean power-down click. Dark and futuristic but controlled, no explosions, no voices, no music, no loud harsh impacts.",
+  "seconds": 10,
+  "steps": 8,
+  "seed": 3402,
+  "created_at": "2026-10-31T22:11:40.855822Z",
+  "started_at": "2026-10-31T22:11:40.867784Z",
+  "finished_at": "2026-10-31T22:11:48.430901Z",
+  "peak_subprocess_rss_bytes": 4149239808,
+  "artifact": "jobs/574c1094f6ae46d987ac7118c3f50993/output.wav",
+  "audio": {
+    "codec": "pcm_s16le",
+    "sample_rate": 44100,
+    "channels": 2,
+    "duration_seconds": 10,
+    "size_bytes": 1764044,
+    "sha256": "a581f54a27cef9947d4e3b260e59b6253e3af507ccab379a283f7e64b12b3297"
+  },
+  "error": null,
+  "elapsed_seconds": 7.563,
+  "download_url": "/artifacts/574c1094f6ae46d987ac7118c3f50993/output.wav"
+}

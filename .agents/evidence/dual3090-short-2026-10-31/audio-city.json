@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "service_version": "0.2.0",
+  "model": {
+    "name": "Stable Audio 3 Small SFX",
+    "source_repository": "Stability-AI/stable-audio-3",
+    "source_revision": "779434a908193105335fd8d833418603625b2859",
+    "weights_repository": "stabilityai/stable-audio-3-optimized",
+    "weights_revision": "da6edc54ddba10bfd79a077102ded687f80e882b",
+    "device": "cpu",
+    "runtime": "LiteRT/XNNPACK",
+    "dit": "sm-sfx",
+    "decoder": "same-s",
+    "dit_precision": "fp32",
+    "decoder_precision": "w8a8",
+    "threads": 4
+  },
+  "id": "219caf67abbb45bf8340f1431fb1eed0",
+  "status": "completed",
+  "prompt": "Original cinematic science fiction sound design. A deserted neon city at night in steady rain, deep distant ventilation drones, quiet electrical buzzing, a few delicate synthetic glass chimes. Ominous slow rising low frequency pulse, atmospheric industrial suspense, wide stereo ambience, no speech, no vocals, no recognizable tune, no abrupt loud jumps.",
+  "seconds": 30,
+  "steps": 8,
+  "seed": 3401,
+  "created_at": "2026-10-31T22:10:30.843935Z",
+  "started_at": "2026-10-31T22:10:30.857582Z",
+  "finished_at": "2026-10-31T22:10:44.391304Z",
+  "peak_subprocess_rss_bytes": 4647604224,
+  "artifact": "jobs/219caf67abbb45bf8340f1431fb1eed0/output.wav",
+  "audio": {
+    "codec": "pcm_s16le",
+    "sample_rate": 44100,
+    "channels": 2,
+    "duration_seconds": 30,
+    "size_bytes": 5292044,
+    "sha256": "8c391cc1cb5b1fc3a93b101e811a5a2300ed5f7ef608d6d6d14736212be64427"
+  },
+  "error": null,
+  "elapsed_seconds": 13.534,
+  "download_url": "/artifacts/219caf67abbb45bf8340f1431fb1eed0/output.wav"
+}

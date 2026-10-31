@@ -27,7 +27,7 @@ def main():
              'validation.json', 'audio-loudness.json', 'audio-city.json',
              'audio-machine.json', 'audio-dawn.json', 'audio-model-license.md',
              'audio-city.wav', 'audio-machine.wav', 'audio-dawn.wav',
-             'contact-sheet.jpg']
+             'contact-sheet.jpg', 'edit-versions.json']
     shots = json.loads((OUT/'shots.json').read_text())
     sources = []
     for shot in shots:
