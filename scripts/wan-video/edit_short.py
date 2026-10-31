@@ -152,6 +152,10 @@ def validate(shots):
     container = av.open(str(path))
     stream = container.streams.video[0]
     stream.thread_count = 2
+    video_info = {'codec': stream.codec_context.name, 'width': stream.width,
+                  'height': stream.height, 'fps': str(stream.average_rate),
+                  'original_shots': len(shots),
+                  'source': '1280x704; centered 396x704 crop, Lanczos upscale; 10/9 retime'}
     snapshots = []
     count = 0
     # Every video frame is actually decoded, rather than trusting metadata.
@@ -160,6 +164,7 @@ def validate(shots):
             snapshots.append(frame.to_image().resize((270, 480)))
         count += 1
     container.close()
+    video_info['decoded_frames'] = count
     assert count == 720 and len(snapshots) == 8
     contact = Image.new('RGB', (4*270, 2*480))
     for i, image in enumerate(snapshots):
@@ -173,13 +178,12 @@ def validate(shots):
     samples = sum(x.shape[-1] for x in arrays)
     report = {'file': path.name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
               'bytes': path.stat().st_size, 'duration_seconds': container.duration/av.time_base,
-              'video': {'codec': stream.codec_context.name, 'width': stream.width, 'height': stream.height,
-                        'fps': str(stream.average_rate), 'decoded_frames': count, 'original_shots': len(shots),
-                        'source': '1280x704; centered 396x704 crop, Lanczos upscale; 10/9 retime'},
+              'video': video_info,
               'audio': {'codec': sound.codec_context.name, 'sample_rate': sound.rate,
                         'channels': sound.codec_context.channels, 'decoded_samples_per_channel': samples,
                         'decoded_peak_dbfs': 20*math.log10(max(peak, 1e-9)),
                         'full_scale_samples': sum(int(np.count_nonzero(np.abs(x)>=1)) for x in arrays)}}
+    container.close()
     assert report['video']['width'] == 1080 and report['video']['height'] == 1920
     assert report['video']['codec'] == 'h264' and report['video']['fps'] == '24'
     assert abs(report['duration_seconds']-30) < 0.1
