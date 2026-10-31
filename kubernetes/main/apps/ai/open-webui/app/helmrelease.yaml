@@ -14,7 +14,9 @@ spec:
         kind: HelmRepository
         name: open-webui
   interval: 15m
-  timeout: 5m
+  # A Pipelines pod moving to an uncached node exceeded 5m pulling its image
+  # during OP#339. Allow the normal cold pull without restarting the pod.
+  timeout: 15m
   releaseName: open-webui
   values: # found here https://github.com/open-webui/helm-charts/blob/main/charts/open-webui/values.yaml
     # -- Automatically install Ollama Helm chart from https://otwld.github.io/ollama-helm/. Use [Helm Values](https://github.com/otwld/ollama-helm/#helm-values) to configure

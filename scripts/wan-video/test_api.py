@@ -117,6 +117,10 @@ class VideoTests(unittest.TestCase):
         with patch.object(pipeline, "request") as request:
             self.assertEqual(list(pipeline.Pipeline().pipe("title", "wan_video", [], {"task": "title_generation"})), ["Wan video"])
             request.assert_not_called()
+        with patch.object(pipeline, "request", side_effect=[{"id": "a" * 32}, {"state": "failed"}]) as request:
+            result = list(pipeline.Pipeline().pipe("test clip", "wan_video", [], {"metadata": None}))
+            self.assertEqual(request.call_count, 2)
+            self.assertIn("failed", result[-1])
 
     def test_restart_cancels_owned_job_without_replaying(self):
         job = {"id": "a" * 32, "state": "running", "prompt_id": "p1"}
