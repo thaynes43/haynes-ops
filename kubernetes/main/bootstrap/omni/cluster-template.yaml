@@ -17,6 +17,8 @@ features:
     interval: 24h
 ---
 kind: ControlPlane
+# Broker PSA is scoped in the five Machine patches below. Adding/replacing a
+# control-plane identity also requires its patch and effective-PSA validation.
 machines:
   - 88d0b080-43be-11ef-9fe8-3b0f229ef000
   - c1f22c00-4390-11ef-a299-436f6535c900
@@ -139,8 +141,6 @@ patches:
                 warn: restricted
                 warn-version: latest
               exemptions:
-                namespaces:
-                - kube-system
                 runtimeClasses: []
                 usernames:
                 - system:serviceaccount:dev-env-system:dev-env-broker
@@ -334,8 +334,6 @@ patches:
                 warn: restricted
                 warn-version: latest
               exemptions:
-                namespaces:
-                - kube-system
                 runtimeClasses: []
                 usernames:
                 - system:serviceaccount:dev-env-system:dev-env-broker
@@ -500,8 +498,6 @@ patches:
                 warn: restricted
                 warn-version: latest
               exemptions:
-                namespaces:
-                - kube-system
                 runtimeClasses: []
                 usernames:
                 - system:serviceaccount:dev-env-system:dev-env-broker
@@ -683,8 +679,6 @@ patches:
                 warn: restricted
                 warn-version: latest
               exemptions:
-                namespaces:
-                - kube-system
                 runtimeClasses: []
                 usernames:
                 - system:serviceaccount:dev-env-system:dev-env-broker
@@ -859,8 +853,6 @@ patches:
                 warn: restricted
                 warn-version: latest
               exemptions:
-                namespaces:
-                - kube-system
                 runtimeClasses: []
                 usernames:
                 - system:serviceaccount:dev-env-system:dev-env-broker
