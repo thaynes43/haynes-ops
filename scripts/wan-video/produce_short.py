@@ -5,6 +5,7 @@ import subprocess
 import time
 
 OUT = Path('/home/dev/artifacts/dual3090-short')
+BUDGET_SECONDS = 3200
 BASE = 'http://127.0.0.1:8080'
 REMOTE = ['kubectl', 'exec', '-i', '-n', 'ai', 'deploy/wan-video', '-c', 'api', '--', 'python3', '-c']
 STYLE = (' Original cinematic science-fiction miniature, atmospheric rain, cyan and amber lighting, '
@@ -48,7 +49,7 @@ def main():
         clip_path = OUT/(shot['name']+'.mp4')
         if clip_path.exists():
             raise RuntimeError('Existing output: inspect before intentionally resuming')
-        if time.monotonic()-started > 3200:
+        if time.monotonic()-started > BUDGET_SECONDS:
             raise RuntimeError('Story checkpoint reached; do not submit more work')
         # Let the pair cool naturally between useful jobs. Never change fans/clocks/power.
         for attempt in range(30):
@@ -59,7 +60,7 @@ def main():
             time.sleep(10)
         else:
             raise RuntimeError('Pair did not return to cool idle; stop')
-        if time.monotonic()-started > 3200:
+        if time.monotonic()-started > BUDGET_SECONDS:
             raise RuntimeError('Story checkpoint reached during cooldown; stop before submission')
         reply = call('/videos', {k: shot[k] for k in ('prompt','preset','seed')})
         (OUT/(shot['name']+'-submission.json')).write_text(json.dumps(reply,indent=2)+'\n')
@@ -76,7 +77,7 @@ def main():
         clip_path.write_bytes(call('/videos/'+job_id+'/file', binary=True))
         peaks = {g['uuid']:max(v['temperature_c'] for s in job['telemetry'] for v in s['gpus'] if v['uuid']==g['uuid']) for g in job['telemetry'][0]['gpus']}
         print(json.dumps({'shot':shot['index'],'event':'downloaded','bytes':clip_path.stat().st_size,'peak_temperature_c':peaks}), flush=True)
-    print('All eight original shots saved; no further jobs submitted.', flush=True)
+    print(f'All {len(manifest)} original shots saved; no further jobs submitted.', flush=True)
 
 
 if __name__ == '__main__':
