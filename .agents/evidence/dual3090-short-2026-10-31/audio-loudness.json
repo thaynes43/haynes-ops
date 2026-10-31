@@ -1,0 +1,29 @@
+{
+  "first_pass": {
+    "input_i": "-21.97",
+    "input_tp": "-1.90",
+    "input_lra": "17.50",
+    "input_thresh": "-33.17",
+    "output_i": "-16.71",
+    "output_tp": "-2.50",
+    "output_lra": "9.90",
+    "output_thresh": "-27.22",
+    "normalization_type": "dynamic",
+    "target_offset": "-1.29"
+  },
+  "second_pass": {
+    "input_i": "-21.97",
+    "input_tp": "-1.90",
+    "input_lra": "17.50",
+    "input_thresh": "-33.17",
+    "output_i": "-17.91",
+    "output_tp": "-2.50",
+    "output_lra": "10.20",
+    "output_thresh": "-28.44",
+    "normalization_type": "dynamic",
+    "target_offset": "-0.09"
+  },
+  "target_lufs": -18,
+  "target_true_peak_dbfs": -2.5,
+  "audition": "Objective checks only; not independently auditioned by a human."
+}

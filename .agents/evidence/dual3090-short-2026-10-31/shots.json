@@ -1,0 +1,66 @@
+[
+  {
+    "index": 1,
+    "name": "city",
+    "caption": "The city sold us\nbetter dreams.",
+    "prompt": "Slow push forward down a deserted rain-soaked futuristic city alley at midnight. A single amber-lit doorway glows dead center between immense dark buildings. Cyan reflections ripple in the puddles. Original cinematic science-fiction miniature, atmospheric rain, cyan and amber lighting, subtle film grain, slow physically coherent movement, high contrast, no logos, no writing, no violence. Keep the single main subject in the narrow central third of the frame for a vertical crop, symmetrical composition.",
+    "seed": 34010,
+    "preset": "720p"
+  },
+  {
+    "index": 2,
+    "name": "machine",
+    "caption": "One perfect night.\nOne tiny payment.",
+    "prompt": "A beautiful ominous dream vending machine stands alone in the exact center of a rainy dark alley. Its round amber glass window slowly illuminates, revealing swirling golden mist. Straight-on slow dolly in, no readable labels. Original cinematic science-fiction miniature, atmospheric rain, cyan and amber lighting, subtle film grain, slow physically coherent movement, high contrast, no logos, no writing, no violence. Keep the single main subject in the narrow central third of the frame for a vertical crop, symmetrical composition.",
+    "seed": 34011,
+    "preset": "720p"
+  },
+  {
+    "index": 3,
+    "name": "dream",
+    "caption": "At first,\nit was worth it.",
+    "prompt": "An impossibly beautiful tiny golden sun floats above a still black ocean inside a dark circular portal centered in the frame. Luminous particles rise gently from the water, the circular portal rim glows cyan. Slow push toward the golden sun. Original cinematic science-fiction miniature, atmospheric rain, cyan and amber lighting, subtle film grain, slow physically coherent movement, high contrast, no logos, no writing, no violence. Keep the single main subject in the narrow central third of the frame for a vertical crop, symmetrical composition.",
+    "seed": 34012,
+    "preset": "720p"
+  },
+  {
+    "index": 4,
+    "name": "meter",
+    "caption": "Then the meter\nkept running.",
+    "prompt": "Extreme close-up of a mysterious circular analog meter in black polished metal, perfectly centered. One thin amber needle slowly turns clockwise over abstract glowing cyan tick marks. Rain droplets slide down the glass, shallow depth of field. No numbers or letters. Original cinematic science-fiction miniature, atmospheric rain, cyan and amber lighting, subtle film grain, slow physically coherent movement, high contrast, no logos, no writing, no violence. Keep the single main subject in the narrow central third of the frame for a vertical crop, symmetrical composition.",
+    "seed": 34013,
+    "preset": "720p"
+  },
+  {
+    "index": 5,
+    "name": "bottles",
+    "caption": "We paid\nin tomorrows.",
+    "prompt": "A tall narrow glass canister stands in the middle of a dark industrial chamber. A beautiful miniature luminous golden sunrise swirls inside its glass. The gold light slowly drains downward through a thin pipe and the canister turns cold blue. Static camera, one centered vessel. Original cinematic science-fiction miniature, atmospheric rain, cyan and amber lighting, subtle film grain, slow physically coherent movement, high contrast, no logos, no writing, no violence. Keep the single main subject in the narrow central third of the frame for a vertical crop, symmetrical composition.",
+    "seed": 34014,
+    "preset": "720p"
+  },
+  {
+    "index": 6,
+    "name": "blackout",
+    "caption": "Until the city\nforgot how to wake.",
+    "prompt": "A towering futuristic building centered in a rain-soaked midnight city, viewed straight upward between dark symmetrical walls. Its warm golden windows switch off in a slow wave from bottom to top, leaving a single golden window glowing in the center. Slow upward camera movement. Original cinematic science-fiction miniature, atmospheric rain, cyan and amber lighting, subtle film grain, slow physically coherent movement, high contrast, no logos, no writing, no violence. Keep the single main subject in the narrow central third of the frame for a vertical crop, symmetrical composition.",
+    "seed": 34015,
+    "preset": "720p"
+  },
+  {
+    "index": 7,
+    "name": "defiance",
+    "caption": "So we stopped\nbuying sleep.",
+    "prompt": "Macro cinematic close-up of a single dark metal power cable plugged into a round socket in the center of the frame. A tiny golden wildflower grows from a crack beside it, its delicate petals opening as the socket cyan light slowly fades. Rain droplets, gentle breeze, no people. Original cinematic science-fiction miniature, atmospheric rain, cyan and amber lighting, subtle film grain, slow physically coherent movement, high contrast, no logos, no writing, no violence. Keep the single main subject in the narrow central third of the frame for a vertical crop, symmetrical composition.",
+    "seed": 34016,
+    "preset": "720p"
+  },
+  {
+    "index": 8,
+    "name": "dawn",
+    "caption": "And stole back\nthe dawn.",
+    "prompt": "A tiny golden wildflower stands alone dead center on wet dark pavement between futuristic buildings. The first real amber sunrise spills through the narrow alley behind it, replacing cold cyan night with warm light. Gentle breeze moves the flower, slow low-angle push in, hopeful cinematic ending. Original cinematic science-fiction miniature, atmospheric rain, cyan and amber lighting, subtle film grain, slow physically coherent movement, high contrast, no logos, no writing, no violence. Keep the single main subject in the narrow central third of the frame for a vertical crop, symmetrical composition.",
+    "seed": 34017,
+    "preset": "720p"
+  }
+]

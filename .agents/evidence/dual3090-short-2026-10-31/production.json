@@ -1,0 +1,210 @@
+{
+  "id": "ae3d7abb2d2b4cca90f7bc985252ce0c",
+  "kind": "edited_production",
+  "story": "OP340",
+  "title": "DREAM DEBT",
+  "state": "succeeded",
+  "created_at": 1793487068.588044,
+  "finished_at": 1793487068.5880446,
+  "output": "productions/op340/dream-debt-short.mp4",
+  "bytes": 17020552,
+  "sha256": "d059d699dc40b934160a8fd2e6a8ca0813f634f036a6da79367518b54654c238",
+  "preset": "editorial-30s-portrait",
+  "telemetry": [],
+  "source_jobs": [
+    {
+      "name": "city",
+      "job_id": "ec619ed892de4612943cf257c754b2ac",
+      "sha256": "f0058ae118a82c1bed9150a3b2f56929c71f52c28e148f6504875077895d8235"
+    },
+    {
+      "name": "machine",
+      "job_id": "81fb87c6193345adaadbde1f629ac5aa",
+      "sha256": "dc3881af56673e87bb28521b07131e3d3e5d6eacaa6dde420bf09792957178f1"
+    },
+    {
+      "name": "dream",
+      "job_id": "89c9e7875d3c40ff9a76d40db21de964",
+      "sha256": "ce7d3a5848223dc6960f65b6d40e72dbf623b3071f0e570a621be194ef437041"
+    },
+    {
+      "name": "meter",
+      "job_id": "f151322b65954666a43cd561959140a9",
+      "sha256": "2e078ca779cdeb186b9d2bc8bfe27b18beb58a0570c48e8067d1ff86fe9e32ea"
+    },
+    {
+      "name": "bottles",
+      "job_id": "5731584906b842e3b0f7f2199c10450c",
+      "sha256": "8747a5509eb2bd3632a48623a0d024f869d0bc747d6e972742bbdd61daf20f2a"
+    },
+    {
+      "name": "blackout",
+      "job_id": "80ecefbfccf04410adf94fab22b9ee78",
+      "sha256": "b68450eb7922845819567c06b3b85767832f95a40d6e71b743ce5ae3b4582d2f"
+    },
+    {
+      "name": "defiance",
+      "job_id": "f5a172446fc94dd7830944bc6315e5d5",
+      "sha256": "057959cee514b9f09bcd0265e894a6d15a76ebd7a376ee135842d7ea6b88000c"
+    },
+    {
+      "name": "dawn",
+      "job_id": "67bf9f31ba28406fa1af4d60ac70c0c3",
+      "sha256": "794d5eaa80231b55409558c1a52a94e3829390ff9c94ad4467e85555a22338f0"
+    }
+  ],
+  "assets": [
+    {
+      "path": "/workspace/output/productions/op340/dream-debt-short.mp4",
+      "sha256": "d059d699dc40b934160a8fd2e6a8ca0813f634f036a6da79367518b54654c238",
+      "bytes": 17020552
+    },
+    {
+      "path": "/workspace/output/productions/op340/dream-debt-soundtrack.wav",
+      "sha256": "4aef153ff24e4653487be11eb5a85e66299a1c4995cba209090acf6f256edbea",
+      "bytes": 8640102
+    },
+    {
+      "path": "/workspace/output/productions/op340/shots.json",
+      "sha256": "4e5b5c61261922cb7141fe07d8868c482b817502abfed179280e70df6a3661e6",
+      "bytes": 5763
+    },
+    {
+      "path": "/workspace/output/productions/op340/validation.json",
+      "sha256": "a8f315f4ba559aca3d20dfd5191a5c8063414a55442f1409b6946292f7638a1a",
+      "bytes": 946
+    },
+    {
+      "path": "/workspace/output/productions/op340/audio-loudness.json",
+      "sha256": "d9dd74c5827afc53d8c119404a88969013c66826b023f4858de39fe994449346",
+      "bytes": 749
+    },
+    {
+      "path": "/workspace/output/productions/op340/audio-city.json",
+      "sha256": "316caee98cf4b888005e90f02567a496f471d7aaa9a8cff68cc2958b90aaa98f",
+      "bytes": 1634
+    },
+    {
+      "path": "/workspace/output/productions/op340/audio-machine.json",
+      "sha256": "57ae767763e1d1235bbe1941890f8267e879c9993b2a31ae671a064a5f8ad924",
+      "bytes": 1597
+    },
+    {
+      "path": "/workspace/output/productions/op340/audio-dawn.json",
+      "sha256": "db6e2d4bb4d6f13f85ce570b9c5ace7592d1203535b6889c41668e75ea248249",
+      "bytes": 1592
+    },
+    {
+      "path": "/workspace/output/productions/op340/audio-model-license.md",
+      "sha256": "d6f6b1a4dce5c852bd6d7d9482d002baf0ccdb71e662250b73be9eec8764ee8d",
+      "bytes": 11852
+    },
+    {
+      "path": "/workspace/output/productions/op340/audio-city.wav",
+      "sha256": "8c391cc1cb5b1fc3a93b101e811a5a2300ed5f7ef608d6d6d14736212be64427",
+      "bytes": 5292044
+    },
+    {
+      "path": "/workspace/output/productions/op340/audio-machine.wav",
+      "sha256": "a581f54a27cef9947d4e3b260e59b6253e3af507ccab379a283f7e64b12b3297",
+      "bytes": 1764044
+    },
+    {
+      "path": "/workspace/output/productions/op340/audio-dawn.wav",
+      "sha256": "d42ae23aa0f13d546b6ffa9eee430053bcaa6c059a564e96dea3f3f5ba3fec2a",
+      "bytes": 1764044
+    },
+    {
+      "path": "/workspace/output/productions/op340/contact-sheet.jpg",
+      "sha256": "84b73a1ac33ba7bab07d1405de505d0131a955cf3a7ee6b955356b7ae0419351",
+      "bytes": 196336
+    },
+    {
+      "path": "/workspace/output/productions/op340/edit-versions.json",
+      "sha256": "71b674cab4960fedfaa8ec5f1ed6f6c4a1f00833df8d131df47435a0378a9e74",
+      "bytes": 113
+    },
+    {
+      "path": "/workspace/output/productions/op340/city.mp4",
+      "sha256": "f0058ae118a82c1bed9150a3b2f56929c71f52c28e148f6504875077895d8235",
+      "bytes": 1932587
+    },
+    {
+      "path": "/workspace/output/productions/op340/city.json",
+      "sha256": "f1f1f94ebc445d454c9fd4bf12efdf78a191652fff0d4c252a692115e8c93c6e",
+      "bytes": 13431
+    },
+    {
+      "path": "/workspace/output/productions/op340/machine.mp4",
+      "sha256": "dc3881af56673e87bb28521b07131e3d3e5d6eacaa6dde420bf09792957178f1",
+      "bytes": 654563
+    },
+    {
+      "path": "/workspace/output/productions/op340/machine.json",
+      "sha256": "d880d7d9d20503b3334822eccdacc7e307517c6238967a8488ae0bae979913c8",
+      "bytes": 13930
+    },
+    {
+      "path": "/workspace/output/productions/op340/dream.mp4",
+      "sha256": "ce7d3a5848223dc6960f65b6d40e72dbf623b3071f0e570a621be194ef437041",
+      "bytes": 788423
+    },
+    {
+      "path": "/workspace/output/productions/op340/dream.json",
+      "sha256": "1040e592319204a7b79cd8ffc06997aea078bdf220b2715fd9570f473cb54445",
+      "bytes": 13934
+    },
+    {
+      "path": "/workspace/output/productions/op340/meter.mp4",
+      "sha256": "2e078ca779cdeb186b9d2bc8bfe27b18beb58a0570c48e8067d1ff86fe9e32ea",
+      "bytes": 797689
+    },
+    {
+      "path": "/workspace/output/productions/op340/meter.json",
+      "sha256": "232e4c6b36a704278ddbe83e58beabdd8b384b7a0abb0a4838b5e6d7153597f7",
+      "bytes": 13932
+    },
+    {
+      "path": "/workspace/output/productions/op340/bottles.mp4",
+      "sha256": "8747a5509eb2bd3632a48623a0d024f869d0bc747d6e972742bbdd61daf20f2a",
+      "bytes": 736153
+    },
+    {
+      "path": "/workspace/output/productions/op340/bottles.json",
+      "sha256": "a26891ff6d73c71a18ec64a4b4855e746fa158143dc872de04eea558b95c8a93",
+      "bytes": 13934
+    },
+    {
+      "path": "/workspace/output/productions/op340/blackout.mp4",
+      "sha256": "b68450eb7922845819567c06b3b85767832f95a40d6e71b743ce5ae3b4582d2f",
+      "bytes": 523326
+    },
+    {
+      "path": "/workspace/output/productions/op340/blackout.json",
+      "sha256": "889462c1f1f123df0d01f9be2e1375e592496e615f54ab14ad145c355e023fd0",
+      "bytes": 13930
+    },
+    {
+      "path": "/workspace/output/productions/op340/defiance.mp4",
+      "sha256": "057959cee514b9f09bcd0265e894a6d15a76ebd7a376ee135842d7ea6b88000c",
+      "bytes": 438511
+    },
+    {
+      "path": "/workspace/output/productions/op340/defiance.json",
+      "sha256": "0a81db45d08c44ad1ad96630791771711011b37d8fc2d33a1948fdcc8f743522",
+      "bytes": 13933
+    },
+    {
+      "path": "/workspace/output/productions/op340/dawn.mp4",
+      "sha256": "794d5eaa80231b55409558c1a52a94e3829390ff9c94ad4467e85555a22338f0",
+      "bytes": 545114
+    },
+    {
+      "path": "/workspace/output/productions/op340/dawn.json",
+      "sha256": "ed1132405e3bab3f67122d355db23f09ade4b0df3faea6f90ceb5dc6affde9fc",
+      "bytes": 13933
+    }
+  ],
+  "provenance": "Eight distinct Wan2.2 TI2V5B dual-GPU clips; separate Stable Audio SFX and synthesized pulse; original captions, edit, crop and retiming. This record is an editorial assembly, not a single model inference.",
+  "publication": "Private PoC only; no YouTube upload. Monetization and commercial model-license conditions are not certified."
+}
