@@ -971,7 +971,7 @@ class OutageTests(Base):
         self.fake.handle = original
         self.fake.calls.clear()
         code, out, _ = self.run_cli("flush")  # the server accepted the POST: flush never reposts it
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 6)
         self.assertIn("needs manual review", out)
         self.assertTrue(path.exists())
         self.assertEqual(self.posts(), [])
@@ -1108,7 +1108,7 @@ class OutageTests(Base):
         self.assertEqual((record["post_status"], record["activity_id"]), (201, 99))
         for _ in range(2):
             code, out, _ = self.run_cli("flush")
-            self.assertEqual(code, 0)
+            self.assertEqual(code, 6)
             self.assertIn("needs manual review", out)
             self.assertIn(record["token"], out)
             self.assertEqual(json.loads(path.read_text()), record)
@@ -1120,7 +1120,7 @@ class OutageTests(Base):
         self.accept_but_hide_posts()
         path, before = self.pending_record()
         code, out, _ = self.run_cli("flush")
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 6)
         self.assertIn("kept", out)
         after = json.loads(path.read_text())
         self.assertTrue(after.pop("post_started"))
@@ -1150,7 +1150,7 @@ class OutageTests(Base):
         path, record = self.started_note()
         for _ in range(2):
             code, out, _ = self.run_cli("flush")
-            self.assertEqual(code, 0)
+            self.assertEqual(code, 6)
             self.assertIn("needs manual review", out)
             self.assertIn("2026-10-31T05:00:00Z", out)
             self.assertIn(record["token"], out)
@@ -1196,6 +1196,93 @@ class OutageTests(Base):
         self.assertIn("1 later record(s) not attempted", out)
         self.assertEqual(json.loads(path.read_text()), record)  # untouched
 
+    def reject_posts(self, code):
+        original = self.fake.handle
+        self.fake.handle = lambda m, u, p: (code, {"message": "no"}) if m == "POST" and u.path.endswith("/activities") else original(m, u, p)
+        return original
+
+    def test_a_clean_4xx_during_flush_clears_the_marker_and_is_posted_on_the_next_flush(self):
+        for code in (403, 422):
+            with self.subTest(code=code):
+                self.setUp()
+                self.story()
+                self.run_cli("checkpoint", "10", "offline evidence")
+                path, before = self.pending_record()
+                original = self.reject_posts(code)
+                status, out, err = self.run_cli("flush")
+                self.assertEqual(self.posts("/activities")[0][0], "POST")
+                self.assertIn("rejected HTTP %d" % code, out)
+                self.assertEqual(json.loads(path.read_text()), before)  # no post_started: the marker was cleared
+                self.fake.handle = original
+                self.fake.calls.clear()
+                status, out, _ = self.run_cli("flush")
+                self.assertEqual(status, 0)
+                self.assertIn("flushed #10 (read back)", out)
+                self.assertEqual(len(self.posts("/activities")), 1)
+                self.assertFalse(path.exists())
+
+    def test_a_3xx_during_flush_keeps_the_marker_for_manual_review(self):
+        self.story()
+        self.run_cli("checkpoint", "10", "offline evidence")
+        path, before = self.pending_record()
+        original = self.fake.handle
+        self.fake.handle = lambda m, u, p: (302, {}) if m == "POST" and u.path.endswith("/activities") else original(m, u, p)
+        code, out, err = self.run_cli("flush")
+        self.assertEqual(code, 6)
+        self.assertTrue(json.loads(path.read_text()).get("post_started"))
+        self.fake.handle = original
+        self.fake.calls.clear()
+        code, out, _ = self.run_cli("flush")
+        self.assertEqual(code, 6)
+        self.assertIn("needs manual review", out)
+        self.assertEqual(self.posts(), [])
+
+    def test_a_4xx_whose_marker_cannot_be_cleared_keeps_it_and_says_so(self):
+        self.story()
+        self.run_cli("checkpoint", "10", "offline evidence")
+        path, before = self.pending_record()
+        self.reject_posts(422)
+        real, calls = op.write_record, []
+        def write(target, record):
+            calls.append(record)
+            if len(calls) > 1:
+                raise OSError(28, "No space left on device")
+            return real(target, record)
+        with mock.patch.object(op, "write_record", side_effect=write):
+            code, out, err = self.run_cli("flush")
+        self.assertEqual(code, 6)
+        self.assertIn(before["token"], err)
+        self.assertNotIn("Traceback", err)
+        self.assertTrue(json.loads(path.read_text()).get("post_started"))
+
+    def test_write_record_fsyncs_the_file_and_then_the_directory(self):
+        target = os.path.join(self.state.name, "pending-fsync.json")
+        with mock.patch.object(op.os, "fsync", wraps=os.fsync) as fsync:
+            op.write_record(target, {"a": 1})
+        self.assertEqual(fsync.call_count, 2)
+        self.assertEqual(json.loads(Path(target).read_text()), {"a": 1})
+
+    def test_a_failing_local_save_does_not_hide_the_original_uncertain_text(self):
+        self.story()
+        self.fake.handle_real = self.fake.handle
+        self.fake.handle = lambda m, u, p: (200, {}) if m == "PATCH" else self.fake.handle_real(m, u, p)
+        with mock.patch.object(op, "write_record", side_effect=OSError(30, "Read-only file system")):
+            code, _, err = self.run_cli("claim", "10")
+        self.assertEqual(code, 6)
+        self.assertIn("UNCERTAIN", err)
+        self.assertLess(err.index("UNCERTAIN"), err.index("could not be saved locally"))
+
+    def test_flush_exits_6_for_a_kept_intent_and_0_when_nothing_is_kept(self):
+        self.assertEqual(self.run_cli("flush")[0], 0)
+        self.story()
+        original = self.fake.handle
+        self.fake.handle = lambda m, u, p: (200, {}) if m == "PATCH" else original(m, u, p)
+        self.assertEqual(self.run_cli("claim", "10")[0], 6)
+        code, out, err = self.run_cli("flush")
+        self.assertEqual(code, 6)
+        self.assertIn("kept", out)
+        self.assertIn("manual review", err)
+
     def test_record_write_failure_after_a_2xx_posts_exactly_once_across_two_flushes(self):
         self.story()
         self.run_cli("checkpoint", "10", "offline evidence")
@@ -1209,16 +1296,18 @@ class OutageTests(Base):
         self.assertNotIn("Traceback", err)
         self.assertEqual(len(self.posts("/activities")), 1)
         code, out, _ = self.run_cli("flush")  # the marker written before the POST survived
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 6)
         self.assertIn("needs manual review", out)
         self.assertEqual(len(self.posts("/activities")), 1)
 
-    def test_record_write_failure_while_saving_an_unavailable_comment_is_exit_6_not_a_traceback(self):
+    def test_record_write_failure_while_saving_an_unavailable_comment_shows_the_original_failure_and_exit_5(self):
         self.story()
         self.fake.fail["POST /api/v3/work_packages/10/activities"] = "after"
         with mock.patch.object(op, "write_record", side_effect=OSError(30, "Read-only file system")):
             code, out, err = self.run_cli("comment", "10", "lands then the disk is read-only")
-        self.assertEqual(code, 6)
+        self.assertEqual(code, 5)  # the original failure's code, not the local one
+        self.assertIn("TRACKER UNAVAILABLE", err)
+        self.assertLess(err.index("TRACKER UNAVAILABLE"), err.index("could not be saved locally"))
         self.assertIn("UNCONFIRMED", err)
         self.assertRegex(err, r"note token [0-9a-f]{12}")
         self.assertNotIn("Traceback", err)
@@ -1304,7 +1393,7 @@ class OutageTests(Base):
         self.fake.fail.clear()
         self.fake.calls.clear()
         code, out, _ = self.run_cli("flush")
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 6)
         # the POST for #11 was started and its outcome is unknown: kept for review, never reposted
         self.assertIn("needs manual review", out)
         self.assertEqual(out.count("flushed"), 1)
@@ -1588,6 +1677,187 @@ class RetryTests(unittest.TestCase):
         self.assertRegex(lines[0], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ GET host=openproject-web.frontend.svc.cluster.local category=[a-z_]+ errno=13$")
         self.assertLess(len(lines[0]), 200)
         self.assertNotIn("sentinel", lines[0])
+
+
+TOKEN = "opapi-" + "ab12" * 16  # 70 characters, the dedicated token's shape
+HELPER_ARGV = ["kubectl", "exec", "-n", "dev", "deploy/openproject-agent-credentials", "-c", "credentials", "--", "cat", "/run/openproject-agent/token"]
+
+
+class HelperTests(unittest.TestCase):
+    """The token-only helper phase, with a fake subprocess.run (no kubectl) and a fake clock."""
+
+    def setUp(self):
+        self.elapsed, self.sleeps, self.runs, self.http = 0, [], [], []
+        self.stderr = io.StringIO()
+        self.stack = contextlib.ExitStack()
+        self.addCleanup(self.stack.close)
+        self.stack.enter_context(contextlib.redirect_stderr(self.stderr))
+        self.stack.enter_context(mock.patch.object(api, "_token", None))
+        self.stack.enter_context(mock.patch.object(api, "time", SimpleNamespace(monotonic=lambda: self.elapsed, sleep=self.sleep), create=True))
+        self.stack.enter_context(mock.patch.object(api.subprocess, "run", side_effect=self.fake_run))
+        self.stack.enter_context(mock.patch.object(api.urllib.request, "build_opener", return_value=SimpleNamespace(open=self.open)))
+        self.outcomes = []
+
+    def sleep(self, delay):
+        self.sleeps.append(delay)
+        self.elapsed += delay
+
+    def fake_run(self, argv, **kwargs):
+        self.runs.append((argv, kwargs))
+        outcome = self.outcomes.pop(0) if self.outcomes else self.default
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    default = SimpleNamespace(returncode=1, stdout=b"", stderr=b"error: unable to upgrade connection: container not found (stderr-sentinel)")
+
+    def open(self, req, timeout):
+        self.http.append((req.get_method(), req.get_header("Authorization"), timeout))
+        response = io.BytesIO(b'{"id": 12}')
+        response.code = 200
+        return response
+
+    @staticmethod
+    def helper(returncode=0, stdout=TOKEN.encode(), stderr=b""):
+        return SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
+
+    def assert_nothing_leaked(self, *texts):
+        for text in (self.stderr.getvalue(),) + texts:
+            for sentinel in ("sentinel", "ab12ab12", "Forbidden", "upgrade connection"):
+                self.assertNotIn(sentinel, text)
+
+    def test_get_retries_a_transient_helper_failure_then_succeeds_and_caches(self):
+        self.outcomes = [self.default, self.helper()]
+        self.assertEqual(api.request("GET", "/api/v3/users/me"), (200, {"id": 12}))
+        self.assertEqual([argv for argv, _ in self.runs], [HELPER_ARGV] * 2)  # the same helper, twice
+        self.assertEqual(self.runs[0][1]["env"]["KUBECTL_REMOTE_COMMAND_WEBSOCKETS"], "false")
+        self.assertEqual(self.sleeps, [1])
+        self.assertEqual(self.http, [("GET", "Bearer " + TOKEN, mock.ANY)])
+        lines = self.stderr.getvalue().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertRegex(lines[0], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ helper category=transient attempt=1$")
+        self.assert_nothing_leaked()
+        api.request("GET", "/api/v3/users/me")
+        self.assertEqual(len(self.runs), 2)  # cached for the process: no third helper read
+
+    def test_a_helper_timeout_is_retried_and_labelled_timeout(self):
+        self.outcomes = [subprocess_timeout(), OSError(11, "stderr-sentinel"), self.helper()]
+        self.assertEqual(api.request("GET", "/api/v3/users/me")[0], 200)
+        categories = re.findall(r"category=(\w+) attempt=(\d)", self.stderr.getvalue())
+        self.assertEqual(categories, [("timeout", "1"), ("transient", "2")])
+        self.assert_nothing_leaked()
+
+    def test_get_exhaustion_is_finite_within_the_get_budget_and_ends_in_api_unavailable(self):
+        with self.assertRaises(api.ApiUnavailable) as caught:
+            api.request("GET", "/api/v3/users/me")
+        self.assertEqual(self.elapsed, api.GET_BUDGET - api.RETRY_FLOOR)
+        self.assertGreater(len(self.runs), 2)
+        self.assertLess(len(self.runs), 20)
+        self.assertLessEqual(max(self.sleeps), api.BACKOFF_CAP)
+        self.assertTrue(all(1 <= kwargs["timeout"] <= api.HELPER_TIMEOUT for _, kwargs in self.runs))
+        self.assertEqual(self.http, [])  # the HTTP request was never built or sent
+        self.assertIsNone(api._token)
+        self.assertRegex(str(caught.exception), r"transient after %d attempt\(s\) \(retry budget exhausted\)" % len(self.runs))
+        self.assert_nothing_leaked(str(caught.exception))
+        self.assertEqual(len(self.stderr.getvalue().splitlines()), len(self.runs))
+
+    def test_helper_time_counts_toward_the_get_budget(self):
+        def slow(argv, **kwargs):
+            self.elapsed += min(100, kwargs["timeout"])  # a slow helper, killed at its timeout
+            return self.default
+        with mock.patch.object(api.subprocess, "run", side_effect=slow):
+            with self.assertRaises(api.ApiUnavailable):
+                api.request("GET", "/api/v3/users/me")
+        self.assertLessEqual(self.elapsed, api.GET_BUDGET)
+
+    def test_an_authorization_denial_is_tried_once(self):
+        for text in (b'Error from server (Forbidden): pods "x" is forbidden: User cannot exec', b"error: You must be logged in: UNAUTHORIZED stderr-sentinel"):
+            with self.subTest(text=text[:20]):
+                self.runs.clear()
+                self.sleeps.clear()
+                self.outcomes = [self.helper(1, b"", text)]
+                with self.assertRaisesRegex(api.ApiUnavailable, "denied after 1 attempt") as caught:
+                    api.request("GET", "/api/v3/users/me")
+                self.assertEqual((len(self.runs), self.sleeps, self.http), (1, [], []))
+                self.assert_nothing_leaked(str(caught.exception))
+        self.assertIn("category=denied attempt=1", self.stderr.getvalue())
+
+    def test_an_invalid_token_is_tried_once_and_never_echoed(self):
+        for stdout in (b"opapi-short stdout-sentinel", b"opapi-" + b"zz" * 32 + b"sentinel", b"", b"\xff\xfe sentinel"):
+            with self.subTest(stdout=stdout[:12]):
+                self.runs.clear()
+                self.outcomes = [self.helper(0, stdout)]
+                with self.assertRaisesRegex(api.ApiUnavailable, "invalid after 1 attempt") as caught:
+                    api.request("GET", "/api/v3/users/me")
+                self.assertEqual((len(self.runs), self.sleeps, self.http), (1, [], []))
+                self.assert_nothing_leaked(str(caught.exception))
+                self.assertNotIn("opapi-", str(caught.exception) + self.stderr.getvalue())
+        self.assertIsNone(api._token)
+
+    def test_a_token_on_stdout_of_a_failed_helper_is_not_used(self):
+        self.outcomes = [self.helper(1, TOKEN.encode(), b"container not found"), self.helper()]
+        api.request("GET", "/api/v3/users/me")
+        self.assertEqual(len(self.runs), 2)
+        self.assertNotIn(TOKEN, self.stderr.getvalue())
+
+    def test_a_mutation_retries_only_the_helper_read_and_sends_exactly_one_post(self):
+        for method in ("POST", "PATCH"):
+            with self.subTest(method=method):
+                api._token = None
+                self.runs.clear()
+                self.http.clear()
+                self.outcomes = [self.default, self.default, self.helper()]
+                self.assertEqual(api.request(method, "/api/v3/work_packages/12/activities", {"comment": {"raw": "x"}})[0], 200)
+                self.assertEqual(len(self.runs), 3)
+                self.assertEqual(self.http, [(method, "Bearer " + TOKEN, 30)])  # one send, the fixed mutation timeout
+
+    def test_a_mutation_whose_helper_never_recovers_sends_nothing_within_its_small_budget(self):
+        with self.assertRaises(api.ApiUnavailable):
+            api.request("POST", "/api/v3/work_packages/12/activities", {"comment": {"raw": "x"}})
+        self.assertEqual(self.http, [])
+        self.assertEqual(self.elapsed, api.HELPER_BUDGET - api.RETRY_FLOOR)
+        self.assertLess(api.HELPER_BUDGET, api.GET_BUDGET)
+        self.assertGreater(len(self.runs), 2)
+        self.assertLess(len(self.runs), 20)
+
+    def test_a_mutation_denial_and_invalid_token_are_tried_once(self):
+        for outcome in (self.helper(1, b"", b"forbidden"), self.helper(0, b"not-a-token")):
+            self.runs.clear()
+            self.outcomes = [outcome]
+            with self.assertRaises(api.ApiUnavailable):
+                api.request("PATCH", "/api/v3/work_packages/12", {"lockVersion": 1})
+            self.assertEqual((len(self.runs), self.http), (1, []))
+
+    def opwork_comment(self, state):
+        env = {"OPWORK_STATE_DIR": state, "OPWORK_SESSION": "codex-test | worktree w1 | branch agent/w1"}
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.dict(os.environ, env), mock.patch.object(op, "load_api", return_value=api), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = op.main(["comment", "327", "work done"])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_opwork_keeps_a_comment_pending_when_the_helper_never_recovers(self):
+        with tempfile.TemporaryDirectory() as state:
+            code, out, err = self.opwork_comment(state)
+            self.assertEqual(code, 5)
+            self.assertIn("UNCONFIRMED", err)
+            self.assertEqual(self.http, [])  # zero HTTP POSTs
+            files = list(Path(state, "pending").glob("*.json"))
+            self.assertEqual(len(files), 1)
+            record = json.loads(files[0].read_text())
+            self.assertEqual((record["kind"], record["wp"], record["text"]), ("note", 327, "work done"))
+            self.assertNotIn("post_status", record)
+            self.assert_nothing_leaked(out, err, files[0].read_text())
+
+    def test_opwork_posts_once_when_the_helper_recovers_during_the_comment(self):
+        self.outcomes = [self.default, self.helper()]
+        with tempfile.TemporaryDirectory() as state:
+            self.opwork_comment(state)
+            self.assertEqual([method for method, _, _ in self.http].count("POST"), 1)
+
+
+def subprocess_timeout():
+    return api.subprocess.TimeoutExpired(HELPER_ARGV, 30, output=b"stdout-sentinel", stderr=b"stderr-sentinel")
 
 
 class RealOpenerTests(unittest.TestCase):

@@ -234,7 +234,9 @@ class Tracker:
             down.token, down.body = token, body  # preserve the exact post for idempotent flush
             raise
         if code >= 400:
-            raise Fail("Comment on #%d rejected HTTP %s: %s" % (wp_id, code, data.get("message", "")))
+            failure = Fail("Comment on #%d rejected HTTP %s: %s" % (wp_id, code, data.get("message", "")))
+            failure.rejected = code  # a clean 4xx answer: the server refused it, nothing was created
+            raise failure
         # A 2xx means the server accepted the note: remember that, so no later flush reposts it.
         posted = {}
         if 200 <= code < 300:
@@ -591,6 +593,11 @@ def write_record(path, record):
             os.fsync(out.fileno())
         os.chmod(temp, 0o600)
         os.replace(temp, path)
+        directory = os.open(os.path.dirname(path), os.O_RDONLY)
+        try:
+            os.fsync(directory)  # the rename itself survives a crash
+        finally:
+            os.close(directory)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(temp)
@@ -705,7 +712,12 @@ def flush_note(t, path, rec):
             t.post_note(wp, body, token)
         except (Fail, t.unavailable) as error:
             posted = posted_fields(error)
-            if posted:  # remember the accepted POST so the next flush cannot repost it
+            if getattr(error, "rejected", None):  # a clean 4xx created nothing: the next flush may post it again
+                try:
+                    write_record(path, rec)
+                except OSError as write_error:  # the marker stays: manual review is the safe side
+                    raise LocalWriteFail(token, "the POST was rejected (HTTP %s) but its POST-started marker could not be cleared" % error.rejected, write_error, wp) from write_error
+            elif posted:  # remember the accepted POST so the next flush cannot repost it
                 try:
                     write_record(path, dict(rec, post_started=utc_now(), **posted))
                 except OSError as write_error:
@@ -721,15 +733,18 @@ def flush_note(t, path, rec):
 def cmd_flush(t, a, session):
     records, corrupt = load_records()
     out = ["skipped corrupt record %s (%s); left in place" % item for item in corrupt]
+    review = 0  # records kept for manual review: the exit code tells a script
     for index, (name, path, rec) in enumerate(records):
         if rec["kind"] == "intent":
             token = "; note token %s may have landed" % rec["token"] if rec.get("body") else ""
             out.append("kept %s for manual inspection (show/search before repeating%s): %s" % (name, token, " ".join(rec["argv"])))
+            review += 1
             continue
         try:
             out.append(flush_note(t, path, rec))
         except Fail as failure:
             out.append("kept %s: %s" % (name, failure))
+            review += failure.code == 6 and not isinstance(failure, LocalWriteFail)
             if isinstance(failure, LocalWriteFail):  # the local store is failing: stop, do not try more POSTs
                 later = len(records) - index - 1
                 if later:
@@ -744,6 +759,10 @@ def cmd_flush(t, a, session):
             failure = Fail("TRACKER UNAVAILABLE: flush stopped at %s" % name, 5)
             failure.output = "\n".join(out)
             raise failure
+    if review:
+        failure = Fail("flush kept %d record(s) for manual review (exit 6); see the lines above" % review, 6)
+        failure.output = "\n".join(out)
+        raise failure
     return "\n".join(out) or "nothing pending"
 
 
@@ -809,31 +828,38 @@ def run(argv, tracker, unavailable):
         print(args.fn(tracker, args, session))
         return 0
     except Fail as failure:
-        if failure.code == 6 and args.fn in (cmd_claim, cmd_status, cmd_complete, cmd_create, cmd_relate):
-            path, _ = save_pending("intent", getattr(failure, "token", None), wp=getattr(args, "id", None),
-                                   session=session, argv=command_argv, body=getattr(failure, "body", None), **posted_fields(failure))
-            print("UNCONFIRMED: intent retained locally: %s. Inspect with `search`/`show` before repeating." % path, file=sys.stderr)
         if getattr(failure, "output", None):
             print(failure.output)  # partial results (e.g. the notes flush had already recorded)
-        print(failure, file=sys.stderr)
+        print(failure, file=sys.stderr)  # the original failure first: a failing local save must not hide it
+        if failure.code == 6 and args.fn in (cmd_claim, cmd_status, cmd_complete, cmd_create, cmd_relate):
+            try:
+                path, _ = save_pending("intent", getattr(failure, "token", None), wp=getattr(args, "id", None),
+                                       session=session, argv=command_argv, body=getattr(failure, "body", None), **posted_fields(failure))
+            except LocalWriteFail as saving:
+                print(saving, file=sys.stderr)
+                return failure.code
+            print("UNCONFIRMED: intent retained locally: %s. Inspect with `search`/`show` before repeating." % path, file=sys.stderr)
         return failure.code
     except (unavailable or ()) as down:
         if args.fn is cmd_checkpoint_update and hasattr(down, "token"):
             print("TRACKER UNAVAILABLE: structured checkpoint queued locally; write is UNCONFIRMED and flush deduplicates by token.", file=sys.stderr)
             return 5
         mutating = args.fn in (cmd_claim, cmd_comment, cmd_status, cmd_complete, cmd_create, cmd_relate)
-        if args.fn is cmd_comment:
-            path, rec = save_pending("note", getattr(down, "token", None), wp=args.id, session=session, text=args.text, body=getattr(down, "body", None), **posted_fields(down))
-        elif mutating:
-            path, rec = save_pending("intent", getattr(down, "token", None), wp=getattr(args, "id", None),
-                                     session=session, argv=command_argv, body=getattr(down, "body", None), **posted_fields(down))
-        else:
-            path = None
         if not mutating:
             print("TRACKER UNAVAILABLE: %s. The read failed; authorized bounded work can continue." % down, file=sys.stderr)
-        else:
-            print("TRACKER UNAVAILABLE: %s.\nWhether the write reached OpenProject is UNCONFIRMED. Saved locally: %s\n%s\nAuthorized bounded work can continue." % (
-                down, path, "`flush` posts it unless it already landed (deduped by token); it never reposts a note whose POST was accepted." if args.fn is cmd_comment else "When the tracker is back, `search`/`show` the item, then re-run the command only if the change is missing."), file=sys.stderr)
+            return 5
+        print("TRACKER UNAVAILABLE: %s.\nWhether the write reached OpenProject is UNCONFIRMED." % down, file=sys.stderr)  # before the save: a failing save must not hide it
+        try:
+            if args.fn is cmd_comment:
+                path, rec = save_pending("note", getattr(down, "token", None), wp=args.id, session=session, text=args.text, body=getattr(down, "body", None), **posted_fields(down))
+            else:
+                path, rec = save_pending("intent", getattr(down, "token", None), wp=getattr(args, "id", None),
+                                         session=session, argv=command_argv, body=getattr(down, "body", None), **posted_fields(down))
+        except LocalWriteFail as saving:
+            print(saving, file=sys.stderr)
+            return 5  # the original failure's exit code
+        print("Saved locally: %s\n%s\nAuthorized bounded work can continue." % (
+            path, "`flush` posts it unless it already landed (deduped by token); it never reposts a note whose POST was accepted." if args.fn is cmd_comment else "When the tracker is back, `search`/`show` the item, then re-run the command only if the change is missing."), file=sys.stderr)
         return 5
 
 
