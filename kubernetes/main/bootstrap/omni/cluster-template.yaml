@@ -50,24 +50,6 @@ patches:
             disabled: true
         allowSchedulingOnControlPlanes: true
         apiServer:
-          admissionControl:
-            - name: PodSecurity
-              configuration:
-                apiVersion: pod-security.admission.config.k8s.io/v1alpha1
-                kind: PodSecurityConfiguration
-                defaults:
-                  enforce: baseline
-                  enforce-version: latest
-                  audit: restricted
-                  audit-version: latest
-                  warn: restricted
-                  warn-version: latest
-                exemptions:
-                  namespaces:
-                    - kube-system
-                  runtimeClasses: []
-                  usernames:
-                    - system:serviceaccount:dev-env-system:dev-env-broker
           disablePodSecurityPolicy: true
           extraArgs:
             allow-privileged: "true"
@@ -144,6 +126,26 @@ kernelArgs:
 patches:
   - idOverride: 400-cm-88d0b080-43be-11ef-9fe8-3b0f229ef000
     inline:
+      cluster:
+        apiServer:
+          admissionControl:
+          - configuration:
+              apiVersion: pod-security.admission.config.k8s.io/v1alpha1
+              defaults:
+                audit: restricted
+                audit-version: latest
+                enforce: baseline
+                enforce-version: latest
+                warn: restricted
+                warn-version: latest
+              exemptions:
+                namespaces:
+                - kube-system
+                runtimeClasses: []
+                usernames:
+                - system:serviceaccount:dev-env-system:dev-env-broker
+              kind: PodSecurityConfiguration
+            name: PodSecurity
       machine:
         # Ship machined service logs (etcd/kubelet/machined/apid/...) as
         # JSON-lines-over-UDP to the in-cluster vector aggregator (LB VIP
@@ -319,6 +321,26 @@ name: c1f22c00-4390-11ef-a299-436f6535c900
 patches:
   - idOverride: 400-cm-c1f22c00-4390-11ef-a299-436f6535c900
     inline:
+      cluster:
+        apiServer:
+          admissionControl:
+          - configuration:
+              apiVersion: pod-security.admission.config.k8s.io/v1alpha1
+              defaults:
+                audit: restricted
+                audit-version: latest
+                enforce: baseline
+                enforce-version: latest
+                warn: restricted
+                warn-version: latest
+              exemptions:
+                namespaces:
+                - kube-system
+                runtimeClasses: []
+                usernames:
+                - system:serviceaccount:dev-env-system:dev-env-broker
+              kind: PodSecurityConfiguration
+            name: PodSecurity
       machine:
         # Talos service-log shipping to the vector aggregator (see talosm01).
         logging:
@@ -465,6 +487,26 @@ kernelArgs:
 patches:
   - idOverride: 400-cm-98290580-1909-11ef-944c-5fe147626300
     inline:
+      cluster:
+        apiServer:
+          admissionControl:
+          - configuration:
+              apiVersion: pod-security.admission.config.k8s.io/v1alpha1
+              defaults:
+                audit: restricted
+                audit-version: latest
+                enforce: baseline
+                enforce-version: latest
+                warn: restricted
+                warn-version: latest
+              exemptions:
+                namespaces:
+                - kube-system
+                runtimeClasses: []
+                usernames:
+                - system:serviceaccount:dev-env-system:dev-env-broker
+              kind: PodSecurityConfiguration
+            name: PodSecurity
       machine:
         # Talos service-log shipping to the vector aggregator (see talosm01).
         logging:
@@ -628,6 +670,26 @@ kernelArgs:
 patches:
   - idOverride: 400-cm-0412ab80-f1ae-11ee-9e2d-bdcefa626900
     inline:
+      cluster:
+        apiServer:
+          admissionControl:
+          - configuration:
+              apiVersion: pod-security.admission.config.k8s.io/v1alpha1
+              defaults:
+                audit: restricted
+                audit-version: latest
+                enforce: baseline
+                enforce-version: latest
+                warn: restricted
+                warn-version: latest
+              exemptions:
+                namespaces:
+                - kube-system
+                runtimeClasses: []
+                usernames:
+                - system:serviceaccount:dev-env-system:dev-env-broker
+              kind: PodSecurityConfiguration
+            name: PodSecurity
       machine:
         # Talos service-log shipping to the vector aggregator (see talosm01).
         logging:
@@ -784,6 +846,26 @@ kernelArgs:
 patches:
   - idOverride: 400-cm-100b8400-f2fa-11ee-8190-410728e5a600
     inline:
+      cluster:
+        apiServer:
+          admissionControl:
+          - configuration:
+              apiVersion: pod-security.admission.config.k8s.io/v1alpha1
+              defaults:
+                audit: restricted
+                audit-version: latest
+                enforce: baseline
+                enforce-version: latest
+                warn: restricted
+                warn-version: latest
+              exemptions:
+                namespaces:
+                - kube-system
+                runtimeClasses: []
+                usernames:
+                - system:serviceaccount:dev-env-system:dev-env-broker
+              kind: PodSecurityConfiguration
+            name: PodSecurity
       machine:
         # Talos service-log shipping to the vector aggregator (see talosm01).
         logging:
