@@ -230,6 +230,14 @@ class Handler(BaseHTTPRequestHandler):
                 # hold. New submissions are independently rejected when unsafe.
                 self.respond(200, {"api": "ok", "accepting_jobs": not UNSAFE, "active_job": ACTIVE})
                 return
+            if self.path == "/ready":
+                if UNSAFE:
+                    self.respond(503, {"error": "Render hold requires inspection"})
+                    return
+                engine("/system_stats")
+                gpu_sample()
+                self.respond(200, {"ready": True})
+                return
             if self.path == "/openapi.json":
                 self.respond(200, json.loads((CONFIG / "openapi.json").read_text()))
                 return

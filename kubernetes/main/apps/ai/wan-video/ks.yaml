@@ -20,3 +20,9 @@ spec:
   wait: false
   interval: 30m
   timeout: 5m
+  postBuild:
+    substitute:
+      APP: wan-video
+      GATUS_SUBDOMAIN: video
+      GATUS_PATH: /ready
+      GATUS_STATUS_MAX: "300"

@@ -6,6 +6,7 @@ resources:
   - ingressroute.yaml
 components:
   - ../../../../../shared/components/common/repos/app-template
+  - ../../../../../shared/components/common/gatus/guarded
 configMapGenerator:
   - name: wan-video-config
     files:

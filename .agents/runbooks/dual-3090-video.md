@@ -58,6 +58,9 @@ be active; busy requests return 409 and are not silently queued or retried.
 The API does not accept arbitrary graphs, URLs, filenames, resolution, steps,
 or shell commands. Each job has a 20-minute deadline. Its record includes
 timestamped UUID, VRAM, utilization, power and temperature samples.
+Gatus checks `/ready`, including the local engine, exact GPU pair and recovery
+hold state. Kubernetes uses `/health` so failed render readiness does not hide
+status/download routes. `GpuMissing` expects two GPUs on talosw01.
 
 ## Persistence and failures
 

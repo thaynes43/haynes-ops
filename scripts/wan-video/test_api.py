@@ -101,6 +101,13 @@ class VideoTests(unittest.TestCase):
                 with self.assertRaises(HTTPError) as error:
                     urlopen(request, timeout=2)
                 self.assertEqual(error.exception.code, status)
+        api.UNSAFE = True
+        with urlopen(base + "/health", timeout=2) as response:
+            self.assertEqual(response.status, 200)
+            self.assertFalse(json.load(response)["accepting_jobs"])
+        with self.assertRaises(HTTPError) as error:
+            urlopen(base + "/ready", timeout=2)
+        self.assertEqual(error.exception.code, 503)
 
     def test_pipeline_title_task_does_not_create_video(self):
         path = REPO / "kubernetes/main/apps/ai/open-webui/app/wan_video.py"
