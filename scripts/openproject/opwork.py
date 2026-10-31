@@ -27,6 +27,12 @@ OPWORK_PROJECT or haynes-engineering. A mutation is reported done only after a r
 Exit codes: 0 ok, 1 error, 3 conflict/refused (nothing overwritten), 4 needs a decision
 (possible duplicate), 5 tracker unavailable (saved locally), 6 uncertain (verify first),
 7 evidence recorded but Accepted is not allowed or the form re-check failed (read-back state reported).
+GET retries transient connection failures and HTTP 502/503/504 within about 120 seconds,
+with capped exponential backoff on the same destination and credential. Denials and other
+4xx stop immediately. POST/PATCH are never automatically retried (DELETE is forbidden).
+UNCONFIRMED notes retain their exact body and token locally; `pending` lists them and
+`flush` deduplicates and reads them back before removal. Other mutation intents stay
+pending for manual inspection, including any existing note token; never blindly replay.
 """
 import argparse
 from datetime import datetime, timezone
@@ -215,10 +221,12 @@ class Tracker:
                 raise Fail("Comment on #%d rejected HTTP %s: %s" % (wp_id, code, data.get("message", "")))
             found = seen()  # success is the read back, not the 201
         except self.unavailable as down:
-            down.token = token  # a later flush dedupes on it: the post may have landed
+            down.token, down.body = token, body  # preserve the exact post for idempotent flush
             raise
         if not found:
-            raise Fail("UNCERTAIN: comment on #%d not visible on read back; `show %d --history` before repeating" % (wp_id, wp_id), 6)
+            failure = Fail("UNCONFIRMED: comment on #%d not visible on read back; use `flush` to recover with the same token" % wp_id, 6)
+            failure.token, failure.body = token, body
+            raise failure
         return found
 
     def find_relation(self, from_id, to_id, kind):
@@ -430,7 +438,13 @@ def cmd_claim(t, a, session):
 
 
 def cmd_comment(t, a, session):
-    found = t.comment(a.id, a.text, session)
+    try:
+        found = t.comment(a.id, a.text, session)
+    except Fail as error:
+        if error.code == 6 and hasattr(error, "token"):
+            path, _ = save_pending("note", error.token, wp=a.id, session=session, text=a.text, body=error.body)
+            raise Fail("%s. Saved locally: %s" % (error, path), 6)
+        raise
     return "comment %s recorded on #%d (read back)" % (found.get("id"), a.id)
 
 
@@ -562,7 +576,9 @@ def cmd_flush(t, a, session):
             out.append("kept (re-run it yourself): %s" % " ".join(rec["argv"]))
             continue
         body = "**[%s]** Deferred checkpoint (written %s during a tracker outage): %s\n\n(opwork:note=%s)" % (rec["session"], rec["created"], rec["text"], rec["token"])
-        if rec["kind"] == "structured_note":
+        if rec.get("body"):
+            body = rec["body"]
+        elif rec["kind"] == "structured_note":
             body = "**[%s]** %s\n\n(opwork:note=%s)" % (rec["session"], rec["text"], rec["token"])
         try:
             if rec["kind"] == "structured_note":
@@ -579,7 +595,10 @@ def cmd_flush(t, a, session):
                     if not created or any(not utc_time(x.get("createdAt")) or utc_time(x.get("createdAt")) >= created for x in checkpoints):
                         raise Fail("Checkpoint may be superseded by newer or unordered history; retained for manual review", 6)
             else:
-                seen = any("opwork:note=" + rec["token"] in text_of(x.get("comment")) for x in t.activities(rec["wp"]))
+                acts, complete = activity_page(t, rec["wp"])
+                seen = any("opwork:note=" + rec["token"] in text_of(x.get("comment")) for x in acts)
+                if not seen and not complete:
+                    raise Fail("Incomplete history; cannot safely deduplicate note", 6)
             if not seen:
                 t.post_note(int(rec["wp"]), body, rec["token"])
         except Fail as failure:
@@ -624,7 +643,8 @@ def build_parser():
 
 def main(argv=None, tracker=None, unavailable=None):
     global LINK_PROJECT, LINK_BASE
-    args = build_parser().parse_args(argv)
+    command_argv = list(sys.argv[1:] if argv is None else argv)
+    args = build_parser().parse_args(command_argv)
     LINK_PROJECT = args.project
     if args.cmd == "checkins" and (args.page < 1 or not 1 <= args.limit <= 100):
         print("page must be positive and limit must be 1..100", file=sys.stderr)
@@ -643,17 +663,22 @@ def main(argv=None, tracker=None, unavailable=None):
         print(args.fn(tracker, args, session))
         return 0
     except Fail as failure:
+        if failure.code == 6 and args.fn in (cmd_claim, cmd_status, cmd_complete, cmd_create, cmd_relate):
+            path, _ = save_pending("intent", getattr(failure, "token", None), wp=getattr(args, "id", None),
+                                   session=session, argv=command_argv, body=getattr(failure, "body", None))
+            print("UNCONFIRMED: intent retained locally: %s. Inspect with `search`/`show` before repeating." % path, file=sys.stderr)
         print(failure, file=sys.stderr)
         return failure.code
     except (unavailable or ()) as down:
         if args.fn is cmd_checkpoint_update and hasattr(down, "token"):
-            print("TRACKER UNAVAILABLE: structured checkpoint queued locally; write is unconfirmed and flush deduplicates by token.", file=sys.stderr)
+            print("TRACKER UNAVAILABLE: structured checkpoint queued locally; write is UNCONFIRMED and flush deduplicates by token.", file=sys.stderr)
             return 5
         mutating = args.fn in (cmd_claim, cmd_comment, cmd_status, cmd_complete, cmd_create, cmd_relate)
         if args.fn is cmd_comment:
-            path, rec = save_pending("note", getattr(down, "token", None), wp=args.id, session=session, text=args.text)
+            path, rec = save_pending("note", getattr(down, "token", None), wp=args.id, session=session, text=args.text, body=getattr(down, "body", None))
         elif mutating:
-            path, rec = save_pending("intent", wp=getattr(args, "id", None), session=session, argv=sys.argv[1:])
+            path, rec = save_pending("intent", getattr(down, "token", None), wp=getattr(args, "id", None),
+                                     session=session, argv=command_argv, body=getattr(down, "body", None))
         else:
             path = None
         if not mutating:

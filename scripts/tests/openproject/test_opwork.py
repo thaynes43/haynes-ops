@@ -6,6 +6,7 @@ No network, kubectl or credentials. Run: python3 -I -B scripts/tests/openproject
 """
 import contextlib
 import copy
+import errno
 import importlib.util
 import io
 import json
@@ -13,6 +14,9 @@ import os
 import re
 import tempfile
 import unittest
+from unittest import mock
+from types import SimpleNamespace
+import urllib.error
 import urllib.parse
 from pathlib import Path
 
@@ -892,7 +896,7 @@ class OutageTests(Base):
         out = self.run_cli("flush")[1]
         self.assertIn("flushed #10 (read back)", out)
         self.assertEqual(len(self.fake.acts[10]), 1)
-        self.assertIn("Deferred checkpoint", self.fake.acts[10][0]["comment"]["raw"])
+        self.assertIn("]** checkpoint text\n\n(opwork:note=", self.fake.acts[10][0]["comment"]["raw"])
         self.assertEqual(self.run_cli("pending")[1].strip(), "no pending records")
         self.assertEqual(self.run_cli("flush")[1].strip(), "nothing pending")
 
@@ -919,6 +923,305 @@ class OutageTests(Base):
         self.assertIn("NOT APPLIED", err)
         self.assertNotIn("claimed", out)
         self.assertIsNone(self.fake.wps[10][op.OWNER])
+
+
+    def pending_record(self):
+        paths = list(Path(self.state.name, "pending").glob("*.json"))
+        self.assertEqual(len(paths), 1)
+        return paths[0], json.loads(paths[0].read_text())
+
+    def test_uncertain_comment_keeps_exact_body_and_key_then_reads_back_on_flush(self):
+        self.story()
+        self.fake.fail["POST /api/v3/work_packages/10"] = "after"
+        code, out, err = self.run_cli("comment", "10", "exact checkpoint intent")
+        self.assertEqual(code, 5)
+        self.assertIn("UNCONFIRMED", err)
+        self.assertNotIn("recorded", out)
+        path, record = self.pending_record()
+        original = self.fake.acts[10][0]["comment"]["raw"]
+        self.assertEqual(record["body"], original)
+        self.assertIn("opwork:note=" + record["token"], original)
+        self.fake.fail.clear()
+        self.fake.calls.clear()
+        self.assertIn("flushed #10 (read back)", self.run_cli("flush")[1])
+        self.assertFalse(path.exists())
+        self.assertEqual(len(self.fake.acts[10]), 1)
+        self.assertEqual(self.posts(), [])
+        self.assertTrue(any(m == "GET" and "/activities" in p for m, p in self.fake.calls))
+
+    def test_comment_missing_on_readback_stays_pending_with_original_token(self):
+        self.story()
+        original = self.fake.handle
+        self.fake.handle = lambda m, u, p: (201, {"id": 99}) if m == "POST" else original(m, u, p)
+        code, out, err = self.run_cli("comment", "10", "invisible note")
+        self.assertEqual(code, 6)
+        self.assertIn("UNCONFIRMED", err)
+        self.assertNotIn("recorded", out)
+        path, record = self.pending_record()
+        self.assertIn("opwork:note=" + record["token"], record["body"])
+        self.fake.handle = original
+        self.fake.calls.clear()
+        self.assertEqual(self.run_cli("flush")[0], 0)
+        self.assertEqual(self.fake.acts[10][0]["comment"]["raw"], record["body"])
+        self.assertFalse(path.exists())
+        self.assertEqual([m for m, p in self.fake.calls if "/activities" in p], ["GET", "POST", "GET"])
+
+    def test_flush_retains_note_until_readback_is_available(self):
+        self.story()
+        self.run_cli("checkpoint", "10", "offline evidence")
+        path, before = self.pending_record()
+        original = self.fake.handle
+        def drop_after_post(method, url, payload):
+            result = original(method, url, payload)
+            if method == "POST":
+                self.fake.fail["GET /api/v3/work_packages/10/activities"] = "before"
+            return result
+        self.fake.handle = drop_after_post
+        self.assertEqual(self.run_cli("flush")[0], 5)
+        self.assertEqual(json.loads(path.read_text()), before)
+        self.fake.fail.clear()
+        self.assertIn("read back", self.run_cli("flush")[1])
+        self.assertFalse(path.exists())
+        self.assertEqual(len(self.fake.acts[10]), 1)
+
+    def test_flush_does_not_post_when_history_is_incomplete(self):
+        self.story()
+        self.run_cli("checkpoint", "10", "offline evidence")
+        original = self.fake.handle
+        self.fake.handle = lambda m, u, p: (200, {"total": 101, "_embedded": {"elements": []}}) if m == "GET" and u.path.endswith("/activities") else original(m, u, p)
+        code, out, err = self.run_cli("flush")
+        self.assertIn("Incomplete history", out + err)
+        self.pending_record()
+        self.assertEqual(self.posts(), [])
+
+    def test_transport_reset_after_post_is_pending_and_flush_recovers_without_duplicate(self):
+        self.story()
+        self.fake.fail["POST /api/v3/work_packages/10/activities"] = "after"
+        def open_request(req, timeout):
+            url = urllib.parse.urlsplit(req.full_url)
+            try:
+                code, data = self.fake.request(req.method, url.path + ("?" + url.query if url.query else ""),
+                                               json.loads(req.data) if req.data else None)
+            except Down:
+                raise urllib.error.URLError(ConnectionResetError(errno.ECONNRESET, "reply lost"))
+            response = io.BytesIO(json.dumps(data).encode())
+            response.code = code
+            return response
+        self.tracker = op.Tracker(api.request, api.ApiUnavailable)
+        # run_cli supplies the transport's actual unavailable type for this integration.
+        def run(*argv):
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = op.main(list(argv), self.tracker, api.ApiUnavailable)
+            return code, out.getvalue(), err.getvalue()
+        with mock.patch.object(api, "token", return_value="credential-sentinel"), \
+             mock.patch.object(api.urllib.request, "build_opener", return_value=SimpleNamespace(open=open_request)):
+            code, out, err = run("comment", "10", "transport checkpoint")
+            self.assertEqual(code, 5)
+            self.assertIn("UNCONFIRMED", err)
+            self.assertNotIn("recorded", out)
+            path, rec = self.pending_record()
+            self.assertEqual(len(self.posts()), 1)
+            self.assertIn("opwork:note=" + rec["token"], rec["body"])
+            self.fake.fail.clear()
+            self.assertIn("flushed #10 (read back)", run("flush")[1])
+            self.assertFalse(path.exists())
+            self.assertEqual(len(self.posts()), 1)
+            self.assertEqual(len(self.fake.acts[10]), 1)
+
+    def test_uncertain_patch_readback_mismatch_stays_pending(self):
+        self.story()
+        original = self.fake.handle
+        self.fake.handle = lambda m, u, p: (200, {}) if m == "PATCH" else original(m, u, p)
+        argv = ["claim", "10", "--note", "keep this intent"]
+        code, out, err = self.run_cli(*argv)
+        self.assertEqual(code, 6)
+        self.assertIn("UNCONFIRMED", err)
+        self.assertNotIn("claimed", out)
+        _, rec = self.pending_record()
+        self.assertEqual(rec["argv"], argv)
+
+    def test_lifecycle_note_failure_keeps_existing_note_key_and_body(self):
+        self.story()
+        self.fake.fail["POST /api/v3/work_packages/10/activities"] = "after"
+        argv = ["claim", "10", "--note", "checkpoint during claim"]
+        self.assertEqual(self.run_cli(*argv)[0], 5)
+        _, rec = self.pending_record()
+        body = self.fake.acts[10][0]["comment"]["raw"]
+        self.assertIn("opwork:note=" + rec["token"], body)
+        self.assertEqual(rec["body"], body)
+        self.assertEqual(rec["argv"], argv)
+
+    def test_uncertain_patch_preserves_original_command_intent(self):
+        self.story()
+        self.fake.fail["PATCH /api/v3/work_packages"] = "after"
+        self.fake.fail["GET /api/v3/work_packages/10"] = "before"
+        # Permit the initial snapshot, then fail the read after PATCH.
+        original = self.fake.request
+        first = True
+        def request(method, path, payload=None):
+            nonlocal first
+            if method == "GET" and first:
+                first = False
+                return 200, copy.deepcopy(self.fake.wps[10])
+            return original(method, path, payload)
+        self.tracker.request = request
+        argv = ["claim", "10", "--note", "exact intent"]
+        self.assertEqual(self.run_cli(*argv)[0], 5)
+        _, rec = self.pending_record()
+        self.assertEqual(rec["argv"], argv)
+
+
+class RetryTests(unittest.TestCase):
+    def setUp(self):
+        self.elapsed, self.sleeps, self.calls = 0, [], []
+        self.stderr = io.StringIO()
+        self.stack = contextlib.ExitStack()
+        self.addCleanup(self.stack.close)
+        self.stack.enter_context(contextlib.redirect_stderr(self.stderr))
+        self.stack.enter_context(mock.patch.object(api, "token", return_value="credential-sentinel"))
+        self.stack.enter_context(mock.patch.object(api, "time", SimpleNamespace(monotonic=lambda: self.elapsed, sleep=self.sleep), create=True))
+        self.opener = SimpleNamespace(open=self.open)
+        self.stack.enter_context(mock.patch.object(api.urllib.request, "build_opener", return_value=self.opener))
+        self.outcomes = []
+
+    def sleep(self, delay):
+        self.sleeps.append(delay)
+        self.elapsed += delay
+
+    def response(self, code=200, raw=b'{"id": 12}'):
+        response = io.BytesIO(raw)
+        response.code = code
+        return response
+
+    def open(self, req, timeout):
+        self.calls.append((req, timeout))
+        result = self.outcomes.pop(0)
+        if callable(result):
+            return result(timeout)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    def test_transient_connection_failures_then_success_same_request(self):
+        failures = [OSError(n, "secret-error-sentinel") for n in (errno.ECONNREFUSED, errno.EHOSTUNREACH, errno.ENETUNREACH, errno.ETIMEDOUT, errno.ECONNRESET)]
+        failures += [TimeoutError("secret-error-sentinel")]
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__, errno=failure.errno):
+                self.calls.clear()
+                self.outcomes = [urllib.error.URLError(failure), self.response()]
+                self.assertEqual(api.request("GET", "/api/v3/work_packages/12?secret-query-sentinel"), (200, {"id": 12}))
+                self.assertEqual(len(self.calls), 2)
+                self.assertIs(self.calls[0][0], self.calls[1][0])
+                self.assertLessEqual(self.calls[-1][1], 30)
+
+    def test_transient_http_then_success_closes_failure(self):
+        for code in (502, 503, 504):
+            with self.subTest(code=code):
+                failed = urllib.error.HTTPError("secret-url-sentinel", code, "secret-reason-sentinel", {}, io.BytesIO(b"secret-body-sentinel"))
+                self.outcomes = [failed, self.response()]
+                self.assertEqual(api.request("GET", "/api/v3/users/me")[0], 200)
+                self.assertTrue(failed.closed)
+                self.assertNotIn("sentinel", self.stderr.getvalue())
+
+    def test_budget_exhausted_is_finite_with_capped_backoff(self):
+        self.outcomes = [urllib.error.URLError(ConnectionRefusedError(errno.ECONNREFUSED, "down"))] * 200
+        with self.assertRaisesRegex(api.ApiUnavailable, "GET.*120.*budget exhausted"):
+            api.request("GET", "/api/v3/users/me")
+        self.assertEqual(self.elapsed, 120)
+        self.assertLess(len(self.calls), 20)
+        self.assertLessEqual(max(self.sleeps), 16)
+        self.assertEqual(self.sleeps[:4], [1, 2, 4, 8])
+
+    def test_attempt_time_counts_toward_budget(self):
+        def timeout(seconds):
+            self.elapsed += seconds
+            raise TimeoutError()
+        self.outcomes = [timeout] * 20
+        with self.assertRaises(api.ApiUnavailable):
+            api.request("GET", "/api/v3/users/me")
+        self.assertEqual(self.elapsed, 120)
+        self.assertLessEqual(len(self.calls), 4)
+        self.assertLess(self.calls[-1][1], 30)
+
+    def test_denials_and_other_nontransient_http_are_tried_once(self):
+        for code in (401, 403, 400, 404, 429, 500, 501, 302):
+            with self.subTest(code=code):
+                self.calls.clear()
+                self.outcomes = [self.response(code)]
+                if code >= 500:
+                    with self.assertRaises(api.ApiUnavailable):
+                        api.request("GET", "/api/v3/users/me")
+                else:
+                    self.assertEqual(api.request("GET", "/api/v3/users/me")[0], code)
+                self.assertEqual(len(self.calls), 1)
+                self.assertFalse(self.sleeps)
+
+    def test_denial_body_read_failure_does_not_retry(self):
+        for code in (401, 403, 429):
+            with self.subTest(code=code):
+                self.calls.clear()
+                response = self.response(code)
+                response.read = mock.Mock(side_effect=TimeoutError())
+                self.outcomes = [response, self.response()]
+                with self.assertRaises(api.ApiUnavailable):
+                    api.request("GET", "/api/v3/users/me")
+                self.assertEqual(len(self.calls), 1)
+                self.assertFalse(self.sleeps)
+
+    def test_recovery_covers_observed_67_second_gap(self):
+        def during_gap(timeout):
+            if self.elapsed < 67:
+                raise OSError(errno.EHOSTUNREACH, "down")
+            return self.response()
+        self.outcomes = [during_gap] * 20
+        self.assertEqual(api.request("GET", "/api/v3/users/me")[0], 200)
+        self.assertGreaterEqual(self.elapsed, 67)
+        self.assertLess(self.elapsed, 120)
+
+    def test_mutations_are_never_retried(self):
+        for method in ("POST", "PATCH"):
+            for failure in (ConnectionResetError(errno.ECONNRESET, "down"), self.response(503)):
+                with self.subTest(method=method, failure=type(failure).__name__):
+                    self.calls.clear()
+                    self.outcomes = [failure]
+                    with self.assertRaises(api.ApiUnavailable):
+                        api.request(method, "/api/v3/work_packages/12", {"subject": "intent"})
+                    self.assertEqual(len(self.calls), 1)
+                    self.assertFalse(self.sleeps)
+
+    def test_nontransient_transport_error_is_not_retried(self):
+        self.outcomes = [urllib.error.URLError(OSError(errno.EACCES, "secret-error-sentinel"))]
+        with self.assertRaises(api.ApiUnavailable):
+            api.request("GET", "/api/v3/users/me")
+        self.assertEqual(len(self.calls), 1)
+        self.assertFalse(self.sleeps)
+
+    def test_read_failure_retries_only_get(self):
+        for method in ("GET", "POST"):
+            with self.subTest(method=method):
+                self.calls.clear()
+                response = self.response()
+                response.read = mock.Mock(side_effect=ConnectionResetError(errno.ECONNRESET, "down"))
+                self.outcomes = [response, self.response()]
+                if method == "GET":
+                    self.assertEqual(api.request(method, "/api/v3/users/me")[0], 200)
+                    self.assertEqual(len(self.calls), 2)
+                else:
+                    with self.assertRaises(api.ApiUnavailable):
+                        api.request(method, "/api/v3/work_packages/12", {})
+                    self.assertEqual(len(self.calls), 1)
+                self.assertTrue(response.closed)
+
+    def test_diagnostic_is_bounded_and_has_no_credentials_or_request_data(self):
+        self.outcomes = [urllib.error.URLError(OSError(errno.EACCES, "credential-sentinel\nsecret-error-sentinel"))]
+        with self.assertRaises(api.ApiUnavailable):
+            api.request("GET", "/api/v3/users/me?secret-query-sentinel")
+        lines = self.stderr.getvalue().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertRegex(lines[0], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ GET host=openproject-web.frontend.svc.cluster.local category=[a-z_]+ errno=13$")
+        self.assertLess(len(lines[0]), 200)
+        self.assertNotIn("sentinel", lines[0])
 
 
 class HelperSafetyTests(unittest.TestCase):
