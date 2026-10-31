@@ -115,6 +115,7 @@ jobs:
             const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded', 'disposition:manual-only'];
             const isRenovate = login => login === 'renovate[bot]';
             const VET_AUTHOR = 'haynes-ops-bot[bot]';
+            const isShepherd = pr => pr.user?.login === VET_AUTHOR && pr.head?.ref?.startsWith('shepherd/');
             const tier2Path = p => {
               const m = p.match(/^kubernetes\/[^/]+\/apps\/([^/]+)\/(.+)$/);
               return !!m && (TIER2_DOMAINS.includes(m[1]) || CURATED_LEAVES.includes(m[1] + '/' + m[2].split('/')[0]));
@@ -134,11 +135,12 @@ jobs:
             if (!Array.isArray(listed)) throw new Error('PR list incomplete; no classification');
             let n = 0;
             for (const item of listed) {
-              if (!isRenovate(item.user?.login)) continue;
+              const logOnly = isShepherd(item);
+              if (!isRenovate(item.user?.login) && !logOnly) continue;
               let pr, files, comments;
               try {
                 ({ data: pr } = await github.rest.pulls.get({ owner: OWNER, repo: REPO, pull_number: item.number }));
-                if (!pr || pr.number !== item.number || pr.state !== 'open' || !isRenovate(pr.user?.login)) throw new Error('PR identity/state unavailable');
+                if (!pr || pr.number !== item.number || pr.state !== 'open' || !(logOnly ? isShepherd(pr) : isRenovate(pr.user?.login))) throw new Error('PR identity/state unavailable');
                 if (!/^[0-9a-f]{40}$/.test(pr.head?.sha || '') || typeof pr.head?.ref !== 'string' || typeof pr.title !== 'string' || labelKey(pr.labels) === null) throw new Error('PR fields incomplete');
                 files = await github.paginate(github.rest.pulls.listFiles, { owner: OWNER, repo: REPO, pull_number: pr.number, per_page: 100 });
                 comments = await github.paginate(github.rest.issues.listComments, { owner: OWNER, repo: REPO, issue_number: pr.number, per_page: 100 });
@@ -154,6 +156,25 @@ jobs:
                 core.warning(`#${item.number} actual=Unknown reason=read-failure; no label changes`);
                 continue;
               }
+              // Reuse the exact-head vet read for provenance; prediction is never a claim.
+              let verdict = null, vet = null;
+              for (const c of comments) {
+                if (c.user?.login !== VET_AUTHOR) continue;
+                const m = c.body.match(/^<!-- shepherd-vet sha=([0-9a-f]{40}) -->\s*\n+\s*VERDICT:\s*([A-Za-z-]+)/);
+                if (m && m[1] === pr.head.sha) {
+                  verdict = m[2].toUpperCase();
+                  vet = { commentId: Number.isSafeInteger(c.id) ? c.id : null, sha: m[1], verdict };
+                }
+              }
+              const provenance = {
+                repository: `${OWNER}/${REPO}`,
+                attempt: { headSha: pr.head.sha, vet },
+                claim: 'Unknown', claimBasis: 'no-supported-upgrade-claim-actor',
+              };
+              if (logOnly) {
+                core.info(JSON.stringify({ pullRequest: pr.number, ...provenance, disposition: null, labelPolicy: 'not-classified' }));
+                continue;
+              }
               n++;
               const paths = files.map(f => f.filename);
               const labelNames = pr.labels.map(l => l.name);
@@ -163,12 +184,6 @@ jobs:
               const ownImage = /thaynes43/.test(brtitle) || /kube-prometheus-stack/.test(brtitle);
               const ghActions = paths.length > 0 && paths.every(p => p.startsWith('.github/'));
               const nonK8s = paths.length > 0 && !ghActions && !paths.some(p => p.startsWith('kubernetes/'));
-              let verdict = null;
-              for (const c of comments) {
-                if (c.user?.login !== VET_AUTHOR) continue;
-                const m = c.body.match(/^<!-- shepherd-vet sha=([0-9a-f]{40}) -->\s*\n+\s*VERDICT:\s*([A-Za-z-]+)/);
-                if (m && m[1] === pr.head.sha) verdict = m[2].toUpperCase();
-              }
               // Any manual member keeps a mixed update supervised, regardless of rule order.
               let carve = null;
               for (const c of CARVEOUTS) {
@@ -204,6 +219,6 @@ jobs:
                 if (d !== want && labelNames.includes(d)) await github.rest.issues.removeLabel({ owner: OWNER, repo: REPO, issue_number: pr.number, name: d });
               }
               if (!labelNames.includes(want)) await github.rest.issues.addLabels({ owner: OWNER, repo: REPO, issue_number: pr.number, labels: [want] });
-              core.info(JSON.stringify({ pullRequest: pr.number, head: pr.head.sha, actualAutoMerge: actual, predictedOwner, reason, disposition: want }));
+              core.info(JSON.stringify({ pullRequest: pr.number, head: pr.head.sha, actualAutoMerge: actual, predictedOwner, reason, disposition: want, ...provenance }));
             }
             core.info(`Classified ${n} open Renovate PR(s).`);
