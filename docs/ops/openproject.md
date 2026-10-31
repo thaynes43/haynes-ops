@@ -302,6 +302,19 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   as unavailable, emits one bounded stderr diagnostic with UTC time, method, fixed
   destination host, category and errno; an ordinary answer (including an expected 404, 409
   or 422) prints none, and nothing carries exception text or request/response secrets.
+- **Token-helper reads**: the per-process token is read from the dedicated token-only helper
+  (`kubectl exec` into `deploy/openproject-agent-credentials`) before any HTTP request, and
+  that read is retried too. A GET shares the one 120 second budget (same backoff and floor)
+  between the helper read and the request. For POST/PATCH only the helper read, which happens
+  before anything is sent, is retried, with its own 30 second budget; the HTTP mutation is
+  never retried, so a helper that never recovers sends nothing and opwork keeps the intent
+  pending. Transient failures (pod not ready, container not found, upgrade-connection errors,
+  a timeout, a failed spawn) are retried. An authorization denial (helper stderr containing
+  `forbidden` or `unauthorized`, any case) is **not** retried, and neither is a token in the
+  wrong format. Same helper, Deployment, namespace and identity; no other route, copy or
+  environment fallback. Helper stdout/stderr is never printed, stored or logged: each attempt
+  that will be retried, or that ends the call, emits one line with UTC time, `helper`,
+  `category=denied|transient|timeout|invalid` and `attempt=N`. A failed attempt caches nothing.
 - **Tracker unavailable**: a clear `TRACKER UNAVAILABLE` error (exit 5). Bounded authorized work
   continues. POST/PATCH are never automatically retried, and DELETE remains forbidden.
   A failed mutation may have landed: its outcome is **UNCONFIRMED**, never invented success.
@@ -313,9 +326,25 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   response had one). After recovery, `flush` checks history for the token: present means the
   record is removed; absent for a record with a recorded 2xx means it is **kept for manual
   review and never reposted** (inspect with `show ID --history`). Only a record with no
-  recorded 2xx is posted by `flush`, and only when absent from complete history; it is read
-  back before the record is removed, and a 2xx it gets that stays invisible is recorded so
-  later flushes cannot repost it. Incomplete history keeps an unseen note for manual review.
+  recorded 2xx is posted by `flush`, and only when absent from complete history. `flush`
+  first writes a `post_started` UTC marker into the record (atomic write); if that write fails
+  nothing is posted and the result is exit 6 UNCONFIRMED naming the token. A record with the
+  marker whose token is absent from history is kept for manual review and never reposted,
+  like a recorded 2xx (this includes a POST that failed as tracker-unavailable, whose outcome
+  is unknown). The POST is read back before the record is removed, and a 2xx that stays
+  invisible is recorded so later flushes cannot repost it. A local write failure after a POST
+  (full disk, read-only home) is exit 6 UNCONFIRMED with the note token, not a traceback.
+  A clean 4xx answer to the flush POST (for example 403 or 422) created nothing, so the marker
+  is cleared (the original record is written back) and the next `flush` posts the note again;
+  a 3xx, whose outcome is uncertain, keeps the marker. The marker and record writes are
+  fsynced, directory included. `flush` exits 6 when any record is kept for manual review
+  (including a kept intent), so a script can tell.
+  **Resolving a manual-review record**: run `show ID --history` and look for the note token
+  (`opwork:note=TOKEN`, printed by `flush` and `pending`). If it is there, the note landed:
+  delete the record file under the pending directory. If it is not, re-run `comment` for the
+  work item (a new token), then delete the record file.
+  Incomplete history keeps an unseen note for manual review. `pending` shows a record with
+  `read back unconfirmed` (2xx) or `POST started ..., outcome unknown`.
   If the tracker drops during `flush`, that record is reported UNCONFIRMED, the lines
   for notes already flushed are printed, later records are not attempted, and the
   exit is 5. Legacy local checkpoints still use their existing deferred envelope. Failed

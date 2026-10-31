@@ -22,6 +22,9 @@ ALLOWED = ("/api/v3/projects", "/api/v3/work_packages", "/api/v3/types", "/api/v
 
 GET_BUDGET = 120
 BACKOFF_CAP = 16
+HELPER_BUDGET = 30  # seconds for the token-only helper read before a POST/PATCH: nothing was sent, so nothing replays
+HELPER_TIMEOUT = 30  # seconds for one helper read
+DENIAL_MARKERS = ("forbidden", "unauthorized")  # in the helper's stderr, case-insensitively: an authorization denial is not retried
 RETRY_FLOOR = 1  # seconds: no further GET attempt starts with less than this left of the budget
 DESTINATION_HOST = "openproject-web.frontend.svc.cluster.local"
 TRANSIENT_ERRNOS = {errno.ECONNREFUSED, errno.EHOSTUNREACH, errno.ENETUNREACH,
@@ -37,28 +40,65 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
 
-def token():
-    global _token
-    if _token is None:
-        try:
-            result = subprocess.run(["kubectl", "exec", "-n", "dev", "deploy/openproject-agent-credentials", "-c", "credentials", "--", "cat", "/run/openproject-agent/token"], capture_output=True, check=False, timeout=30, env=dict(os.environ, KUBECTL_REMOTE_COMMAND_WEBSOCKETS="false"))
-        except (OSError, subprocess.TimeoutExpired) as error:
-            raise ApiUnavailable("Dedicated token-only helper unavailable: %s" % type(error).__name__)
-        if result.returncode != 0:
-            raise ApiUnavailable("Dedicated token-only helper unavailable")
+def read_helper(timeout):
+    """One read of the dedicated token-only helper: (token, None) or (None, category).
+
+    The category is one of denied, transient, timeout or invalid. Neither stdout nor stderr is
+    printed, stored or put in an exception: stderr is only matched against a fixed allowlist.
+    """
+    try:
+        result = subprocess.run(["kubectl", "exec", "-n", "dev", "deploy/openproject-agent-credentials", "-c", "credentials", "--", "cat", "/run/openproject-agent/token"], capture_output=True, check=False, timeout=timeout, env=dict(os.environ, KUBECTL_REMOTE_COMMAND_WEBSOCKETS="false"))
+    except subprocess.TimeoutExpired:
+        return None, "timeout"
+    except OSError:
+        return None, "transient"
+    if result.returncode != 0:
+        stderr = (result.stderr or b"").decode(errors="replace").lower()
+        return None, "denied" if any(marker in stderr for marker in DENIAL_MARKERS) else "transient"
+    try:
         value = result.stdout.decode().strip()
-        assert len(value) == 70 and value.startswith("opapi-") and all(c in "0123456789abcdefABCDEF" for c in value[6:]), "Invalid dedicated API token format"
-        _token = value
+    except UnicodeDecodeError:
+        return None, "invalid"
+    if not (len(value) == 70 and value.startswith("opapi-") and all(c in "0123456789abcdefABCDEF" for c in value[6:])):
+        return None, "invalid"
+    return value, None
+
+def token(deadline):
+    """The helper's token, cached per process. A failed attempt caches nothing.
+
+    Transient and timeout failures are retried with the capped backoff until `deadline`; nothing
+    has been sent to the API yet, so nothing is replayed. A denial or a token in the wrong
+    format is never retried.
+    """
+    global _token
+    backoff, attempts = 1, 0
+    while _token is None:
+        attempts += 1
+        value, category = read_helper(min(HELPER_TIMEOUT, max(1, deadline - time.monotonic())))
+        if value is not None:
+            _token = value
+            break
+        remaining = deadline - time.monotonic()
+        retrying = category in ("transient", "timeout") and remaining > RETRY_FLOOR
+        # Fixed fields only: never helper output or exception text.
+        print("%s helper category=%s attempt=%d" % (datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), category, attempts), file=sys.stderr)
+        if not retrying:
+            detail = " (retry budget exhausted)" if category in ("transient", "timeout") else ""
+            raise ApiUnavailable("Dedicated token-only helper unavailable: %s after %d attempt(s)%s" % (category, attempts, detail))
+        time.sleep(min(backoff, remaining - RETRY_FLOOR))
+        backoff = min(backoff * 2, BACKOFF_CAP)
     return _token
 
 def request(method, path, payload=None):
     assert method in ("GET", "POST", "PATCH"), "No deletion or arbitrary method"
     assert path.startswith(ALLOWED) and not any(x in path for x in ("\r", "\n", "\\", "..")), "Unsupported API path"
     body = None if payload is None else json.dumps(payload).encode()
+    # A GET shares one budget between the helper read and the request; a mutation retries only the
+    # helper read (before anything is sent) and never the HTTP call.
+    deadline, backoff = time.monotonic() + (GET_BUDGET if method == "GET" else HELPER_BUDGET), 1
     req = urllib.request.Request(ORIGIN + path, data=body, method=method,
-                                 headers={"Authorization": "Bearer " + token(), "Content-Type": "application/json", "Accept": "application/hal+json"})
+                                 headers={"Authorization": "Bearer " + token(deadline), "Content-Type": "application/json", "Accept": "application/hal+json"})
     opener = urllib.request.build_opener(NoRedirect())
-    deadline, backoff = time.monotonic() + GET_BUDGET, 1
     while True:
         response, result = None, None
         category, number, transient = None, None, False
