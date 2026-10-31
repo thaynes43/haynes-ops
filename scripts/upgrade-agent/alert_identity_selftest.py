@@ -167,6 +167,23 @@ else: sys.exit('unexpected fake kubectl operation')
 
     test('watchdog excludes even inherited identity', watchdog)
 
+    def malformed_input():
+        # Optional identity input that is not exactly one valid object must be
+        # absent and must never cost the order itself.
+        for bad in (' ', '\n', '{}{}', '{"fingerprint":"a","startsAt":"b"} {"x":1}',
+                    'not json', '[]', '"plain"', '{"fingerprint":1,"startsAt":"b"}'):
+            reset()
+            run(f'bash "{LIB / "remediate.sh"}" responder fixture reason',
+                {'REMEDIATE_ALERT_IDENTITY': bad})
+            order = next(o for k, o in orders().items() if k.startswith('rem-responder-'))
+            assert 'alertIdentity' not in order, 'malformed remediate input was attached: ' + repr(bad)
+            reset()
+            run(f'bash "{escalate}" responder fixture reason', {'ESCALATE_ALERT_IDENTITY': bad})
+            order = next(o for k, o in orders().items() if k.startswith('esc-responder-'))
+            assert 'alertIdentity' not in order, 'malformed escalate input was attached: ' + repr(bad)
+
+    test('malformed identity input still files the order with no identity', malformed_input)
+
     def promotion(mode, legacy=False):
         key, parent = bound_parent()
         if legacy:

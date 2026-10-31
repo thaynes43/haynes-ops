@@ -71,10 +71,14 @@ run_ref="$(printf '%s' "$run_ref" | tr -d '\000-\037' | cut -c1-120)"
 # Optional dedicated exact identity JSON, never the cleaned/truncated context.
 # Only singleton responder orders (or persisted rem promotions) may carry it.
 # Bad/missing input is absent; no identity is inferred or backfilled.
-alert_identity="$(printf '%s' "${ESCALATE_ALERT_IDENTITY:-null}" | jq -c --arg source "$src" '
-  if ($source == "responder" or $source == "rem") and type == "object"
-     and (.fingerprint | type) == "string" and (.startsAt | type) == "string"
-  then {fingerprint, startsAt} else null end' 2>/dev/null)" || alert_identity=null
+# Parse inside jq so whitespace, several values or invalid JSON become null and
+# always yield exactly one value; optional metadata never costs the order.
+alert_identity="$(jq -cn --arg raw "${ESCALATE_ALERT_IDENTITY:-null}" --arg source "$src" '
+  (try ($raw | fromjson) catch null) as $v
+  | if ($source == "responder" or $source == "rem") and ($v | type) == "object"
+       and ($v.fingerprint | type) == "string" and ($v.startsAt | type) == "string"
+    then {fingerprint: $v.fingerprint, startsAt: $v.startsAt} else null end' 2>/dev/null)" || alert_identity=null
+[ -n "$alert_identity" ] || alert_identity=null
 
 sig_src="${ESCALATE_SIG:-${src}|${reason}}"
 sig8="$(printf '%s' "$sig_src" \
