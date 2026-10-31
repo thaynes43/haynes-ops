@@ -5,15 +5,28 @@ python3 agent-api.py PATCH /api/v3/work_packages/123 < fixture-update.json
 Credential discovery and exec stay inside the cluster, using existing authority.
 No redirects are followed. Only this API origin can receive the Bearer token.
 """
+from datetime import datetime, timezone
+import errno
+import http.client
 import json
 import os
+import socket
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
 ORIGIN = "http://openproject-web.frontend.svc.cluster.local:8082"
 ALLOWED = ("/api/v3/projects", "/api/v3/work_packages", "/api/v3/types", "/api/v3/statuses", "/api/v3/users/me", "/api/v3/relations", "/api/v3/attachments", "/api/v3/queries")
+
+GET_BUDGET = 120
+BACKOFF_CAP = 16
+RETRY_FLOOR = 1  # seconds: no further GET attempt starts with less than this left of the budget
+DESTINATION_HOST = "openproject-web.frontend.svc.cluster.local"
+TRANSIENT_ERRNOS = {errno.ECONNREFUSED, errno.EHOSTUNREACH, errno.ENETUNREACH,
+                    errno.ETIMEDOUT, errno.ECONNRESET}
+
 
 class ApiUnavailable(Exception):
     """Credential helper, network or server is unreachable. Not an API answer."""
@@ -45,22 +58,60 @@ def request(method, path, payload=None):
     req = urllib.request.Request(ORIGIN + path, data=body, method=method,
                                  headers={"Authorization": "Bearer " + token(), "Content-Type": "application/json", "Accept": "application/hal+json"})
     opener = urllib.request.build_opener(NoRedirect())
-    try:
-        response = opener.open(req, timeout=30)
-    except urllib.error.HTTPError as error:
-        response = error
-    except (urllib.error.URLError, OSError) as error:
-        raise ApiUnavailable("OpenProject API unreachable: %s" % type(error).__name__)
-    try:
-        raw = response.read()
-    except OSError as error:
-        raise ApiUnavailable("OpenProject API read failed: %s" % type(error).__name__)
-    if response.code >= 500:
-        raise ApiUnavailable("OpenProject API error HTTP %d" % response.code)
-    try:
-        return response.code, json.loads(raw) if raw else None
-    except ValueError:
-        return response.code, {"_type": "NonJson", "raw": raw[:200].decode(errors="replace")}
+    deadline, backoff = time.monotonic() + GET_BUDGET, 1
+    while True:
+        response, result = None, None
+        category, number, transient = None, None, False
+        try:
+            try:
+                response = opener.open(req, timeout=min(30, max(0.001, deadline - time.monotonic())) if method == "GET" else 30)
+            except urllib.error.HTTPError as error:
+                response = error
+            if response.code >= 400:
+                category = "http_%d" % response.code
+                transient = response.code in (502, 503, 504)
+            if response.code < 500:
+                raw = response.read()
+                result = response.code, raw
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as error:
+            cause = error.reason if isinstance(error, urllib.error.URLError) else error
+            number = getattr(cause, "errno", None)
+            number = number if isinstance(number, int) else None
+            if isinstance(cause, TimeoutError):
+                category = "timeout"
+            elif isinstance(cause, socket.gaierror):
+                category = "dns_failure"
+            elif isinstance(cause, http.client.IncompleteRead):
+                category = "incomplete_read"
+            else:
+                category = "connection_error"
+            transient = isinstance(cause, (TimeoutError, ConnectionResetError, http.client.IncompleteRead)) or number in TRANSIENT_ERRNOS \
+                or (isinstance(cause, socket.gaierror) and number == socket.EAI_AGAIN)
+            if response is not None and 400 <= response.code < 500:
+                category, transient = "http_%d" % response.code, False
+            result = None
+        finally:
+            if response is not None:
+                response.close()
+        if result is not None:  # an API answer, including an expected 404/409/422: no diagnostic
+            code, raw = result
+            try:
+                return code, json.loads(raw) if raw else None
+            except ValueError:
+                return code, {"_type": "NonJson", "raw": raw[:200].decode(errors="replace")}
+        remaining = deadline - time.monotonic()
+        retrying = method == "GET" and transient and remaining > RETRY_FLOOR
+        # Fixed, bounded fields only: never format exception text, URLs, or bodies. One line per
+        # attempt that will be retried or that ends the call as ApiUnavailable.
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        print("%s %s host=%s category=%s errno=%s" % (
+            stamp, method, DESTINATION_HOST, category, number if number is not None else "none"), file=sys.stderr)
+        if not retrying:
+            detail = "%d s retry budget exhausted" % GET_BUDGET if method == "GET" and transient else "unavailable"
+            raise ApiUnavailable("OpenProject API %s %s (%s, errno=%s)" % (
+                method, detail, category, number if number is not None else "none"))
+        time.sleep(min(backoff, remaining - RETRY_FLOOR))  # the last attempt keeps at least the floor as its timeout
+        backoff = min(backoff * 2, BACKOFF_CAP)
 
 if __name__ == "__main__":
     assert len(sys.argv) == 3, "Usage: agent-api.py METHOD /api/v3/path"

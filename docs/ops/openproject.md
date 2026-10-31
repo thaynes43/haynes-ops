@@ -281,7 +281,8 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
 - **Conflicts**: every write sends `lockVersion`; a stale one (409), another owner, or an
   explicit hold or pause (`Needs answer`, `Needs approval`, `Paused`) is re-read and refused (exit 3), never
   overwritten. `--force` is a takeover/override for an explicitly authorized case only.
-- **Read back**: success is printed only after a read back. An unconfirmed write is exit 6.
+- **Read back**: success is printed only after a read back. A write missing on read-back is
+  UNCONFIRMED (exit 6); an unavailable connection/read-back is exit 5.
   `show --history` marks any truncated text; `--full` returns it whole. `claim --assignee me` also sets the
   native assignee (opt-in; never Tom automatically; the session owner field is kept).
 - **Workflow completion**: `complete` preflights the form and records the evidence. If
@@ -291,10 +292,37 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   allowed next statuses, or the form re-check failure with instructions to inspect the item
   instead of repeating `complete`. The 2026-10-19 observation that this role could not reach
   `Accepted` was state-specific, not a permanent limit. Native workflow rules still apply.
+- **Transient reads**: GET retries connection refused, host/network unreachable, timeout,
+  connection reset, a temporary DNS failure (`EAI_AGAIN`), an incomplete response body, and
+  HTTP 502/503/504 on the same URL, origin and credential. The retry budget is about 120
+  seconds including attempts (each timeout is at most 30 seconds and bounded by the remaining
+  budget; no attempt starts with less than 1 second left); backoff starts at 1 second,
+  doubles and caps at 16. HTTP 401/403, all other 4xx and non-transient errors stop without
+  retry. Redirects remain disabled. Each attempt that will be retried, and a call that ends
+  as unavailable, emits one bounded stderr diagnostic with UTC time, method, fixed
+  destination host, category and errno; an ordinary answer (including an expected 404, 409
+  or 422) prints none, and nothing carries exception text or request/response secrets.
 - **Tracker unavailable**: a clear `TRACKER UNAVAILABLE` error (exit 5). Bounded authorized work
-  continues. Notes are saved under `~/.local/state/opwork/pending/` (`OPWORK_STATE_DIR`) and
-  `flush` posts them with the same dedupe token, so a note that did land is not duplicated.
-  Failed status/create/claim commands are saved as intents to re-run by hand. No sync daemon.
+  continues. POST/PATCH are never automatically retried, and DELETE remains forbidden.
+  A failed mutation may have landed: its outcome is **UNCONFIRMED**, never invented success.
+  Notes are saved under `~/.local/state/opwork/pending/` (`OPWORK_STATE_DIR`; directories
+  0700, files 0600, written atomically) with their exact body and original dedupe token.
+  `pending` lists them with their token; a corrupt record is reported and skipped.
+  A note whose POST returned 2xx but was not visible on read back (or whose read back
+  failed after the 2xx) is saved UNCONFIRMED with that fact (and the activity id when the
+  response had one). After recovery, `flush` checks history for the token: present means the
+  record is removed; absent for a record with a recorded 2xx means it is **kept for manual
+  review and never reposted** (inspect with `show ID --history`). Only a record with no
+  recorded 2xx is posted by `flush`, and only when absent from complete history; it is read
+  back before the record is removed, and a 2xx it gets that stays invisible is recorded so
+  later flushes cannot repost it. Incomplete history keeps an unseen note for manual review.
+  If the tracker drops during `flush`, that record is reported UNCONFIRMED, the lines
+  for notes already flushed are printed, later records are not attempted, and the
+  exit is 5. Legacy local checkpoints still use their existing deferred envelope. Failed
+  status/create/claim/complete/relation commands retain their original command intent and
+  any existing note key/body; `flush` keeps these "for manual inspection (show/search before
+  repeating; note token T may have landed)" and never replays them. No sync daemon or
+  additional queue.
 - **Networking**: v1 (dev/dev-env) reaches the API today. v2 session pods need the separate,
   held Cilium policy (egress + frontend ingress, TCP 8082); until applied v2 gets exit 5.
 - **Tests**: `python3 -I -B scripts/tests/openproject/test_opwork.py -v` (offline fake API:
