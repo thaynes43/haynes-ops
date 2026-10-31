@@ -135,6 +135,25 @@ const vet=(verdict,sha=SHA,login='haynes-ops-bot[bot]')=>({id:6540904846,body:`<
       assert(result.logs.some(s=>s.includes('actual=Unknown reason=read-failure')));
     });
   }
+  await provenanceCheck('human on a Shepherd branch',{pr:{...shepherd,user:{login:'human'}}},result=>{
+    assert.deepEqual(records(result),[]);assert.deepEqual(result.labelCalls,[]);assert.deepEqual(result.readCalls,[]);
+  },false);
+  await provenanceCheck('Renovate on a shepherd/ ref is classified',{pr:{head:{ref:'shepherd/x',sha:SHA}}},result=>{
+    const rows=records(result);assert.equal(rows.length,1);identity(rows[0]);
+    assert.equal(rows[0].disposition,'disposition:stranded');assert.equal(result.label,'disposition:stranded');
+  });
+  await provenanceCheck('last current-head vet wins',{comments:[vet('HOLD'),{...vet('AUTO-MERGE'),id:6540904847}]},result=>{
+    const rows=records(result);assert.equal(rows.length,1);identity(rows[0]);
+    assert.deepEqual(rows[0].attempt.vet,{commentId:6540904847,sha:SHA,verdict:'AUTO-MERGE'});
+  });
+  await provenanceCheck('later older-head vet is ignored',{comments:[vet('HOLD'),{...vet('AUTO-MERGE',OTHER),id:6540904847}]},result=>{
+    const rows=records(result);assert.equal(rows.length,1);identity(rows[0]);
+    assert.deepEqual(rows[0].attempt.vet,{commentId:6540904846,sha:SHA,verdict:'HOLD'});
+  });
+  await provenanceCheck('vet without a numeric id keeps the key',{comments:[{...vet('HOLD'),id:'x'}]},result=>{
+    const rows=records(result);assert.equal(rows.length,1);identity(rows[0]);
+    assert.deepEqual(rows[0].attempt.vet,{commentId:null,sha:SHA,verdict:'HOLD'});
+  });
   await provenanceCheck('bot outside Shepherd branch',{pr:{...shepherd,head:{ref:'other',sha:SHA}}},result=>{
     assert.deepEqual(records(result),[]);assert.deepEqual(result.labelCalls,[]);assert.deepEqual(result.readCalls,[]);
   },false);

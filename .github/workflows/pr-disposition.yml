@@ -163,7 +163,7 @@ jobs:
                 const m = c.body.match(/^<!-- shepherd-vet sha=([0-9a-f]{40}) -->\s*\n+\s*VERDICT:\s*([A-Za-z-]+)/);
                 if (m && m[1] === pr.head.sha) {
                   verdict = m[2].toUpperCase();
-                  vet = { commentId: c.id, sha: m[1], verdict };
+                  vet = { commentId: Number.isSafeInteger(c.id) ? c.id : null, sha: m[1], verdict };
                 }
               }
               const provenance = {
