@@ -81,14 +81,20 @@ case "$status" in
     # place. Keyed on the order's own signature (the responder passes
     # alertname@ns) so a promotion dedups against any other writer escalating
     # the same underlying condition.
-    sig="$(kubectl -n "$NS" get cm "$CM" -o json 2>/dev/null \
-      | jq -r --arg k "$key" '(.data[$k] // "{}") | (fromjson? // {}) | .sig // empty')"
+    # ONE read of the parent feeds sig, alertIdentity and parentOrder, so the
+    # lineage pair can never come from a different revision than the identity.
+    parent="$(kubectl -n "$NS" get cm "$CM" -o json 2>/dev/null \
+      | jq -c --arg k "$key" '(.data[$k] // "{}") | (fromjson? // {})')"
+    sig="$(printf '%s' "$parent" | jq -r '.sig // empty' 2>/dev/null)"
     # Copy only the parent's persisted identity. Legacy orders remain unjoined.
-    alert_identity="$(kubectl -n "$NS" get cm "$CM" -o json 2>/dev/null \
-      | jq -c --arg k "$key" '(.data[$k] // "{}") | (fromjson? // {}) | .alertIdentity // null')"
+    alert_identity="$(printf '%s' "$parent" | jq -c '.alertIdentity // null' 2>/dev/null)" || alert_identity=null
+    # Lineage: this order's data key plus its exact created string. A parent
+    # without a string `created` (legacy) yields none; never inferred.
+    parent_order="$(printf '%s' "$parent" | jq -c --arg k "$key" '
+      if (.created | type) == "string" and .created != "" then {key: $k, created: .created} else null end' 2>/dev/null)" || parent_order=null
     [ -n "$sig" ] || sig="$key"
     if [ -x /opt/coordination/escalate.sh ] || [ -f /opt/coordination/escalate.sh ]; then
-      ESCALATE_ALERT_IDENTITY="$alert_identity" ESCALATE_SIG="$sig" bash /opt/coordination/escalate.sh rem "order:${key}" \
+      ESCALATE_ALERT_IDENTITY="$alert_identity" ESCALATE_PARENT_ORDER="$parent_order" ESCALATE_SIG="$sig" bash /opt/coordination/escalate.sh rem "order:${key}" \
         "AUTONOMOUS REMEDIATION COULD NOT FINISH (${key}). ${note}" \
         && oplog escalated "$key" esc=filed sig="$sig" \
         || { oplog escalated "$key" esc=FAILED sig="$sig"

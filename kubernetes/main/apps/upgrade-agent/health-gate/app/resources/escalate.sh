@@ -80,6 +80,18 @@ alert_identity="$(jq -cn --arg raw "${ESCALATE_ALERT_IDENTITY:-null}" --arg sour
     then {fingerprint: $v.fingerprint, startsAt: $v.startsAt} else null end' 2>/dev/null)" || alert_identity=null
 [ -n "$alert_identity" ] || alert_identity=null
 
+# Optional promotion lineage: only an esc-rem child created by promotion from a
+# parent order (source rem) records the parent's data key and exact created
+# string, immutably. Responder, watchdog and any other source never carry it.
+# Malformed or incomplete input is absent; lineage is never inferred.
+parent_order="$(jq -cn --arg raw "${ESCALATE_PARENT_ORDER:-null}" --arg source "$src" '
+  (try ($raw | fromjson) catch null) as $v
+  | if $source == "rem" and ($v | type) == "object"
+       and ($v.key | type) == "string" and $v.key != ""
+       and ($v.created | type) == "string" and $v.created != ""
+    then {key: $v.key, created: $v.created} else null end' 2>/dev/null)" || parent_order=null
+[ -n "$parent_order" ] || parent_order=null
+
 sig_src="${ESCALATE_SIG:-${src}|${reason}}"
 sig8="$(printf '%s' "$sig_src" \
   | { sha256sum 2>/dev/null || shasum -a 256 2>/dev/null || openssl dgst -sha256 2>/dev/null; } \
@@ -94,10 +106,11 @@ now="$(date -u +%s)"
 # NB: single-encoded value — jq -c object text, NO extra tojson (double encoding
 # makes the watcher's fromjson yield a string and the entry sits pending forever;
 # hit live on the wo-* synthetic test 2026-08-20).
-entry="$(jq -nc --argjson alertIdentity "$alert_identity" --arg source "$src" --arg reason "$reason" --arg run_ref "$run_ref" --arg now "$now" \
+entry="$(jq -nc --argjson alertIdentity "$alert_identity" --argjson parentOrder "$parent_order" --arg source "$src" --arg reason "$reason" --arg run_ref "$run_ref" --arg now "$now" \
   '{source:$source, reason:$reason, run_ref:$run_ref, class:"escalation",
     status:"pending", created:$now, updated:$now}
-    + (if $alertIdentity == null then {} else {alertIdentity:$alertIdentity} end)')" || {
+    + (if $alertIdentity == null then {} else {alertIdentity:$alertIdentity} end)
+    + (if $parentOrder == null then {} else {parentOrder:$parentOrder} end)')" || {
   elog "FAILED to build the entry JSON — nothing filed."; exit 1; }
 
 if kubectl -n "$NS" get cm "$CM" >/dev/null 2>&1; then

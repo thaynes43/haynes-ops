@@ -184,11 +184,13 @@ else: sys.exit('unexpected fake kubectl operation')
 
     test('malformed identity input still files the order with no identity', malformed_input)
 
-    def promotion(mode, legacy=False):
-        key, parent = bound_parent()
-        if legacy:
-            del parent['alertIdentity']
-            seed(key, parent)
+    PARENT_CREATED = '1999999999'  # distinct from the fixture clock the child is stamped with
+
+    def lineage(child, key, created=PARENT_CREATED):
+        assert child.get('parentOrder') == {'key': key, 'created': created}, 'parentOrder missing or inexact'
+        assert child['created'] != child['parentOrder']['created'], 'child own created copied'
+
+    def promote(mode, key):
         if mode in ('failed', 'escalate'):
             code = f'bash "{status}" "$key" {mode} fixture'
         else:
@@ -198,17 +200,116 @@ else: sys.exit('unexpected fake kubectl operation')
             call = section(text, start, '\n            >/dev/null' if mode == 'orphan' else '\n          || oplog')
             code = call.replace('/opt/dev-env-ops/order-status.sh', str(status)).removesuffix(' \\')
         run(code, {'key': key, 'why': 'fixture', 'NS': 'upgrade-agent', 'CM': 'upgrade-work-orders'})
-        child = next(o for k, o in orders().items() if k.startswith('esc-rem-'))
+
+    def seeded_parent(**changes):
+        key, parent = bound_parent()
+        parent['created'] = PARENT_CREATED
+        for k, v in changes.items():
+            if v is None:
+                parent.pop(k, None)
+            else:
+                parent[k] = v
+        seed(key, parent)
+        return key
+
+    def child_of(key):
+        return next(o for k, o in orders().items() if k.startswith('esc-rem-') and k != key)
+
+    def promotion(mode, legacy=False):
+        key = seeded_parent(alertIdentity=None) if legacy else seeded_parent()
+        promote(mode, key)
+        child = child_of(key)
         updated_parent = orders()[key]
+        assert 'parentOrder' not in updated_parent, 'parent itself gained lineage'
         if legacy:
             assert 'alertIdentity' not in child and 'alertIdentity' not in updated_parent
         else:
             identity(child)
             identity(updated_parent)
+        lineage(child, key)
 
     for mode in ('escalate', 'failed', 'orphan', 'closeout'):
         test(mode + ' promotion copies persisted parent identity', lambda m=mode: promotion(m))
     test('legacy promotion omits identity without backfill', lambda: promotion('escalate', True))
+
+    def put(data):
+        store.write_text(json.dumps({'data': {k: json.dumps(v) for k, v in data.items()}}))
+
+    def legacy_parent_lineage():
+        # No string `created` on the parent: no lineage, never inferred from
+        # run_ref/text. Identity still copies, since that is a separate field.
+        for bad in (None, '', 1999999999, ['1']):
+            for mode in ('escalate', 'orphan'):
+                key = seeded_parent(created=bad, run_ref=PARENT_CREATED, reason=PARENT_CREATED,
+                                    note=PARENT_CREATED)
+                promote(mode, key)
+                child = child_of(key)
+                assert 'parentOrder' not in child, 'lineage inferred for created=' + repr(bad)
+                identity(child)
+
+    test('legacy parent without a created string gives no parentOrder', legacy_parent_lineage)
+
+    def non_promotion_orders():
+        # Even a hostile inherited ESCALATE_PARENT_ORDER is ignored by every
+        # non-promotion producer: rem-responder, esc-responder, esc-rem-watchdog.
+        env_lineage = {'ESCALATE_PARENT_ORDER': json.dumps({'key': 'k', 'created': '1'}),
+                       'REMEDIATE_PARENT_ORDER': json.dumps({'key': 'k', 'created': '1'})}
+        reset()
+        run(f'bash "{LIB / "remediate.sh"}" responder fixture reason', env_lineage)
+        assert 'parentOrder' not in next(o for k, o in orders().items() if k.startswith('rem-responder-'))
+        reset()
+        run(f'bash "{escalate}" responder fixture reason', env_lineage)
+        assert 'parentOrder' not in next(o for k, o in orders().items() if k.startswith('esc-responder-'))
+        reset()
+        call = section(RESP, '    ESCALATE_SIG="${sig:-$key}"', '\n      || log')
+        run(call.replace('/opt/coordination/escalate.sh', str(escalate)),
+            {'sig': 'watchdog', 'key': 'rem-fixture', 'st': 'claimed', 'age': '200',
+             'reason': 'fixture', **env_lineage})
+        assert 'parentOrder' not in next(o for k, o in orders().items() if k.startswith('esc-rem-watchdog-'))
+        # The shipped producers' own singleton paths write none either.
+        for failed in (False, True):
+            reset()
+            _, order = singleton(failed=failed)
+            assert 'parentOrder' not in order
+        # Only a well-formed key+created object attaches, and only for source rem.
+        for bad in ('', 'not json', '[]', '{}', '{"key":"k"}', '{"created":"1"}', '{"key":"","created":"1"}',
+                    '{"key":"k","created":""}', '{"key":1,"created":"1"}', '{"key":"k","created":1}', '{"key":"k","created":"1"}{}'):
+            reset()
+            run(f'bash "{escalate}" rem order:k reason', {'ESCALATE_PARENT_ORDER': bad})
+            assert 'parentOrder' not in next(iter(orders().values())), 'malformed lineage attached: ' + repr(bad)
+
+    test('non-promotion orders and malformed lineage input write no parentOrder', non_promotion_orders)
+
+    def reused_key_lineage():
+        for mode in ('escalate', 'failed', 'orphan', 'closeout'):
+            key = seeded_parent()
+            promote(mode, key)
+            first = child_of(key)
+            lineage(first, key)
+            child_key = next(k for k in orders() if k.startswith('esc-rem-'))
+            # A pending/claimed child dedups and keeps its original lineage.
+            data = orders()
+            data[key].update(status='working', created='2000000007')
+            put(data)
+            promote(mode, key)
+            assert orders()[child_key]['parentOrder']['created'] == PARENT_CREATED, 'dedup rewrote lineage'
+            # After terminal dedup the same key is a NEW order with its own lineage.
+            data = orders()
+            data[child_key].update(status='done', created='1', updated='1')
+            put(data)
+            promote(mode, key)
+            new = orders()[child_key]
+            assert new['created'] == '2000000000'
+            assert new['parentOrder'] == {'key': key, 'created': '2000000007'}, 'reused key kept old lineage'
+            # Terminal again, and the new parent is legacy: the old lineage must not survive.
+            data = orders()
+            data[child_key].update(status='failed')
+            data[key].pop('created')
+            put(data)
+            promote(mode, key)
+            assert 'parentOrder' not in orders()[child_key], 'legacy reuse kept stale lineage'
+
+    test('reused esc-rem key gets its own new lineage after terminal dedup', reused_key_lineage)
 
     def no_backfill():
         key, parent = bound_parent()
@@ -246,15 +347,28 @@ else: sys.exit('unexpected fake kubectl operation')
         test(('escalation' if failed else 'remediation') + ' reused key replaces identity and created',
              lambda f=failed: reuse(f))
 
+    def bound_child():
+        key = seeded_parent()
+        promote('escalate', key)
+        child_key = next(k for k in orders() if k.startswith('esc-rem-'))
+        identity(orders()[child_key])
+        lineage(orders()[child_key], key)
+        return child_key
+
+    def preserved(order):
+        identity(order)
+        assert order.get('parentOrder', {}).get('created') == PARENT_CREATED, 'parentOrder dropped by a rewriter'
+        assert order['parentOrder']['key'].startswith('rem-responder-'), 'parentOrder key changed'
+
     def rewrite(source, anchor, extra=None):
-        key, _ = bound_parent()
+        key = bound_child()
         code = pipeline(source, anchor)
         run(code, {'key': key, 'NS': 'fixture', 'CM': 'fixture', 'WORK_ORDER_CM': 'fixture',
                    'NOW': '2000000000', 'now': '2000000000', 'note': 'fixture',
                    'write_status': 'done', 'STATE_KEY': 'digest.last', 'rc': '1',
                    'marks': json.dumps([key]), 'reaped_marks': json.dumps([key])} | (extra or {}))
         updated = orders()[key]
-        identity(updated)
+        preserved(updated)
         if 'digested' in anchor:
             assert updated['digested'] == '2000000000'
         elif 'reaped' in anchor:
@@ -269,24 +383,24 @@ else: sys.exit('unexpected fake kubectl operation')
                 assert updated['note'] == 'fixture'
 
     status_text = status.read_text()
-    test('heartbeat preserves identity', lambda: rewrite(status_text, '.note=$n | .updated=$now'))
-    test('terminal status preserves identity', lambda: rewrite(status_text, '.status=$s | .note=$n'))
+    test('heartbeat preserves identity and parentOrder', lambda: rewrite(status_text, '.note=$n | .updated=$now'))
+    test('terminal status preserves identity and parentOrder', lambda: rewrite(status_text, '.status=$s | .note=$n'))
     watch = (OPS / 'work-order-watch.sh').read_text()
 
     def update_status():
-        key, _ = bound_parent()
+        key = bound_child()
         body = section(watch, 'update_status()', '\n}\n') + '\n}\n'
         run(body + '\nupdate_status "$key" claimed fixture', {'key': key, 'NS': 'fixture', 'CM': 'fixture'})
-        identity(orders()[key])
+        preserved(orders()[key])
         assert orders()[key]['status'] == 'claimed'
 
-    test('watcher update_status preserves identity', update_status)
-    test('watcher reaped stamp preserves identity', lambda: rewrite(watch, '+ {reaped: $now}'))
-    test('responder watchdog failed stamp preserves parent identity',
+    test('watcher update_status preserves identity and parentOrder', update_status)
+    test('watcher reaped stamp preserves identity and parentOrder', lambda: rewrite(watch, '+ {reaped: $now}'))
+    test('responder watchdog failed stamp preserves parent identity and parentOrder',
          lambda: rewrite(RESP, '.note="stale-lane watchdog:'))
-    test('session-launch failed stamp preserves identity',
+    test('session-launch failed stamp preserves identity and parentOrder',
          lambda: rewrite((OPS / 'session-launch.sh').read_text(), '.status="failed" | .note=$n'))
-    test('digest stamp preserves identity',
+    test('digest stamp preserves identity and parentOrder',
          lambda: rewrite((OPS / 'ops-digest.sh').read_text(), '.digested = $now'))
 
     if failures:

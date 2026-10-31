@@ -22,6 +22,20 @@ remain absent. Storm/aggregate units and esc-rem-watchdog orders omit it. Termin
 key reuse replaces the entry with its new identity (or absence) and creation time.
 Existing object rewriters require no source changes and retain the field.
 
+## Lineage addendum (OP324 j4034, OVERNIGHT-PAGESLINEAGE-324-PRODUCER)
+
+Every `esc-rem-*` child created **by promotion** gets an immutable
+`parentOrder: {"key": "<parent data key>", "created": "<parent created string>"}`.
+order-status.sh's escalate branch copies sig, `alertIdentity` and the pair from ONE
+read of the parent entry (journal 3960 nit) and passes `ESCALATE_PARENT_ORDER` to
+escalate.sh, which attaches it only for source `rem` and only when both strings are
+non-empty. The paths are order-status escalate, failed-rem, the work-order-watch.sh
+orphan sweep and the session-launch.sh close-out (all via order-status.sh). It is
+absent on rem-responder, esc-responder and esc-rem-watchdog orders. A legacy parent
+with no string `created` gives none; never inferred from run_ref or text. Rewriters
+preserve it unchanged; a creation after terminal dedup writes its own lineage (or
+none). Reader side is a separate dev-env PR.
+
 ## Evidence
 
 Final validation was serial, offline and bounded:
