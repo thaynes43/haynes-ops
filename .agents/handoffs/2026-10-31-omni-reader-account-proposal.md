@@ -25,6 +25,40 @@ Sources:
 No Secret or 1Password value was read. This document gives account names and roles, never
 keys.
 
+## Decision requested (one approval, for Tom)
+
+> **Approve, as written below?** Tom creates the Omni service account
+> `dev-env-omni-reader` (role `Reader`, no ACL, TTL `8760h`, created with
+> `--use-user-role=false --role Reader`) from his workstation, and stores its key only in
+> 1Password item `dev-env`, field `OMNI_READER_KEY`. A later story, in git through Flux,
+> then distributes it through the existing route: its own ExternalSecret
+> `dev-env-omni-reader` in `dev-agents`, and the key added as `OMNI_READER_KEY`
+> (`optional: true`) to profiles `full` and `workbench` only. Acceptance is option A
+> (server-reported role, all reads) at activation, plus option B (audit review) one week
+> later. Nothing changes the Admin account `dev-env-node-triage` or the v1 pod.
+>
+> Reply with one of:
+> - **approve as written** (recommended);
+> - **approve, and also give `dev`** the Reader key as its `OMNI_SERVICE_ACCOUNT_KEY`. `dev`
+>   has open web egress, and Reader reads still expose the NUT password and join tokens; see
+>   Consumers;
+> - **not now**.
+
+**Lead's recommendation (dev-env-1029-132039):** approve as written, with `dev` deferred.
+That keeps every routine read audit-separable from Admin work, and adds no new reach to a
+web-egress profile that has no Omni access today.
+
+**Rollout impact:**
+- Tom's account creation has no cluster effect.
+- The later story's ExternalSecret restarts nothing. Order matters: the 1Password field
+  must exist first, or `dev-env-secrets` fails and pages.
+- Its `templates.yaml` wiring restarts no running session. New sessions get the key, and
+  idle, unattached sessions are drained onto the new revision. It must wait for any
+  templates hold in force at the time.
+- The session-config text restarts nothing.
+- Rollback is in the Rollback section: revert, then `omnictl serviceaccount destroy
+  dev-env-omni-reader`, then delete the field.
+
 ## Requirement
 
 Tom, 2026-10-31 03:28 (relayed by Meatball): "And we need a second service account that is
