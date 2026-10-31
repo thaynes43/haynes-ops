@@ -19,7 +19,7 @@ class Pipeline:
 
     def pipe(self, user_message: str, model_id: str, messages: list[dict], body: dict):
         # Internal title/tag tasks must never create extra GPU jobs.
-        if body.get("task") or body.get("metadata", {}).get("task"):
+        if body.get("task") or (body.get("metadata") or {}).get("task"):
             yield "Wan video"
             return
         if "### Task:" in user_message:
