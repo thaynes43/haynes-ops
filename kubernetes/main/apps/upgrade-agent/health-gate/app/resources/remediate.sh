@@ -74,6 +74,18 @@ run_ref="$(clean "$run_ref" 120)"
 diagnosis="$(clean "${REMEDIATE_DIAGNOSIS:-}" "$MAX_DIAGNOSIS")"
 alert_ctx="$(clean "${REMEDIATE_ALERT:-}" "$MAX_ALERT")"
 
+# Optional dedicated exact identity JSON, never the cleaned/truncated context.
+# Only singleton responder orders (or persisted rem promotions) may carry it.
+# Bad/missing input is absent; no identity is inferred or backfilled.
+# Parse inside jq so whitespace, several values or invalid JSON become null and
+# always yield exactly one value; optional metadata never costs the order.
+alert_identity="$(jq -cn --arg raw "${REMEDIATE_ALERT_IDENTITY:-null}" --arg source "$src" '
+  (try ($raw | fromjson) catch null) as $v
+  | if $source == "responder" and ($v | type) == "object"
+       and ($v.fingerprint | type) == "string" and ($v.startsAt | type) == "string"
+    then {fingerprint: $v.fingerprint, startsAt: $v.startsAt} else null end' 2>/dev/null)" || alert_identity=null
+[ -n "$alert_identity" ] || alert_identity=null
+
 sig_src="${REMEDIATE_SIG:-${src}|${reason}}"
 sig8="$(printf '%s' "$sig_src" \
   | { sha256sum 2>/dev/null || shasum -a 256 2>/dev/null || openssl dgst -sha256 2>/dev/null; } \
@@ -88,10 +100,11 @@ now="$(date -u +%s)"
 # NB: single-encoded value — jq -c object text, NO extra tojson. Double encoding
 # makes the watcher's fromjson yield a string and the order sits pending forever
 # (hit live on the wo-* synthetic test 2026-08-20).
-entry="$(jq -nc --arg source "$src" --arg reason "$reason" --arg run_ref "$run_ref" \
+entry="$(jq -nc --argjson alertIdentity "$alert_identity" --arg source "$src" --arg reason "$reason" --arg run_ref "$run_ref" \
   --arg diagnosis "$diagnosis" --arg alert "$alert_ctx" --arg sig "$sig_src" --arg now "$now" \
   '{source:$source, reason:$reason, run_ref:$run_ref, diagnosis:$diagnosis, alert:$alert,
-    sig:$sig, class:"remediation", status:"pending", created:$now, updated:$now}')" || {
+    sig:$sig, class:"remediation", status:"pending", created:$now, updated:$now}
+    + (if $alertIdentity == null then {} else {alertIdentity:$alertIdentity} end)')" || {
   rlog "FAILED to build the entry JSON — nothing filed."; exit 1; }
 
 if kubectl -n "$NS" get cm "$CM" >/dev/null 2>&1; then
