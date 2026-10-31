@@ -57,10 +57,14 @@ Final validation was serial, offline and bounded:
 
 ## Activation hold and next safe step
 
-**HELD DRAFT ONLY. Do not merge or mark ready.** Changed health-gate scripts are
-keys of `upgrade-coordination-lib`, mounted into dev-env-ops. Its HelmRelease has
-`reloader.stakater.com/auto: "true"`; merging changes that ConfigMap and causes
-Reloader to **restart dev-env-ops, ending its running sessions**. Activation must
+**HELD DRAFT ONLY. Do not merge or mark ready.** Two mounted ConfigMaps change, and
+each restarts dev-env-ops on its own:
+- the health-gate scripts (`remediate.sh`, `escalate.sh`) are keys of
+  `upgrade-coordination-lib`;
+- `order-status.sh` is a key of `dev-env-ops-scripts` (`dev-env-ops/app/kustomization.yaml`).
+Both are mounted into dev-env-ops, whose HelmRelease has
+`reloader.stakater.com/auto: "true"`. Merging causes Reloader to **restart
+dev-env-ops, ending its running sessions**. Activation must
 wait for **no claimed work orders**, per escalate.sh, agentic-remediation.md and
 #3415. The H7 maintenance hold (#3934, dev-env#290) also covers respond.sh and is
 unchanged. Tom's morning review must resolve activation; this handoff grants none.
