@@ -53,8 +53,11 @@ scope narrower than Reader that still allows routine health reads. An access pol
 raise a role, and scoping to one cluster still exposes that cluster's secrets. A Reader key
 can read the NUT secondary password and a join token. The NUT password is in clear even in
 the *redacted* machine configs and diffs. Omni does not audit reads.
-- `full` and `workbench` already hold Admin, so giving them the Reader key adds NO new
-  exposure there; it only separates routine reads in the audit trail.
+- `full` and `workbench` already hold Admin, so the Reader key gives them **no additional
+  read capability**. It is still a **new persistent credential** in those pods, with its
+  own leak and rotation surface. Audit separation covers only the events Omni actually
+  records (`talos_access`, `k8s_access` and writes). Ordinary Omni GET reads are not
+  audited at all, so routine Reader reads leave only the account's "last active" time.
 - Giving it to `dev` WOULD add that exposure, to a profile with open web egress.
   **Not recommended.**
 
@@ -472,7 +475,8 @@ Question: is there a native Omni scope narrower than Reader that allows routine 
   - The NUT user `talos` is an `upsmon secondary` on a LAN server. Session pods cannot reach that server without an egress grant.
   - A join token lets its holder register a machine with the account. Putting that machine in a cluster needs Operator.
 - Mitigations that need no new proxy or framework:
-  - Give the key only to `full` and `workbench`, which already hold Admin, and not to `dev`.
+  - Give the key only to `full` and `workbench`, which already hold Admin (no additional read
+    capability there, though it is still a new persistent credential), and not to `dev`.
   - Keep the rule against printing `spec.data`, and extend it to redacted configs, diffs, `kernelcmdline` and boot `dmesg`.
   - On a suspected leak, destroy the account at once and rotate the NUT password.
   - Rotating the join token needs its own check first, because the nodes' kernel arguments carry it.
