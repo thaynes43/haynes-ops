@@ -3,10 +3,33 @@
 **Status:** in progress — split across **PR A** (mergeable now, zero pod-rollout) and
 **PR B** (DRAFT, deploys the creds; rolls the pod, so a human/outside-agent merges it
 at a chosen moment). See "Split & handoff" below.
+**Correction (2026-10-31):** the Omni service account `dev-env-node-triage` holds the
+Omni **Admin** role by design. This doc's `Reader` and read-only-by-role wording records
+the 2026-07-25 plan, not the account. See the 2026-10-31 decision below.
 **Depends on:** 04 (ExternalSecret/1Password auth pattern), 05 (RBAC read-tier precedent)
 **Parallel with:** nothing
 
 ## Decision log
+
+### 2026-10-31 — the triage account holds Omni Admin by design
+
+Tom (2026-10-31): the account is intended to be Admin; the description agents were given
+was wrong. So:
+
+- The Omni service account `dev-env-node-triage` (1Password item `dev-env`, field
+  `OMNI_SERVICE_ACCOUNT_KEY`) holds the Omni **Admin** role. The `Reader` statements
+  below describe the 2026-07-25 plan, not the account.
+- Omni does not keep this credential read-only. The talosconfig that
+  `omnictl talosconfig` fetches goes through Omni and gets Talos access from the
+  account's Omni role. Nothing on the server side stops a write.
+- Reads need nothing more. An Omni or Talos write changes the cluster: make one only
+  inside an authorized story, one resource at a time, with health gates and a saved
+  copy for exact rollback. Never write as a probe, and never run a full `task omni:sync`.
+  The v2 session rules say the same
+  (`kubernetes/main/apps/dev-env-system/session-config/app/config/claude/CLAUDE.md`,
+  #4478).
+- A separate Omni Reader account for routine reads is proposed in OpenProject, not
+  yet provisioned.
 
 ### 2026-07-25 — proxy-through-SaaS-Omni, LAN-direct deferred
 
@@ -18,7 +41,7 @@ node-trusted client cert can be minted. LAN-direct is dead for now.
 
 **Adopted instead:** triage runs **through SaaS Omni**.
 - An Omni **service account `dev-env-node-triage` (role `Reader`)** — key in 1Password
-  item **`dev-env`**, field **`OMNI_SERVICE_ACCOUNT_KEY`**.
+  item **`dev-env`**, field **`OMNI_SERVICE_ACCOUNT_KEY`**. *(Corrected 2026-10-31: the account holds Omni Admin, not `Reader`. See the decision log.)*
 - `omnictl` authenticates headless via `OMNI_ENDPOINT` +
   `OMNI_SERVICE_ACCOUNT_KEY`. The endpoint is
   **`https://haynes.na-west-1.omni.siderolabs.io:443`** (note `na-west-1`; explicit
@@ -81,7 +104,7 @@ is safe even under a fully compromised agent.
 - An **Omni service account with the `Reader` role** (see
   `.agents/runbooks/omni-service-account.md`), consumed as
   `OMNI_ENDPOINT` + `OMNI_SERVICE_ACCOUNT_KEY` env (omnictl's headless auth — no
-  browser). The SA key comes from 1Password via an ExternalSecret.
+  browser). The SA key comes from 1Password via an ExternalSecret. *(Corrected 2026-10-31: the account holds Omni Admin, not `Reader`. See the decision log.)*
 - **Topology caveat (resolve before wiring omnictl):** the **main cluster's nodes are
   managed by SaaS Omni `https://haynes.omni.siderolabs.io`** (confirmed by
   `kubernetes/main/bootstrap/omni/haynes-ops-omniconfig.yaml`, the main kubeconfig
@@ -135,11 +158,13 @@ is pinned by digest). PR B references the new `0.5.0` image.
   scoped, read-biased in-cluster kubectl identity (`rbac.yaml`); this adds a
   *read-only* node/Omni surface in the same spirit. Both node creds are gated to reads
   **server-side** (Talos apid by cert role; Omni by the `Reader` SA role) — the pod is
-  not trusted to self-limit.
+  not trusted to self-limit. *(Corrected 2026-10-31: the account holds Omni Admin, not `Reader`. See the decision log.)*
 - **Admin node creds + the age key stay out.** No `os:admin`/`os:operator` talosconfig,
   no Omni Operator/admin SA, no SOPS age key — consistent with the pod's deliberate
   posture (`.agents/sagas/dev-env/`): mutating node/Omni ops happen elsewhere
-  (`omni-service-account` runbook, workstation admin config).
+  (`omni-service-account` runbook, workstation admin config). *(Corrected 2026-10-31:
+  the Omni account the pod holds is Admin, so this bullet no longer holds for Omni. See
+  the decision log.)*
 - **Exfil boundary stays enumerated.** Every CNP addition is a single named
   destination (node entities:50000, omni svc:8080). If omnictl-against-SaaS is chosen,
   `*.omni.siderolabs.io` is added deliberately, one destination, documented here.
@@ -187,7 +212,7 @@ outside the pod**, after warning/draining sessions.
 ### User prerequisites (run from a workstation with admin creds)
 
 The Omni Reader service account `dev-env-node-triage` and its key already exist (the
-user created them 2026-07-25). The only standing prerequisite:
+user created them 2026-07-25). *(Corrected 2026-10-31: the account holds Omni Admin, not `Reader`. See the decision log.)* The only standing prerequisite:
 
 ```
 1Password item `dev-env` (same vault as the other dev-env items), field:
@@ -223,9 +248,11 @@ dev-env-node-triage`, which prints `OMNI_ENDPOINT` +
   `omnictl talosconfig /tmp/tc && talosctl --talosconfig /tmp/tc -n <node> dmesg`
   returns data for the masters.
 - The Omni SA is provably `Reader` (mutations denied by Omni/Talos server-side — not
-  probed by attempting one).
+  probed by attempting one). *(Not met, by design: the account holds Omni Admin. See
+  the 2026-10-31 decision.)*
 - `kubectl`/`flux`/existing MCP access is unaffected; no new mutating capability
-  reached the pod.
+  reached the pod. *(The Omni key is a mutating capability since the account is Admin;
+  see the 2026-10-31 decision.)*
 - WAN/Omni dependency understood: triage is unavailable if Omni or the internet is
   down (the tradeoff recorded in the 2026-07-25 decision).
 </content>
