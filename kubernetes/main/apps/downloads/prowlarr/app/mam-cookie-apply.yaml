@@ -1,0 +1,95 @@
+---
+# One-shot (OpenProject #319): load the saved MAM_ID_PROWLARR cookie into Prowlarr's
+# MyAnonamouse indexer 17. HELD DRAFT: see .agents/handoffs/2026-10-31-mam-prowlarr-cookie-apply.md.
+# No TTL on purpose: Flux would re-create a TTL-deleted Job. A follow-up PR removes these
+# objects and Flux prunes them.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prowlarr-mam-cookie-apply
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: prowlarr-mam-cookie-apply-20261031
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 180
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prowlarr-mam-cookie-apply
+    spec:
+      serviceAccountName: prowlarr-mam-cookie-apply
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: apply
+          image: docker.io/library/python:3.13-alpine@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b11a09b24524da6cdc3af0c8
+          command: ["python3", "-I", "/script/mam-cookie-apply.py"]
+          env:
+            - name: MAM_ID_PROWLARR
+              valueFrom:
+                secretKeyRef:
+                  name: myanonamouse-secret
+                  key: MAM_ID_PROWLARR
+            - name: PROWLARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: prowlarr-secret
+                  key: PROWLARR_API_KEY
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: script
+              mountPath: /script
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: prowlarr-mam-cookie-apply
+---
+# Egress only to Prowlarr's pods on 9696 and to cluster DNS. The Job never contacts MAM;
+# Prowlarr's own save-time test does, from Prowlarr's normal egress.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: prowlarr-mam-cookie-apply
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: prowlarr-mam-cookie-apply
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: prowlarr
+      toPorts:
+        - ports:
+            - port: "9696"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+  ingress: []
