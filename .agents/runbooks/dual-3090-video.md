@@ -86,5 +86,9 @@ Before deployment or an authorized real render, declare activity scoped to
 power/clock adjustments are part of this story. Run CPU-only tests with
 `python3 -m unittest discover -s scripts/wan-video -v`; no GPU/model is imported.
 
-Delivery evidence is added after rollout and the one authorized clip. Source,
-tests, installation, generation and Open WebUI discovery are separate checks.
+Delivery evidence is in
+[the 2026-10-31 report](../evidence/dual-3090-video-2026-10-31/README.md): one
+completed clip, both GPUs active, and final service readiness verified. Card C
+peaked at 90°C with thermal slowdown observed. The adapter loaded in Pipelines;
+authenticated Open WebUI dropdown confirmation remains unverified. Source,
+tests, installation, generation and UI verification are recorded separately.
