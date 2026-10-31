@@ -48,6 +48,16 @@ keys.
 That keeps every routine read audit-separable from Admin work, and adds no new reach to a
 web-egress profile that has no Omni access today.
 
+**Read-only is not low sensitivity.** See "Narrowing assessment" below. Omni has no native
+scope narrower than Reader that still allows routine health reads. An access policy can only
+raise a role, and scoping to one cluster still exposes that cluster's secrets. A Reader key
+can read the NUT secondary password and a join token. The NUT password is in clear even in
+the *redacted* machine configs and diffs. Omni does not audit reads.
+- `full` and `workbench` already hold Admin, so giving them the Reader key adds NO new
+  exposure there; it only separates routine reads in the audit trail.
+- Giving it to `dev` WOULD add that exposure, to a profile with open web egress.
+  **Not recommended.**
+
 **Rollout impact:**
 - Tom's account creation has no cluster effect.
 - The later story's ExternalSecret restarts nothing. Order matters: the 1Password field
@@ -409,3 +419,61 @@ existed, a Reader kubeconfig would not allow `kubectl get` without an ACL.
 Fix these in the implementation story or in a small docs story. Hold the files mounted into
 the v1 pod. Because each of these asserts a safety property the cluster lacks, it also belongs in
 `.agents/HARDENING.md`.
+
+## Narrowing assessment (2026-10-31)
+
+Question: is there a native Omni scope narrower than Reader that allows routine health reads but not config-patch payloads or join tokens? Sources: Omni `v1.13.0` (`c688bb6`), Talos `v1.13.9` for node RBAC, and Talos machinery `3ba3d6a5e784` (Omni's `go.mod` pin) for redaction. Omni paths are relative to the Omni repository. Live checks used the existing Admin key for reads only. They printed names and counts, never a value: `accesspolicies` is empty, the service accounts are `dev-env-node-triage` (Admin), `dev-env-omni-operator` (Operator) and `haynes-m5max-ktlo` (Admin), and `dev-env-omni-reader` does not exist yet.
+
+**(a) No.**
+- The roles are a fixed ladder: None, InfraProvider, Reader, Auditor, Operator, Admin (`client/pkg/access/role/role.go`: `roles`, `Role.Check`). Auditor is Reader plus the audit log.
+- InfraProvider is the only role between None and Reader. `internal/pkg/auth/serviceaccount/serviceaccount.go:Create` allows it only for `infra-provider:` accounts. It can read `Machine`, `siderolink.APIConfig` and `ConnectionParams` (`internal/backend/runtime/omni/state_access.go:filterAccess`). `ConnectionParams.spec.join_token` holds the default join token. InfraProvider cannot read cluster or machine status.
+- Omni checks access by role and resource type only. No rule hides fields. `filterAccess` puts `ConfigPatch`, `ClusterMachineConfigPatches`, `JoinToken`, `DefaultJoinToken` and `ClusterStatus` in the same Reader case. `filterAccessByType` limits verbs, not fields.
+- The `permissions` and `clusterpermissions` flags are UI hints computed from the role (`internal/backend/runtime/omni/virtual/state.go:permissions`, `clusterPermissions`). They enforce nothing. For example, `canreadkubernetesmanifests` is false for Reader, yet `filterAccess` lets a Reader read `KubernetesManifestGroup`.
+
+**(b) ACLs only raise a role. Scoping to one cluster still exposes that cluster's secrets.**
+- `internal/pkg/auth/accesspolicy/accesspolicy.go:Check` returns the highest role among the rules that match. `cluster.go:RoleForCluster` and `ApplyClusterAccessPolicy` then return `role.Max(userRole, aclRole)`. An ACL cannot lower a Reader. The reviewer was right.
+- Cluster scoping works only from role None. You create the account with `--role None` and add an ACL rule that grants Reader on one cluster. `internal/pkg/auth/check.go:policyAssignableRoles` allows an ACL to assign None or Reader. `state_access.go:checkForRole` raises the role only for types in `clusterIDTypeSet` and `clusterLabelTypeSet`. The Talos proxy (`internal/backend/grpc/router/talos_backend.go:GetConnection`) and `management.go:MachineLogs` apply the same ACL.
+- That setup hides the account-wide join-token resources, `GetMachineJoinConfig`, `InstallationMediaConfig`, and the five machine-level `500-*` patches. Those patches carry no cluster label (live count). The account also loses `MachineStatus` and `Machine`, which the runbooks read. A list needs `-l omni.sidero.dev/cluster=<name>`, or an ACL cluster group with `match: "*"` (`checkForKindAccess`).
+- It still exposes that cluster's secrets:
+  - The cluster-labelled `ConfigPatch`, `ClusterMachineConfigPatches`, `RedactedClusterMachineConfig`, `ClusterMachineConfigStatus` and `MachineConfigDiff` stay readable.
+  - Talos calls still run as `os:reader`, so `KernelCmdline` and its join token stay readable.
+  - haynes-ops has only one cluster, so scoping removes nothing there.
+
+**(c) Secret-bearing reads for a Reader.** These are Reader cases in `state_access.go:filterAccess` unless noted.
+- `ConfigPatch` `spec.data` and `compressed_data`. `ClusterMachineConfigPatches` `spec.patches` and `compressed_patches`.
+- `RedactedClusterMachineConfig` `spec.data`, `ClusterMachineConfigStatus` `redacted_current_machine_config`, `MachineConfigDiff` data and `MachinePendingUpdates` diff.
+  - All four come from `config.RedactSecrets` (`controllers/omni/machineconfig/reconciliation_context.go:BuildReconciliationContext`, `redactedmachineconfig/redacted_cluster_machine_config.go:saveDiff`).
+  - Talos `pkg/machinery/config/container/container.go:RedactSecrets` redacts only v1alpha1 secrets and documents that implement `SecretDocument`. `ExtensionServiceConfig` does not (`types/runtime/extensions/service_config.go` has no `Redact`).
+  - So the NUT `upsmon.conf` password stays in clear. Live: 5 of the 9 redacted configs (the masters) hold an `ExtensionServiceConfig` whose `MONITOR` line is not redacted.
+- Join tokens:
+  - `JoinToken`: the resource ID is the token (`management.go:CreateJoinToken`). `JoinTokenStatus` uses the same ID.
+  - `DefaultJoinToken` `spec.token_id`.
+  - The RPC `GetMachineJoinConfig` (Reader, account-wide) returns the default token.
+  - `ConnectionParams` `spec.join_token` and `args` (InfraProvider and up).
+- Other reads that can hold secrets:
+  - `InstallationMediaConfig` `join_token`, `kernel_args` and `embedded_machine_config`: 3 exist, contents not read.
+  - `KubernetesManifestGroup` `data`: none exist.
+  - `ProviderJoinConfig` `join_token`, through `infraprovider/state.go:checkAccess`: no infra providers exist.
+- Talos through Omni, as `os:reader`:
+  - `KernelCmdline` is NonSensitive, and Talos `internal/app/resources/access.go:AccessPolicy` blocks only Sensitive types.
+  - Live: talosm01 and talosw01 each have one `siderolink.api=...jointoken=` argument. I did not check whether that token is still valid.
+  - `dmesg` and machine logs may also show the boot command line. Not checked.
+- Not readable by a Reader:
+  - `ClusterSecrets`, `ClusterMachineConfig`, `ClusterMachineSecrets`, `TalosConfig` and `Kubeconfig` fall to the default deny in `filterAccess`.
+  - `ImportedClusterSecrets` allows only create and destroy (`filterAccessByType`).
+  - `EtcdBackupS3Conf` and the BMC configs are Admin-only.
+  - On Talos, the Sensitive types (`MachineConfig`, `ExtensionServicesConfig`, `secrets.*`) need `os:admin`.
+- Correction to the proposal: `RedactedClusterMachineConfig` and `MachineConfigDiff` are not safe either. They carry the NUT password too.
+
+**(d) Residual risk and mitigation.**
+- Anyone with the Reader key can read the NUT secondary password and a join token.
+- Omni does not audit reads. Its only event types are create, update, destroy, teardown, `talos_access`, `k8s_access` and `audit_log_access` (`internal/backend/runtime/omni/audit/auditlog/auditlog.go:EventType`). A leaked key used only for reads leaves `LAST ACTIVE` and any `talos_access` events, nothing more.
+- The impact is limited:
+  - The NUT user `talos` is an `upsmon secondary` on a LAN server. Session pods cannot reach that server without an egress grant.
+  - A join token lets its holder register a machine with the account. Putting that machine in a cluster needs Operator.
+- Mitigations that need no new proxy or framework:
+  - Give the key only to `full` and `workbench`, which already hold Admin, and not to `dev`.
+  - Keep the rule against printing `spec.data`, and extend it to redacted configs, diffs, `kernelcmdline` and boot `dmesg`.
+  - On a suspected leak, destroy the account at once and rotate the NUT password.
+  - Rotating the join token needs its own check first, because the nodes' kernel arguments carry it.
+- Role None with a cluster ACL is not worth it here. It exposes the same patches and configs, and it loses `MachineStatus`.
