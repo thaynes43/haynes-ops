@@ -17,7 +17,9 @@ Sources:
 - Read-only `omnictl` commands run on 2026-10-31 with this session's key. The client is
   v1.12.4 and the backend is v1.13.0.
 - Omni source at tag `v1.13.0`.
-- Talos source at `v1.13.3`, the cluster's version.
+- Talos source at `v1.13.9`, the cluster's version (`cluster-template.yaml`, and all nine
+  nodes). Its permission table in `machined.go` matches v1.13.3, apart from a usermode-helper
+  role for Admin and Operator.
 - The Omni and Talos docs.
 
 No Secret or 1Password value was read. This document gives account names and roles, never
@@ -81,7 +83,7 @@ These profiles carry no Omni key today: `dev`, `ops`, `rule-canary-claude` and
 
 ## What Omni's Reader role can and cannot do
 
-This section comes from the Omni v1.13.0 and Talos v1.13.3 source, plus the docs. Check it
+This section comes from the Omni v1.13.0 and Talos v1.13.9 source, plus the docs. Check it
 again when the Omni backend moves to a new minor version.
 
 **Omni API.** In `internal/backend/runtime/omni/state_access.go`, reading (Get, List, Watch)
@@ -96,10 +98,14 @@ with the Talos role `os:reader` only. Talos applies its own RBAC table
 
 | `os:reader` may call | `os:reader` may not call |
 |---|---|
-| `dmesg`, `logs`, `services`, `version`, `get` of non-sensitive resources, `list`, `disks`, `mounts`, `processes`, `netstat`, `memory`, `stats`, `containers`, `etcd status`, `etcd members` | `reboot`, `shutdown`, `upgrade`, `reset`, `apply-config`, `rollback`, `bootstrap`, `service start/stop/restart`, `pcap`, resource create/update/destroy, `read` and `cp` (file contents), `kubeconfig` |
+| `dmesg`, `logs`, `services`, `version`, `get` of non-sensitive resources, `list`, `disks`, `mounts`, `processes`, `netstat`, `memory`, `stats`, `containers`, `etcd status`, `etcd members` | `reboot`, `shutdown`, `upgrade`, `reset`, `apply-config`, `rollback`, `bootstrap`, `service start/stop/restart`, `pcap`, `etcd snapshot`, resource create/update/destroy, `read` and `cp` (file contents), `kubeconfig` |
 
-A write is therefore refused by two separate server-side layers: Omni's resource filter and
-Talos RBAC.
+Talos also lists `os:reader` on `ApplyConfiguration` and `BlockDeviceWipe`, for maintenance
+mode only, checked in the handler. Omni closes that path: `checkAccess` refuses a caller below
+Operator when the target machine is not in a cluster.
+
+So Omni refuses resource writes itself. For Talos calls, Omni downgrades a Reader to
+`os:reader`, and Talos RBAC refuses the write.
 
 **Kubernetes.** Omni puts Operator and higher in `system:masters`. A Reader gets no Kubernetes
 group unless an ACL adds one. A Reader's Omni kubeconfig is therefore no use for `kubectl`, and
@@ -108,19 +114,28 @@ ServiceAccount.
 
 **What a Reader key still exposes.** The key is read-only, but it can still reach secrets:
 
-- **Config patches, including `spec.data`.** The machine-level `nut-client` patches on the
-  masters contain the NUT `upsmon` password (`reference/talos-omni-gotchas.md`). Anyone using
-  the Reader key keeps the existing rule: never print a patch's `spec.data`.
+- **Config patches, including `spec.data`.** This covers `ConfigPatches` and
+  `ClusterMachineConfigPatches`, which bundles the same payloads. The machine-level
+  `nut-client` patches on the masters contain the password of the NUT user `talos`, an
+  `upsmon secondary` (`reference/talos-omni-gotchas.md`). Anyone using the Reader key keeps the
+  existing rule: never print a patch's `spec.data`.
 - **Join-token resources** (`canreadjointokens: true`). Assume a Reader can see the token.
-- **Machine configs** are redacted for Reader (`RedactedClusterMachineConfig`).
+- **Machine configs:**
+  - No role can read the unredacted machine config through the resource API.
+  - A Reader can read `RedactedClusterMachineConfig`.
+  - A Reader can also read `MachineConfigDiff`. I did not check whether it is redacted.
 
 So handle the Reader key exactly like the other keys in `dev-env`.
 
 **Reads a Reader cannot do.** On Talos 1.12 and later, `talosctl read` and `cp` need
 `os:admin`, and Omni forwards them with `os:admin` only for Operator and higher. Several
-runbook reads use them: `/proc/cmdline`, `/etc/kubernetes/kubelet.yaml` and PCI sysfs files
-(in `egpu-test-node`, `plex-igpu-transcode` and `talos-omni-gotchas`). Those reads stay on the
-Admin account, in a session that holds it.
+runbook reads use them:
+
+- `/proc/cmdline` and `/etc/kubernetes/kubelet.yaml` (`talos-omni-gotchas`);
+- PCI sysfs files (`egpu-test-node`);
+- `/sys/kernel/debug/dri/0/*` (`plex-igpu-transcode` and `scripts/plex-igpu/check.sh`).
+
+Those reads stay on the Admin account, in a session that holds it.
 
 ## Proposal
 
@@ -136,7 +151,10 @@ Admin account, in a session that holds it.
     check whether the previous key stays valid after a renewal.
   - On a suspected leak, destroy the account (see Rollback).
   - Alternative TTL: `2160h` (90 days). That costs four 1Password updates a year.
-    Recommendation: `8760h`.
+    - The independent review found that omnictl v1.12.4, the client in the session image,
+      ignores `renew --ttl` and always renews for 8760h. v1.13.0 fixes this, so a 90-day
+      renewal would need the newer client. I did not check this myself.
+    - Recommendation: `8760h`.
 - **Expiry tracking:** record the expiry date on the implementation story. This proposal adds
   no new expiry alert.
 
@@ -145,11 +163,15 @@ Admin account, in a session that holds it.
 | Consumer | Gets | Why |
 |---|---|---|
 | v2 profile `dev` | the Reader key as `OMNI_SERVICE_ACCOUNT_KEY`, plus `OMNI_ENDPOINT` | It has no Omni access today. Plain `omnictl` and `talosctl` then run as the Reader with no wrapper. Its web egress tier already reaches the Omni SaaS endpoint on port 443. |
-| v2 profiles `full` and `workbench` | **Admin unchanged** as `OMNI_SERVICE_ACCOUNT_KEY`. Recommended (Tom's choice): the Reader key added as `OMNI_READER_KEY`. | Routine reads can then run as the Reader: `OMNI_SERVICE_ACCOUNT_KEY="$OMNI_READER_KEY" omnictl …`. `talosctl` reads the same variable. The audit log then separates routine inspection from Admin work. Nothing about Admin changes. |
+| v2 profiles `full` and `workbench` | **Admin unchanged** as `OMNI_SERVICE_ACCOUNT_KEY`. Recommended, pending Tom's choice: the Reader key added as `OMNI_READER_KEY`. | Routine reads can then run as the Reader: `OMNI_SERVICE_ACCOUNT_KEY="$OMNI_READER_KEY" omnictl …`. `talosctl` reads the same variable. The audit log then separates routine inspection from Admin work. Nothing about Admin changes. |
 | v2 profile `ops` | nothing for now | Its egress tier has no web access, so it cannot reach Omni. Reaching it would take a network-policy change, which needs its own approval. |
 | `rule-canary-*` | nothing | These profiles carry as few credentials as possible by design. |
 | v1 pod (namespace `dev`) | nothing; it keeps Admin | v1 is being retired, and changing its wiring restarts the pod (a runtime hold). |
 | In-cluster automation | nothing | It reads Kubernetes through its ClusterRole. A Reader kubeconfig grants no Kubernetes access. |
+
+**Risk of adding `dev`.** `dev` is a narrower profile than `full`, yet it has open web egress
+(`network/app/session-web.yaml`). The Reader key would give it reads that carry secrets: the
+NUT password in the config patches, and join tokens. Tom should weigh this when ruling on `dev`.
 
 ### Secret distribution (the existing route only)
 
@@ -164,15 +186,19 @@ controller, mount type or namespace.
    - Target: Secret `dev-env-omni-reader-secret`, `creationPolicy: Owner`, with one key,
      `OMNI_READER_KEY`.
    - It is its own ExternalSecret, following the isolation rule at the top of that file.
-3. **Profile wiring in `templates.yaml`:** a `secretKeyRef` env entry with `optional: true` in
-   `dev`, and in `full` and `workbench` if Tom chooses them.
+3. **Profile wiring in `templates.yaml`:**
+   - in `dev`, the plain value `OMNI_ENDPOINT=https://haynes.na-west-1.omni.siderolabs.io:443`
+     and `OMNI_SERVICE_ACCOUNT_KEY` as a `secretKeyRef` with `optional: true`;
+   - in `full` and `workbench`, if Tom chooses them, `OMNI_READER_KEY` the same way.
    - Do not use `envFrom`, and do not add the key to `dev-env-mcp-secret`, which other
      profiles share.
    - `optional: true`, as `UNIFI_MCP_AUTH_TOKEN` uses, means a missing Secret cannot stop a
      session pod from starting.
-4. **Reach:** session pods run as `dev-agents/dev-env-agent`, which cannot read Secrets. So
-   the key reaches only the pods whose profile names it. A `workbench` session can exec into
-   any session pod and read its env, as `templates.yaml` already notes.
+4. **Reach:** session pods run as `dev-agents/dev-env-agent`, and `workbench` pods as
+   `dev-env-workbench`. Neither can read Secrets, so the key reaches only the pods whose profile
+   names it. A `workbench` session can still reach it two ways, at the trust level it already
+   has: by exec into any session pod (as `templates.yaml` notes), or by creating a Job that
+   mounts the Secret (`rbac/app/workbench-operator.yaml`).
 
 **Ordering:** create the 1Password field before the ExternalSecret merges. `dev-env-secrets`
 runs with `wait: true` and `timeout: 5m`, so a missing field fails that Kustomization and pages.
@@ -183,10 +209,13 @@ runs with `wait: true` and `timeout: 5m`, so a missing field fails that Kustomiz
   - on every event: the actor (`dev-env-omni-reader@serviceaccount.omni.sidero.dev`), its
     role, the user agent and the client address;
   - every Talos API call, with the method name and machine IP;
-  - every resource create, update and destroy.
+  - every successful create, update and destroy of user-managed resources, plus a short list
+    of other types (`audit/hooks/hooks.go`).
 
-  I confirmed this on 2026-10-31 for `dev-env-node-triage`, looking at field names and event
-  counts only.
+  I confirmed the first two on 2026-10-31 for `dev-env-node-triage`, looking at field names
+  and event counts only. The third comes from the source (`audit/hooks/hooks.go`). The review
+  also found in the source that a refused resource write is not logged: Omni's audit state
+  returns on the error before it writes an entry.
 - **Telling the keys apart:** all session pods leave the cluster through the same address. The
   actor field, not the client address, separates the Reader from the Admin key.
 - **Who can read it:** only Admin (or an Auditor). The Reader cannot read its own trail.
@@ -207,18 +236,21 @@ the server reports about the account. These are the options for Tom. I have run 
 implementation story runs them from a `dev` session, which holds only the Reader key.
 
 1. `omnictl get currentuser -o yaml` shows `role: Reader`.
-2. `omnictl get permissions -o yaml` shows every read flag true, and every manage, create,
-   remove and access flag false. The false flags are `cancreateclusters`,
+2. `omnictl get permissions -o yaml` shows exactly six flags true: `canreadclusters`,
+   `canreadmachines`, `canreadmachineconfigpatches`, `canreadmachinelogs`,
+   `canreadjointokens` and `canreadinstallationmedia`. No other flag is true. YAML output may
+   leave false values out. The flags that must not be true are `cancreateclusters`,
    `canremovemachines`, `canmanagemachineconfigpatches`, `canaccessmaintenancenodes`,
    `canmanageinstallationmedia`, `canmanageusers`, `canmanagebackupstore`,
    `canmanagejointokens`, `canaccessinternals` and `canreadauditlog`. Omni computes these flags
    from the caller's role (`internal/backend/runtime/omni/virtual/state.go`). Today the Admin
-   key shows all of them true.
+   key shows all of them true. Once any AccessPolicy exists, `cancreateclusters` turns true for
+   every caller, so this step relies on step 4's empty result.
 3. `omnictl get clusterpermissions haynes-ops -o yaml` shows exactly six flags true:
    `candownloadkubeconfig`, `candownloadtalosconfig`, `canreadconfigpatches`,
-   `canreadmachineconfig`, `canreadkernelargs` and `canreadmachinependingupdates`. The other
-   twelve are false: `canrebootmachines`, `canaddmachines`, `canremovemachines`,
-   `canupdatekubernetes`, `canupdatetalos`, `canmanageconfigpatches`,
+   `canreadmachineconfig`, `canreadkernelargs` and `canreadmachinependingupdates`. No other
+   flag is true. The other twelve are: `canrebootmachines`, `canaddmachines`,
+   `canremovemachines`, `canupdatekubernetes`, `canupdatetalos`, `canmanageconfigpatches`,
    `cansynckubernetesmanifests`, `canreadkubernetesmanifests`, `canmanageclusterfeatures`,
    `candownloadsupportbundle`, `canmanagemachineconfig` and `canmanagekernelargs`.
 4. An Admin read-back, by Tom or a session that holds the Admin key:
@@ -234,12 +266,13 @@ implementation story runs them from a `dev` session, which holds only the Reader
      apply or upgrade method.
    - The positive check: `talosctl -n <node> dmesg | tail -3` works.
 
-The basis for A is the Omni v1.13.0 and Talos v1.13.3 source cited above. Check it again when
+The basis for A is the Omni v1.13.0 and Talos v1.13.9 source cited above. Check it again when
 Omni moves to a new minor version.
 
 **B. Audit review of real traffic.** About a week after activation, Tom runs the audit query
 above. He checks that there are no create, update or destroy events and that every Talos method
-is one `os:reader` may call. This shows what happened, not what is impossible. Pair it with A.
+is one `os:reader` may call. This shows what happened, not what is impossible. A refused
+write would not appear in the log at all. Pair it with A.
 
 **C. A controlled denial run by Tom.** This is a write attempt, so only Tom runs it, or a story
 he explicitly approves for it.
@@ -248,15 +281,18 @@ he explicitly approves for it.
   configpatches.omni.sidero.dev <an ID that does not exist>`.
 - In the destroy validation (`state_access.go`, `WithDestroyValidations`), Omni runs the role
   check even when the resource is missing. So a Reader gets PermissionDenied.
-- If the role were somehow wrong, the result would be NotFound, and nothing would change.
+- If the role were somehow Operator or higher, nothing would change. omnictl treats NotFound
+  as success: it prints nothing and exits 0.
+- Omni's audit log does not record a refused write. The only record of the refusal is the
+  command output, pasted on the story.
 
-This puts a refusal on record at the cost of one deliberate attempt.
+This shows a refusal at the cost of one deliberate attempt.
 
 **D. Documentation only.** Accept on the Omni docs ("can view clusters, machines, and other
 resources, but cannot modify them") with no check. This is the weakest option.
 
-**Recommendation:** run A at activation and B one week later. Use C only if Tom wants a refusal
-on record.
+**Recommendation:** run A at activation and B one week later. Use C only if Tom wants to see a
+refusal.
 
 ### Rollback
 
@@ -311,26 +347,31 @@ The ExternalSecret and the wiring can go in one PR, because of `optional: true`,
 
 ### Outdated "Reader" wording found during the inventory (not changed here)
 
-These files still call the Admin account a Reader, or read-only:
+These files still call the Admin account a Reader, or read-only. The list is not exhaustive:
 
 - `kubernetes/main/apps/dev-env-system/templates/app/templates.yaml`: the `workbench`
-  comments, for example "Omni Reader service account, read-only".
+  comments, "the Omni reader endpoint and key" and "Omni Reader service account, read-only".
 - `kubernetes/main/apps/dev-env-system/secrets/app/externalsecret-session.yaml`: "Full's Omni
   Reader identity", and the header's "full also retains v1's Omni Reader".
 - `kubernetes/main/apps/dev/dev-env/app/helmrelease.yaml`: the v1 comment "Read-only BY ROLE
   (Omni Reader SA)".
-- The `omnictl` row in v1's mounted `resources/config/claude/CLAUDE.md`. Editing it restarts
-  the v1 pod, so it is held.
+- The `omnictl` and `talosctl` rows in v1's mounted `resources/config/claude/CLAUDE.md`, and
+  v1's `resources/config/home/README.md`. Editing either restarts the v1 pod, so both are held.
+- `kubernetes/main/apps/dev/dev-env/app/networkpolicy.yaml`: two comments, "omnictl (Reader
+  SA)".
+- `scripts/dev-env/Dockerfile`: the omnictl and talosctl comments.
 - `kubernetes/main/apps/dev/dev-env/app/externalsecret.yaml`: "Default omnictl access stays
   the READER SA".
 - `.agents/runbooks/egpu-test-node.md` §2: "read-only Reader SA" and "its Omni SA is Reader".
 - `.agents/reference/talos-omni-gotchas.md`: "dev-env's Omni account is a Reader".
+- `apps/dev-env-system/owned-luna-prep/app/inputs*.json`: frozen copies of the session rules
+  that still say read-only.
 
 Separately, these docs describe a Reader kubeconfig (`haynes-ops-agent`) that does not exist:
-`.agents/runbooks/omni-service-account.md`, `upgrade-shepherd.md`, `upgrade-health-gate.md` and
-`docs/renovate/`. Even if it existed, a Reader kubeconfig would not allow `kubectl get` without
-an ACL.
+`.agents/runbooks/omni-service-account.md`, `upgrade-shepherd.md`, `upgrade-health-gate.md`,
+`tier4-component-playbooks.md`, `alert-responder.md` and `docs/renovate/`. Even if it
+existed, a Reader kubeconfig would not allow `kubectl get` without an ACL.
 
-Fix these in the implementation story or in a small docs story. Hold the file mounted into the
-v1 pod. Because each of these asserts a safety property the cluster lacks, it also belongs in
+Fix these in the implementation story or in a small docs story. Hold the files mounted into
+the v1 pod. Because each of these asserts a safety property the cluster lacks, it also belongs in
 `.agents/HARDENING.md`.
