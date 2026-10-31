@@ -282,6 +282,12 @@ spec:
               - '--enable-durable-inbox=true'
               - '--inbox-projects=dev-env'
               - '--inbox-coordinator-read-projects=dev-env'
+              # OP321 (dev-env#769, v2.76.0): turns on inbox ask and reply (kind question or reply, inReplyTo) and the thread view and sent
+              # box. Same projects, ACLs and identities as the durable inbox above. No RBAC, route, Secret, egress, phone or Asks change.
+              # Requires the v2.76.0 InboxMessage CRD (#4490), which is installed; publish refuses 503 if the schema were not upgraded.
+              # Rollback: remove this line. Once any question or reply exists, keep the operator at 2.76 or later and never revert the
+              # InboxMessage CRD below v2.76.0 (DESIGN-014).
+              - '--enable-inbox-questions=true'
               - '--project-catalog=dev-env-system/dev-env-project-catalog'
               - '--project-clone-owner=thaynes43'
               - '--coordinator-hosts=[{"serviceAccount":"dev-agents/dev-env-owned-native-fixture","podName":"dev-env-owned-luna-1019-9","hostID":"owned-luna-1019-9"}]'
