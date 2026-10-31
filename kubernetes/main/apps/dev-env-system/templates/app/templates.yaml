@@ -14,7 +14,7 @@
 # the proof the operator's terminal task pod reclaim needs (dev-env#729; the reclaim flag stays off until its own PR).
 # publish-agent.yml run 41088393425 smoke-tested/signed/verified on refs/tags/v2.71.0. Supersedes v2.45.0 (86cef5bb, dev-env#555).
 # New sessions use it at once; running pods keep their image and show Outdated, and the operator drains idle, unattached sessions onto the new revision (designed preserving path).
-image: ghcr.io/thaynes43/dev-env:2.71.0@sha256:a9421cd1c837f236a9d7f0ee8dd2c2574e21faaa30ef2733a38daf6d0a8b9023
+image: ghcr.io/thaynes43/dev-env:2.77.0@sha256:6c95c8ebe4744b2082c0ec23417c997ad2c1fe367e697cedfd2c5666c1cab69f
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
