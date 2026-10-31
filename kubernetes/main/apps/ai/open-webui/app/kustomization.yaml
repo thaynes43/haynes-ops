@@ -18,6 +18,13 @@ components:
 # transformer does not rewrite. Reloader (auto, on the workload) rolls the pod
 # when this ConfigMap changes.
 configMapGenerator:
+  - name: open-webui-wan-video-pipeline
+    options:
+      disableNameSuffixHash: true
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+    files:
+      - wan_video.py
   - name: open-webui-comfyui-workflow
     options:
       disableNameSuffixHash: true

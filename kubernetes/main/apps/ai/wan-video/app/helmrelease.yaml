@@ -1,0 +1,127 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: wan-video
+  namespace: ai
+spec:
+  interval: 30m
+  timeout: 30m
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  values:
+    controllers:
+      wan-video:
+        annotations:
+          reloader.stakater.com/auto: "true"
+        strategy: Recreate
+        pod:
+          nodeSelector:
+            kubernetes.io/hostname: talosw01
+          runtimeClassName: nvidia
+          automountServiceAccountToken: false
+        initContainers:
+          provision-models:
+            image: &image
+              repository: ghcr.io/thaynes43/comfyui
+              tag: 0.39.0-2@sha256:991867f5dafc1eddc9ed70b307d8bf1d2d91c50f53a428a6315e8fd7dbe1a61b
+            args:
+              - provision
+              - --workflows-dir
+              - /config/workflows
+              - --manifest
+              - /config/video/models.yaml
+              - --strict
+            env:
+              NVIDIA_VISIBLE_DEVICES: void
+            resources:
+              requests: {cpu: 100m, memory: 256Mi}
+              limits: {cpu: "2", memory: 2Gi}
+        containers:
+          app:
+            image: *image
+            args: [serve]
+            env:
+              # Exact approved pair. Container indices are not physical card identities.
+              NVIDIA_VISIBLE_DEVICES: GPU-d8a856f1-f955-f683-bc24-654561496774,GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a
+              COMFYUI_LISTEN: 127.0.0.1
+              COMFYUI_USER_DIR: /workspace/user
+              COMFYUI_INPUT_DIR: /workspace/input
+              COMFYUI_OUTPUT_DIR: /workspace/output
+              COMFYUI_TEMP_DIR: /workspace/temp
+              COMFYUI_ARGS: "--cpu-vae --preview-method none"
+              OMP_NUM_THREADS: "2"
+              MKL_NUM_THREADS: "2"
+              OPENBLAS_NUM_THREADS: "2"
+            resources:
+              # Claim the complete pair as well as pinning their UUIDs. Unlike a
+              # one-card workload, requesting both cannot select the wrong card.
+              requests: {cpu: "2", memory: 24Gi, nvidia.com/gpu: 2}
+              limits: {cpu: "4", memory: 64Gi, nvidia.com/gpu: 2}
+          api:
+            image: *image
+            command: [python, /config/video/api.py]
+            env:
+              NVIDIA_VISIBLE_DEVICES: GPU-d8a856f1-f955-f683-bc24-654561496774,GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a
+              NVIDIA_DRIVER_CAPABILITIES: utility
+            ports:
+              - name: http
+                containerPort: 8080
+            probes:
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet: {path: /health, port: http}
+                  periodSeconds: 5
+                  failureThreshold: 120
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet: {path: /health, port: http}
+                  periodSeconds: 10
+            resources:
+              requests: {cpu: 50m, memory: 128Mi}
+              limits: {cpu: "1", memory: 512Mi}
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+    defaultContainerOptions:
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: {drop: [ALL]}
+    service:
+      app:
+        controller: wan-video
+        ports:
+          http: {port: 8080}
+    persistence:
+      workspace:
+        existingClaim: wan-video
+        globalMounts:
+          - path: /workspace
+          - path: /opt/ComfyUI/models
+            subPath: models
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
+      config:
+        type: configMap
+        name: wan-video-config
+        globalMounts:
+          - path: /config/video
+            readOnly: true
+      workflows:
+        type: configMap
+        name: wan-video-workflow
+        globalMounts:
+          - path: /config/workflows
+            readOnly: true

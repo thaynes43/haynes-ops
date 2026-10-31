@@ -25,7 +25,10 @@ spec:
   values:
     controllers:
       ollama:
-        replicas: 0  # paused: HaynesIntelligence dual-3090 install + rack test (#3052); restore after
+        # OP#339: Cards A and C now belong together to wan-video. Do not restore
+        # this deployment on its old Card A pin without a reviewed reallocation;
+        # it has no GPU request, so the scheduler cannot prevent interference.
+        replicas: 0
         annotations:
           reloader.stakater.com/auto: "true"
         pod:

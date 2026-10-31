@@ -106,6 +106,19 @@ spec:
       limits:
         memory: 4Gi
     pipelines:
+      # Add a selectable video model through the existing authenticated Pipelines
+      # connection. No new API keys or changes to existing pipeline modules.
+      annotations:
+        reloader.stakater.com/auto: "true"
+      volumeMounts:
+        - name: wan-video-pipeline
+          mountPath: /app/pipelines/wan_video.py
+          subPath: wan_video.py
+          readOnly: true
+      volumes:
+        - name: wan-video-pipeline
+          configMap:
+            name: open-webui-wan-video-pipeline
       # RWO PVC: a RollingUpdate surge pod on another node deadlocks on
       # Multi-Attach (#3389 rollout), so replace the pod instead.
       strategy:

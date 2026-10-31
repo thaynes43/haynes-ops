@@ -7,6 +7,7 @@ resources:
   - ./namespace.yaml
   # Flux-Kustomizations
   - ./llama-server/ks.yaml
+  - ./wan-video/ks.yaml
   - ./ollama/
   - ./wyoming-protocol/ks.yaml
   - ./open-webui/ks.yaml
