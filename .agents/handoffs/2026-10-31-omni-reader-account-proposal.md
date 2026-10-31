@@ -391,7 +391,7 @@ key through that session.
 3. Update the "Credentials in this pod" row in
    `apps/dev-env-system/session-config/app/config/claude/CLAUDE.md`, which restarts nothing.
    The new row says:
-   - on `dev`, sessions run as the Reader;
+   - on `dev`, ONLY if Tom chose "also give dev" (not recommended), sessions run as the Reader;
    - on `full` and `workbench`, routine reads use `OMNI_READER_KEY`, and the Admin key stays
      for authorized writes.
 4. Run acceptance A from a fresh `full` or `workbench` session with the Reader key selected
