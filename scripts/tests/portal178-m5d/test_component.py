@@ -1803,8 +1803,8 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertEqual(deployment["spec"]["strategy"], {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}})
         image = deployment["spec"]["template"]["spec"]["containers"][0]["image"]
         self.assertRegex(image, REGISTERED_PORTAL_IMAGE)
-        # dev-env v2.74.0 release merge 1a505231; publish run 41154176294 signed and verified this digest (haynes-ops #4466).
-        self.assertEqual(image, "ghcr.io/thaynes43/dev-env-portal:sha-1a50523@sha256:6620e5971f5d74cc17b93c654f73525b5e6893500404bd2890fd263f3b0a82fa")
+        # dev-env v2.75.0 release merge fac30c80; publish run 41169338231 signed and verified this digest.
+        self.assertEqual(image, "ghcr.io/thaynes43/dev-env-portal:sha-fac30c8@sha256:099b852bb4830a6b03b45cf07238c1c9a669e1f95c37742c440e57ab6e1c0b5c")
         self.assertEqual(expand_config_files(mounted_files(deployment), self.docs), PRODUCTION_FILES)
 
     def test_public_ca_bundles_are_pinned_certificates_only(self):
