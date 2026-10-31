@@ -995,6 +995,7 @@ class OutageTests(Base):
         self.fake.handle = drop_after_post
         self.assertEqual(self.run_cli("flush")[0], 5)
         after = json.loads(path.read_text())  # the accepted POST is remembered, nothing else changes
+        self.assertRegex(after.pop("post_started"), r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")  # written before the POST
         self.assertEqual(after, dict(before, post_status=201, activity_id=1001))
         self.fake.fail.clear()
         self.fake.calls.clear()
@@ -1121,10 +1122,124 @@ class OutageTests(Base):
         code, out, _ = self.run_cli("flush")
         self.assertEqual(code, 0)
         self.assertIn("kept", out)
-        self.assertEqual(json.loads(path.read_text()), dict(before, post_status=201, activity_id=99))
+        after = json.loads(path.read_text())
+        self.assertTrue(after.pop("post_started"))
+        self.assertEqual(after, dict(before, post_status=201, activity_id=99))
         self.run_cli("flush")
         self.run_cli("flush")
         self.assertEqual(len(self.posts("/activities")), 1)
+
+    def started_note(self, **extra):
+        """A pending checkpoint of #10 whose flush POST was started (marker on disk) and then lost."""
+        self.story()
+        self.run_cli("checkpoint", "10", "offline evidence")
+        path, record = self.pending_record()
+        path.write_text(json.dumps(dict(record, post_started="2026-10-31T05:00:00Z", **extra)))
+        return path, record
+
+    def forbid_writes(self, marker):
+        """Make write_record raise OSError for any record that carries `marker`; others pass through."""
+        real = op.write_record
+        def write(path, record):
+            if marker in record:
+                raise OSError(28, "No space left on device")
+            return real(path, record)
+        return mock.patch.object(op, "write_record", side_effect=write)
+
+    def test_started_marker_with_the_token_absent_goes_to_manual_review_never_reposted(self):
+        path, record = self.started_note()
+        for _ in range(2):
+            code, out, _ = self.run_cli("flush")
+            self.assertEqual(code, 0)
+            self.assertIn("needs manual review", out)
+            self.assertIn("2026-10-31T05:00:00Z", out)
+            self.assertIn(record["token"], out)
+            self.assertTrue(path.exists())
+        self.assertEqual(self.posts(), [])
+        self.assertIn("POST started 2026-10-31T05:00:00Z", self.run_cli("pending")[1])
+
+    def test_started_marker_with_the_token_in_history_is_confirmed_and_removed(self):
+        path, record = self.started_note()
+        self.fake.acts[10] = [{"id": 1, "comment": {"raw": "x (opwork:note=%s)" % record["token"]}, "createdAt": "2026-10-31T05:00:01Z"}]
+        self.assertIn("flushed #10 (read back)", self.run_cli("flush")[1])
+        self.assertFalse(path.exists())
+        self.assertEqual(self.posts(), [])
+
+    def test_flush_writes_the_started_marker_before_the_post(self):
+        self.story()
+        self.run_cli("checkpoint", "10", "offline evidence")
+        path, _ = self.pending_record()
+        seen = []
+        original = self.fake.handle
+        def spy(method, url, payload):
+            if method == "POST":
+                seen.append(json.loads(path.read_text()).get("post_started"))
+            return original(method, url, payload)
+        self.fake.handle = spy
+        self.assertIn("flushed", self.run_cli("flush")[1])
+        self.assertEqual(len(seen), 1)
+        self.assertTrue(seen[0])
+
+    def test_marker_write_failure_means_no_post_and_exit_6_naming_the_token(self):
+        self.story()
+        self.run_cli("checkpoint", "10", "offline evidence")
+        self.run_cli("checkpoint", "10", "second note")
+        path = sorted(Path(self.state.name, "pending").glob("*.json"))[0]
+        record = json.loads(path.read_text())
+        with self.forbid_writes("post_started"):
+            code, out, err = self.run_cli("flush")
+        self.assertEqual(code, 6)
+        self.assertEqual(self.posts(), [])
+        self.assertIn("UNCONFIRMED", err)
+        self.assertIn(record["token"], err)
+        self.assertNotIn("Traceback", err)
+        self.assertIn("1 later record(s) not attempted", out)
+        self.assertEqual(json.loads(path.read_text()), record)  # untouched
+
+    def test_record_write_failure_after_a_2xx_posts_exactly_once_across_two_flushes(self):
+        self.story()
+        self.run_cli("checkpoint", "10", "offline evidence")
+        self.accept_but_hide_posts()
+        path, record = self.pending_record()
+        with self.forbid_writes("post_status"):
+            code, out, err = self.run_cli("flush")
+        self.assertEqual(code, 6)
+        self.assertIn("UNCONFIRMED", err)
+        self.assertIn(record["token"], err)
+        self.assertNotIn("Traceback", err)
+        self.assertEqual(len(self.posts("/activities")), 1)
+        code, out, _ = self.run_cli("flush")  # the marker written before the POST survived
+        self.assertEqual(code, 0)
+        self.assertIn("needs manual review", out)
+        self.assertEqual(len(self.posts("/activities")), 1)
+
+    def test_record_write_failure_while_saving_an_unavailable_comment_is_exit_6_not_a_traceback(self):
+        self.story()
+        self.fake.fail["POST /api/v3/work_packages/10/activities"] = "after"
+        with mock.patch.object(op, "write_record", side_effect=OSError(30, "Read-only file system")):
+            code, out, err = self.run_cli("comment", "10", "lands then the disk is read-only")
+        self.assertEqual(code, 6)
+        self.assertIn("UNCONFIRMED", err)
+        self.assertRegex(err, r"note token [0-9a-f]{12}")
+        self.assertNotIn("Traceback", err)
+
+    def test_note_record_with_a_null_body_is_valid_and_flushes(self):
+        self.story()
+        self.run_cli("checkpoint", "10", "offline evidence")
+        path, record = self.pending_record()
+        path.write_text(json.dumps(dict(record, body=None)))
+        self.assertNotIn("corrupt", self.run_cli("pending")[1])
+        self.assertIn("flushed #10 (read back)", self.run_cli("flush")[1])
+        self.assertEqual(len(self.fake.acts[10]), 1)
+        self.assertIn("Deferred checkpoint", self.fake.acts[10][0]["comment"]["raw"])
+
+    def test_pending_says_read_back_unconfirmed_not_not_visible(self):
+        self.story()
+        self.accept_but_hide_posts()
+        self.run_cli("comment", "10", "invisible note")
+        listing = self.run_cli("pending")[1]
+        self.assertIn("POST accepted HTTP 201, read back unconfirmed", listing)
+        self.assertNotIn("not visible on read back", listing)
 
     def test_readback_failures_after_a_2xx_are_saved_unconfirmed(self):
         original = self.fake.handle
@@ -1187,10 +1302,14 @@ class OutageTests(Base):
         self.assertNotIn("The read failed", err)
         self.assertEqual(len(list(Path(self.state.name, "pending").glob("*.json"))), 2)
         self.fake.fail.clear()
+        self.fake.calls.clear()
         code, out, _ = self.run_cli("flush")
         self.assertEqual(code, 0)
-        self.assertEqual(out.count("flushed"), 2)
-        self.assertEqual([len(self.fake.acts[i]) for i in (10, 11, 12)], [1, 1, 1])
+        # the POST for #11 was started and its outcome is unknown: kept for review, never reposted
+        self.assertIn("needs manual review", out)
+        self.assertEqual(out.count("flushed"), 1)
+        self.assertEqual([len(self.fake.acts[i]) for i in (10, 11, 12)], [1, 0, 1])
+        self.assertEqual([c[1] for c in self.posts("/activities")], ["/api/v3/work_packages/12/activities"])
 
     def test_kept_intent_message_and_pending_show_the_note_token(self):
         self.story()

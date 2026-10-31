@@ -32,8 +32,10 @@ incomplete read) and HTTP 502/503/504 within about 120 seconds, with capped expo
 the same destination and credential. Denials and other 4xx stop immediately. POST/PATCH are never
 automatically retried (DELETE is forbidden). UNCONFIRMED notes retain their exact body and token
 locally (private 0700/0600 store, atomic writes); `pending` lists them with the token. A note whose
-POST got a 2xx is never reposted: `flush` only checks history for its token, else keeps it for manual
-review. Only a record with no recorded 2xx is posted by `flush`, with read back before removal. Other
+POST got a 2xx, or whose flush POST was started (a marker is written durably first), is never reposted:
+`flush` only checks history for its token, else keeps it for manual review. If that marker cannot be
+written, nothing is posted; a record write that fails after a POST is exit 6 UNCONFIRMED naming the
+token. Only a record never posted is posted by `flush`, with read back before removal. Other
 mutation intents stay pending for manual inspection, including any existing note token.
 """
 import argparse
@@ -68,6 +70,13 @@ class Fail(Exception):
     def __init__(self, message, code=1):
         super().__init__(message)
         self.code = code
+
+
+class LocalWriteFail(Fail):
+    """A local record write failed around a POST: UNCONFIRMED (exit 6), the token named, never a traceback."""
+    def __init__(self, token, what, error, wp=None):
+        super().__init__("UNCONFIRMED: %s (%s); note token %s. If a POST was involved it may have landed: do not repost, inspect with `show %s --history`" % (
+            what, type(error).__name__, token, wp or "ID"), 6)
 
 
 def load_api():
@@ -588,10 +597,17 @@ def write_record(path, record):
         raise
 
 
+def utc_now():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
 def save_pending(kind, token=None, **fields):
-    record = dict(fields, kind=kind, created=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), token=token or uuid.uuid4().hex[:12])
+    record = dict(fields, kind=kind, created=utc_now(), token=token or uuid.uuid4().hex[:12])
     path = os.path.join(state_dir(), "%d-%s.json" % (time.time() * 1000, record["token"]))
-    write_record(path, record)
+    try:
+        write_record(path, record)
+    except OSError as error:
+        raise LocalWriteFail(record["token"], "the %s could not be saved locally" % kind, error, fields.get("wp")) from error
     return path, record
 
 
@@ -608,11 +624,13 @@ def record_problem(rec):
         return "unknown kind"
     if not isinstance(rec.get("token"), str) or not isinstance(rec.get("created"), str):
         return "missing token or created"
+    if not isinstance(rec.get("post_started", ""), str):
+        return "bad post_started"
     if rec["kind"] == "intent":
         if not isinstance(rec.get("argv"), list) or not all(isinstance(x, str) for x in rec["argv"]):
             return "bad argv"
     elif not isinstance(rec.get("wp"), int) or not isinstance(rec.get("session"), str) or not isinstance(rec.get("text"), str) \
-            or not isinstance(rec.get("body", ""), str):
+            or not isinstance(rec.get("body") or "", str):
         return "missing wp, session or text"
     return None
 
@@ -645,7 +663,8 @@ def cmd_checkpoint(t, a, session):
 def cmd_pending(t, a, session):
     good, bad = load_records()
     rows = ["%s #%s %s token=%s%s %s" % (r["created"], r.get("wp", "-"), r["kind"], r["token"],
-                                          " [POST accepted HTTP %s, not visible on read back]" % r["post_status"] if r.get("post_status") else "",
+                                          " [POST accepted HTTP %s, read back unconfirmed]" % r["post_status"] if r.get("post_status") else
+                                          " [POST started %s, outcome unknown]" % r["post_started"] if r.get("post_started") else "",
                                           r.get("text") or " ".join(r.get("argv", []))) for _, _, r in good]
     rows += ["corrupt record %s (%s); skipped, left in place" % item for item in bad]
     return "\n".join(rows) or "no pending records"
@@ -653,9 +672,10 @@ def cmd_pending(t, a, session):
 
 def flush_note(t, path, rec):
     """Post one saved note once, or confirm it already landed; remove the record only after a read back.
-    A record whose POST was accepted (2xx) is never reposted: history is checked, else it needs manual review."""
-    wp, token, structured, accepted = int(rec["wp"]), rec["token"], rec["kind"] == "structured_note", rec.get("post_status")
-    if structured and not accepted:
+    A record whose POST was accepted (2xx) or was started (marker written before the POST) is never reposted:
+    history is checked, else it needs manual review."""
+    wp, token, structured, accepted, started = int(rec["wp"]), rec["token"], rec["kind"] == "structured_note", rec.get("post_status"), rec.get("post_started")
+    if structured and not accepted and not started:
         w = t.wp(wp)
         guard(w, rec["session"], False)
         refresh(t, w, None)
@@ -665,6 +685,9 @@ def flush_note(t, path, rec):
         if accepted:
             raise Fail("needs manual review: the POST was accepted (HTTP %s, activity id %s) but note token %s is not in the history (%s). Never reposted automatically; check `show %d --history`" % (
                 accepted, rec.get("activity_id") or "unknown", token, "complete" if complete else "incomplete", wp), 6)
+        if started:
+            raise Fail("needs manual review: a POST was started at %s but its outcome is unknown and note token %s is not in the history (%s). Never reposted automatically; check `show %d --history`" % (
+                started, token, "complete" if complete else "incomplete", wp), 6)
         if not complete:
             raise Fail("Incomplete history; cannot safely deduplicate %s" % ("checkpoint" if structured else "note"), 6)
         if structured:
@@ -674,14 +697,24 @@ def flush_note(t, path, rec):
                 raise Fail("Checkpoint may be superseded by newer or unordered history; retained for manual review", 6)
         body = rec.get("body") or ("**[%s]** %s\n\n(opwork:note=%s)" % (rec["session"], rec["text"], token) if structured else
                                    "**[%s]** Deferred checkpoint (written %s during a tracker outage): %s\n\n(opwork:note=%s)" % (rec["session"], rec["created"], rec["text"], token))
+        try:  # durable marker first: if the outcome of the POST is lost, the next flush must not repost
+            write_record(path, dict(rec, post_started=utc_now()))
+        except OSError as error:
+            raise LocalWriteFail(token, "flush did not POST: the POST-started marker could not be written", error, wp) from error
         try:
             t.post_note(wp, body, token)
         except (Fail, t.unavailable) as error:
             posted = posted_fields(error)
             if posted:  # remember the accepted POST so the next flush cannot repost it
-                write_record(path, dict(rec, **posted))
+                try:
+                    write_record(path, dict(rec, post_started=utc_now(), **posted))
+                except OSError as write_error:
+                    raise LocalWriteFail(token, "the POST was accepted (HTTP %s) but the record could not be updated" % posted.get("post_status"), write_error, wp) from write_error
             raise
-    os.remove(path)
+    try:
+        os.remove(path)
+    except OSError as error:
+        raise LocalWriteFail(token, "the note is in the history but its record could not be removed", error, wp) from error
     return "flushed #%s (read back)" % rec["wp"]
 
 
@@ -697,6 +730,12 @@ def cmd_flush(t, a, session):
             out.append(flush_note(t, path, rec))
         except Fail as failure:
             out.append("kept %s: %s" % (name, failure))
+            if isinstance(failure, LocalWriteFail):  # the local store is failing: stop, do not try more POSTs
+                later = len(records) - index - 1
+                if later:
+                    out.append("%d later record(s) not attempted; run `flush` again once the local store works" % later)
+                failure.output = "\n".join(out)
+                raise failure
         except t.unavailable as down:
             out.append("UNCONFIRMED %s: tracker unavailable during flush (%s); record kept, note token %s may have landed; check `show %s --history` before repeating" % (name, down, rec["token"], rec["wp"]))
             later = len(records) - index - 1
@@ -741,6 +780,14 @@ def build_parser():
 
 
 def main(argv=None, tracker=None, unavailable=None):
+    try:
+        return run(argv, tracker, unavailable)
+    except LocalWriteFail as failure:  # a pending record could not be written while handling an error
+        print(failure, file=sys.stderr)
+        return failure.code
+
+
+def run(argv, tracker, unavailable):
     global LINK_PROJECT, LINK_BASE
     command_argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(command_argv)

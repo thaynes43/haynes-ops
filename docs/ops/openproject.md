@@ -313,9 +313,16 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   response had one). After recovery, `flush` checks history for the token: present means the
   record is removed; absent for a record with a recorded 2xx means it is **kept for manual
   review and never reposted** (inspect with `show ID --history`). Only a record with no
-  recorded 2xx is posted by `flush`, and only when absent from complete history; it is read
-  back before the record is removed, and a 2xx it gets that stays invisible is recorded so
-  later flushes cannot repost it. Incomplete history keeps an unseen note for manual review.
+  recorded 2xx is posted by `flush`, and only when absent from complete history. `flush`
+  first writes a `post_started` UTC marker into the record (atomic write); if that write fails
+  nothing is posted and the result is exit 6 UNCONFIRMED naming the token. A record with the
+  marker whose token is absent from history is kept for manual review and never reposted,
+  like a recorded 2xx (this includes a POST that failed as tracker-unavailable, whose outcome
+  is unknown). The POST is read back before the record is removed, and a 2xx that stays
+  invisible is recorded so later flushes cannot repost it. A local write failure after a POST
+  (full disk, read-only home) is exit 6 UNCONFIRMED with the note token, not a traceback.
+  Incomplete history keeps an unseen note for manual review. `pending` shows a record with
+  `read back unconfirmed` (2xx) or `POST started ..., outcome unknown`.
   If the tracker drops during `flush`, that record is reported UNCONFIRMED, the lines
   for notes already flushed are printed, later records are not attempted, and the
   exit is 5. Legacy local checkpoints still use their existing deferred envelope. Failed
