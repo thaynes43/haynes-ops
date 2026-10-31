@@ -45,7 +45,8 @@ keys.
 > - **not now**.
 
 **Lead's recommendation (dev-env-1029-132039):** approve as written, with `dev` deferred.
-That keeps every routine read audit-separable from Admin work, and adds no new reach to a
+That lets the audit log tell routine Talos access (`talos_access` events) apart from Admin
+work. Ordinary Omni GET reads are not audited at all (see below). It also adds no reach to a
 web-egress profile that has no Omni access today.
 
 **Read-only is not low sensitivity.** See "Narrowing assessment" below. Omni has no native
@@ -169,10 +170,14 @@ ServiceAccount.
 - **Join-token resources** (`canreadjointokens: true`). Assume a Reader can see the token.
 - **Machine configs:**
   - No role can read the unredacted machine config through the resource API.
-  - A Reader can read `RedactedClusterMachineConfig`.
-  - A Reader can also read `MachineConfigDiff`. I did not check whether it is redacted.
+  - A Reader can read `RedactedClusterMachineConfig` and `MachineConfigDiff`. **Both still
+    carry the NUT password in clear.** Talos redaction skips `ExtensionServiceConfig`; see the
+    Narrowing assessment below.
+- **The Talos kernel command line,** through `os:reader`. On talosm01 and talosw01 it carries a
+  join token.
 
-So handle the Reader key exactly like the other keys in `dev-env`.
+So handle the Reader key exactly like the other keys in `dev-env`. Extend the never-print rule
+to patch `spec.data`, redacted configs, config diffs, the kernel command line and boot `dmesg`.
 
 **Reads a Reader cannot do.** On Talos 1.12 and later, `talosctl read` and `cp` need
 `os:admin`, and Omni forwards them with `os:admin` only for Operator and higher. Several
@@ -209,8 +214,8 @@ Those reads stay on the Admin account, in a session that holds it.
 
 | Consumer | Gets | Why |
 |---|---|---|
-| v2 profile `dev` | the Reader key as `OMNI_SERVICE_ACCOUNT_KEY`, plus `OMNI_ENDPOINT` | It has no Omni access today. Plain `omnictl` and `talosctl` then run as the Reader with no wrapper. Its web egress tier already reaches the Omni SaaS endpoint on port 443. |
-| v2 profiles `full` and `workbench` | **Admin unchanged** as `OMNI_SERVICE_ACCOUNT_KEY`. Recommended, pending Tom's choice: the Reader key added as `OMNI_READER_KEY`. | Routine reads can then run as the Reader: `OMNI_SERVICE_ACCOUNT_KEY="$OMNI_READER_KEY" omnictl …`. `talosctl` reads the same variable. The audit log then separates routine inspection from Admin work. Nothing about Admin changes. |
+| v2 profile `dev` (**optional, NOT recommended**; see the Decision and the Narrowing assessment) | the Reader key as `OMNI_SERVICE_ACCOUNT_KEY`, plus `OMNI_ENDPOINT`, only if Tom chooses "also give dev" | It has no Omni access today. Plain `omnictl` and `talosctl` then run as the Reader with no wrapper. Its web egress tier already reaches the Omni SaaS endpoint on port 443. |
+| v2 profiles `full` and `workbench` | **Admin unchanged** as `OMNI_SERVICE_ACCOUNT_KEY`. Recommended, pending Tom's choice: the Reader key added as `OMNI_READER_KEY`. | Routine reads can then run as the Reader: `OMNI_SERVICE_ACCOUNT_KEY="$OMNI_READER_KEY" omnictl …`. `talosctl` reads the same variable. Recorded `talos_access` events then show the Reader identity for routine Talos access. Ordinary Omni GET reads are not audited. Nothing about Admin changes. |
 | v2 profile `ops` | nothing for now | Its egress tier has no web access, so it cannot reach Omni. Reaching it would take a network-policy change, which needs its own approval. |
 | `rule-canary-*` | nothing | These profiles carry as few credentials as possible by design. |
 | v1 pod (namespace `dev`) | nothing; it keeps Admin | v1 is being retired, and changing its wiring restarts the pod (a runtime hold). |
@@ -218,7 +223,8 @@ Those reads stay on the Admin account, in a session that holds it.
 
 **Risk of adding `dev`.** `dev` is a narrower profile than `full`, yet it has open web egress
 (`network/app/session-web.yaml`). The Reader key would give it reads that carry secrets: the
-NUT password in the config patches, and join tokens. Tom should weigh this when ruling on `dev`.
+NUT password, in the patches and also in the redacted configs and diffs, plus join tokens. The
+lead recommends against `dev`.
 
 ### Secret distribution (the existing route only)
 
@@ -234,7 +240,7 @@ controller, mount type or namespace.
      `OMNI_READER_KEY`.
    - It is its own ExternalSecret, following the isolation rule at the top of that file.
 3. **Profile wiring in `templates.yaml`:**
-   - in `dev`, the plain value `OMNI_ENDPOINT=https://haynes.na-west-1.omni.siderolabs.io:443`
+   - in `dev`, ONLY if Tom chooses "also give dev", which is not recommended: the plain value `OMNI_ENDPOINT=https://haynes.na-west-1.omni.siderolabs.io:443`
      and `OMNI_SERVICE_ACCOUNT_KEY` as a `secretKeyRef` with `optional: true`;
    - in `full` and `workbench`, if Tom chooses them, `OMNI_READER_KEY` the same way.
    - Do not use `envFrom`, and do not add the key to `dev-env-mcp-secret`, which other
@@ -280,7 +286,9 @@ The session rules forbid testing the role by trying a write. Acceptance therefor
 the server reports about the account. These are the options for Tom. I have run none of them.
 
 **A. Server-reported role and capabilities (recommended).** These are all reads. The
-implementation story runs them from a `dev` session, which holds only the Reader key.
+implementation story runs them from a fresh `full` or `workbench` session, with
+`OMNI_SERVICE_ACCOUNT_KEY="$OMNI_READER_KEY"` set for each command, so the Reader identity is the
+one checked. If Tom chose "also give dev", a `dev` session works too.
 
 1. `omnictl get currentuser -o yaml` shows `role: Reader`.
 2. `omnictl get permissions -o yaml` shows exactly six flags true: `canreadclusters`,
@@ -386,7 +394,8 @@ key through that session.
    - on `dev`, sessions run as the Reader;
    - on `full` and `workbench`, routine reads use `OMNI_READER_KEY`, and the Admin key stays
      for authorized writes.
-4. Run acceptance A from a fresh `dev` session, and record the output on the story with no key
+4. Run acceptance A from a fresh `full` or `workbench` session with the Reader key selected
+   explicitly (or from `dev`, only if Tom chose it). Record the output on the story with no key
    material.
 5. Correct the outdated "Reader" wording listed below, keeping clear of the v1 restart path.
 
