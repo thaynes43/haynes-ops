@@ -63,6 +63,23 @@ class VideoTests(unittest.TestCase):
         self.assertEqual(engine.call_args_list, [unittest.mock.call("/queue")])
         self.assertIsNone(api.ACTIVE)
 
+    def test_external_audio_lease_blocks_video_without_touching_engine(self):
+        lease = api.acquire_compute()
+        self.assertIsNotNone(lease)
+        job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
+        api.ACTIVE = "b" * 32
+        try:
+            with patch.object(api, "engine") as engine:
+                api.generate(job, "test")
+            engine.assert_not_called()
+            self.assertEqual(job["state"], "failed")
+            self.assertEqual(api.ACTIVE, "b" * 32)
+        finally:
+            lease.close()
+        next_lease = api.acquire_compute()
+        self.assertIsNotNone(next_lease)
+        next_lease.close()
+
     def test_success_persists_mp4_and_telemetry(self):
         out = api.ROOT / "output/video/result.mp4"
         out.parent.mkdir(parents=True)
