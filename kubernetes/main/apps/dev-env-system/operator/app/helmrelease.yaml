@@ -318,6 +318,10 @@ spec:
               # here too), --api-bind-address :8443, --api-tls-dir
               # /etc/dev-env-operator/api-tls, --human-service-account
               # dev-env-system/dev-env-human, metrics :8080, probes :8081.
+              - --grant-delegates=dev-agents/dev-env-agent
+              - --grant-policy-delegates=dev-agents/dev-env-agent
+              - --grant-legacy-delegates=dev-agents/dev-env-agent:5d30e3de-96a5-421c-8919-90459b1cb298:dev-env-1029-132039:ea234e80-f991-4e47-90e6-bc1a23f97ca7:dev-env-1029-132039:db36f5d3-6d3c-46a6-830e-67c196253a96
+              - --reserved-decision-classes=rd2
             env:
               POD_NAMESPACE:
                 valueFrom:
