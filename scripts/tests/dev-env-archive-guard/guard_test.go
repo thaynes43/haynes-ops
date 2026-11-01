@@ -957,28 +957,63 @@ func loadVAP(t *testing.T, path string) *policies.ValidatingPolicy {
 	if err != nil {
 		t.Fatal(err)
 	}
+	expectedName := "dev-env-" + strings.TrimSuffix(filepath.Base(path), ".yaml")
+	p, err := decodeVAP(b, expectedName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func decodeVAP(b []byte, expectedName string) (*policies.ValidatingPolicy, error) {
 	var p registration.ValidatingAdmissionPolicy
 	decoder := utilyaml.NewYAMLOrJSONDecoder(bytes.NewReader(b), 4096)
 	for {
-		if err = decoder.Decode(&p); err != nil {
+		if err := decoder.Decode(&p); err != nil {
 			if err == io.EOF {
-				t.Fatal("native policy document not found")
+				return nil, fmt.Errorf("native policy document not found")
 			}
-			t.Fatal(err)
+			return nil, err
 		}
 		// A comment before an opening --- is an empty YAML document.
 		if p.Kind != "" {
 			break
 		}
 	}
-	if p.APIVersion != registration.SchemeGroupVersion.String() || p.Kind != "ValidatingAdmissionPolicy" || len(p.Spec.Validations) == 0 {
-		t.Fatal("expected a nonempty native ValidatingAdmissionPolicy")
+	if p.APIVersion != registration.SchemeGroupVersion.String() || p.Kind != "ValidatingAdmissionPolicy" || p.Name != expectedName || len(p.Spec.Validations) == 0 {
+		return nil, fmt.Errorf("expected nonempty native ValidatingAdmissionPolicy %q", expectedName)
 	}
 	return &policies.ValidatingPolicy{ObjectMeta: p.ObjectMeta, Spec: policies.ValidatingPolicySpec{
 		MatchConstraints: p.Spec.MatchConstraints, MatchConditions: p.Spec.MatchConditions,
 		Variables: p.Spec.Variables, Validations: p.Spec.Validations, FailurePolicy: p.Spec.FailurePolicy,
 		ValidationAction: []registration.ValidationAction{registration.Deny},
-	}}
+	}}, nil
+}
+
+func TestNativePolicyDocumentLoading(t *testing.T) {
+	const policy = "apiVersion: admissionregistration.k8s.io/v1\nkind: ValidatingAdmissionPolicy\nmetadata:\n  name: dev-env-identity-guard\nspec:\n  validations:\n    - expression: 'false'\n"
+	for _, tc := range []struct {
+		name, source string
+		allow        bool
+	}{
+		{"plain", policy, true},
+		{"comment-preamble-and-binding", "# sealed proposal\n---\n" + policy + "---\nkind: ValidatingAdmissionPolicyBinding\n", true},
+		{"empty", "", false},
+		{"comment-only", "# no policy\n---\n# still no policy\n", false},
+		{"wrong-kind", strings.Replace(policy, "kind: ValidatingAdmissionPolicy", "kind: ConfigMap", 1), false},
+		{"wrong-name", strings.Replace(policy, "name: dev-env-identity-guard", "name: other", 1), false},
+		{"empty-validations", strings.Split(policy, "spec:")[0], false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := decodeVAP([]byte(tc.source), "dev-env-identity-guard")
+			if (err == nil) != tc.allow {
+				t.Fatalf("loaded=%v, want %v: %v", err == nil, tc.allow, err)
+			}
+			if tc.allow && (p.Name != "dev-env-identity-guard" || len(p.Spec.Validations) != 1 || p.Spec.Validations[0].Expression != "false") {
+				t.Fatal("loaded a different or empty policy")
+			}
+		})
+	}
 }
 
 func TestComplementaryAgentGrantBorrowing(t *testing.T) {
