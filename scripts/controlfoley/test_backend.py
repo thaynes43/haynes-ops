@@ -6,6 +6,7 @@ from fractions import Fraction
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -98,7 +99,8 @@ class BackendContractTests(unittest.TestCase):
         payload = self.root / "expected"
         payload.write_bytes(b"good")
         assets = (("tiny.bin", "example/model", "a" * 40, "tiny.bin", 4, provision.sha256(payload)),)
-        with patch.object(provision, "ASSETS", assets):
+        with (patch.object(provision, "ASSETS", assets),
+              patch.object(provision.shutil, "disk_usage", return_value=SimpleNamespace(free=10*1024**3))):
             with patch.object(provision.urllib.request, "urlopen", return_value=io.BytesIO(b"evil")):
                 with self.assertRaisesRegex(ValueError, "verification failed"):
                     provision.provision(self.root)
@@ -115,6 +117,13 @@ class BackendContractTests(unittest.TestCase):
             self.assertEqual((self.root / "tiny.bin").read_bytes(), b"good")
             with patch.object(provision.urllib.request, "urlopen", side_effect=AssertionError("network")):
                 provision.provision(self.root)  # An already verified tree is idempotent/offline.
+
+    def test_insufficient_disk_fails_before_network(self):
+        with (patch.object(provision.shutil,"disk_usage",return_value=SimpleNamespace(free=0)),
+              patch.object(provision.urllib.request,"urlopen") as network,
+              self.assertRaisesRegex(ValueError,'Insufficient free disk')):
+            provision.provision(self.root)
+        network.assert_not_called()
 
 
 if __name__ == "__main__":

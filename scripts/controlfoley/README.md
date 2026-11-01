@@ -34,3 +34,8 @@ the real pinned inference dependencies offline on a read-only filesystem. These
 checks establish source/import correctness, not GPU inference or listening quality.
 No benchmarking, stress work, access expansion or hardware action is included.
 The canonical story records source, tested, installed and usable states separately.
+
+ControlFoley variants publish as `audio-authoring:controlfoley-0.1.0-<sha>-<run>-<attempt>`
+in the existing public audio-authoring registry package, with a verified digest
+pinned at deployment. This uses the established delivery access and visibility.
+The existing Small-SFX image tags and deployment are untouched.
