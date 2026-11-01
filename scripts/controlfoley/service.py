@@ -104,9 +104,9 @@ def generate(j,lease):
         request(8188,'/free',{'unload_models':True,'free_memory':True})
         for _ in range(36):
             idle();sample=gpu()
-            if sample['memory_mib']<512 and sample['utilization_percent']<=5 and sample['temperature_c']<62:break
+            if sample['memory_mib']<2048 and sample['utilization_percent']<=5 and sample['temperature_c']<62:break
             time.sleep(5)
-        else:raise RuntimeError('GPU did not return to cool empty idle')
+        else:raise RuntimeError('GPU did not return to cool low-residual idle')
         src=source_path(j['source_job_id']);window=directory/'input.mp4'
         probe=subprocess.run(['ffprobe','-v','error','-show_entries','format=duration','-of','json',str(src)],
                              capture_output=True,text=True,check=True,timeout=30)
@@ -118,7 +118,7 @@ def generate(j,lease):
             stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,check=True,timeout=120)
         # Recheck after preprocessing; refuse unknown direct Comfy submissions.
         idle();sample=gpu()
-        if sample['utilization_percent']>5 or sample['memory_mib']>=512:raise RuntimeError('GPU acquired by unknown work')
+        if sample['utilization_percent']>5 or sample['memory_mib']>=2048:raise RuntimeError('GPU acquired by unknown work')
         output=directory/'output.wav'
         env=os.environ.copy();env.update(CUDA_VISIBLE_DEVICES=CARD,OMP_NUM_THREADS='2',MKL_NUM_THREADS='2',OPENBLAS_NUM_THREADS='2')
         cmd=['python','/opt/controlfoley-tools/run.py','--video',str(window),'--output',str(output),

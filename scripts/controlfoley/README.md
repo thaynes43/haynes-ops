@@ -23,7 +23,7 @@ Deployment must pair this worker with the Wan API's `/workspace/compute.lock`
 POSIX lease. Both take the lease before accepting work and hold it through child
 cleanup, preventing video/audio overlap. The worker honors live Wan holds and
 refuses unknown or malformed engine queues. It only evicts cached models from
-an idle Comfy engine, then waits for cool, empty GPU memory before inference.
+an idle Comfy engine, then waits for cool GPU with less than2GiB residual memory (including CUDA context) before inference.
 It runs one bounded subprocess, kills only that child group on failure/timeout,
 and records incomplete jobs as failed on restart without replay. A sampled 88°C
 job stop terminates only its own audio process; clocks, power and cooling remain
