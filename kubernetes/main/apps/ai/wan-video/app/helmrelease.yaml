@@ -98,15 +98,6 @@ spec:
               MKL_NUM_THREADS: "2"
               OPENBLAS_NUM_THREADS: "2"
               XDG_CACHE_HOME: /tmp/foley-cache
-            probes:
-              readiness:
-                enabled: true
-                custom: true
-                spec:
-                  exec:
-                    command: [python, -c, "import urllib.request,json; assert json.load(urllib.request.urlopen('http://127.0.0.1:8189/health',timeout=3))['models_present']"]
-                  periodSeconds: 15
-                  timeoutSeconds: 5
             resources:
               requests: {cpu: "1", memory: 12Gi}
               limits: {cpu: "2", memory: 32Gi}
