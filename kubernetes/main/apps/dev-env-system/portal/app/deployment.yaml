@@ -74,7 +74,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # dev-env v2.77.0 release merge 6c7f344a (adds the OP324 Pages reader rounds dev-env#770, #776 and #778: exact alert identity, Invalid before Stale, explicit parentOrder lineage and orderChain. The portal passes empty response sources, so responses stay Unconfigured and no order store is read; keeps v2.76.0's #762 Task outcome panel and v2.75.0's #750, #756 and #757; publish run 41188272020 signed and verified the portal image).
+          # dev-env#806 source merge c411ebb5: provider reset cards and reported usage charts. Publish run 41277341781 signed and verified this portal digest; allowance collection remains unconfigured.
           image: ghcr.io/thaynes43/dev-env-portal:sha-c411ebb@sha256:1e8cbef8b98b9f1fc1ad07abda37621eee26653dafd63c1995744c289f0fe518
           imagePullPolicy: IfNotPresent
           ports:
