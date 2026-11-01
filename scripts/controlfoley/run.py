@@ -82,16 +82,23 @@ def video_frames(video, duration, modules):
     rates = (8, 4, 25)
     counts = [int(duration * rate) for rate in rates]
     frames = [[], [], []]
+    last_frame = None
+    decoded_end = 0.0
     with av.open(str(video)) as container:
         if not container.streams.video:
             raise ValueError("Input has no video stream")
         stream = container.streams.video[0]
         stream.codec_context.thread_count = 2
+        if not stream.average_rate or stream.average_rate <= 0:
+            raise ValueError("Video requires a positive frame rate")
+        frame_period = float(1 / stream.average_rate)
         for frame in container.decode(stream):
             if frame.time is None:
                 raise ValueError("Video requires timestamps")
             if frame.time > duration:
                 break
+            last_frame = frame
+            decoded_end = frame.time + frame_period
             for index, rate in enumerate(rates):
                 while len(frames[index]) < counts[index] and frame.time + 1e-7 >= len(frames[index]) / rate:
                     size = 384 if index == 0 else 224
@@ -100,6 +107,15 @@ def video_frames(video, duration, modules):
                     frames[index].append(torch.from_numpy(array).permute(2, 0, 1))
             if all(len(group) == count for group, count in zip(frames, counts)):
                 break
+        # At24fps the last frame covers7.958..8s, including the25fps sample7.96.
+        # Hold that actual trailing frame rather than falsely rejecting a full clip.
+        if last_frame is not None and decoded_end + 1e-6 >= duration:
+            for index, count in enumerate(counts):
+                if len(frames[index]) < count:
+                    size = 384 if index == 0 else 224
+                    array = last_frame.reformat(width=size, height=size, format="rgb24", interpolation="BICUBIC").to_ndarray()
+                    tensor = torch.from_numpy(array).permute(2, 0, 1)
+                    frames[index].extend([tensor] * (count - len(frames[index])))
     if any(len(group) != count for group, count in zip(frames, counts)):
         raise ValueError("Video is shorter than the requested generation duration")
     tensors = [torch.stack(group).float().div_(255) for group in frames]

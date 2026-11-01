@@ -1,6 +1,8 @@
 """CPU-only contract and supply-chain checks; no inference or weight downloads."""
 import contextlib
 import io
+import importlib.util
+from fractions import Fraction
 import json
 from pathlib import Path
 import tempfile
@@ -32,6 +34,24 @@ class BackendContractTests(unittest.TestCase):
         for value in ("-1", "4294967296"):
             self.rejected("--seed=" + value)
         self.assertEqual(run.parse_args(self.argv + ["--duration", "8", "--seed", "0"]).seed, 0)
+
+    @unittest.skipUnless(importlib.util.find_spec('av') and importlib.util.find_spec('torch'),
+                         'Real decoder/tensor contract runs inside the image')
+    def test_24fps_input_covers_last_25fps_sync_sample(self):
+        modules=run.imports();av=modules['av'];np=modules['np']
+        modules['torch'].set_num_threads(2)
+        path=self.root/'real.mp4'
+        with av.open(str(path),'w') as c:
+            stream=c.add_stream('mpeg4',rate=24);stream.width=32;stream.height=32
+            stream.pix_fmt='yuv420p';stream.codec_context.thread_count=2
+            for i in range(24):
+                frame=av.VideoFrame.from_ndarray(np.zeros((32,32,3),dtype=np.uint8),format='rgb24')
+                frame.pts=i;frame.time_base=Fraction(1,24)
+                for packet in stream.encode(frame):c.mux(packet)
+            for packet in stream.encode():c.mux(packet)
+        frames=run.video_frames(path,1.0,modules)
+        self.assertEqual([len(x) for x in frames],[8,4,25])
+        with self.assertRaises(ValueError):run.video_frames(path,1.1,modules)
 
     def test_requires_existing_video_and_absolute_paths(self):
         self.rejected("--video", "relative.mp4")
