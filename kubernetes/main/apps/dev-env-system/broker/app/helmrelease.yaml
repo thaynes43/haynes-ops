@@ -57,7 +57,8 @@ spec:
               # by publish.yml on main (run 37798469467).
               # Source dev-env#739 merge 386317b84e97817c511cc54ac9a75470f6538840; publish run 41129212774.
               # Operator job 124315516957 signed at 21:15:23Z and verified keyless at 21:15:24Z on 2026-10-30.
-              tag: sha-386317b@sha256:a080796f71def7f45e9153e0ea806d1be963afff742eee1850241385fc38e3e9
+              # PROPOSED RD2 source bfd5143; publish41253643759 and local cosign verified; activation HELD.
+              tag: sha-bfd5143@sha256:b5d078edf18695b557849de37396c6a665d897a554060efb772dc546fb4fc2ac
               pullPolicy: IfNotPresent
             args:
               - broker

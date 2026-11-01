@@ -134,7 +134,8 @@ spec:
               # and the v2.75.0 AgentSession CRD stay as they are.
               # Rollback: questions and replies exist, so keep the operator at 2.76 or later (DESIGN-014). The 2.75 taskOutcome floor also stands.
               # publish.yml run 41188272020, operator job 124499549335: signature pushed at 09:22:57Z, verified keyless at 09:23:01Z on 2026-10-31.
-              tag: sha-6c7f344@sha256:839bcaf17b3fc0db9bb38ea56fd98e831dd62ef104e29896006d63812fd64eba
+              # PROPOSED RD2 source bfd5143; publish41253643759 and local cosign verified; activation HELD.
+              tag: sha-bfd5143@sha256:b5d078edf18695b557849de37396c6a665d897a554060efb772dc546fb4fc2ac
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
