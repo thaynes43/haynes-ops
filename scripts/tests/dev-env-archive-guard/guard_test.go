@@ -54,6 +54,7 @@ func sa(s string) string         { return "system:serviceaccount:" + strings.Rep
 func controller(s string) string { return sa("kube-system/" + s) }
 
 type fixture struct {
+	version                                                               string
 	name, kind, resource, group, subresource, operation, actor, namespace string
 	new, old                                                              obj
 	parents                                                               []obj
@@ -195,7 +196,10 @@ func (h *harness) evaluate(t *testing.T, f fixture) (bool, *compiler.EvaluationR
 			}
 		}
 	}
-	version := "v1"
+	version := f.version
+	if version == "" {
+		version = "v1"
+	}
 	gvk := schema.GroupVersionKind{Group: f.group, Version: version, Kind: f.kind}
 	gvr := schema.GroupVersionResource{Group: f.group, Version: version, Resource: f.resource}
 	req := admissionv1.AdmissionRequest{

@@ -25,7 +25,11 @@ spec:
         variables.decision == variables.priorDecision ||
         (request.operation == 'UPDATE' && request.?subResource.orValue('') == '' &&
          request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator' &&
-         object.spec.type == 'maintenance' && object.spec == oldObject.spec &&
+         (object.spec.type == 'maintenance' ||
+          (object.spec.type == 'breakglass' &&
+           object.spec.?kube.?reserved.orValue(false) &&
+           object.spec.?kube.?role.orValue('') == 'dev-env-grant-breakglass')) &&
+         object.spec == oldObject.spec &&
          variables.priorDecision == '' && size(variables.decision) <= 2048)
       message: only the authenticated operator adapter may set a maintenance decision once
     - expression: >-
