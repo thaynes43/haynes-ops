@@ -115,10 +115,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# Source 9aa09b6b (dev-env#819-#823); publish41330272538 signed and verified this digest.
+# Source 9b5dff23 (dev-env#827); publish41343691822 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-9aa09b6"
-    "@sha256:2704e9e2a49b31413a8ac48e74feccb229e6af07dafc37d5bf26fc6712b45338"
+    "sha-9b5dff2"
+    "@sha256:dffde6730025d6a1a630d3fd971c7f8051e50d44d53672854a0d81c14b4657ba"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
