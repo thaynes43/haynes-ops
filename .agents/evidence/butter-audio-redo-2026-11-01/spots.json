@@ -1,0 +1,92 @@
+[
+  {
+    "action": "first deep compression",
+    "start_s": 0.15,
+    "end_s": 1.55,
+    "envelope_peak_s": 0.85,
+    "cue_offset_s": 0.3,
+    "relative_gain": 1.0,
+    "timing_basis": "visual half-second frame sheet; editorial approximation"
+  },
+  {
+    "action": "continued first press",
+    "start_s": 1.85,
+    "end_s": 2.6,
+    "envelope_peak_s": 2.2,
+    "cue_offset_s": 1.65,
+    "relative_gain": 0.42,
+    "timing_basis": "visual half-second frame sheet; editorial approximation"
+  },
+  {
+    "action": "first release friction",
+    "start_s": 3.1,
+    "end_s": 4.3,
+    "envelope_peak_s": 3.55,
+    "cue_offset_s": 0.8,
+    "relative_gain": 0.14,
+    "timing_basis": "visual half-second frame sheet; editorial approximation"
+  },
+  {
+    "action": "small second press",
+    "start_s": 6.2,
+    "end_s": 6.9,
+    "envelope_peak_s": 6.5,
+    "cue_offset_s": 2.0,
+    "relative_gain": 0.25,
+    "timing_basis": "visual half-second frame sheet; editorial approximation"
+  },
+  {
+    "action": "second release friction",
+    "start_s": 8.35,
+    "end_s": 9.25,
+    "envelope_peak_s": 8.7,
+    "cue_offset_s": 1.0,
+    "relative_gain": 0.13,
+    "timing_basis": "visual half-second frame sheet; editorial approximation"
+  },
+  {
+    "action": "side fold compression",
+    "start_s": 10.75,
+    "end_s": 12.65,
+    "envelope_peak_s": 11.85,
+    "cue_offset_s": 0.45,
+    "relative_gain": 0.85,
+    "timing_basis": "visual half-second frame sheet; editorial approximation"
+  },
+  {
+    "action": "side fingertip pinch",
+    "start_s": 13.05,
+    "end_s": 14.35,
+    "envelope_peak_s": 13.65,
+    "cue_offset_s": 1.9,
+    "relative_gain": 0.55,
+    "timing_basis": "visual half-second frame sheet; editorial approximation"
+  },
+  {
+    "action": "fourth thumb press",
+    "start_s": 15.25,
+    "end_s": 16.15,
+    "envelope_peak_s": 15.65,
+    "cue_offset_s": 0.7,
+    "relative_gain": 0.5,
+    "timing_basis": "visual half-second frame sheet; editorial approximation"
+  },
+  {
+    "action": "fourth small compression",
+    "start_s": 17.25,
+    "end_s": 18.35,
+    "envelope_peak_s": 17.8,
+    "cue_offset_s": 1.75,
+    "relative_gain": 0.4,
+    "timing_basis": "visual half-second frame sheet; editorial approximation"
+  },
+  {
+    "action": "final slow press",
+    "start_s": 19.0,
+    "end_s": 19.85,
+    "envelope_peak_s": 19.4,
+    "cue_offset_s": 0.45,
+    "relative_gain": 0.38,
+    "timing_basis": "visual half-second frame sheet; editorial approximation"
+  }
+]

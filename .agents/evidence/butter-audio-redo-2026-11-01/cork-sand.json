@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "service_version": "0.2.0",
+  "model": {
+    "name": "Stable Audio 3 Small SFX",
+    "source_repository": "Stability-AI/stable-audio-3",
+    "source_revision": "779434a908193105335fd8d833418603625b2859",
+    "weights_repository": "stabilityai/stable-audio-3-optimized",
+    "weights_revision": "da6edc54ddba10bfd79a077102ded687f80e882b",
+    "device": "cpu",
+    "runtime": "LiteRT/XNNPACK",
+    "dit": "sm-sfx",
+    "decoder": "same-s",
+    "dit_precision": "fp32",
+    "decoder_precision": "w8a8",
+    "threads": 4
+  },
+  "id": "03a09bb915f147ab8437d05b5e38a067",
+  "status": "completed",
+  "prompt": "Close microphone recording of one slow gentle hand compression of soft damp kinetic sand mixed with fine crumbly cork. Low warm soft dense crumbling and muted tiny dry crackles. Rounded crunchy granular texture, quiet tactile sandy friction, gentle release, then silence. Natural unpitched Foley. No rubber, no balloons, no squeaks, no whistles, no chirps, no metallic sounds, no glass, no cellophane, no high piercing clicks. No voice or music.",
+  "seconds": 5,
+  "steps": 8,
+  "seed": 3431,
+  "created_at": "2026-11-01T00:47:34.986684Z",
+  "started_at": "2026-11-01T00:47:35.000416Z",
+  "finished_at": "2026-11-01T00:47:41.388431Z",
+  "peak_subprocess_rss_bytes": 4064284672,
+  "artifact": "jobs/03a09bb915f147ab8437d05b5e38a067/output.wav",
+  "audio": {
+    "codec": "pcm_s16le",
+    "sample_rate": 44100,
+    "channels": 2,
+    "duration_seconds": 5,
+    "size_bytes": 882044,
+    "sha256": "6fbf86a7dc2b61333f496954bbdc76b92441c3e2ff1a1599683e07648386e810"
+  },
+  "error": null,
+  "elapsed_seconds": 6.388,
+  "download_url": "/artifacts/03a09bb915f147ab8437d05b5e38a067/output.wav"
+}
