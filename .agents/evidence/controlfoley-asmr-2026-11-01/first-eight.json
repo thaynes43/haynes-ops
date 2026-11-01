@@ -1,0 +1,15 @@
+{
+  "id": "612b0413243e4945b6ab8ed3bf03e1f6",
+  "kind": "video_conditioned_audio",
+  "state": "failed",
+  "created_at": 1793498179.724212,
+  "telemetry": [],
+  "source_job_id": "89f6c15276ad4f0b86622563cb8e5547",
+  "start_seconds": 0.0,
+  "duration": 8.0,
+  "seed": 3441,
+  "prompt": "Close-miked gentle low dry granular crunches exactly synchronized with the gloved fingers compressing and folding the yellow squishy. Fine soft sandy crumbling and muted tiny foam pops. Soft rounded transients, warm intimate texture. Quiet release friction. Silence when the hands hold still. No speech. No music.",
+  "negative_prompt": "rubber squeaks, squealing, whistling, chirping, high-pitched tones, ringing, metallic sounds, glass, crinkly cellophane, sharp loud snaps, harsh clicks, distortion, static hiss, music, speech, breathing, eating, chewing",
+  "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
+  "finished_at": 1793498179.749088
+}

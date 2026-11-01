@@ -1,0 +1,124 @@
+{
+  "id": "b6d611311a9447edaa21817ea51df5db",
+  "kind": "edited_production",
+  "story": "OP344",
+  "title": "Crunchy Butter \u2014 Video-conditioned Foley",
+  "state": "succeeded",
+  "created_at": 1793498489.8645096,
+  "finished_at": 1793498489.8645103,
+  "telemetry": [],
+  "output": "productions/op344/crunchy-butter-controlfoley/crunchy-butter-controlfoley.mp4",
+  "bytes": 11590164,
+  "sha256": "626a3b591a6a40b962785f59260aa3643f365d49e56f3281457335124da5f40a",
+  "assets": [
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/crunchy-butter-controlfoley.mp4",
+      "bytes": 11590164,
+      "sha256": "626a3b591a6a40b962785f59260aa3643f365d49e56f3281457335124da5f40a"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/crunchy-butter-controlfoley.wav",
+      "bytes": 5760102,
+      "sha256": "24924606a7b7b873b532d04e8fb48b6f80b216dd13534d8ce1d49ac78523e629"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/crunchy-butter-controlfoley-validation.json",
+      "bytes": 867,
+      "sha256": "3d53d0f853a445a7d49669bc1da533f6f0f824828a23866ae2cdfe443dd73153"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/window-zero.wav",
+      "bytes": 1058444,
+      "sha256": "13345c2624c2d8e49308833bcb2c388fb81da96425f53b9a7e710f62339beb90"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/window-zero.json",
+      "bytes": 12118,
+      "sha256": "7e04036c3538ff2fa3d77881a5719c28e000ef82d13bf477ddf0a409c5f5f441"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/window-zero-submission.json",
+      "bytes": 833,
+      "sha256": "99e347f1bdd10f71ea44d8d330a7bab253c5f9f3106037722102a6e7138f386a"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/window-zero-accepted.json",
+      "bytes": 77,
+      "sha256": "706f780358938e2eddc52cc8f6415d6f2f20298c611b22d693cd8d3bc67554f5"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/window-six.wav",
+      "bytes": 1058444,
+      "sha256": "7ee6a972312b049c12a45dfbace1f3bd77952c2464b7086bbbc469c2fbe4317d"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/window-six.json",
+      "bytes": 10367,
+      "sha256": "cffae20a2c87375f5858e75fbf7cc81a9d3367e6d6324d308bd8d8e066dcc9dd"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/window-six-submission.json",
+      "bytes": 833,
+      "sha256": "1dc46b736155d2667120f5282e4bba51258540b4b4e2c90c669b6988ac819521"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/window-six-accepted.json",
+      "bytes": 77,
+      "sha256": "352052ddccafb9fd71cce179983cde3b6d08140dd7cedd077fbf9ea9833b00ae"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/window-twelve.wav",
+      "bytes": 1058444,
+      "sha256": "b49cd3de36af5c0319d70c18df2073f31de5fa104a0cfbbb49719ce53c05cede"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/window-twelve.json",
+      "bytes": 10563,
+      "sha256": "c889b8bbe47ad76f078a672dc06ad324f7ef962ec903985105895ed05c4c603b"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/window-twelve-submission.json",
+      "bytes": 834,
+      "sha256": "6feffddd5e27351a313b6346702e352733278fee5ca813ef18cf11d23b70ac36"
+    },
+    {
+      "path": "/workspace/output/productions/op344/crunchy-butter-controlfoley/window-twelve-accepted.json",
+      "bytes": 77,
+      "sha256": "119fccb38b9d5cfa34ec96f569b17511f05730c691c80a30e60611725e2659be"
+    }
+  ],
+  "preset": "controlfoley-audio-revision",
+  "parent_production": "89f6c15276ad4f0b86622563cb8e5547",
+  "source_foley_jobs": [
+    "8c2c0eab2e0a4062923d8676dcc6718a",
+    "1db5f7bc9a4544e9b06ab29729b8bc76",
+    "0a5f0245cd694554aa270a3d22e90e4c"
+  ],
+  "provenance": {
+    "duration_s": 20.0,
+    "decoded_frames": 480,
+    "video_unchanged": true,
+    "video_packet_sha256": "df91615bc95baf9721846342f0937477205d77e8a871a3dc471e1ddfd6bf2bfb",
+    "sha256": "626a3b591a6a40b962785f59260aa3643f365d49e56f3281457335124da5f40a",
+    "bytes": 11590164,
+    "source_jobs": [
+      "8c2c0eab2e0a4062923d8676dcc6718a",
+      "1db5f7bc9a4544e9b06ab29729b8bc76",
+      "0a5f0245cd694554aa270a3d22e90e4c"
+    ],
+    "audio": {
+      "integrated_lufs": -30.54,
+      "true_peak_dbtp": -7.94,
+      "clipped_samples": 0
+    },
+    "mastering": {
+      "highpass_hz": 65,
+      "treble_db": -4,
+      "lowpass_hz": 6000,
+      "gain_db": -1.3499999999999996,
+      "pitch_or_time_shift": false
+    },
+    "sync": "Video-conditioned windows at original absolute offsets, two-second overlap crossfades. Perceptual sync and comfort require listening.",
+    "human_listening_approval": "unverified"
+  }
+}

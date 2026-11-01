@@ -1,0 +1,287 @@
+{
+  "id": "1db5f7bc9a4544e9b06ab29729b8bc76",
+  "kind": "video_conditioned_audio",
+  "state": "succeeded",
+  "created_at": 1793498325.379313,
+  "telemetry": [
+    {
+      "time": 1793498327.191815,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 54.0
+    },
+    {
+      "time": 1793498329.2206595,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 54.0
+    },
+    {
+      "time": 1793498331.2495255,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 54.0
+    },
+    {
+      "time": 1793498333.283346,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 54.0
+    },
+    {
+      "time": 1793498335.3130398,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 54.0
+    },
+    {
+      "time": 1793498337.3440163,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 54.0
+    },
+    {
+      "time": 1793498339.3722322,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 54.0
+    },
+    {
+      "time": 1793498341.401275,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 54.0
+    },
+    {
+      "time": 1793498343.4303517,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 54.0
+    },
+    {
+      "time": 1793498345.4551995,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 2705.0,
+      "utilization_percent": 54.0,
+      "temperature_c": 57.0
+    },
+    {
+      "time": 1793498347.4781458,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 59.0
+    },
+    {
+      "time": 1793498349.5052886,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 973.0,
+      "utilization_percent": 75.0,
+      "temperature_c": 61.0
+    },
+    {
+      "time": 1793498351.5290046,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 58.0
+    },
+    {
+      "time": 1793498353.5511928,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 58.0
+    },
+    {
+      "time": 1793498355.5743785,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 58.0
+    },
+    {
+      "time": 1793498357.5975888,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 59.0
+    },
+    {
+      "time": 1793498359.6269553,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 59.0
+    },
+    {
+      "time": 1793498361.649476,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 59.0
+    },
+    {
+      "time": 1793498363.672287,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 59.0
+    },
+    {
+      "time": 1793498365.695706,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 6475.0,
+      "utilization_percent": 100.0,
+      "temperature_c": 66.0
+    },
+    {
+      "time": 1793498367.721406,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 6475.0,
+      "utilization_percent": 100.0,
+      "temperature_c": 68.0
+    },
+    {
+      "time": 1793498369.744024,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 609.0,
+      "utilization_percent": 91.0,
+      "temperature_c": 65.0
+    },
+    {
+      "time": 1793498371.7727687,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 611.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 62.0
+    }
+  ],
+  "invocation": "guarded_one_shot",
+  "source_job_id": "89f6c15276ad4f0b86622563cb8e5547",
+  "start_seconds": 6.0,
+  "duration": 8,
+  "seed": 3442,
+  "prompt": "Close-miked gentle low dry granular crunches exactly synchronized with the gloved fingers compressing and folding the yellow squishy. Fine soft sandy crumbling and muted tiny foam pops. Soft rounded transients, warm intimate texture. Quiet release friction. Silence when the hands hold still. No speech. No music.",
+  "negative_prompt": "rubber squeaks, squealing, whistling, chirping, high-pitched tones, ringing, metallic sounds, glass, crinkly cellophane, sharp loud snaps, harsh clicks, distortion, static hiss, music, speech, breathing, eating, chewing",
+  "started_at": 1793498327.1626506,
+  "finished_at": 1793498373.7735753,
+  "output": "foley/1db5f7bc9a4544e9b06ab29729b8bc76/output.wav",
+  "provenance": {
+    "schema_version": 1,
+    "backend": "controlfoley",
+    "mode": "TV2A",
+    "source_revision": "b6c902888d45d75f022e253e3db29836360a3f82",
+    "weights_manifest": {
+      "schema_version": 1,
+      "source_revision": "b6c902888d45d75f022e253e3db29836360a3f82",
+      "assets": [
+        {
+          "path": "weights/controlfoley.pth",
+          "repo": "YJX-Xiaomi/ControlFoley",
+          "revision": "cde633f5c3f5ccbedf07994ad6dc124b761df22f",
+          "remote_path": "weights/controlfoley.pth",
+          "bytes": 11292123018,
+          "sha256": "8e2359cdf412b07381282c07e53205ce3d778a4a8be1edbc5c00d373e5186ed6"
+        },
+        {
+          "path": "ext_weights/v1-44.pth",
+          "repo": "YJX-Xiaomi/ControlFoley",
+          "revision": "cde633f5c3f5ccbedf07994ad6dc124b761df22f",
+          "remote_path": "ext_weights/v1-44.pth",
+          "bytes": 1221942998,
+          "sha256": "ab6cc15dc31947675f75c950c41f4dcfd0d6d1817555ac871f809ec388e4651a"
+        },
+        {
+          "path": "ext_weights/synchformer_state_dict.pth",
+          "repo": "YJX-Xiaomi/ControlFoley",
+          "revision": "cde633f5c3f5ccbedf07994ad6dc124b761df22f",
+          "remote_path": "ext_weights/synchformer_state_dict.pth",
+          "bytes": 950058171,
+          "sha256": "8aff082f2df5c3bc52759db0c865c7ee772ae6400b860d1b7e90413f2defb67c"
+        },
+        {
+          "path": "ext_weights/cav_mae_st.pth",
+          "repo": "YJX-Xiaomi/ControlFoley",
+          "revision": "cde633f5c3f5ccbedf07994ad6dc124b761df22f",
+          "remote_path": "ext_weights/cav_mae_st.pth",
+          "bytes": 762301703,
+          "sha256": "de9f7dff5a643690ae9e98bb686abf4f259456a9f3be8ef1fa403384eeefc6d8"
+        },
+        {
+          "path": "clip/open_clip_pytorch_model.bin",
+          "repo": "apple/DFN5B-CLIP-ViT-H-14-384",
+          "revision": "01b771ed0d1395ca5ffdd279897d665ebe00dfd2",
+          "remote_path": "open_clip_pytorch_model.bin",
+          "bytes": 3947081637,
+          "sha256": "c07a17b547d461c60a3cce5062b26bf8545b13de602c4c59d8490361eb716033"
+        },
+        {
+          "path": "clip/open_clip_config.json",
+          "repo": "apple/DFN5B-CLIP-ViT-H-14-384",
+          "revision": "01b771ed0d1395ca5ffdd279897d665ebe00dfd2",
+          "remote_path": "open_clip_config.json",
+          "bytes": 735,
+          "sha256": "e043bd1129b97d3afc77eef2e8bfda940af588dabf2cbaacc21e956345402f67"
+        },
+        {
+          "path": "clip/LICENSE",
+          "repo": "apple/DFN5B-CLIP-ViT-H-14-384",
+          "revision": "01b771ed0d1395ca5ffdd279897d665ebe00dfd2",
+          "remote_path": "LICENSE",
+          "bytes": 5820,
+          "sha256": "d8f5d9dfbdb60dc81b8f1720421699e7811070f0b46f6668f90253d5ac8c0b20"
+        },
+        {
+          "path": "vocoder/bigvgan_generator.pt",
+          "repo": "nvidia/bigvgan_v2_44khz_128band_512x",
+          "revision": "95a9d1dcb12906c03edd938d77b9333d6ded7dfb",
+          "remote_path": "bigvgan_generator.pt",
+          "bytes": 489041291,
+          "sha256": "d9fe7ec6bd0b44ed9d66973d5012d8181c1570b01e5c72df51973e241dccd357"
+        },
+        {
+          "path": "vocoder/config.json",
+          "repo": "nvidia/bigvgan_v2_44khz_128band_512x",
+          "revision": "95a9d1dcb12906c03edd938d77b9333d6ded7dfb",
+          "remote_path": "config.json",
+          "bytes": 1403,
+          "sha256": "65b7f487bfaf15256056a75f6667ef5f640214c981922a111927873705ea4ddb"
+        },
+        {
+          "path": "vocoder/LICENSE",
+          "repo": "nvidia/bigvgan_v2_44khz_128band_512x",
+          "revision": "95a9d1dcb12906c03edd938d77b9333d6ded7dfb",
+          "remote_path": "LICENSE",
+          "bytes": 1076,
+          "sha256": "90459cd52fc41bd723df7c0c76fac1e4dd60e6bfd644a7e2a93f325bed4f6d95"
+        }
+      ]
+    },
+    "input_video_sha256": "2dfb2117cd6350582fea910534d4aa1a21cc90294ba8caa621c5474b02d9fac2",
+    "output_sha256": "7ee6a972312b049c12a45dfbace1f3bd77952c2464b7086bbbc469c2fbe4317d",
+    "prompt": "Close-miked gentle low dry granular crunches exactly synchronized with the gloved fingers compressing and folding the yellow squishy. Fine soft sandy crumbling and muted tiny foam pops. Soft rounded transients, warm intimate texture. Quiet release friction. Silence when the hands hold still. No speech. No music.",
+    "negative_prompt": "rubber squeaks, squealing, whistling, chirping, high-pitched tones, ringing, metallic sounds, glass, crinkly cellophane, sharp loud snaps, harsh clicks, distortion, static hiss, music, speech, breathing, eating, chewing",
+    "seed": 3442,
+    "duration": 8.0,
+    "sample_rate": 44100,
+    "frames": 352800,
+    "steps": 25,
+    "cfg_strength": 4.5,
+    "precision": "bfloat16",
+    "staged_offload": true,
+    "torch_version": "2.5.1+cu121",
+    "peak_cuda_allocated_bytes": 5909794816,
+    "elapsed_seconds": 34.362
+  },
+  "bytes": 1058444
+}

@@ -1,0 +1,350 @@
+{
+  "id": "8c2c0eab2e0a4062923d8676dcc6718a",
+  "kind": "video_conditioned_audio",
+  "state": "succeeded",
+  "created_at": 1793498236.8469582,
+  "telemetry": [
+    {
+      "time": 1793498238.5795014,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 50.0
+    },
+    {
+      "time": 1793498240.609821,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 50.0
+    },
+    {
+      "time": 1793498242.6416724,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 50.0
+    },
+    {
+      "time": 1793498244.6724732,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 50.0
+    },
+    {
+      "time": 1793498246.7040946,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 50.0
+    },
+    {
+      "time": 1793498248.7348065,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 50.0
+    },
+    {
+      "time": 1793498250.7663786,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 49.0
+    },
+    {
+      "time": 1793498252.798515,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 49.0
+    },
+    {
+      "time": 1793498254.8323848,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 49.0
+    },
+    {
+      "time": 1793498256.8632782,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 50.0
+    },
+    {
+      "time": 1793498258.8971484,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 50.0
+    },
+    {
+      "time": 1793498260.9305713,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 49.0
+    },
+    {
+      "time": 1793498262.959884,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 49.0
+    },
+    {
+      "time": 1793498264.9898295,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 49.0
+    },
+    {
+      "time": 1793498267.0188203,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 49.0
+    },
+    {
+      "time": 1793498269.0496013,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 49.0
+    },
+    {
+      "time": 1793498271.079044,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 49.0
+    },
+    {
+      "time": 1793498273.107047,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 1445.0,
+      "utilization_percent": 13.0,
+      "temperature_c": 51.0
+    },
+    {
+      "time": 1793498275.1326103,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 56.0
+    },
+    {
+      "time": 1793498277.1594324,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 913.0,
+      "utilization_percent": 2.0,
+      "temperature_c": 54.0
+    },
+    {
+      "time": 1793498279.1820097,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 55.0
+    },
+    {
+      "time": 1793498281.2056007,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 54.0
+    },
+    {
+      "time": 1793498283.2298338,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 54.0
+    },
+    {
+      "time": 1793498285.2541614,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 55.0
+    },
+    {
+      "time": 1793498287.2768886,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 55.0
+    },
+    {
+      "time": 1793498289.2999406,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 55.0
+    },
+    {
+      "time": 1793498291.3223617,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 607.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 55.0
+    },
+    {
+      "time": 1793498293.3475387,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 6397.0,
+      "utilization_percent": 70.0,
+      "temperature_c": 57.0
+    },
+    {
+      "time": 1793498295.3722143,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 6475.0,
+      "utilization_percent": 100.0,
+      "temperature_c": 64.0
+    },
+    {
+      "time": 1793498297.3974247,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 6475.0,
+      "utilization_percent": 100.0,
+      "temperature_c": 65.0
+    },
+    {
+      "time": 1793498299.4215848,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 611.0,
+      "utilization_percent": 18.0,
+      "temperature_c": 60.0
+    },
+    {
+      "time": 1793498301.4456227,
+      "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "memory_mib": 266.0,
+      "utilization_percent": 0.0,
+      "temperature_c": 60.0
+    }
+  ],
+  "invocation": "guarded_one_shot",
+  "source_job_id": "89f6c15276ad4f0b86622563cb8e5547",
+  "start_seconds": 0.0,
+  "duration": 8,
+  "seed": 3441,
+  "prompt": "Close-miked gentle low dry granular crunches exactly synchronized with the gloved fingers compressing and folding the yellow squishy. Fine soft sandy crumbling and muted tiny foam pops. Soft rounded transients, warm intimate texture. Quiet release friction. Silence when the hands hold still. No speech. No music.",
+  "negative_prompt": "rubber squeaks, squealing, whistling, chirping, high-pitched tones, ringing, metallic sounds, glass, crinkly cellophane, sharp loud snaps, harsh clicks, distortion, static hiss, music, speech, breathing, eating, chewing",
+  "started_at": 1793498238.5506682,
+  "finished_at": 1793498303.4463396,
+  "output": "foley/8c2c0eab2e0a4062923d8676dcc6718a/output.wav",
+  "provenance": {
+    "schema_version": 1,
+    "backend": "controlfoley",
+    "mode": "TV2A",
+    "source_revision": "b6c902888d45d75f022e253e3db29836360a3f82",
+    "weights_manifest": {
+      "schema_version": 1,
+      "source_revision": "b6c902888d45d75f022e253e3db29836360a3f82",
+      "assets": [
+        {
+          "path": "weights/controlfoley.pth",
+          "repo": "YJX-Xiaomi/ControlFoley",
+          "revision": "cde633f5c3f5ccbedf07994ad6dc124b761df22f",
+          "remote_path": "weights/controlfoley.pth",
+          "bytes": 11292123018,
+          "sha256": "8e2359cdf412b07381282c07e53205ce3d778a4a8be1edbc5c00d373e5186ed6"
+        },
+        {
+          "path": "ext_weights/v1-44.pth",
+          "repo": "YJX-Xiaomi/ControlFoley",
+          "revision": "cde633f5c3f5ccbedf07994ad6dc124b761df22f",
+          "remote_path": "ext_weights/v1-44.pth",
+          "bytes": 1221942998,
+          "sha256": "ab6cc15dc31947675f75c950c41f4dcfd0d6d1817555ac871f809ec388e4651a"
+        },
+        {
+          "path": "ext_weights/synchformer_state_dict.pth",
+          "repo": "YJX-Xiaomi/ControlFoley",
+          "revision": "cde633f5c3f5ccbedf07994ad6dc124b761df22f",
+          "remote_path": "ext_weights/synchformer_state_dict.pth",
+          "bytes": 950058171,
+          "sha256": "8aff082f2df5c3bc52759db0c865c7ee772ae6400b860d1b7e90413f2defb67c"
+        },
+        {
+          "path": "ext_weights/cav_mae_st.pth",
+          "repo": "YJX-Xiaomi/ControlFoley",
+          "revision": "cde633f5c3f5ccbedf07994ad6dc124b761df22f",
+          "remote_path": "ext_weights/cav_mae_st.pth",
+          "bytes": 762301703,
+          "sha256": "de9f7dff5a643690ae9e98bb686abf4f259456a9f3be8ef1fa403384eeefc6d8"
+        },
+        {
+          "path": "clip/open_clip_pytorch_model.bin",
+          "repo": "apple/DFN5B-CLIP-ViT-H-14-384",
+          "revision": "01b771ed0d1395ca5ffdd279897d665ebe00dfd2",
+          "remote_path": "open_clip_pytorch_model.bin",
+          "bytes": 3947081637,
+          "sha256": "c07a17b547d461c60a3cce5062b26bf8545b13de602c4c59d8490361eb716033"
+        },
+        {
+          "path": "clip/open_clip_config.json",
+          "repo": "apple/DFN5B-CLIP-ViT-H-14-384",
+          "revision": "01b771ed0d1395ca5ffdd279897d665ebe00dfd2",
+          "remote_path": "open_clip_config.json",
+          "bytes": 735,
+          "sha256": "e043bd1129b97d3afc77eef2e8bfda940af588dabf2cbaacc21e956345402f67"
+        },
+        {
+          "path": "clip/LICENSE",
+          "repo": "apple/DFN5B-CLIP-ViT-H-14-384",
+          "revision": "01b771ed0d1395ca5ffdd279897d665ebe00dfd2",
+          "remote_path": "LICENSE",
+          "bytes": 5820,
+          "sha256": "d8f5d9dfbdb60dc81b8f1720421699e7811070f0b46f6668f90253d5ac8c0b20"
+        },
+        {
+          "path": "vocoder/bigvgan_generator.pt",
+          "repo": "nvidia/bigvgan_v2_44khz_128band_512x",
+          "revision": "95a9d1dcb12906c03edd938d77b9333d6ded7dfb",
+          "remote_path": "bigvgan_generator.pt",
+          "bytes": 489041291,
+          "sha256": "d9fe7ec6bd0b44ed9d66973d5012d8181c1570b01e5c72df51973e241dccd357"
+        },
+        {
+          "path": "vocoder/config.json",
+          "repo": "nvidia/bigvgan_v2_44khz_128band_512x",
+          "revision": "95a9d1dcb12906c03edd938d77b9333d6ded7dfb",
+          "remote_path": "config.json",
+          "bytes": 1403,
+          "sha256": "65b7f487bfaf15256056a75f6667ef5f640214c981922a111927873705ea4ddb"
+        },
+        {
+          "path": "vocoder/LICENSE",
+          "repo": "nvidia/bigvgan_v2_44khz_128band_512x",
+          "revision": "95a9d1dcb12906c03edd938d77b9333d6ded7dfb",
+          "remote_path": "LICENSE",
+          "bytes": 1076,
+          "sha256": "90459cd52fc41bd723df7c0c76fac1e4dd60e6bfd644a7e2a93f325bed4f6d95"
+        }
+      ]
+    },
+    "input_video_sha256": "b5f009a394b37539d7e64917c77893d3b9c6b03e2d56b9c02e62f56b92e51ca7",
+    "output_sha256": "13345c2624c2d8e49308833bcb2c388fb81da96425f53b9a7e710f62339beb90",
+    "prompt": "Close-miked gentle low dry granular crunches exactly synchronized with the gloved fingers compressing and folding the yellow squishy. Fine soft sandy crumbling and muted tiny foam pops. Soft rounded transients, warm intimate texture. Quiet release friction. Silence when the hands hold still. No speech. No music.",
+    "negative_prompt": "rubber squeaks, squealing, whistling, chirping, high-pitched tones, ringing, metallic sounds, glass, crinkly cellophane, sharp loud snaps, harsh clicks, distortion, static hiss, music, speech, breathing, eating, chewing",
+    "seed": 3441,
+    "duration": 8.0,
+    "sample_rate": 44100,
+    "frames": 352800,
+    "steps": 25,
+    "cfg_strength": 4.5,
+    "precision": "bfloat16",
+    "staged_offload": true,
+    "torch_version": "2.5.1+cu121",
+    "peak_cuda_allocated_bytes": 5909794816,
+    "elapsed_seconds": 34.848
+  },
+  "bytes": 1058444
+}
