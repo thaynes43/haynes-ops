@@ -1,0 +1,21 @@
+{
+  "duration_seconds": 20.0,
+  "video": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 24,
+    "decoded_frames": 480,
+    "face_source_invariant_per_shot": true,
+    "expression_changed_on_each_return": true,
+    "animation": "one immutable RGBA toy per shot; whole-layer rigid affine transforms only; no generative facial motion"
+  },
+  "audio": {
+    "integrated_lufs": -20.03,
+    "true_peak_dbfs": -5.62,
+    "clipped_samples": 0
+  },
+  "sha256": "ceddb95ee01992a7996881cfd182aba2f50d14f8e1e014eee2d9664d302974cd",
+  "bytes": 10727742,
+  "human_listening_approval": "unverified",
+  "human_visual_review": "contact sheet inspected by driving session; no claim of Tom approval"
+}

@@ -1,0 +1,7 @@
+{
+  "transcript": "Can we make this butter squish crunchy? Obviously, tiny foam beads, maximum drama. One tiny bead, why does it sound expensive? That's the sound of luxury. Crunch costs extra.",
+  "expected": "Can we make this butter squish crunchy? Obviously. Tiny foam beads. Maximum drama. One tiny bead. Why does it sound expensive? That's the sound of luxury. Crunch costs extra.",
+  "normalized_match": true,
+  "recognizer": "existing local Wyoming ASR, no benchmark",
+  "source": "crunchy-butter-dolls.mp4"
+}

@@ -1,0 +1,86 @@
+{
+  "tool": "built-in image_gen.imagegen",
+  "calls": 5,
+  "input_reference_sha256": "629f30e4565483b1011bdcf8f33dc0ea0cf576622b949f6f38a54773b77c66f3",
+  "input_reference_published": false,
+  "assets": [
+    {
+      "file": "a-skeptical.png",
+      "sha256": "a9d99509aad18bb979a8dda2a3e437d8218c0f3e1bf6f90af0d972bf5688768c",
+      "size": [
+        1131,
+        1391
+      ],
+      "mode": "RGBA",
+      "bytes": 3095963,
+      "fixed_face_region_source_box": [
+        384,
+        306,
+        791,
+        723
+      ],
+      "fixed_face_region_rgba_sha256": "0f9be89c8cc97e8da3b1110c3ee2b929a8542a06ce40e42f30561334d8a31170"
+    },
+    {
+      "file": "a-shocked.png",
+      "sha256": "377806e971283c087016d841a9af326d58ee03656925009ebce3547b69873ab9",
+      "size": [
+        1131,
+        1391
+      ],
+      "mode": "RGBA",
+      "bytes": 2752076,
+      "fixed_face_region_source_box": [
+        384,
+        306,
+        791,
+        723
+      ],
+      "fixed_face_region_rgba_sha256": "bf429cfa53542327d0391a25f99ee367898e87db8bb8aaa1fc74bd9957e6ba45"
+    },
+    {
+      "file": "b-smug.png",
+      "sha256": "6dbe625bae64fd420cb79b1bb06a7db45ae107d20a95ace40b6c2a98127874d4",
+      "size": [
+        1131,
+        1391
+      ],
+      "mode": "RGBA",
+      "bytes": 2844636,
+      "fixed_face_region_source_box": [
+        384,
+        417,
+        791,
+        723
+      ],
+      "fixed_face_region_rgba_sha256": "d09e85327a5fa47f5a67b0df27ee696752a65006ff8249619b1eebdbe438dbe3"
+    },
+    {
+      "file": "b-delighted.png",
+      "sha256": "f3ec949b9b6cb1bff1cdab509689268243a78c1f12f73e15d8326e377cbf834e",
+      "size": [
+        1131,
+        1391
+      ],
+      "mode": "RGBA",
+      "bytes": 2630888,
+      "fixed_face_region_source_box": [
+        384,
+        417,
+        791,
+        723
+      ],
+      "fixed_face_region_rgba_sha256": "c4b1fa60d1bfe8b272af4f48b0166fefb03c4ea17d0956d7cfdb7e78b45feb5b"
+    },
+    {
+      "file": "set.png",
+      "sha256": "12819e8c581fd60f4f46f229cd3f8ee8b977da7b96ad6b191c911f0cee28807c",
+      "size": [
+        940,
+        1672
+      ],
+      "mode": "RGB",
+      "bytes": 1684301
+    }
+  ]
+}

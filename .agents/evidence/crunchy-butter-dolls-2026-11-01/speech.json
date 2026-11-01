@@ -1,0 +1,49 @@
+{
+  "service": "existing Kokoro Wyoming",
+  "model": "Kokoro-82M v1.0",
+  "voices_verified_by": "live Wyoming Describe response",
+  "facial_animation": false,
+  "lines": [
+    {
+      "character": "a",
+      "voice": "bf_emma",
+      "text": "Can we make this butter squish crunchy?",
+      "duration_seconds": 2.112,
+      "rate": 24000,
+      "channels": 1,
+      "sha256": "80106082f960407c76d09c9e24f1e8995497ed6281cc7953a2ccc7240ce683e9",
+      "file": "voice-1.wav"
+    },
+    {
+      "character": "b",
+      "voice": "af_bella",
+      "text": "Obviously. Tiny foam beads. Maximum drama.",
+      "duration_seconds": 3.2426666666666666,
+      "rate": 24000,
+      "channels": 1,
+      "sha256": "f8e24c98e28084444e3717d5e3efcc4d27ca95773cd150eb51e11c13aa434522",
+      "file": "voice-2.wav"
+    },
+    {
+      "character": "a",
+      "voice": "bf_emma",
+      "text": "One tiny bead. Why does it sound expensive?",
+      "duration_seconds": 3.1146666666666665,
+      "rate": 24000,
+      "channels": 1,
+      "sha256": "40ad118ee3231f2950eb406dc10f67a342def0c366465ee637942b84dcd1afa7",
+      "file": "voice-3.wav"
+    },
+    {
+      "character": "b",
+      "voice": "af_bella",
+      "text": "That's the sound of luxury. Crunch costs extra.",
+      "duration_seconds": 2.7306666666666666,
+      "rate": 24000,
+      "channels": 1,
+      "sha256": "7fe024bc0bec2031ac4ed20a75dfe0d00377ec281edb3ef16d67fb4c6ab87cec",
+      "file": "voice-4.wav"
+    }
+  ],
+  "revision": "v2: clarify third line and keep crunch before speech"
+}
