@@ -74,8 +74,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # dev-env#806 source merge c411ebb5: provider reset cards and reported usage charts. Publish run 41277341781 signed and verified this portal digest; allowance collection remains unconfigured.
-          image: ghcr.io/thaynes43/dev-env-portal:sha-c411ebb@sha256:1e8cbef8b98b9f1fc1ad07abda37621eee26653dafd63c1995744c289f0fe518
+          # dev-env#808 source merge 0ccd54ae: dormant selected-source reader, no ingestion configured. Publish run 41280706165 signed and verified this portal digest; existing allowance holds remain.
+          image: ghcr.io/thaynes43/dev-env-portal:sha-0ccd54a@sha256:ed3acce4ef4bd3b6d0274d1a76eafd7b8dfef2bf6a2367ff28c115e201ea0dc3
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
