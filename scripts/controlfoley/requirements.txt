@@ -39,7 +39,7 @@ pyyaml==6.0.3
 regex==2026.9.29
 requests==2.32.5
 safetensors==0.7.0
-scipy==1.15.3
+scipy==1.18.1
 soundfile==0.13.1
 sympy==1.13.1
 timm==1.0.25
