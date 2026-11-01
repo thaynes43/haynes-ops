@@ -1,0 +1,87 @@
+{
+  "story": "OP341",
+  "source_jobs": [
+    {
+      "name": "squish",
+      "id": "3ff4f3994e494e9e811d51b1364088b2",
+      "running_seconds": 121.21633386611938,
+      "sha256": "7504441db2011d522d126468df0f9f4eaa9bb6f6321200bd6cb74b01b6bbec36",
+      "simultaneous_ge90_samples": 17
+    },
+    {
+      "name": "sprinkles",
+      "id": "8150c8e352ee46f49fa14a9b04c29607",
+      "running_seconds": 131.3205144405365,
+      "sha256": "4760f9c58ed396c2ae9a7726aee05119a4acd394944d9047322a0f243c06657a",
+      "simultaneous_ge90_samples": 17
+    },
+    {
+      "name": "crunch",
+      "id": "1fd8e22c89444a6b85676a355f3ca1ca",
+      "running_seconds": 131.3046133518219,
+      "sha256": "348927c46f1abe08006a3cbc2c548eeadd64a4887e32b5d82fa6112e34d6612c",
+      "simultaneous_ge90_samples": 18
+    },
+    {
+      "name": "ta-da",
+      "id": "b07edb8a83454b709d1ffd67b0418c4e",
+      "running_seconds": 131.33709073066711,
+      "sha256": "56135b556437cdbde3716a860d4a0f3e82316ac85b95bc666355c0e5c09e33f2",
+      "simultaneous_ge90_samples": 18
+    }
+  ],
+  "gpu_peaks": {
+    "GPU-d8a856f1-f955-f683-bc24-654561496774": {
+      "temperature_c": 91.0,
+      "memory_mib": 22028.0,
+      "power_w": 349.3,
+      "utilization_percent": 100.0
+    },
+    "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a": {
+      "temperature_c": 81.0,
+      "memory_mib": 11854.0,
+      "power_w": 349.55,
+      "utilization_percent": 100.0
+    }
+  },
+  "replacement_renders": 0,
+  "benchmarks": 0,
+  "speech_voices": [
+    "af_heart",
+    "am_puck"
+  ],
+  "mode": "separate fixed-voice narration and SFX, not lip sync",
+  "hardware_acceptance": "not established; no power/clock/cooling changes",
+  "source_pr": "https://github.com/thaynes43/haynes-ops/pull/4510",
+  "private_video_url": "https://video.haynesops.com/videos/2e9035ce6bdb4fd7a83727fa6be71dcb/file",
+  "delivery_verification": {
+    "http": 200,
+    "content_type": "video/mp4",
+    "bytes": 7598756,
+    "sha256": "2d749f6de61b179812af2f62418ec1aa308a7048f3329cbb7f5b45cec5c12cb9",
+    "vantage": "existing Pipelines Pod"
+  },
+  "encoded_audio": {
+    "codec": "aac",
+    "rate": 48000,
+    "channels": 2
+  },
+  "runtime": {
+    "ready": true,
+    "active_job": null,
+    "accepting_jobs": true,
+    "helmreleases_ready": [
+      "wan-video",
+      "kokoro",
+      "whisper",
+      "comfyui",
+      "llama-server",
+      "open-webui"
+    ],
+    "voice_pods_and_restart_counts_unchanged": true,
+    "power_limit_readback_w": [
+      350,
+      350
+    ]
+  }
+}

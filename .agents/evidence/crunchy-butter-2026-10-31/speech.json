@@ -1,0 +1,43 @@
+{
+  "service": "existing Kokoro Wyoming",
+  "model": "Kokoro-82M v1.0",
+  "mode": "separate fixed-voice narration, not lip-synced dialogue",
+  "lines": [
+    {
+      "text": "Can you make butter crunchy?",
+      "voice": "af_heart",
+      "file": "voice-1.wav",
+      "duration_seconds": 1.536,
+      "rate": 24000,
+      "channels": 1,
+      "sha256": "1897e4ca397afa15a605c95ec8da89b2251312c176b5e3a25a9a0789ef0dee9c"
+    },
+    {
+      "text": "Only in the butter laboratory!",
+      "voice": "am_puck",
+      "file": "voice-2.wav",
+      "duration_seconds": 1.6426666666666667,
+      "rate": 24000,
+      "channels": 1,
+      "sha256": "80e492e391de6505e4f96198ac0bb8f6ce318934c7bb6768e56382ee276fd2f6"
+    },
+    {
+      "text": "That's not butter. That's a tiny rave!",
+      "voice": "af_heart",
+      "file": "voice-3.wav",
+      "duration_seconds": 2.3253333333333335,
+      "rate": 24000,
+      "channels": 1,
+      "sha256": "ad0e74a713aa3fe53bd311429247cc48fe955c62094c1af1e91ff9596aef026b"
+    },
+    {
+      "text": "Behold! Toastless toast.",
+      "voice": "am_puck",
+      "file": "voice-4.wav",
+      "duration_seconds": 1.8346666666666667,
+      "rate": 24000,
+      "channels": 1,
+      "sha256": "d36be8f8d262bb1813bb92a4a3deecfebd67746f9576cbc2b1326e0cbb6f4dc4"
+    }
+  ]
+}

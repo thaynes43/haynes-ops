@@ -1,0 +1,23 @@
+{
+  "duration_seconds": 16.0,
+  "video": {
+    "codec": "h264",
+    "width": 1080,
+    "height": 1920,
+    "fps": "24",
+    "decoded_frames": 384
+  },
+  "audio": {
+    "rate": 48000,
+    "channels": 2,
+    "decoded_seconds": 16.0,
+    "integrated_lufs": -18.72,
+    "true_peak_dbfs": -2.93,
+    "sample_peak_dbfs": -2.928742411140037,
+    "clipped_samples": 0
+  },
+  "bytes": 7598756,
+  "sha256": "2d749f6de61b179812af2f62418ec1aa308a7048f3329cbb7f5b45cec5c12cb9",
+  "source": "4x1280x704, centered396x704crop/upscale, retimed81to96frames; separate fixed-voice TTS, not lip sync",
+  "human_listening_approval": "unverified"
+}
