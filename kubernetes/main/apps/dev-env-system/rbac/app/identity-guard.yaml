@@ -1,3 +1,4 @@
+# PROPOSED ONCE-ONLY: protect admin issuer target namespace. Caller match and every other Deny stay unchanged.
 ---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/admissionregistration.k8s.io/validatingadmissionpolicy_v1.json
 # dev-env-identity-guard (DESIGN-001 6.11, D-19): the rules that bind every identity in
@@ -208,7 +209,7 @@ spec:
       expression: oldObject.?spec.orValue({})
   validations:
     # 1. The dev-env namespaces.
-    - expression: "!(variables.targetNamespace in ['dev-env-system', 'dev-agents', 'dev-tools'])"
+    - expression: "!(variables.targetNamespace in ['dev-env-system', 'dev-agents', 'dev-tools', 'dev-env-admin-issuance'])"
       messageExpression: >-
         'dev-env-identity-guard: ' + request.userInfo.username + ' may not ' + request.operation + ' ' +
         variables.resource + (variables.subresource == '' ? '' : '/' + variables.subresource) + ' in ' + variables.targetNamespace +
