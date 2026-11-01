@@ -6,7 +6,8 @@ live Prometheus). Fixtures evaluate the actual GitOps rules through 20 minutes,
 including their 15-minute alert hold; they never contact hardware.
 
 The matrix covers both physical cache identities, current/old/new device indexes,
-wrong/missing/ambiguous identity, cross-job/host/device join isolation, additional
+wrong/missing/ambiguous identity (including a serial duplicated across devices),
+cross-job/host/device join isolation, additional
 and combined warning bits, independent overall/legacy/exit-status failures,
 error-log growth and resets, missing prerequisite metrics, media errors, current
 temperature versus rated limits, low spare, and healthy unrelated devices.

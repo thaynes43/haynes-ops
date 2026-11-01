@@ -89,6 +89,20 @@ for metric in ("smartctl_device_smart_status", "smartctl_device_smartctl_exit_st
                "smartctl_device_media_errors", "smartctl_device_num_err_log_entries"):
     expected = (CRITICAL,) if metric == "smartctl_device_smart_status" else BOTH
     scenarios.append(scenario(f"missing prerequisite {metric}", omit=metric, expected=expected))
+# A duplicated physical identity on two device names must exempt neither device.
+collision = scenario("duplicate serial on two devices", expected=BOTH)
+other = scenario("colliding second device", device="nvme8", expected=BOTH)
+collision["input_series"] += other["input_series"]
+for check, second in zip(collision["alert_rule_test"], other["alert_rule_test"]):
+    check["exp_alerts"] += second["exp_alerts"]
+scenarios.append(collision)
+# The same serial text in another scrape job cannot cancel or grant our exemption.
+scoped = scenario("same serial in other job stays independently alertable")
+other = scenario("other job", device="nvme8", job="other-exporter", expected=BOTH)
+scoped["input_series"] += other["input_series"]
+for check, second in zip(scoped["alert_rule_test"], other["alert_rule_test"]):
+    check["exp_alerts"] += second["exp_alerts"]
+scenarios.append(scoped)
 # Exercise both identities together, then transitions after an acknowledged period.
 pair = scenario("both physical cache drives together")
 pair["input_series"] += scenario("second", serial="2331E865B76D", device="nvme1")["input_series"]
