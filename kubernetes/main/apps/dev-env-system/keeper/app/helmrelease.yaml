@@ -177,7 +177,7 @@ spec:
             image:
               repository: ghcr.io/thaynes43/dev-env
               # v2.39.1 (dev-env#505); publish-agent.yml run 39706793789 signed/verified. Was v2.39.0 (dev-env#495), run 39466623563 signed/verified. Was v2.38.3 (dev-env#489), run 39391981933 signed/verified. Was v2.38.2 (dev-env#485: per-pod login lock), run 39387720469 signed/verified. Was v2.38.1 (dev-env#483): agentd claude-login-abandon (the exec guard admits it, haynes-ops #4132); publish-agent.yml run 39382031869 signed/verified. Was v2.38.0 (dev-env#475).
-              tag: 2.39.1@sha256:0eb02674cd24e64a724f36fd6ff507c1279d295cc44d71effbec22af4d19b8fa
+              tag: 2.83.0@sha256:91d5a0a8443533123e1f68e64c604ec04a72bbad8b9682b0b92d895c4bd2e81c
               pullPolicy: IfNotPresent
             args:
               - claude-login-idle
