@@ -1,0 +1,20 @@
+---
+# Tom approved this exact catalog-role exception on 2026-11-01 (OP233).
+# It permits the reviewed root catalog role, not any binding or other role.
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: dev-env-admin-catalog
+  namespace: kyverno
+spec:
+  exceptions:
+    - policyName: restrict-rbac-escalation
+      ruleNames:
+        - no-wildcard-or-escalate-role
+  match:
+    any:
+      - resources:
+          kinds:
+            - ClusterRole
+          names:
+            - dev-env-grant-breakglass
