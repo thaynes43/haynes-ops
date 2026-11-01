@@ -27,7 +27,9 @@ def request(port,path,body=None):
     data=None if body is None else json.dumps(body).encode()
     with urlopen(Request(f'http://127.0.0.1:{port}'+path,data=data,
                          headers={'Content-Type':'application/json'}),timeout=20) as r:
-        return json.load(r)
+        raw=r.read()
+        if not raw and port==8188 and path=='/free':return None
+        return json.loads(raw)
 
 
 def acquire():
