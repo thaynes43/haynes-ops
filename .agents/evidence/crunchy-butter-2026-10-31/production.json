@@ -1,0 +1,169 @@
+{
+  "id": "2e9035ce6bdb4fd7a83727fa6be71dcb",
+  "kind": "edited_production",
+  "story": "OP341",
+  "title": "THE BUTTER LAB \u2014 Crunchy Butter",
+  "state": "succeeded",
+  "created_at": 1793491432.1643305,
+  "finished_at": 1793491432.1643305,
+  "telemetry": [],
+  "output": "productions/op341/crunchy-butter-short.mp4",
+  "bytes": 7598756,
+  "sha256": "2d749f6de61b179812af2f62418ec1aa308a7048f3329cbb7f5b45cec5c12cb9",
+  "source_jobs": [
+    {
+      "name": "squish",
+      "id": "3ff4f3994e494e9e811d51b1364088b2",
+      "sha256": "7504441db2011d522d126468df0f9f4eaa9bb6f6321200bd6cb74b01b6bbec36"
+    },
+    {
+      "name": "sprinkles",
+      "id": "8150c8e352ee46f49fa14a9b04c29607",
+      "sha256": "4760f9c58ed396c2ae9a7726aee05119a4acd394944d9047322a0f243c06657a"
+    },
+    {
+      "name": "crunch",
+      "id": "1fd8e22c89444a6b85676a355f3ca1ca",
+      "sha256": "348927c46f1abe08006a3cbc2c548eeadd64a4887e32b5d82fa6112e34d6612c"
+    },
+    {
+      "name": "ta-da",
+      "id": "b07edb8a83454b709d1ffd67b0418c4e",
+      "sha256": "56135b556437cdbde3716a860d4a0f3e82316ac85b95bc666355c0e5c09e33f2"
+    }
+  ],
+  "assets": [
+    {
+      "path": "/workspace/output/productions/op341/crunchy-butter-short.mp4",
+      "bytes": 7598756,
+      "sha256": "2d749f6de61b179812af2f62418ec1aa308a7048f3329cbb7f5b45cec5c12cb9"
+    },
+    {
+      "path": "/workspace/output/productions/op341/crunchy-butter-soundtrack.wav",
+      "bytes": 4608102,
+      "sha256": "8ad7f77e7571b6c62980094b5f29464fb7be9064f2947c28a80f2ce245da7339"
+    },
+    {
+      "path": "/workspace/output/productions/op341/dialogue-only.wav",
+      "bytes": 3072044,
+      "sha256": "b859e5cd466e4f44ad15025f0fa0236966a68fe976aa072f194f0648d683e992"
+    },
+    {
+      "path": "/workspace/output/productions/op341/speech.json",
+      "bytes": 1296,
+      "sha256": "a3ae4d196c64e74977896d8becb0f6959b2a44c5c16181c2e116021f8e88e84f"
+    },
+    {
+      "path": "/workspace/output/productions/op341/sfx-squish.wav",
+      "bytes": 1764044,
+      "sha256": "95935b03c28171e4882ed19e0510e92087b4f30792ed18d8931b13cc40521a5b"
+    },
+    {
+      "path": "/workspace/output/productions/op341/sfx-crunch.wav",
+      "bytes": 1764044,
+      "sha256": "c7bf201b8e3923a40b159de5efdeb6b90cc093e6927fec3687d8c49508d7a446"
+    },
+    {
+      "path": "/workspace/output/productions/op341/sfx-squish.json",
+      "bytes": 1558,
+      "sha256": "e0bf29df56abe5824abf3b5637141080756584dd6e80b2dc4613f1bc57bfedc4"
+    },
+    {
+      "path": "/workspace/output/productions/op341/sfx-crunch.json",
+      "bytes": 1609,
+      "sha256": "e1e14dc353cac20d5ed8357ee5fb5c62b36f0d0b40a604da9cdcb6f8789baaae"
+    },
+    {
+      "path": "/workspace/output/productions/op341/shots.json",
+      "bytes": 3249,
+      "sha256": "9103e7245441723c585e5b84b36dfa6dabadb9455f75c88f8c004cf9dd0b7c96"
+    },
+    {
+      "path": "/workspace/output/productions/op341/validation.json",
+      "bytes": 626,
+      "sha256": "50b7c8f3bea697dae9ead4af6a27c426866a82ea26ad9b3f023e4cdf9e3d0b68"
+    },
+    {
+      "path": "/workspace/output/productions/op341/audio-loudness.json",
+      "bytes": 263,
+      "sha256": "4e9d94bff3220d3918f292a6c3dbe6e79e866764c7c5ccf603e0cd1be9833e90"
+    },
+    {
+      "path": "/workspace/output/productions/op341/contact-sheet.jpg",
+      "bytes": 100420,
+      "sha256": "c94783725a9ddaf1a129c608c7df3739c461a0ca6506205aaa6dd34e5e17c34e"
+    },
+    {
+      "path": "/workspace/output/productions/op341/dialogue-transcript.json",
+      "bytes": 261,
+      "sha256": "41cc6eeac5b67afb86d7fa2fd8560d1b81e5eb57f56d61ad1d04a6f671b459f9"
+    },
+    {
+      "path": "/workspace/output/productions/op341/dialogue-mixed-transcript.json",
+      "bytes": 283,
+      "sha256": "863b4ca6af797aa0708ac7de9f6c46ec09bf5c2925d5232c6cd92651f2d0a36a"
+    },
+    {
+      "path": "/workspace/output/productions/op341/voice-1.wav",
+      "bytes": 73772,
+      "sha256": "1897e4ca397afa15a605c95ec8da89b2251312c176b5e3a25a9a0789ef0dee9c"
+    },
+    {
+      "path": "/workspace/output/productions/op341/voice-2.wav",
+      "bytes": 78892,
+      "sha256": "80e492e391de6505e4f96198ac0bb8f6ce318934c7bb6768e56382ee276fd2f6"
+    },
+    {
+      "path": "/workspace/output/productions/op341/voice-3.wav",
+      "bytes": 111660,
+      "sha256": "ad0e74a713aa3fe53bd311429247cc48fe955c62094c1af1e91ff9596aef026b"
+    },
+    {
+      "path": "/workspace/output/productions/op341/voice-4.wav",
+      "bytes": 88108,
+      "sha256": "d36be8f8d262bb1813bb92a4a3deecfebd67746f9576cbc2b1326e0cbb6f4dc4"
+    },
+    {
+      "path": "/workspace/output/productions/op341/squish.mp4",
+      "bytes": 391159,
+      "sha256": "7504441db2011d522d126468df0f9f4eaa9bb6f6321200bd6cb74b01b6bbec36"
+    },
+    {
+      "path": "/workspace/output/productions/op341/squish.json",
+      "bytes": 12927,
+      "sha256": "ebadb2ab8e9ffdfb68138c49ed3ae39afc220edfedf15022eb4b1bd822f92304"
+    },
+    {
+      "path": "/workspace/output/productions/op341/sprinkles.mp4",
+      "bytes": 903976,
+      "sha256": "4760f9c58ed396c2ae9a7726aee05119a4acd394944d9047322a0f243c06657a"
+    },
+    {
+      "path": "/workspace/output/productions/op341/sprinkles.json",
+      "bytes": 13927,
+      "sha256": "2cedac44f1f9220c1348597a2b7564de4f4b63e35fbaef649976882fe8c2eba7"
+    },
+    {
+      "path": "/workspace/output/productions/op341/crunch.mp4",
+      "bytes": 837700,
+      "sha256": "348927c46f1abe08006a3cbc2c548eeadd64a4887e32b5d82fa6112e34d6612c"
+    },
+    {
+      "path": "/workspace/output/productions/op341/crunch.json",
+      "bytes": 13935,
+      "sha256": "270c4da509d83df3860aa0b91e0c5cf928946afc7fb4fab651682446d2b9a56c"
+    },
+    {
+      "path": "/workspace/output/productions/op341/ta-da.mp4",
+      "bytes": 699181,
+      "sha256": "56135b556437cdbde3716a860d4a0f3e82316ac85b95bc666355c0e5c09e33f2"
+    },
+    {
+      "path": "/workspace/output/productions/op341/ta-da.json",
+      "bytes": 13932,
+      "sha256": "c61edb5698980190ead60a4c6b8d1c64e75c101d0bcf913fe2287431c6f4b29a"
+    }
+  ],
+  "preset": "editorial-16s-portrait",
+  "provenance": "Four distinct dual3090 Wan2.2 clips; fixed-voice Kokoro speech, separately generated Small-SFX squish/crunch, original chime, captions and edit. Toy play, not food. Separate narration, no lip-sync claim."
+}

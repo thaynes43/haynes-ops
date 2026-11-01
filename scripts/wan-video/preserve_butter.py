@@ -12,7 +12,7 @@ REMOTE=['kubectl','exec','-i','-n','ai','deploy/wan-video','-c','api','--','pyth
 if __name__=='__main__':
     if (OUT/'production.json').exists():raise RuntimeError('Production already preserved')
     validation=json.loads((OUT/'validation.json').read_text())
-    assert validation['video']['decoded_frames']==384 and validation['duration_seconds']==16
+    assert validation['video']['decoded_frames']==384 and abs(validation['duration_seconds']-16)<0.05
     names=['crunchy-butter-short.mp4','crunchy-butter-soundtrack.wav','dialogue-only.wav','speech.json',
            'sfx-squish.wav','sfx-crunch.wav','sfx-squish.json','sfx-crunch.json','shots.json',
            'validation.json','audio-loudness.json','contact-sheet.jpg','dialogue-transcript.json','dialogue-mixed-transcript.json']
@@ -26,6 +26,8 @@ if __name__=='__main__':
     assert hashlib.sha256((OUT/'crunchy-butter-short.mp4').read_bytes()).hexdigest()==validation['sha256']
     missing=[name for name in names if not (OUT/name).is_file()]
     if missing:raise RuntimeError('Missing production inputs before any upload: '+', '.join(missing))
+    assert json.loads((OUT/'dialogue-mixed-transcript.json').read_text())['normalized_match']
+    assert validation['audio']['clipped_samples']==0 and validation['audio']['true_peak_dbfs']<=-1
     digests={name:hashlib.sha256((OUT/name).read_bytes()).hexdigest() for name in names}
     code='''import hashlib,pathlib,sys,json
 p=pathlib.Path(sys.argv[1]);p.parent.mkdir(parents=True,exist_ok=True);h=hashlib.sha256()

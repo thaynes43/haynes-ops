@@ -1,0 +1,6 @@
+{
+  "transcript": "Can you make butter crunchy? Only in the butter laboratory. That's not butter, that's a tiny rave. Behold, toastless toast.",
+  "source": "crunchy-butter-short.mp4",
+  "recognizer": "existing whisper service, configured Parakeet TDT",
+  "normalized_match": true
+}

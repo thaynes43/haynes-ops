@@ -80,6 +80,48 @@ Existing artifacts deliberately block automatic render/speech/check reruns.
 
 ## Validation and delivery
 
-Production in progress. Final media checks, download pointer, runtime readback
-and review status will be recorded here before completing the story. Human
-listening approval remains unverified, even when speech recognition matches.
+- [Finished film — private network](https://video.haynesops.com/videos/2e9035ce6bdb4fd7a83727fa6be71dcb/file)
+- [Editorial production record — private network](https://video.haynesops.com/videos/2e9035ce6bdb4fd7a83727fa6be71dcb)
+- Local film: `/home/dev/artifacts/crunchy-butter/crunchy-butter-short.mp4`.
+- Separate mix: `/home/dev/artifacts/crunchy-butter/crunchy-butter-soundtrack.wav`.
+- Dialogue alone: `/home/dev/artifacts/crunchy-butter/dialogue-only.wav`.
+- [Source PR #4510](https://github.com/thaynes43/haynes-ops/pull/4510).
+
+Completed 2026-11-01 UTC, within the bounded story begun October 31. The final
+film is **16.00 seconds**, 1080×1920 portrait H.264 at 24 fps, with stereo AAC
+at 48 kHz. All **384 frames** and the complete audio stream decoded. Actual
+encoded stream metadata independently confirms AAC/48 kHz/stereo. It measures
+**−18.72 LUFS**, **−2.93 dBTP**, with zero clipping.
+
+The final mixed movie was transcribed once in addition to the earlier pure
+dialogue check. All intended words match after normalizing punctuation and
+case, including “toastless toast”; its transcript is preserved. Human listening
+approval remains unverified, even when speech recognition matches.
+
+The existing Pipelines Pod fetched the private URL: HTTP 200 `video/mp4`,
+7,598,756 bytes, SHA256
+`2d749f6de61b179812af2f62418ec1aa308a7048f3329cbb7f5b45cec5c12cb9`.
+The same hash matches the validated local file. Twenty-six new assets were
+copied exclusively/checksummed into `output/productions/op341/` on the existing
+Wan PVC, then the new editorial ledger record was atomically published.
+Prior production paths and source histories were not overwritten.
+
+All four source jobs succeeded; **zero replacement renders**, no benchmarks.
+Both GPUs computed together in every job: 70 five-second samples had both at
+least 90% utilization. Card C/A peaked at 91/81°C; configured and enforced limits
+were read back at 350 W each during production. No thermal flags were sampled
+and sustained hardware acceptance is not established by this creative output.
+
+Final runtime: Wan ready/idle/accepting jobs; Wan, Kokoro, whisper, existing
+ComfyUI, llama-server and Open WebUI HelmReleases Ready. Kokoro/whisper keep the
+same Pod identities and pre-existing restart count of one. Runtime activity
+was ended. No config, access, hardware, clock or power changes were made.
+
+Independent native review and targeted rereview completed: ducking discontinuities
+were corrected with ramps. Advisory review findings were fixed: all inputs
+and digests preflight before remote writes, transcript/SFX recipes preserved,
+and preservation uses the validator's duration tolerance. Final media and mixed
+transcript checks gate preservation. Required checks and final merge are recorded
+on the PR and canonical story. Detailed nonsecret evidence is in `validation.json`,
+`render-report.json`, `production.json`, audio metadata and `jobs/`; binaries
+remain private.
