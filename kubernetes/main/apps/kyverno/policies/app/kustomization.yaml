@@ -14,6 +14,7 @@ resources:
   - ./default-cpu-request.yaml
   - ./besteffort-pod-alert.yaml
   - ./exceptions/multus-rbac.yaml
+  - ./exceptions/dev-env-admin-catalog.yaml
   - ./exceptions/rbac-legit.yaml
   - ./exceptions/pss-baseline.yaml
   - ./exceptions/egpu-test-capabilities.yaml
