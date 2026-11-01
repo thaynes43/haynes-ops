@@ -1,0 +1,19 @@
+{
+  "duration_s": 20.0,
+  "decoded_frames": 480,
+  "video_packet_sha256": "df91615bc95baf9721846342f0937477205d77e8a871a3dc471e1ddfd6bf2bfb",
+  "video_unchanged": true,
+  "source_sha256": "927a195531a92dc47753e78b04a9d3bfc313ed0e3471730b721b8eab635fc1a2",
+  "sha256": "fd5bc66b9c71cb53bde7bc8aa9d20ca72ea1537e29e29e387639082df365732d",
+  "bytes": 11393968,
+  "audio": {
+    "integrated_lufs": -29.8,
+    "true_peak_dbtp": -7.93,
+    "clipped_samples": 0,
+    "energy_above_3khz_fraction": 0.009227175012923526,
+    "previous_energy_above_3khz_fraction": 0.7908940476780253,
+    "hold_4_5_to_6_s_rms": 0.0
+  },
+  "sync": "Ten individual motion-linked editorial spots, not a periodic bed; approximate visual timing, not physical Foley.",
+  "human_listening_approval": "unverified; Tom rejected preceding mix; this is a new candidate"
+}
