@@ -1,5 +1,6 @@
 """Bounded asynchronous video API for the isolated, two-GPU ComfyUI worker."""
 import csv
+import fcntl
 import io
 import json
 import os
@@ -24,6 +25,17 @@ LOCK = threading.Lock()
 ACTIVE = None
 UNSAFE = False
 PRESETS = {"preview": (832, 480, 49, 20), "720p": (1280, 704, 81, 20)}
+
+
+def acquire_compute():
+    """Cross-process admission shared with the private Foley sidecar."""
+    lease = (ROOT / "compute.lock").open("a")
+    try:
+        fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return lease
+    except BlockingIOError:
+        lease.close()
+        return None
 
 
 def engine(path, body=None):
@@ -134,11 +146,15 @@ def recover():
         UNSAFE = True
 
 
-def generate(job, prompt):
+def generate(job, prompt, lease=None):
     global ACTIVE, UNSAFE
     started = False
     submission_attempted = False
     try:
+        if lease is None:
+            lease = acquire_compute()
+        if lease is None:
+            raise RuntimeError("Compute is reserved by another video/audio job")
         sample = gpu_sample()
         if any(s["utilization_percent"] > 5 or s["memory_mib"] > 22000 for s in sample["gpus"]):
             raise RuntimeError("Rack GPUs are busy; refusing to start a competing job")
@@ -202,8 +218,11 @@ def generate(job, prompt):
         job.update(state="failed", error=type(exc).__name__ + ": " + str(exc)[:200], finished_at=time.time())
         save(job)
     finally:
+        if lease is not None:
+            lease.close()
         with LOCK:
-            ACTIVE = None
+            if ACTIVE == job["id"]:
+                ACTIVE = None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -286,14 +305,25 @@ class Handler(BaseHTTPRequestHandler):
                 if ACTIVE or UNSAFE:
                     self.respond(409, {"error": "Video worker is busy or requires inspection", "active_job": ACTIVE})
                     return
-                job = {"id": uuid.uuid4().hex, "state": "queued", "preset": preset, "seed": seed,
-                       "created_at": time.time(), "telemetry": []}
-                save(job)
-                ACTIVE = job["id"]
-                threading.Thread(target=generate, args=(job, prompt.strip()), daemon=True).start()
+                lease = acquire_compute()
+                if lease is None:
+                    self.respond(409, {"error": "Compute reserved by another video/audio job"})
+                    return
+                try:
+                    job = {"id": uuid.uuid4().hex, "state": "queued", "preset": preset, "seed": seed,
+                           "created_at": time.time(), "telemetry": []}
+                    save(job)
+                    ACTIVE = job["id"]
+                    threading.Thread(target=generate, args=(job, prompt.strip(), lease), daemon=True).start()
+                except Exception:
+                    lease.close()
+                    ACTIVE = None
+                    raise
             self.respond(202, {"id": job["id"], "state": "queued", "status_url": "/videos/" + job["id"]})
         except (ValueError, TypeError, AttributeError):
             self.respond(400, {"error": "Invalid prompt, preset, seed, or JSON body"})
+        except Exception:
+            self.respond(503, {"error": "Worker unavailable"})
 
 
 def main():

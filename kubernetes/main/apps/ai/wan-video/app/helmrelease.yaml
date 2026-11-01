@@ -51,6 +51,17 @@ spec:
             resources:
               requests: {cpu: 100m, memory: 256Mi}
               limits: {cpu: "2", memory: 2Gi}
+          provision-foley-models:
+            image: &foleyImage
+              repository: ghcr.io/thaynes43/audio-authoring
+              tag: controlfoley-0.1.0-856a655934d054e15ebdc56d682cb2896344ea7d-41261921965-1@sha256:67ca2e97c605d4846b8ea01f991cfe35ab3238a59ffbc7bffdf5380762efe02a
+            command: [python, /opt/controlfoley-tools/provision.py]
+            args: [--weights-dir, /workspace/controlfoley-models]
+            env:
+              NVIDIA_VISIBLE_DEVICES: void
+            resources:
+              requests: {cpu: 100m, memory: 256Mi}
+              limits: {cpu: "2", memory: 2Gi}
         containers:
           app:
             image: *image
@@ -75,6 +86,21 @@ spec:
               # one-card workload, requesting both cannot select the wrong card.
               requests: {cpu: "2", memory: 24Gi, nvidia.com/gpu: 2}
               limits: {cpu: "4", memory: 64Gi, nvidia.com/gpu: 2}
+          foley:
+            image: *foleyImage
+            # Same Pod's complete pair is already allocated to the app container;
+            # this sidecar sees only Card A and shares the compute.lock lease.
+            env:
+              NVIDIA_VISIBLE_DEVICES: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a
+              NVIDIA_DRIVER_CAPABILITIES: compute,utility
+              CUDA_VISIBLE_DEVICES: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a
+              OMP_NUM_THREADS: "2"
+              MKL_NUM_THREADS: "2"
+              OPENBLAS_NUM_THREADS: "2"
+              XDG_CACHE_HOME: /tmp/foley-cache
+            resources:
+              requests: {cpu: "1", memory: 12Gi}
+              limits: {cpu: "2", memory: 32Gi}
           api:
             image: *image
             command: [python, /config/video/api.py]
