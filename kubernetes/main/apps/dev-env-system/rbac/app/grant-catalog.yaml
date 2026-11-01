@@ -112,23 +112,3 @@ rules:
   - apiGroups: [policy]
     resources: [poddisruptionbudgets]
     verbs: [get, list, watch]
-
----
-# SOURCE PROPOSAL ONLY — default-off S7 RD2; no live P7 authorization.
-# This is root equivalent. It includes impersonate, ServiceAccount TokenRequests,
-# Secret get/list, bind and escalate across all namespaces, including Never.
-# Removing the original grant SA/binding does NOT recall derived credentials,
-# impersonated sessions, copied Secrets or persistent resources/effects.
-# This fixture contains no standing binding or actor subject.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: dev-env-grant-breakglass
-  labels:
-    dev-env.haynesops.com/grant-role: "true"
-rules:
-  - apiGroups: ['*']
-    resources: ['*']
-    verbs: ['*']
-  - nonResourceURLs: ['*']
-    verbs: ['*']
