@@ -1,0 +1,34 @@
+# PROPOSED ONCE-ONLY, NOT APPLIED. No standing admin subject or token.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev-env-admin-issuance
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: dev-env-admin-issuance
+  name: dev-env-broker-admin-issuer
+rules:
+  - apiGroups: ['']
+    resources: [serviceaccounts]
+    verbs: [get, create, delete]
+  - apiGroups: ['']
+    resources: [serviceaccounts/token]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: dev-env-admin-issuance
+  name: dev-env-broker-admin-issuer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-broker-admin-issuer
+subjects:
+  - kind: ServiceAccount
+    namespace: dev-env-system
+    name: dev-env-broker

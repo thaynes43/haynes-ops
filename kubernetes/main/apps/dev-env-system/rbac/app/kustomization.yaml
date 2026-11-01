@@ -35,3 +35,5 @@ resources:
   - ./portal-serviceaccount.yaml
   - ./maintenance-rbac.yaml
   - ./maintenance-annotations.yaml
+  - ./admin-issuer.yaml
+  - ./operator-legacy-actor-read.yaml
