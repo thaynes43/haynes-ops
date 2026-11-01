@@ -35,7 +35,11 @@ sizes:
 # ceph-block, move L alone by adding `storageClassName: ceph-block` under sizes.L.
 home:
   storageClassName: gasha01-rbd
-  size: 20Gi
+  # Long-running sessions keep source, toolchains and build caches on HOME.
+  # 20Gi repeatedly exhausted during ordinary development; provide working headroom.
+  # This sizes newly created claims only. Existing claims need a separately verified
+  # online expansion; changing the template does not resize their filesystems.
+  size: 100Gi
 
 # D-09's timers (thaynes43/dev-env D-60, D-62), each optional with D-09's default.
 # The revision leaves them out, so a change here marks no session Outdated. A session's
