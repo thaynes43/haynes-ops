@@ -135,7 +135,9 @@ spec:
               # Rollback: questions and replies exist, so keep the operator at 2.76 or later (DESIGN-014). The 2.75 taskOutcome floor also stands.
               # publish.yml run 41188272020, operator job 124499549335: signature pushed at 09:22:57Z, verified keyless at 09:23:01Z on 2026-10-31.
               # PROPOSED RD2 source bfd5143; publish41253643759 and local cosign verified; activation HELD.
-              tag: sha-bfd5143@sha256:b5d078edf18695b557849de37396c6a665d897a554060efb772dc546fb4fc2ac
+              # Claim metadata source dev-env#815 merge79085ea; publish41294218791 signed/verified this exact digest.
+              # Schema4573 and compatible broker4574 are verified first. Existing arguments, permissions and Session pods are preserved.
+              tag: sha-79085ea@sha256:9ca4670835520b5749d229ee8f247e0e05776a9ace290ad9430d2b7afe85376d
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session

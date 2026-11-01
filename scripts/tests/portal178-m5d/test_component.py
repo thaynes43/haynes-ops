@@ -115,10 +115,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# OP233 approved source merge bfd5143; publish run 41253643759 signed and verified this digest.
+# OP323 claim metadata source815 merge79085ea; publish41294218791 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-bfd5143"
-    "@sha256:b5d078edf18695b557849de37396c6a665d897a554060efb772dc546fb4fc2ac"
+    "sha-79085ea"
+    "@sha256:9ca4670835520b5749d229ee8f247e0e05776a9ace290ad9430d2b7afe85376d"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
