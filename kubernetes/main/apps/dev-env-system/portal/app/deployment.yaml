@@ -75,7 +75,7 @@ spec:
       containers:
         - name: portal
           # dev-env#808 source merge 0ccd54ae: dormant selected-source reader, no ingestion configured. Publish run 41280706165 signed and verified this portal digest; existing allowance holds remain.
-          image: ghcr.io/thaynes43/dev-env-portal:sha-0ccd54a@sha256:ed3acce4ef4bd3b6d0274d1a76eafd7b8dfef2bf6a2367ff28c115e201ea0dc3
+          image: ghcr.io/thaynes43/dev-env-portal:sha-7e581c7@sha256:62dee0e84a5826be5c6c0facfb6136bf377142f1615bf0f2f926b97b90589fdd
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
