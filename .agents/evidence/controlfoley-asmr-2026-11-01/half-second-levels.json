@@ -1,0 +1,162 @@
+[
+  {
+    "start_s": 0.0,
+    "rms_dbfs": -49.4
+  },
+  {
+    "start_s": 0.5,
+    "rms_dbfs": -43.0
+  },
+  {
+    "start_s": 1.0,
+    "rms_dbfs": -36.4
+  },
+  {
+    "start_s": 1.5,
+    "rms_dbfs": -27.7
+  },
+  {
+    "start_s": 2.0,
+    "rms_dbfs": -33.9
+  },
+  {
+    "start_s": 2.5,
+    "rms_dbfs": -33.4
+  },
+  {
+    "start_s": 3.0,
+    "rms_dbfs": -36.5
+  },
+  {
+    "start_s": 3.5,
+    "rms_dbfs": -38.9
+  },
+  {
+    "start_s": 4.0,
+    "rms_dbfs": -34.8
+  },
+  {
+    "start_s": 4.5,
+    "rms_dbfs": -47.6
+  },
+  {
+    "start_s": 5.0,
+    "rms_dbfs": -44.6
+  },
+  {
+    "start_s": 5.5,
+    "rms_dbfs": -39.4
+  },
+  {
+    "start_s": 6.0,
+    "rms_dbfs": -51.4
+  },
+  {
+    "start_s": 6.5,
+    "rms_dbfs": -55.6
+  },
+  {
+    "start_s": 7.0,
+    "rms_dbfs": -55.0
+  },
+  {
+    "start_s": 7.5,
+    "rms_dbfs": -51.7
+  },
+  {
+    "start_s": 8.0,
+    "rms_dbfs": -51.4
+  },
+  {
+    "start_s": 8.5,
+    "rms_dbfs": -48.1
+  },
+  {
+    "start_s": 9.0,
+    "rms_dbfs": -46.0
+  },
+  {
+    "start_s": 9.5,
+    "rms_dbfs": -42.6
+  },
+  {
+    "start_s": 10.0,
+    "rms_dbfs": -46.9
+  },
+  {
+    "start_s": 10.5,
+    "rms_dbfs": -43.9
+  },
+  {
+    "start_s": 11.0,
+    "rms_dbfs": -34.6
+  },
+  {
+    "start_s": 11.5,
+    "rms_dbfs": -35.8
+  },
+  {
+    "start_s": 12.0,
+    "rms_dbfs": -45.1
+  },
+  {
+    "start_s": 12.5,
+    "rms_dbfs": -49.8
+  },
+  {
+    "start_s": 13.0,
+    "rms_dbfs": -50.1
+  },
+  {
+    "start_s": 13.5,
+    "rms_dbfs": -48.7
+  },
+  {
+    "start_s": 14.0,
+    "rms_dbfs": -49.6
+  },
+  {
+    "start_s": 14.5,
+    "rms_dbfs": -46.6
+  },
+  {
+    "start_s": 15.0,
+    "rms_dbfs": -37.4
+  },
+  {
+    "start_s": 15.5,
+    "rms_dbfs": -49.4
+  },
+  {
+    "start_s": 16.0,
+    "rms_dbfs": -50.7
+  },
+  {
+    "start_s": 16.5,
+    "rms_dbfs": -49.0
+  },
+  {
+    "start_s": 17.0,
+    "rms_dbfs": -49.9
+  },
+  {
+    "start_s": 17.5,
+    "rms_dbfs": -51.0
+  },
+  {
+    "start_s": 18.0,
+    "rms_dbfs": -47.0
+  },
+  {
+    "start_s": 18.5,
+    "rms_dbfs": -50.7
+  },
+  {
+    "start_s": 19.0,
+    "rms_dbfs": -49.3
+  },
+  {
+    "start_s": 19.5,
+    "rms_dbfs": -48.7
+  }
+]

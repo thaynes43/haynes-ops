@@ -1,0 +1,25 @@
+{
+  "duration_s": 8.0,
+  "decoded_frames": 192,
+  "video_unchanged": null,
+  "video_packet_sha256": "ca8489d456ec8a8028735a34ff676fe9485a8d22a5ef16ad278875d77563c934",
+  "sha256": "a6f0da49febee46bc60388294556b6f41c1a76fb9f5a3ad2541d77ac7ef94bb1",
+  "bytes": 1119575,
+  "source_jobs": [
+    "8c2c0eab2e0a4062923d8676dcc6718a"
+  ],
+  "audio": {
+    "integrated_lufs": -29.35,
+    "true_peak_dbtp": -7.94,
+    "clipped_samples": 0
+  },
+  "mastering": {
+    "highpass_hz": 65,
+    "treble_db": -4,
+    "lowpass_hz": 6000,
+    "gain_db": -1.3499999999999996,
+    "pitch_or_time_shift": false
+  },
+  "sync": "Video-conditioned windows at original absolute offsets, two-second overlap crossfades. Perceptual sync and comfort require listening.",
+  "human_listening_approval": "unverified"
+}
