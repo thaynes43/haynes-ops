@@ -1,0 +1,8 @@
+{
+  "url": "https://video.haynesops.com/videos/40999984239c44dab681347602c67cb8/file",
+  "status": 200,
+  "content_type": "video/mp4",
+  "bytes": 10727742,
+  "sha256": "ceddb95ee01992a7996881cfd182aba2f50d14f8e1e014eee2d9664d302974cd",
+  "verification_route": "Existing OpenWebUI Pipelines Pod to private video ingress; body SHA matched local master"
+}

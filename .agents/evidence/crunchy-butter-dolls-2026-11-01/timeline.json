@@ -1,0 +1,67 @@
+{
+  "lines": [
+    {
+      "character": "a",
+      "voice": "bf_emma",
+      "text": "Can we make this butter squish crunchy?",
+      "duration_seconds": 2.112,
+      "rate": 24000,
+      "channels": 1,
+      "sha256": "80106082f960407c76d09c9e24f1e8995497ed6281cc7953a2ccc7240ce683e9",
+      "file": "voice-1.wav",
+      "start_s": 0.5,
+      "end_s": 2.612,
+      "shot": 1
+    },
+    {
+      "character": "b",
+      "voice": "af_bella",
+      "text": "Obviously. Tiny foam beads. Maximum drama.",
+      "duration_seconds": 3.2426666666666666,
+      "rate": 24000,
+      "channels": 1,
+      "sha256": "f8e24c98e28084444e3717d5e3efcc4d27ca95773cd150eb51e11c13aa434522",
+      "file": "voice-2.wav",
+      "start_s": 5.5,
+      "end_s": 8.742666666666667,
+      "shot": 2
+    },
+    {
+      "character": "a",
+      "voice": "bf_emma",
+      "text": "One tiny bead. Why does it sound expensive?",
+      "duration_seconds": 3.1146666666666665,
+      "rate": 24000,
+      "channels": 1,
+      "sha256": "40ad118ee3231f2950eb406dc10f67a342def0c366465ee637942b84dcd1afa7",
+      "file": "voice-3.wav",
+      "start_s": 11.35,
+      "end_s": 14.464666666666666,
+      "shot": 3
+    },
+    {
+      "character": "b",
+      "voice": "af_bella",
+      "text": "That's the sound of luxury. Crunch costs extra.",
+      "duration_seconds": 2.7306666666666666,
+      "rate": 24000,
+      "channels": 1,
+      "sha256": "7fe024bc0bec2031ac4ed20a75dfe0d00377ec281edb3ef16d67fb4c6ab87cec",
+      "file": "voice-4.wav",
+      "start_s": 15.5,
+      "end_s": 18.230666666666668,
+      "shot": 4
+    }
+  ],
+  "sfx": {
+    "source_sha256": "24924606a7b7b873b532d04e8fb48b6f80b216dd13534d8ce1d49ac78523e629",
+    "source": "OP344 video-conditioned ControlFoley master",
+    "excerpt_s": [
+      1,
+      1.85
+    ],
+    "start_s": 10.1,
+    "rms_dbfs": -34
+  },
+  "master_gain_db": -0.7699999999999996
+}

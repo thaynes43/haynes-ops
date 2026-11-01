@@ -1,0 +1,128 @@
+{
+  "id": "40999984239c44dab681347602c67cb8",
+  "kind": "edited_production",
+  "story": "OP345",
+  "title": "Crunch Costs Extra \u2014 Fashion Doll Butter Lab",
+  "state": "succeeded",
+  "created_at": 1793505241.9453099,
+  "finished_at": 1793505241.94531,
+  "telemetry": [],
+  "output": "productions/op345/crunchy-butter-dolls.mp4",
+  "bytes": 10727742,
+  "sha256": "ceddb95ee01992a7996881cfd182aba2f50d14f8e1e014eee2d9664d302974cd",
+  "assets": [
+    {
+      "path": "/workspace/output/productions/op345/crunchy-butter-dolls.mp4",
+      "bytes": 10727742,
+      "sha256": "ceddb95ee01992a7996881cfd182aba2f50d14f8e1e014eee2d9664d302974cd"
+    },
+    {
+      "path": "/workspace/output/productions/op345/doll-soundtrack.wav",
+      "bytes": 5760102,
+      "sha256": "c90a934d9695b52d497854b5614fdaed99715a7a4924ff636de3f9f92e52a582"
+    },
+    {
+      "path": "/workspace/output/productions/op345/dialogue-only.wav",
+      "bytes": 3840044,
+      "sha256": "5112fce0cb8c481b114476865cbe0992fbe9dc6e593032605193f7c983a06446"
+    },
+    {
+      "path": "/workspace/output/productions/op345/speech.json",
+      "bytes": 1530,
+      "sha256": "af920101669ed96b79324874892bd1f23278c61f086d4c3f5bb94b13e51a2881"
+    },
+    {
+      "path": "/workspace/output/productions/op345/timeline.json",
+      "bytes": 1882,
+      "sha256": "780746a1d53be6210c43c2aa509cd6e2c3c5f494724f1384b2efa0e986a175e9"
+    },
+    {
+      "path": "/workspace/output/productions/op345/shots.json",
+      "bytes": 1304,
+      "sha256": "d940a477f0d54135c7eed71ec35d7c4959bb47e032a12a5b47b7a9e4671cf754"
+    },
+    {
+      "path": "/workspace/output/productions/op345/frame-transforms.json",
+      "bytes": 155108,
+      "sha256": "3066116ae75a10bad42ed1449fde74ac1744fd7cc58db58e3b60fa7c3e328ac8"
+    },
+    {
+      "path": "/workspace/output/productions/op345/validation.json",
+      "bytes": 687,
+      "sha256": "8935f67013cd25121e104a5860e7ad8f874e2ec94512d8db08d3dd9707a226ce"
+    },
+    {
+      "path": "/workspace/output/productions/op345/contact-sheet.jpg",
+      "bytes": 472255,
+      "sha256": "0c408c569c3ca2bed218e89301d1fae823f0fc4135c5d86c4913f4915d153013"
+    },
+    {
+      "path": "/workspace/output/productions/op345/dialogue-transcript.json",
+      "bytes": 516,
+      "sha256": "940e0b091b48fe2806ee327b8d9c594a50bbd59c2e3d3c93a10e47ebfab9fe27"
+    },
+    {
+      "path": "/workspace/output/productions/op345/prompts.json",
+      "bytes": 6114,
+      "sha256": "b6820713e29ee6cfdb6bf6629582731f160c7db242f82a92d40abc49565b50a8"
+    },
+    {
+      "path": "/workspace/output/productions/op345/asset-manifest.json",
+      "bytes": 2155,
+      "sha256": "508b4cc1b743759f465e486076beda5b49ede70cfdfc9a89a48e46717d791c4d"
+    },
+    {
+      "path": "/workspace/output/productions/op345/a-skeptical.png",
+      "bytes": 3095963,
+      "sha256": "a9d99509aad18bb979a8dda2a3e437d8218c0f3e1bf6f90af0d972bf5688768c"
+    },
+    {
+      "path": "/workspace/output/productions/op345/a-shocked.png",
+      "bytes": 2752076,
+      "sha256": "377806e971283c087016d841a9af326d58ee03656925009ebce3547b69873ab9"
+    },
+    {
+      "path": "/workspace/output/productions/op345/b-smug.png",
+      "bytes": 2844636,
+      "sha256": "6dbe625bae64fd420cb79b1bb06a7db45ae107d20a95ace40b6c2a98127874d4"
+    },
+    {
+      "path": "/workspace/output/productions/op345/b-delighted.png",
+      "bytes": 2630888,
+      "sha256": "f3ec949b9b6cb1bff1cdab509689268243a78c1f12f73e15d8326e377cbf834e"
+    },
+    {
+      "path": "/workspace/output/productions/op345/set.png",
+      "bytes": 1684301,
+      "sha256": "12819e8c581fd60f4f46f229cd3f8ee8b977da7b96ad6b191c911f0cee28807c"
+    },
+    {
+      "path": "/workspace/output/productions/op345/voice-1.wav",
+      "bytes": 101420,
+      "sha256": "80106082f960407c76d09c9e24f1e8995497ed6281cc7953a2ccc7240ce683e9"
+    },
+    {
+      "path": "/workspace/output/productions/op345/voice-2.wav",
+      "bytes": 155692,
+      "sha256": "f8e24c98e28084444e3717d5e3efcc4d27ca95773cd150eb51e11c13aa434522"
+    },
+    {
+      "path": "/workspace/output/productions/op345/voice-3.wav",
+      "bytes": 149548,
+      "sha256": "40ad118ee3231f2950eb406dc10f67a342def0c366465ee637942b84dcd1afa7"
+    },
+    {
+      "path": "/workspace/output/productions/op345/voice-4.wav",
+      "bytes": 131116,
+      "sha256": "7fe024bc0bec2031ac4ed20a75dfe0d00377ec281edb3ef16d67fb4c6ab87cec"
+    }
+  ],
+  "preset": "rigid-doll-dialogue-20s",
+  "provenance": {
+    "images": "Five original built-in imagegen raster assets; reference-inspired fashion dolls. Input photo not published.",
+    "motion": "Deterministic rigid whole-doll cutout puppetry. Face art invariant within each shot; expression switches on hard cuts only.",
+    "voices": "Existing Kokoro-82M bf_emma andaf_bella, no voice cloning and no lip sync.",
+    "sfx": "Low-level excerpt of OP344 ControlFoley master under the reaction shot.",
+    "human_approval": "No claim of Tom viewing/listening approval."
+  }
+}
