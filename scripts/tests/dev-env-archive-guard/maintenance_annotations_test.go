@@ -54,7 +54,7 @@ func TestReservedBreakglassDecision(t *testing.T) {
 			}
 			next := clone(old)
 			next["metadata"].(obj)["annotations"] = obj{key: "synthetic decision"}
-			f := fixture{kind: "AccessGrant", resource: "accessgrants", group: "dev-env.haynesops.com", old: old, new: next, actor: operator, operation: "UPDATE", wantCalls: 0}
+			f := fixture{kind: "AccessGrant", resource: "accessgrants", group: "dev-env.haynesops.com", version: "v1alpha1", old: old, new: next, actor: operator, operation: "UPDATE", wantCalls: 0}
 			switch tc.name {
 			case "broker":
 				f.actor = broker
