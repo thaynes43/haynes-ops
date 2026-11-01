@@ -1,3 +1,4 @@
+# PROPOSED ONCE-ONLY: dedicated admin issuer, no broker policy-write right.
 ---
 # dev-env-broker-guard: narrows the access broker's RBAC (./broker.yaml) to the objects
 # of its own grants (thaynes43/dev-env DESIGN-001 6.12, D-54). RBAC cannot scope a
@@ -64,16 +65,16 @@ spec:
         (request.?subResource.orValue('') == '' ? '' : '/' + request.subResource) +
         ' only for its own grants, named grant-<id>; not ' + request.?name.orValue('<unnamed>')
       reason: Forbidden
-    # 2. Grant identities and grant network policies live in dev-agents only.
+    # 2. Ordinary identities/network policies stay in dev-agents; admin SAs/tokens may use the issuer.
     - expression: >-
-        variables.binding || request.?namespace.orValue('') == 'dev-agents'
+        variables.binding || request.?namespace.orValue('') == 'dev-agents' || (request.resource.resource == 'serviceaccounts' && request.?namespace.orValue('') == 'dev-env-admin-issuance')
       messageExpression: >-
-        'dev-env-broker-guard: grant ServiceAccounts, tokens and network policies live in dev-agents, not ' +
+        'dev-env-broker-guard: grant identities require dev-agents or the dedicated admin issuer; network policies require dev-agents, not ' +
         request.?namespace.orValue('')
       reason: Forbidden
     # 3. A binding never reaches the dev-env namespaces.
     - expression: >-
-        !variables.binding || !(request.?namespace.orValue('') in ['dev-env-system', 'dev-agents', 'dev-tools'])
+        !variables.binding || !(request.?namespace.orValue('') in ['dev-env-system', 'dev-agents', 'dev-tools', 'dev-env-admin-issuance'])
       messageExpression: >-
         'dev-env-broker-guard: no grant binding in ' + request.?namespace.orValue('') + ' (DESIGN-001 6.12)'
       reason: Forbidden
@@ -84,11 +85,11 @@ spec:
           object.roleRef.kind == 'ClusterRole' && object.roleRef.name in variables.catalog &&
           size(object.?subjects.orValue([])) == 1 &&
           object.subjects[0].kind == 'ServiceAccount' &&
-          object.subjects[0].?namespace.orValue('') == 'dev-agents' &&
+          object.subjects[0].?namespace.orValue('') == (object.roleRef.name == 'dev-env-grant-breakglass' ? 'dev-env-admin-issuance' : 'dev-agents') &&
           object.subjects[0].name == object.metadata.name)
       messageExpression: >-
         'dev-env-broker-guard: a grant ' + request.resource.resource + ' binds one of ' +
-        variables.catalog.join(', ') + ' to its own ServiceAccount, dev-agents/' +
+        variables.catalog.join(', ') + ' to its own ServiceAccount in the role-specific credential namespace: ' +
         request.?name.orValue('<unnamed>') + ', and nothing else'
       reason: Forbidden
 ---
