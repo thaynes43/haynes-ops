@@ -19,6 +19,12 @@ class ServiceTests(unittest.TestCase):
         (service.ROOT/'jobs'/(self.source+'.json')).write_text(json.dumps({'state':'succeeded','output':'source.mp4'}))
         self.data={'source_job_id':self.source,'prompt':'soft dry grain crunch'}
 
+    def test_empty_free_success_is_valid_but_empty_health_fails(self):
+        response=MagicMock();response.__enter__.return_value.read.return_value=b''
+        with patch.object(service,'urlopen',return_value=response):
+            self.assertIsNone(service.request(8188,'/free',{}))
+            with self.assertRaises(json.JSONDecodeError):service.request(8080,'/health')
+
     def test_lease_excludes_other_process_style_handles(self):
         first=service.acquire();self.assertIsNotNone(first)
         self.assertIsNone(service.acquire());first.close()
