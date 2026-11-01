@@ -44,7 +44,7 @@ spec:
             - name: canary
               # alpine/kubectl, as in kube-system/node-out-of-service: BusyBox ash + curl +
               # kubectl, which is all canary.sh and probe.sh need. The image ENTRYPOINT is kubectl.
-              image: docker.io/alpine/kubectl:1.37.1
+              image: docker.io/alpine/kubectl:1.37.2
               command: ["/bin/sh", "/opt/plex-hw-canary/canary.sh"]
               env:
                 - name: K8S_SERVERS
