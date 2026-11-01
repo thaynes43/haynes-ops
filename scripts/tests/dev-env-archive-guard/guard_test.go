@@ -4,10 +4,12 @@ package archiveguard
 // Use the installed Kyverno version's real compiler, lazy variables, matcher and
 // resource library. Never alias oldObject to object or rewrite validation in Go.
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"sigs.k8s.io/yaml"
@@ -954,10 +957,22 @@ func loadVAP(t *testing.T, path string) *policies.ValidatingPolicy {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b = []byte(strings.Split(string(b), "\n---\n")[0])
 	var p registration.ValidatingAdmissionPolicy
-	if err = yaml.Unmarshal(b, &p); err != nil {
-		t.Fatal(err)
+	decoder := utilyaml.NewYAMLOrJSONDecoder(bytes.NewReader(b), 4096)
+	for {
+		if err = decoder.Decode(&p); err != nil {
+			if err == io.EOF {
+				t.Fatal("native policy document not found")
+			}
+			t.Fatal(err)
+		}
+		// A comment before an opening --- is an empty YAML document.
+		if p.Kind != "" {
+			break
+		}
+	}
+	if p.APIVersion != registration.SchemeGroupVersion.String() || p.Kind != "ValidatingAdmissionPolicy" || len(p.Spec.Validations) == 0 {
+		t.Fatal("expected a nonempty native ValidatingAdmissionPolicy")
 	}
 	return &policies.ValidatingPolicy{ObjectMeta: p.ObjectMeta, Spec: policies.ValidatingPolicySpec{
 		MatchConstraints: p.Spec.MatchConstraints, MatchConditions: p.Spec.MatchConditions,
