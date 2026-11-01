@@ -1,0 +1,502 @@
+{
+  "id": "d57725ad48834bb78145a17a8297045e",
+  "state": "succeeded",
+  "preset": "op342-i2v-576x1024-121f",
+  "seed": 34211,
+  "created_at": 1793492898.450083,
+  "telemetry": [
+    {
+      "time": 1793492898.886532,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 10988.0,
+          "utilization_percent": 0.0,
+          "power_w": 27.24,
+          "temperature_c": 61.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 9998.0,
+          "utilization_percent": 0.0,
+          "power_w": 26.6,
+          "temperature_c": 53.0
+        }
+      ]
+    },
+    {
+      "time": 1793492903.9365847,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 19868.0,
+          "utilization_percent": 100.0,
+          "power_w": 305.23,
+          "temperature_c": 74.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 10.0,
+          "power_w": 332.23,
+          "temperature_c": 63.0
+        }
+      ]
+    },
+    {
+      "time": 1793492908.9802985,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20060.0,
+          "utilization_percent": 100.0,
+          "power_w": 347.74,
+          "temperature_c": 78.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 100.0,
+          "power_w": 336.46,
+          "temperature_c": 69.0
+        }
+      ]
+    },
+    {
+      "time": 1793492914.02485,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 348.52,
+          "temperature_c": 80.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 100.0,
+          "power_w": 347.16,
+          "temperature_c": 71.0
+        }
+      ]
+    },
+    {
+      "time": 1793492919.0663311,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 349.15,
+          "temperature_c": 82.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 100.0,
+          "power_w": 347.23,
+          "temperature_c": 73.0
+        }
+      ]
+    },
+    {
+      "time": 1793492924.1136196,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 343.72,
+          "temperature_c": 83.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 100.0,
+          "power_w": 347.71,
+          "temperature_c": 75.0
+        }
+      ]
+    },
+    {
+      "time": 1793492929.1561706,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 327.78,
+          "temperature_c": 84.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 100.0,
+          "power_w": 347.73,
+          "temperature_c": 76.0
+        }
+      ]
+    },
+    {
+      "time": 1793492934.1984074,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 332.38,
+          "temperature_c": 85.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 100.0,
+          "power_w": 325.13,
+          "temperature_c": 77.0
+        }
+      ]
+    },
+    {
+      "time": 1793492939.2428637,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 327.77,
+          "temperature_c": 86.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 100.0,
+          "power_w": 348.3,
+          "temperature_c": 78.0
+        }
+      ]
+    },
+    {
+      "time": 1793492944.2893088,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 313.6,
+          "temperature_c": 87.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 100.0,
+          "power_w": 348.36,
+          "temperature_c": 79.0
+        }
+      ]
+    },
+    {
+      "time": 1793492949.3335164,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 303.06,
+          "temperature_c": 87.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 100.0,
+          "power_w": 347.99,
+          "temperature_c": 79.0
+        }
+      ]
+    },
+    {
+      "time": 1793492954.3756483,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 294.86,
+          "temperature_c": 88.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 100.0,
+          "power_w": 348.77,
+          "temperature_c": 79.0
+        }
+      ]
+    },
+    {
+      "time": 1793492959.4189875,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 286.0,
+          "temperature_c": 88.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 100.0,
+          "power_w": 348.5,
+          "temperature_c": 79.0
+        }
+      ]
+    },
+    {
+      "time": 1793492964.463048,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 279.77,
+          "temperature_c": 88.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 100.0,
+          "power_w": 347.89,
+          "temperature_c": 80.0
+        }
+      ]
+    },
+    {
+      "time": 1793492969.5062482,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 272.85,
+          "temperature_c": 88.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 47.0,
+          "power_w": 340.05,
+          "temperature_c": 77.0
+        }
+      ]
+    },
+    {
+      "time": 1793492974.549169,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 269.62,
+          "temperature_c": 88.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 0.0,
+          "power_w": 306.89,
+          "temperature_c": 75.0
+        }
+      ]
+    },
+    {
+      "time": 1793492979.5906088,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 267.0,
+          "temperature_c": 89.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 0.0,
+          "power_w": 269.28,
+          "temperature_c": 74.0
+        }
+      ]
+    },
+    {
+      "time": 1793492984.6353893,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 262.62,
+          "temperature_c": 89.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 0.0,
+          "power_w": 255.63,
+          "temperature_c": 75.0
+        }
+      ]
+    },
+    {
+      "time": 1793492989.6799712,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20092.0,
+          "utilization_percent": 100.0,
+          "power_w": 259.21,
+          "temperature_c": 89.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 11790.0,
+          "utilization_percent": 0.0,
+          "power_w": 235.98,
+          "temperature_c": 75.0
+        }
+      ]
+    },
+    {
+      "time": 1793492994.7207365,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 22444.0,
+          "utilization_percent": 100.0,
+          "power_w": 266.19,
+          "temperature_c": 89.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 9998.0,
+          "utilization_percent": 0.0,
+          "power_w": 134.84,
+          "temperature_c": 71.0
+        }
+      ]
+    },
+    {
+      "time": 1793492999.7628891,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20204.0,
+          "utilization_percent": 100.0,
+          "power_w": 264.92,
+          "temperature_c": 90.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 9998.0,
+          "utilization_percent": 0.0,
+          "power_w": 133.16,
+          "temperature_c": 69.0
+        }
+      ]
+    },
+    {
+      "time": 1793493004.8067513,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 19852.0,
+          "utilization_percent": 100.0,
+          "power_w": 260.61,
+          "temperature_c": 90.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 9998.0,
+          "utilization_percent": 0.0,
+          "power_w": 131.76,
+          "temperature_c": 68.0
+        }
+      ]
+    },
+    {
+      "time": 1793493009.8581057,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 19852.0,
+          "utilization_percent": 100.0,
+          "power_w": 260.13,
+          "temperature_c": 90.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 9998.0,
+          "utilization_percent": 0.0,
+          "power_w": 30.1,
+          "temperature_c": 64.0
+        }
+      ]
+    },
+    {
+      "time": 1793493014.908984,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 20044.0,
+          "utilization_percent": 100.0,
+          "power_w": 256.77,
+          "temperature_c": 90.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 9998.0,
+          "utilization_percent": 0.0,
+          "power_w": 28.83,
+          "temperature_c": 62.0
+        }
+      ]
+    },
+    {
+      "time": 1793493019.9572914,
+      "gpus": [
+        {
+          "uuid": "GPU-d8a856f1-f955-f683-bc24-654561496774",
+          "memory_mib": 11308.0,
+          "utilization_percent": 0.0,
+          "power_w": 157.25,
+          "temperature_c": 87.0
+        },
+        {
+          "uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+          "memory_mib": 9998.0,
+          "utilization_percent": 0.0,
+          "power_w": 28.16,
+          "temperature_c": 61.0
+        }
+      ]
+    }
+  ],
+  "kind": "reference_conditioned_render",
+  "reference_image": "op342/reference-1.png",
+  "reference_sha256": "7db6752f9d027c2a320233027c1fd64749c96d911bd33ae17a17bdb388b560f5",
+  "story": "OP342",
+  "graph_sha256": "dfb63446cb37876c443e5c4578d607f68bd2120b5c09b34bcba40f79f1a3e5ee",
+  "live_admission_readback": {
+    "time": 1793492898.7794259,
+    "health": {
+      "api": "ok",
+      "accepting_jobs": true,
+      "active_job": null
+    }
+  },
+  "started_at": 1793492898.8346734,
+  "prompt_id": "c8f2c83b-1c59-4fd5-a028-35bf1e8e8d2d",
+  "output": "video/d57725ad48834bb78145a17a8297045e_00001_.mp4",
+  "finished_at": 1793493020.13103,
+  "bytes": 761395
+}

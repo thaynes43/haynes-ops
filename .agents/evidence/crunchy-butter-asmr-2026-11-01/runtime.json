@@ -1,0 +1,19 @@
+{
+  "health": {
+    "api": "ok",
+    "accepting_jobs": true,
+    "active_job": null
+  },
+  "ready": {
+    "ready": true
+  },
+  "power_limits": "GPU-d8a856f1-f955-f683-bc24-654561496774, 350.00 W, 350.00 W\nGPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a, 350.00 W, 350.00 W\n",
+  "helmreleases": {
+    "wan-video": "True",
+    "kokoro": "True",
+    "whisper": "True",
+    "comfyui": "True",
+    "llama-server": "True",
+    "open-webui": "True"
+  }
+}
