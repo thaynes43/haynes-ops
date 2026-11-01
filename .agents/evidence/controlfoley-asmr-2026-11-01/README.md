@@ -20,6 +20,6 @@ Decoded20.0s,480frames; original video packet SHA unchanged (`df91615bc95baf9721
 
 Preview: https://video.haynesops.com/videos/f20057c27e904088999d32d2b7cf9fdb/file (8s,540×960). Tom was sent a listening preference question; no reply at the time of this record. Subjective acceptance is unverified.
 
-## Remaining runtime gate
+## Runtime correction delivery
 
-Main image run41263355969 is building/testing the source fix. The currently installed long-running HTTP service still has the empty-response bug; guarded one-shot generation works. Do not submit another HTTP audio job until a tested/signed/public replacement image is pinned through GitOps and rolled out while idle. Check canonical OP344 for the latest pipeline and checkpoint state. Hard checkpoint02:10UTC; preserve work and stop then if remaining delivery cannot finish.
+Main image run41263355969 passed container tests/offline imports, published and signed the corrected source58003addc39ae5ca9e8b56eb4a19c803c121575a. Anonymous manifest fetch returned200; immutable digest`sha256:cdc31a167095ad7b9af8dc8810ff6e54c28f836ef7963ee7a25eb77f9f2c407a`. The following deployment PR pins it for an idle-worker rollout. The canonical tracker records whether that rollout is verified; subjective listening acceptance remains pending.

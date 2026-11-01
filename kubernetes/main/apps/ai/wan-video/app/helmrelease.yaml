@@ -54,7 +54,7 @@ spec:
           provision-foley-models:
             image: &foleyImage
               repository: ghcr.io/thaynes43/audio-authoring
-              tag: controlfoley-0.1.0-856a655934d054e15ebdc56d682cb2896344ea7d-41261921965-1@sha256:67ca2e97c605d4846b8ea01f991cfe35ab3238a59ffbc7bffdf5380762efe02a
+              tag: controlfoley-0.1.0-58003addc39ae5ca9e8b56eb4a19c803c121575a-41263355969-1@sha256:cdc31a167095ad7b9af8dc8810ff6e54c28f836ef7963ee7a25eb77f9f2c407a
             command: [python, /opt/controlfoley-tools/provision.py]
             args: [--weights-dir, /workspace/controlfoley-models]
             env:
