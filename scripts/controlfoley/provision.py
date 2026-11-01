@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import urllib.request
+import uuid
 
 SOURCE_REVISION = "b6c902888d45d75f022e253e3db29836360a3f82"
 COMFY_REFERENCE_REVISION = "c918ad747e2997dd80e7aaa86765603f1c2d136d"
@@ -105,8 +106,15 @@ def provision(root):
         if json.loads(manifest_path.read_text()) != expected:
             raise ValueError("Existing manifest differs; refusing overwrite")
     else:
-        with manifest_path.open("x") as handle:
-            json.dump(expected, handle, indent=2)
+        temp = root / ("manifest-" + uuid.uuid4().hex + ".tmp")
+        try:
+            with temp.open("x") as handle:
+                json.dump(expected, handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.link(temp, manifest_path)
+        finally:
+            temp.unlink(missing_ok=True)
     return verify(root)
 
 
