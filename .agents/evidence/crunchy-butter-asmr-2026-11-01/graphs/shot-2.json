@@ -1,0 +1,148 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "wan2.2_ti2v_5B_fp16.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan2.2_vae.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "text": "The camera gently arcs left a few degrees across the same crunchy surface. Fingers perform one slow deep compression, revealing existing tiny surface ridges, then release. Keep exactly the same bright yellow squishy toy, existing pink and blue foam stars, lavender adult gloves, turquoise mat and pale pink background as the starting image. One very slow satisfying squeeze, hold and gentle release. Close macro texture detail, soft even studio light, slow smooth camera, stable object identity, no new decorations. Toy remains intact. No text, no titles, no graphics, no faces, no hats, no food or eating."
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "text": "changing toy identity, new objects, faces, eyes, hats, text, subtitles, watermark, camera shake, fast motion, cuts, blurry, distorted hands"
+    }
+  },
+  "6": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "shift": 8.0
+    }
+  },
+  "7": {
+    "class_type": "MultiGPU_WorkUnits",
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "max_gpus": 2
+    }
+  },
+  "8": {
+    "class_type": "Wan22ImageToVideoLatent",
+    "inputs": {
+      "vae": [
+        "3",
+        0
+      ],
+      "width": 576,
+      "height": 1024,
+      "length": 121,
+      "batch_size": 1,
+      "start_image": [
+        "13",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "7",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "latent_image": [
+        "8",
+        0
+      ],
+      "seed": 34212,
+      "steps": 20,
+      "cfg": 5.0,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "denoise": 1.0
+    }
+  },
+  "10": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "9",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "11": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "10",
+        0
+      ],
+      "fps": 24.0
+    }
+  },
+  "12": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "11",
+        0
+      ],
+      "filename_prefix": "video/2a9f4e1ebee04b43b12e01cf97b16df3",
+      "format": "mp4",
+      "codec": "h264"
+    }
+  },
+  "13": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "op342/reference-2.png"
+    }
+  }
+}

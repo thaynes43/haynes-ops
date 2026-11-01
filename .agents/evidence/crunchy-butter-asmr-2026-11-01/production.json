@@ -1,0 +1,179 @@
+{
+  "id": "89f6c15276ad4f0b86622563cb8e5547",
+  "kind": "edited_production",
+  "story": "OP342",
+  "title": "Crunchy Butter ASMR",
+  "state": "succeeded",
+  "created_at": 1793493655.997869,
+  "finished_at": 1793493655.9978693,
+  "telemetry": [],
+  "output": "productions/op342/crunchy-butter-asmr.mp4",
+  "bytes": 11656833,
+  "sha256": "927a195531a92dc47753e78b04a9d3bfc313ed0e3471730b721b8eab635fc1a2",
+  "source_jobs": [
+    {
+      "index": 0,
+      "id": "3346a6549ef3448ea1af9dff02233196",
+      "sha256": "7d55d3535948f0eaf718b98dd1be847a8c7d2737516a6808268e43ef393dea1c"
+    },
+    {
+      "index": 1,
+      "id": "d57725ad48834bb78145a17a8297045e",
+      "sha256": "3cebe63ca933f3246a786d71fe2b7716eb3a9992b1f77e66c4140bf605f4556d"
+    },
+    {
+      "index": 2,
+      "id": "2a9f4e1ebee04b43b12e01cf97b16df3",
+      "sha256": "4e1b48a86cfd1c2bc903be73e513dff8d601a81cc6a3e1a31f3a3f988986d778"
+    },
+    {
+      "index": 3,
+      "id": "3a0dc74efb1d46eebb71df7453b8643f",
+      "sha256": "82caed16f78ab509015d484d6e45bb75e0f3858b5a3f08da8a8162481e7acb53"
+    }
+  ],
+  "assets": [
+    {
+      "path": "/workspace/output/productions/op342/crunchy-butter-asmr.mp4",
+      "bytes": 11656833,
+      "sha256": "927a195531a92dc47753e78b04a9d3bfc313ed0e3471730b721b8eab635fc1a2"
+    },
+    {
+      "path": "/workspace/output/productions/op342/crunchy-butter-asmr.wav",
+      "bytes": 5760102,
+      "sha256": "3ea41dd95303c2efb2d2468f008afd5c11f00b3a76d4202ca073dd50c7141027"
+    },
+    {
+      "path": "/workspace/output/productions/op342/asmr-main.wav",
+      "bytes": 3528044,
+      "sha256": "d94c7f7c1008fba1cbe5a44c42371d1d580d6a92b9a39f9e8e2ec35bbad6a323"
+    },
+    {
+      "path": "/workspace/output/productions/op342/asmr-main.json",
+      "bytes": 1695,
+      "sha256": "3413e6b5db6d7fa5a4f886a49a7a4775a2e058a243548a492d650224e6ad114f"
+    },
+    {
+      "path": "/workspace/output/productions/op342/validation.json",
+      "bytes": 686,
+      "sha256": "2890958c3c9a9e7ad99a290d9202869f8f1d519d1391f0c903b2c04502d20b3e"
+    },
+    {
+      "path": "/workspace/output/productions/op342/audio-loudness.json",
+      "bytes": 264,
+      "sha256": "3eb4090f2195dc5e801a71b62965aa6f332707c44f7e5f250becc9cb7612acec"
+    },
+    {
+      "path": "/workspace/output/productions/op342/contact-sheet.jpg",
+      "bytes": 124372,
+      "sha256": "9d519ad2009f2601c2c13e8edf231cbfc16175fb3db0fb90528216d23b5bceea"
+    },
+    {
+      "path": "/workspace/output/productions/op342/run.json",
+      "bytes": 2672,
+      "sha256": "eafbaf949bbe4f1dce1aa568f8e17db7c3e487772dcd3c0a2ccb371981143183"
+    },
+    {
+      "path": "/workspace/output/productions/op342/sources.json",
+      "bytes": 999,
+      "sha256": "7254a5e1bd9eba9fe5d01ebb0fbb81072f4c809ebe91ca883c4c671480daa54b"
+    },
+    {
+      "path": "/workspace/output/productions/op342/render-report.json",
+      "bytes": 1963,
+      "sha256": "8a7f9b4873e975e89d3a1d312ca3f33cf0646d4fda05fe95222baddd872991c5"
+    },
+    {
+      "path": "/workspace/output/productions/op342/runtime.json",
+      "bytes": 443,
+      "sha256": "2eaad0b4020d2238b1d7d15c479feba4c57d6d8f7855f39e69e4835938fc3bd5"
+    },
+    {
+      "path": "/workspace/output/productions/op342/shot-0.mp4",
+      "bytes": 839112,
+      "sha256": "7d55d3535948f0eaf718b98dd1be847a8c7d2737516a6808268e43ef393dea1c"
+    },
+    {
+      "path": "/workspace/output/productions/op342/shot-0.json",
+      "bytes": 13393,
+      "sha256": "ca73e73f28ddf1cf8cb2fd34b5c59ef1f6a10b39c670b6f4b9caed062c474ecd"
+    },
+    {
+      "path": "/workspace/output/productions/op342/graph-0.json",
+      "bytes": 3056,
+      "sha256": "98a538af06efefc6925437ee75b48bde26124e39710d6c07b6c9e13071f262ac"
+    },
+    {
+      "path": "/workspace/output/productions/op342/reference-0.png",
+      "bytes": 297448,
+      "sha256": "92bb20e4918aa6280e8622713438bb1df6008ed5d1b0b20fdeaacb3ead43fc2c"
+    },
+    {
+      "path": "/workspace/output/productions/op342/shot-1.mp4",
+      "bytes": 761395,
+      "sha256": "3cebe63ca933f3246a786d71fe2b7716eb3a9992b1f77e66c4140bf605f4556d"
+    },
+    {
+      "path": "/workspace/output/productions/op342/shot-1.json",
+      "bytes": 13388,
+      "sha256": "a886e23b35895a696d8db3be4e2c56d721f9ca8aaebf246c65b716f0cddcd589"
+    },
+    {
+      "path": "/workspace/output/productions/op342/graph-1.json",
+      "bytes": 3075,
+      "sha256": "dfb63446cb37876c443e5c4578d607f68bd2120b5c09b34bcba40f79f1a3e5ee"
+    },
+    {
+      "path": "/workspace/output/productions/op342/reference-1.png",
+      "bytes": 358927,
+      "sha256": "7db6752f9d027c2a320233027c1fd64749c96d911bd33ae17a17bdb388b560f5"
+    },
+    {
+      "path": "/workspace/output/productions/op342/shot-2.mp4",
+      "bytes": 989616,
+      "sha256": "4e1b48a86cfd1c2bc903be73e513dff8d601a81cc6a3e1a31f3a3f988986d778"
+    },
+    {
+      "path": "/workspace/output/productions/op342/shot-2.json",
+      "bytes": 13888,
+      "sha256": "60c626ab7c94eabe27f34f0a65483e4040920f40030f5a335f4e42a19b3e0547"
+    },
+    {
+      "path": "/workspace/output/productions/op342/graph-2.json",
+      "bytes": 3074,
+      "sha256": "aec846ec61dfff419f6d3b05ebd1c4ed6447236aa654f8bfe633cabd1ce341df"
+    },
+    {
+      "path": "/workspace/output/productions/op342/reference-2.png",
+      "bytes": 326114,
+      "sha256": "75a099f1203a31d72d40967a848aa75a509947476fb53a2ab4072b74457ca097"
+    },
+    {
+      "path": "/workspace/output/productions/op342/shot-3.mp4",
+      "bytes": 751108,
+      "sha256": "82caed16f78ab509015d484d6e45bb75e0f3858b5a3f08da8a8162481e7acb53"
+    },
+    {
+      "path": "/workspace/output/productions/op342/shot-3.json",
+      "bytes": 13881,
+      "sha256": "8032c5d443de608e677c4446053ef4c084583b958c703f72aaaaff2ad0be996f"
+    },
+    {
+      "path": "/workspace/output/productions/op342/graph-3.json",
+      "bytes": 3079,
+      "sha256": "ca74d6c0ae28eb099e8c1fa5e01c2db0b99257fa0c13c00ec914baa2616954d7"
+    },
+    {
+      "path": "/workspace/output/productions/op342/reference-3.png",
+      "bytes": 315885,
+      "sha256": "4b5000f14b991026b486be6e0628d8015a106541799409a3ffc76c12ed5c48e9"
+    },
+    {
+      "path": "/workspace/output/productions/op342/reference-4.png",
+      "bytes": 356877,
+      "sha256": "3d7cde71abb1bd835839a0083ee1ce0901494bc2956af146544cb1a22a784d84"
+    }
+  ],
+  "preset": "editorial-20s-portrait",
+  "provenance": "Four sequential reference-conditioned dual3090 Wan2.2 clips, 576x1024 native at24fps, first120frames each upscaled1080x1920; separate Stable Audio3 Small-SFX crunch track. No text overlays, dialogue or music. Toy play, not food. Human listening approval unverified."
+}

@@ -1,0 +1,55 @@
+{
+  "story": "OP342",
+  "source_jobs": [
+    {
+      "index": 0,
+      "id": "3346a6549ef3448ea1af9dff02233196",
+      "reference_sha256": "92bb20e4918aa6280e8622713438bb1df6008ed5d1b0b20fdeaacb3ead43fc2c",
+      "clip_sha256": "7d55d3535948f0eaf718b98dd1be847a8c7d2737516a6808268e43ef393dea1c",
+      "running_seconds": 121.12937426567078,
+      "simultaneous_ge90_samples": 16
+    },
+    {
+      "index": 1,
+      "id": "d57725ad48834bb78145a17a8297045e",
+      "reference_sha256": "7db6752f9d027c2a320233027c1fd64749c96d911bd33ae17a17bdb388b560f5",
+      "clip_sha256": "3cebe63ca933f3246a786d71fe2b7716eb3a9992b1f77e66c4140bf605f4556d",
+      "running_seconds": 121.29635667800903,
+      "simultaneous_ge90_samples": 12
+    },
+    {
+      "index": 2,
+      "id": "2a9f4e1ebee04b43b12e01cf97b16df3",
+      "reference_sha256": "75a099f1203a31d72d40967a848aa75a509947476fb53a2ab4072b74457ca097",
+      "clip_sha256": "4e1b48a86cfd1c2bc903be73e513dff8d601a81cc6a3e1a31f3a3f988986d778",
+      "running_seconds": 126.16633749008179,
+      "simultaneous_ge90_samples": 12
+    },
+    {
+      "index": 3,
+      "id": "3a0dc74efb1d46eebb71df7453b8643f",
+      "reference_sha256": "4b5000f14b991026b486be6e0628d8015a106541799409a3ffc76c12ed5c48e9",
+      "clip_sha256": "82caed16f78ab509015d484d6e45bb75e0f3858b5a3f08da8a8162481e7acb53",
+      "running_seconds": 126.16747117042542,
+      "simultaneous_ge90_samples": 12
+    }
+  ],
+  "gpu_peaks": {
+    "GPU-d8a856f1-f955-f683-bc24-654561496774": {
+      "temperature_c": 90.0,
+      "memory_mib": 22444.0,
+      "power_w": 349.15,
+      "utilization_percent": 100.0
+    },
+    "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a": {
+      "temperature_c": 81.0,
+      "memory_mib": 11790.0,
+      "power_w": 350.6,
+      "utilization_percent": 100.0
+    }
+  },
+  "replacement_renders": 0,
+  "benchmarks": 0,
+  "hardware_acceptance": "not established; no power/clock/cooling changes",
+  "human_listening_approval": "unverified"
+}
