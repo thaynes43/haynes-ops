@@ -416,6 +416,27 @@ spec:
                     enum:
                     - nvidia-utility
                     type: string
+                  taskClaim:
+                    description: TaskClaim is an optional canonical association. It
+                      is not permission.
+                    properties:
+                      name:
+                        maxLength: 76
+                        minLength: 1
+                        type: string
+                      project:
+                        maxLength: 63
+                        minLength: 1
+                        type: string
+                      uid:
+                        maxLength: 64
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    - project
+                    - uid
+                    type: object
                   workers:
                     description: Workers are explicitly delegated direct children,
                       sharing the same lease.
