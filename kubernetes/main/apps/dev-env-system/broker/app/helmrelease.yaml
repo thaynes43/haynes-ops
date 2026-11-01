@@ -58,7 +58,9 @@ spec:
               # Source dev-env#739 merge 386317b84e97817c511cc54ac9a75470f6538840; publish run 41129212774.
               # Operator job 124315516957 signed at 21:15:23Z and verified keyless at 21:15:24Z on 2026-10-30.
               # PROPOSED RD2 source bfd5143; publish41253643759 and local cosign verified; activation HELD.
-              tag: sha-bfd5143@sha256:b5d078edf18695b557849de37396c6a665d897a554060efb772dc546fb4fc2ac
+              # Claim metadata source dev-env#815, merge 79085ea; publish41294218791 signed and verified this digest.
+              # Schema4573 is installed first; operator follows before any taskClaim producer use. Arguments and permissions are unchanged.
+              tag: sha-79085ea@sha256:9ca4670835520b5749d229ee8f247e0e05776a9ace290ad9430d2b7afe85376d
               pullPolicy: IfNotPresent
             args:
               - broker
