@@ -115,10 +115,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# dev-env v2.77.0 release merge 6c7f344a; publish run 41188272020 signed and verified this digest.
+# OP233 approved source merge bfd5143; publish run 41253643759 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-6c7f344"
-    "@sha256:839bcaf17b3fc0db9bb38ea56fd98e831dd62ef104e29896006d63812fd64eba"
+    "sha-bfd5143"
+    "@sha256:b5d078edf18695b557849de37396c6a665d897a554060efb772dc546fb4fc2ac"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
