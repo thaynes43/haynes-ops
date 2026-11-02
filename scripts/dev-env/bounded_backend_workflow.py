@@ -350,8 +350,9 @@ def require_delivery(state):
         raise Gate('select after all discovery outcomes')
     if state['branch'] == 'new':
         merge = state['merge']
-        if not merge or merge['pr_head'] != state['selected_head']:
-            raise Gate('selected reviewed head must be merged')
+        if (not merge or merge['pr_head'] != state['selected_head']
+                or merge['merged'] == merge['pr_head']):
+            raise Gate('selected reviewed head requires a distinct actual squash merge SHA')
         if merge['flux_source'] != merge['merged'] or merge['flux_applied'] != merge['merged']:
             raise Gate('Flux must apply actual merge SHA')
     if state['delivery'] != {'deployment': 'ready', 'grant': 'ready', 'cnp': 'ready'}:
@@ -447,6 +448,8 @@ def mutate_command(state, args):
         if state['branch'] != 'new' or args.pr_head != state['selected_head']:
             raise Gate('PR head must be selected prepared/reviewed head; existing route needs no merge')
         merged = _sha(args.merged_sha, 'actual squash merge')
+        if merged == args.pr_head:
+            raise Gate('actual squash merge SHA must differ from reviewed PR head')
         if args.flux_source != merged or args.flux_applied != merged:
             raise Gate('Flux source and applied proof must match actual merge SHA')
         if state['merge']:

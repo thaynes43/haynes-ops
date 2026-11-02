@@ -391,7 +391,9 @@ Sequence and external prerequisites:
    and new activation is possible. The helper compares these against stored proof;
    it does not interpret the raw body or prove the manager is available.
 5. For a new route, record selected reviewed PR head separately from actual squash
-   merge SHA. Flux source and applied proof must equal the **merge SHA**. Existing
+   merge SHA. The actual squash merge SHA must differ from the PR head; an equal-head
+   record cannot qualify delivery, including a record from earlier offline source.
+   Flux source and applied proof must equal the **merge SHA**. Existing
    coverage skips that merge gate. Both routes wait for externally observed
    deployment, metrics grant and CNP readiness. Unknown future reversal heads are
    never pre-certified; actual removal CI is a later external gate.

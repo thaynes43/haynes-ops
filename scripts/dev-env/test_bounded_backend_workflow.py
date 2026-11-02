@@ -661,6 +661,37 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotEqual(self.call('record-merge', pr_head=HEAD, merged_sha=MERGED,
                                      flux_source=HEAD, flux_applied=MERGED)[0], 0)
 
+    def test_pr_head_cannot_stand_in_for_actual_squash_merge(self):
+        self.ready()
+        self.discover()
+        self.assertEqual(self.select()[0], 0)
+        before = self.path.read_bytes()
+        code, body = self.call('record-merge', pr_head=HEAD, merged_sha=HEAD,
+                               flux_source=HEAD, flux_applied=HEAD)
+        self.assertNotEqual(code, 0, body)
+        self.assertIs(body['dispatch'], False)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertNotEqual(self.call('observe-delivery', deployment='ready', grant='ready', cnp='ready')[0], 0)
+        code, _ = self.no_dispatch('admit', slot='revalidation', intent_id='unmerged', decision='admit')
+        self.assertNotEqual(code, 0)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(self.state()['merge'], {})
+        self.assertNotIn('revalidation', self.state()['slot_intent'])
+
+    def test_loaded_equal_head_merge_cannot_qualify_delivery(self):
+        self.ready()
+        self.discover()
+        self.assertEqual(self.select()[0], 0)
+        state = self.state()
+        state['merge'] = dict(pr_head=HEAD, merged=HEAD, flux_source=HEAD, flux_applied=HEAD)
+        state['delivery'] = dict(deployment='ready', grant='ready', cnp='ready')
+        workflow.atomic_dump(self.path, state)  # Earlier offline source accepted this record.
+        before = self.path.read_bytes()
+        code, _ = self.no_dispatch('admit', slot='revalidation', intent_id='unmerged', decision='admit')
+        self.assertNotEqual(code, 0)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertNotIn('revalidation', self.state()['slot_intent'])
+
     def test_caller_identity_scope_attempt_required_for_every_mutation(self):
         self.ready()
         for key in BINDING:
