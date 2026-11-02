@@ -115,10 +115,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# Source e5c93e4 (dev-env#850); publish41470219938 signed and verified this digest.
+# Source ce6edc5 (dev-env#865); publish41536642759 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-e5c93e4"
-    "@sha256:f0df7e1bc4f0ad3761b095793f263c842f92143e680ef4a5cce5aed614dda021"
+    "sha-ce6edc5"
+    "@sha256:6c27a91d6be9be4dd24b6d81e26470d753144077c56286ad93122821b883c843"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
@@ -1803,8 +1803,8 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertEqual(deployment["spec"]["strategy"], {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}})
         image = deployment["spec"]["template"]["spec"]["containers"][0]["image"]
         self.assertRegex(image, REGISTERED_PORTAL_IMAGE)
-        # dev-env#853 source merge 0a335ad; publish run 41470543260 signed and verified this digest.
-        self.assertEqual(image, "ghcr.io/thaynes43/dev-env-portal:sha-0a335ad@sha256:80dca3d641fcdae496f885b30e207b7176f241442e0170d679d8f966ecfd48a3")
+        # dev-env#865 source merge ce6edc5; publish run 41536642759 signed and verified this digest.
+        self.assertEqual(image, "ghcr.io/thaynes43/dev-env-portal:sha-ce6edc5@sha256:98d95d09623da4e51130c7e5a1e378c79e87d6885e07264a7840d48d594d0bee")
         self.assertEqual(expand_config_files(mounted_files(deployment), self.docs), PRODUCTION_FILES)
 
     def test_public_ca_bundles_are_pinned_certificates_only(self):
