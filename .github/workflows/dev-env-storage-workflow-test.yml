@@ -1,0 +1,33 @@
+---
+name: dev-env storage workflow tests
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/dev-env/bounded_backend_workflow.py
+      - scripts/dev-env/test_bounded_backend_workflow.py
+      - .agents/runbooks/proxmox-access.md
+      - .github/workflows/dev-env-storage-workflow-test.yml
+  push:
+    branches: [main]
+    paths:
+      - scripts/dev-env/bounded_backend_workflow.py
+      - scripts/dev-env/test_bounded_backend_workflow.py
+      - .agents/runbooks/proxmox-access.md
+      - .github/workflows/dev-env-storage-workflow-test.yml
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  offline:
+    name: Storage Workflow Fixtures
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Finite offline phase, persistence and budget regressions
+        run: nice -n 19 python3 -I -B -m unittest discover -s scripts/dev-env -p test_bounded_backend_workflow.py -v
