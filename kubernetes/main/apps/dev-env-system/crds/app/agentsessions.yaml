@@ -169,6 +169,13 @@ spec:
                 - message: immutable after create; coordinator instruction parent
                     UID does not change
                   rule: self == oldSelf
+              coordinatorInstructionPublisher:
+                default: false
+                description: |-
+                  CoordinatorInstructionPublisher selects the qualified control-client image
+                  for a fresh ordinary private project parent (DESIGN-051). It does not enroll
+                  a receiver or change any instruction authorization or depth.
+                type: boolean
               coordinatorInstructions:
                 default: false
                 description: |-
@@ -632,6 +639,12 @@ spec:
                 && self.coordinatorInstructions == oldSelf.coordinatorInstructions)
                 || (!has(oldSelf.coordinatorInstructions) && has(self.coordinatorInstructions)
                 && self.coordinatorInstructions == false)
+            - message: coordinator instruction publisher selection is immutable
+              rule: (!has(self.coordinatorInstructionPublisher) && !has(oldSelf.coordinatorInstructionPublisher))
+                || (has(self.coordinatorInstructionPublisher) && has(oldSelf.coordinatorInstructionPublisher)
+                && self.coordinatorInstructionPublisher == oldSelf.coordinatorInstructionPublisher)
+                || (!has(oldSelf.coordinatorInstructionPublisher) && has(self.coordinatorInstructionPublisher)
+                && self.coordinatorInstructionPublisher == false)
           status:
             description: |-
               AgentSessionStatus is what the operator and agentd observed. Reconcile is
@@ -2681,6 +2694,14 @@ spec:
                     type: string
                   message:
                     description: Message says what the rescue saved, or why it failed.
+                    type: string
+                  notificationKey:
+                    description: |-
+                      NotificationKey is a notification-only digest of a narrowly qualified
+                      missing-clone failure's closed typed facts (DESIGN-050). Missing or changed
+                      facts cannot inherit an ownership acknowledgment. It never proves rescue
+                      success and is never consulted by removal or preservation guards.
+                    pattern: ^[a-f0-9]{64}$
                     type: string
                   omittedRefs:
                     description: OmittedRefs is how many refs did not fit in UnpushedRefs.
