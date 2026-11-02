@@ -76,7 +76,7 @@ spec:
         - name: portal
           # Release 2.85.0 source 4fb35ee0b52c9e3124cbdaa608caef61a3a259e2; publish41369865692 signed and verified this digest.
           # Optional selected-source and question readers stay unconfigured; no config, route flags or access change.
-          image: ghcr.io/thaynes43/dev-env-portal:sha-4fb35ee@sha256:3ca9e49c3e617fea2d13802804957439effbeee3f0746ce137d11f599a01e491
+          image: ghcr.io/thaynes43/dev-env-portal:sha-e18fabb@sha256:d6b58189b76302995673378ae45a553a66329dbdc34d951394ad6a7425766e07
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
