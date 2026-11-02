@@ -29,22 +29,37 @@ spec:
     - name: dev-env-operator.rules
       rules:
         - alert: DevEnvRescueFailed
-          expr: max by (session) (dev_env_session_rescue_failed) > 0
+          expr: |
+            (max by (session, session_uid, session_generation, reason, risk_key, owner_uid, pending_delete)
+              (dev_env_session_rescue_notification) > 0)
+            or
+            ((max by (session, reason) (dev_env_session_rescue_failed) > 0)
+              unless on (session) dev_env_session_rescue_notification)
           for: 20m
           keep_firing_for: 30m
           labels:
             severity: critical
           annotations:
             summary: >-
-              dev-env session {{ $labels.session }}: recovery failed, so its volume is
-              kept and its archive is blocked (D-10).
+              dev-env session {{ $labels.session }}: Git preservation is not proved
+              ({{ $labels.reason }}); HOME remains protected.
             description: >-
               `agent-run show {{ $labels.session }}`, or `kubectl get agentsession -n
-              dev-agents {{ $labels.session }} -o yaml`, gives the recovery failure reason
+              dev-agents {{ $labels.session }} -o yaml`, gives the Git rescue failure reason,
+              exact Session UID and latest attempt time/stamp. Session UID:
+              {{ $labels.session_uid }}; pending deletion: {{ $labels.pending_delete }};
+              notification owner UID: {{ $labels.owner_uid }}. This does not establish
+              transcript failure, an empty HOME or permission to discard data.
+              See the failure reason
               (technical condition RescueFailed: WorktreeRefused, BundleFailed,
               FetchFailed, NotProven, BootstrapInterrupted, ...). If the session has a
               hold pod (D-55), the operator retries recovery every 15 minutes, and a
-              human can exec in to fix the worktree. A retry is not a new incident.
+              authorized owner can investigate within existing access. A retry is not
+              a new incident. Retry time, original condition transition and notification
+              repeat interval are different clocks. Bounded ownership changes notification
+              urgency only; changed risk, missing/stale owner evidence or expiry returns
+              to the unowned critical route. Latest attempt timestamp is available as
+              dev_env_session_rescue_latest_attempt_timestamp_seconds, never an incident ID.
               The kept volume is
               the point: never lift a finalizer or delete the volume or the session
               without Tom's decision (D-45). An automated responder reports this and
