@@ -74,9 +74,9 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # Source 9aa09b6bdbf85f65bd46f544d3033373c3829e71 (dev-env#823); publish41330272538 signed and verified this digest.
+          # Release 2.85.0 source 4fb35ee0b52c9e3124cbdaa608caef61a3a259e2; publish41369865692 signed and verified this digest.
           # Optional selected-source and question readers stay unconfigured; no config, route flags or access change.
-          image: ghcr.io/thaynes43/dev-env-portal:sha-9aa09b6@sha256:b4624e8b5c8efd55d54067d42d4fbb66f978f76429abcd4638671553f80c2963
+          image: ghcr.io/thaynes43/dev-env-portal:sha-4fb35ee@sha256:3ca9e49c3e617fea2d13802804957439effbeee3f0746ce137d11f599a01e491
           imagePullPolicy: IfNotPresent
           ports:
             - name: https

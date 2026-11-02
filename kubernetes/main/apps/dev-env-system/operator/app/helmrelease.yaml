@@ -137,9 +137,9 @@ spec:
               # PROPOSED RD2 source bfd5143; publish41253643759 and local cosign verified; activation HELD.
               # Previous pin: claim metadata source dev-env#815 merge79085ea; publish41294218791 signed/verified its digest.
               # Schema4573 and compatible broker4574 are verified first. Existing arguments, permissions and Session pods are preserved.
-              # Source 9b5dff23a22ed91e97c827a78f75a4b15d3796c6 (dev-env#827); publish41343691822 Sign + Verify succeeded for this digest.
+              # Release 2.85.0 source 4fb35ee0b52c9e3124cbdaa608caef61a3a259e2; publish41369865692 Sign + Verify succeeded for this digest.
               # HOME sizing revision fix preserves ordinary Session pod identity. All arguments and dormant feature holds remain unchanged.
-              tag: sha-9b5dff2@sha256:dffde6730025d6a1a630d3fd971c7f8051e50d44d53672854a0d81c14b4657ba
+              tag: sha-4fb35ee@sha256:20932d7bbef992bb5e532fbe7393acfe2bd30bf6586f9e0a6374dd863bbe2bd1
               pullPolicy: IfNotPresent
             args:
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
