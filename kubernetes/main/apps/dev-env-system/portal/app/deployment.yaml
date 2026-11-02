@@ -74,10 +74,10 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # Source dev-env#853 0a335ad1de54889f84fe16b4a390b4d0504e9c48 (Usage last-reported apart from current, presentation only; also carries #850's portal code, default off without its config file); publish41470543260 signed and verified this digest.
-          # Previous pin: dev-env#848 071f20c23c1ad78d65400fca0aa5529934063653, sha256:55518b5dbf3a1bc97112298675f96f1923e7bf323d0b59be84840a27010db186 (rollback target).
+          # Source dev-env#865 ce6edc599fef4fc50a145760247561eadb3bbb00; publish41536642759 signed and verified this exact digest.
+          # Rollback target: sha-0a335ad@sha256:80dca3d641fcdae496f885b30e207b7176f241442e0170d679d8f966ecfd48a3.
           # Optional selected-source and question readers stay unconfigured; no config, route flags or access change.
-          image: ghcr.io/thaynes43/dev-env-portal:sha-0a335ad@sha256:80dca3d641fcdae496f885b30e207b7176f241442e0170d679d8f966ecfd48a3
+          image: ghcr.io/thaynes43/dev-env-portal:sha-ce6edc5@sha256:98d95d09623da4e51130c7e5a1e378c79e87d6885e07264a7840d48d594d0bee
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
