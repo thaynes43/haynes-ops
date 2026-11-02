@@ -282,3 +282,27 @@ spec:
   kube:
     roles: [dev-env-grant-nodes]
   maxTTL: 3h
+---
+# PROPOSED ONLY: requires explicit Tom approval; no automatic policy expiry.
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: storage-ready-20261102-1456
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Temporary storage backend quota read scope. Apply only after current FSID and
+    active manager service are verified. Policy is class-wide, not SessionUID-bound.
+    Remove by approved GitOps reversion after the read; maxTTL limits grants only.
+  profiles: [workbench]
+  repos: [haynes-ops]
+  agents: [codex]
+  type: egress
+  egress:
+    cidrs: [192.168.40.9/32]
+    ports:
+      - port: 9283
+        protocol: TCP
+  maxTTL: 10m
