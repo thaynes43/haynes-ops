@@ -331,3 +331,254 @@ Both bridges failed to start. Moving the GPU restored the expected names. Compar
 actual interfaces, PCI addresses and MACs with the saved network configuration and
 boot journal before changing the configuration. A static KVM startup image alone does
 not establish a kernel hang or a defective GPU slot.
+
+## Source-only bounded read ledger
+
+`scripts/dev-env/bounded_backend_workflow.py` is a mandatory **OFFLINE** local
+phase/intent/budget/freshness/owner-reference guard for a future qualified workflow.
+It implements no transport, credential access, grant request, policy publication or
+runtime activation. No current operations requester or accepted persistent operations
+owner exists. Source tests do not establish live workflow adoption, provider/agentd
+process persistence, access approval, or storage completion. Runtime hardening belongs
+to the separate 153323/OP355 lane. Developing this source in an engineering Task is
+allowed; running operations as a Task owner is refused.
+
+The old **160852 four-GET approval is exhausted and nontransferable**. Any future
+4 discovery + 1 separately planned revalidation + 1 metrics scope needs new explicit
+approval bound to the real future identity, scope and attempt. Every local mutation
+and admission compares those three references. These comparisons are not
+authentication or consent. A trusted external adapter must verify the actual caller,
+its ready/live persistent owner observation, and every receipt/body/source claim.
+Owner caps and ledger flags prove neither liveness nor acceptance. There is no
+source-author 1800s limit or arbitrary 4h operational stop. Turn-end, recoverable
+blockers and lost owners remain nonterminal, without successor permission.
+
+Use a private local directory on a filesystem supporting POSIX flock, fsync and
+atomic same-directory replacement. Init and CAS take the same nonblocking exclusive
+lock. A competing writer returns conflict and must reload; it must never retry a
+backend read. Complete payload writes, file fsync, atomic replacement and directory
+fsync finish **before** dispatch advice. Revision mismatch fails without writing.
+A crash after durable intent loses that slot conservatively, even if no read happened.
+Do not delete lock/ledger files, reset revisions, copy a live ledger to create another
+attempt, or bypass the mandatory guard. This is a cooperative local durability guard,
+not protection against a caller rewriting its own files or a hostile filesystem.
+
+Sequence and external prerequisites:
+
+1. Initialize expected FSID and 1–4 exact canonical IPv4 TCP `9283/metrics`
+   destinations, with **no known active manager**. Externally verified already
+   covered endpoints can be declared as a subset. There is no wildcard, alternate
+   port/path, fallback or endpoint discovery permission.
+2. Under a future explicitly approved publication bundle, prepare up to three
+   alternative actual candidate PR heads **before any discovery lease/read**.
+   Publication, current-head source review and actual required CI remain external.
+   Record the same full SHA for candidate, reviewed head and CI head, with both
+   `Flux Local - Success` and `Diff Scope - Success` successful. Private review,
+   missing/pending/failed/skipped CI or another reviewed head cannot qualify.
+   An already covered route requires no fabricated candidate, PR, head or merge.
+3. Admit and complete four discovery intents in order: `version`, `permissions`,
+   `ceph-status`, `ceph-pool`. Run the guard **before each existing bounded read**;
+   only `ok=true, dispatch=true` permits the separately authorized adapter to proceed.
+   Record the actual outcome **after** that exact read, before another admission.
+   Pre-dispatch admission records no response timestamps or proof. Only the strict
+   `success` outcome advances normal progression; `denied`, `unknown`, `uncertain`,
+   `failure` and a missing outcome block it. Admission decisions `pending`, `denied`,
+   `unknown` and `uncertain` consume the slot without dispatch. Exact replay never
+   dispatches again; a conflicting replay fails. No retries or implicit new lease.
+4. After all four successful outcomes, select the existing covered route or exactly
+   one matching prepared candidate using the fresh externally verified discovery
+   FSID, active manager, exact advertised endpoint and receipt. At most one selection
+   and new activation is possible. The helper compares these against stored proof;
+   it does not interpret the raw body or prove the manager is available.
+5. For a new route, record selected reviewed PR head separately from actual squash
+   merge SHA. The actual squash merge SHA must differ from the PR head; an equal-head
+   record cannot qualify delivery, including a record from earlier offline source.
+   Flux source and applied proof must equal the **merge SHA**. Existing
+   coverage skips that merge gate. Both routes wait for externally observed
+   deployment, metrics grant and CNP readiness. Unknown future reversal heads are
+   never pre-certified; actual removal CI is a later external gate.
+6. Admit the separately explicit, at most one post-delivery status revalidation.
+   Successful post-read outcome records the immutable original request/response
+   interval, body SHA256, receipt, FSID, manager, exact endpoint and caller references.
+   CI can exceed 300s or 1800s before discovery; deployment can exceed 300s before
+   this revalidation. Neither must fit the manager proof guard.
+7. Admit at most one metrics intent using that revalidation receipt and the same
+   FSID, selected manager and exact endpoint. Freshness conservatively starts at the
+   original request, not a later response or caller-supplied reset. Require the full
+   **10 seconds** inside the **300 second** guard. Stale/future intervals, clock
+   rollback, eight seconds remaining, wrong FSID, manager drift or an unknown/different
+   endpoint give zero metrics dispatch. The response includes `read_budget_s=10`,
+   `proof_deadline` and `transport_deadline` (the earlier of proof expiry and the
+   caller deadline minus cleanup reserve). Immediately before the real read, the
+   future adapter must recheck real current time, clock continuity, caller/liveness,
+   readiness and approval, and require current time + 10 <= transport deadline.
+   It must enforce a 10s total read bound and never reset the proof origin.
+
+Reserve cleanup against an **explicit caller deadline** before new stages. The
+remaining time must cover the requested stage budget plus the reserve. PVE admissions
+allow at least the original 12s read budget; metrics admissions require 10s. Use
+`--stage-budget-s` for a larger actual stage/publication estimate. CI estimates are
+not guaranteed deadlines; an external publication adapter must check the remaining
+reserve again at its real action edge. `publish` always refuses here. The plan deadline
+blocks new stages but never prevents recording outcomes, blockers or exact residuals.
+Cleanup can remain outstanding beyond it; extending a local estimate grants no access.
+
+Recoverable technical dependencies have one explicit local recovery path. Record
+`record-blocker --kind recoverable`; the ledger assigns `blocker-1` through
+`blocker-8` and preserves each record for the entire attempt. After the qualified
+external adapter verifies the prerequisite, the same bound identity/scope/attempt
+may record:
+
+```bash
+step resolve-blocker --blocker-id blocker-1 --reason dependency-restored \
+  --prerequisite-ref verified-external-receipt --verified-at "$NOW"
+```
+
+The `step` fixture below supplies the ledger's expected revision and caller binding.
+Reason and reference are nonsecret tokens of at most 80 characters. The external
+observation time must be between the blocker's recorded time and current time.
+Resolution stores that time, current resolution time and caller binding once; it
+never deletes a blocker or resets the eight-record limit. Every other unresolved
+blocker still gates normal work. A blocker from the earlier offline format without
+an ID/event time stays unresolved and cleanupable; this command does not invent
+missing evidence or migrate it implicitly.
+
+Resolution requires the existing observed ready/live persistent owner, monotonic
+clock and caller deadline with cleanup reserve plus at least the next read budget
+(12s, or 10s after revalidation), or a larger `--stage-budget-s`. It refuses a
+`turn-end`/`lost-owner`, any such record elsewhere in the attempt, a consumed intent
+without successful outcome, or an already consumed metrics slot. A delayed real
+successful outcome may still be recorded for a dispatched pending intent; no
+non-success outcome can be overwritten. Exhausted or uncertain attempts remain
+blocked and cleanupable. No resolution changes owner readiness/liveness/loss,
+intents, slot counts, admission decisions, outcomes, receipts, proof origins,
+access, approval or successor authority. A fresh external caller/liveness/readiness
+observation remains the adapter's separate obligation at every action edge.
+Resolution only removes that dependency gate: stale proof or less than a full 10s
+still denies and consumes metrics; clock/reserve gates continue to refuse admission.
+It grants no retry, backend read, new attempt or human approval.
+
+Both ledger and audit inputs use a bounded regular-file read with no final symlink
+following and nonblocking open. Inputs over 64KiB, FIFOs, symlinks, malformed or
+truncated JSON, nonfinite constants and missing/incorrect required record types
+return structured `ok=false, dispatch=false` without changing ledger bytes or
+revision. File type/shape checks establish neither authenticity nor completeness.
+
+Synthetic local CLI example (values are fixtures, not qualified operational evidence):
+
+```bash
+LEDGER=./bounded-read-ledger.json
+NOW=1700000000
+wf() {
+  python3 -I -B scripts/dev-env/bounded_backend_workflow.py --ledger "$LEDGER" "$@" \
+    --identity synthetic-owner --scope synthetic-scope --attempt attempt-1 --now "$NOW"
+}
+step() {
+  local revision
+  revision=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["revision"])' "$LEDGER")
+  wf "$@" --expect-revision "$revision"
+}
+wf init --owner-kind persistent --owner-liveness observed --owner-ready --owner-live \
+  --fsid fsid-synthetic --endpoint 203.0.113.10:9283/metrics --planned-revalidation
+step reserve-cleanup --seconds 180 --deadline 1700010000 --ci-estimate-s 900
+NOW=1700002500
+HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+step prepare-candidate --head "$HEAD" --reviewed-head "$HEAD" --ci-head "$HEAD" \
+  --pr pr-synthetic --manager mgr-synthetic --endpoint 203.0.113.10:9283/metrics \
+  --flux-local success --diff-scope success --ci-started-at 1700000000 --ci-finished-at "$NOW"
+step admit --slot version --intent-id intent-version --decision admit
+# The future approved adapter performs only that read here, after durable advice.
+# Then record its externally verified actual receipt, interval and body digest:
+BODY_SHA=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+step record-outcome --intent-id intent-version --outcome success \
+  --request-at "$NOW" --observed-at "$NOW" --receipt receipt-version --body-sha256 "$BODY_SHA"
+```
+
+Repeat separate guard/outcome pairs for `permissions`, `ceph-status`, `ceph-pool`.
+Successful `ceph-status` and `revalidation` outcomes also require
+`--observed-fsid fsid-synthetic --observed-manager mgr-synthetic
+--observed-endpoint 203.0.113.10:9283/metrics`. Failure outcomes must describe what
+actually happened; never synthesize success to advance. Only after discovery:
+
+```bash
+step select-candidate --branch new --verified-fsid fsid-synthetic \
+  --verified-manager mgr-synthetic --verified-endpoint 203.0.113.10:9283/metrics \
+  --proof-receipt receipt-ceph-status
+MERGED=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+step record-merge --pr-head "$HEAD" --merged-sha "$MERGED" \
+  --flux-source "$MERGED" --flux-applied "$MERGED"
+step observe-delivery --deployment ready --grant ready --cnp ready
+step admit --slot revalidation --intent-id intent-revalidation --decision admit
+# Perform exactly the qualified planned status read; record successful outcome
+# with its original interval, receipt-revalidation, digest and observed fields.
+step admit --slot metrics --intent-id intent-metrics --decision admit \
+  --observed-fsid fsid-synthetic --observed-manager mgr-synthetic \
+  --observed-endpoint 203.0.113.10:9283/metrics --proof-receipt receipt-revalidation
+# Edge recheck, bounded metrics read, then record-outcome for intent-metrics.
+```
+
+For existing coverage, initialize with `--covered-endpoint` matching an allowlisted
+endpoint; use `select-candidate --branch existing` and skip prepare/merge if no new
+route is needed. The other gates remain mandatory. All commands expose `--help`.
+
+Cleanup remains writable after partial execution, blockers, owner loss and deadline
+expiry. `record-residual --uid <grant-uid> --owner-class own|other --active true|false
+--expires-at <original-expiry> --cnp-uid <exact-uid> --cnp present|absent --receipt <ref>`
+records an observation, never a release. Inactive grants require exact CNP absence
+and `--reason natural-expiry|released`. Only own grants may be recorded released;
+other grants can be recorded naturally expired after their immutable expiry. Removing
+standing policy does **not** revoke active ordinary standing grants.
+
+`evaluate-clean --audit-file <qualified-local-audit.json>` requires a bounded complete
+external audit, not a positive status string. Its schema is:
+
+```json
+{
+  "binding": {"identity": "synthetic-owner", "scope": "synthetic-scope", "attempt": "attempt-1"},
+  "receipt": "audit-synthetic", "observed_at": 1700003000, "complete": true,
+  "policy": {"ref": "policy-synthetic", "present": false},
+  "grants": [{"uid": "other-grant", "owner_class": "other", "expires_at": 1700002900,
+              "active": false, "cnp_uid": "cnp-synthetic", "cnp_present": false}],
+  "cnps": [{"uid": "cnp-synthetic", "present": false}]
+}
+```
+
+The audit must be at least as recent as the last recorded event and no later than
+current time. Record every newly found own/other class grant first. The exact UID set,
+classes, original expiries, active states and CNP UIDs/presence must match residuals.
+Missing/incomplete audit, present policy, any present CNP or active grant cannot be
+clean. The helper records the audit and digest, but its authenticity/completeness and
+actual resource absence are still qualified external audit gates. `clean` is only a
+conditional local cleanup report; it never completes operations or releases another
+owner. A new residual observation or normal stage invalidates the prior evaluation.
+
+The existing private reader exposes `identity_guard()`, `read('pve',
+'/nodes/pve04/ceph/status')`, `save(body, receipt)` and `url_for()`. Its `pve` CLI
+bundles **all four GETs**; there is no single-status flag. Before any future access
+ask, a NEW-IDENTITY/SAFE_END adapter must be independently reviewed and equivalence
+checked. It must call identity_guard first, then exactly one approved read/save after
+this durable unique intent. Preserve the original immutable source/constants and its
+12s total/3s connect/8MiB/no retry/redirect/proxy/baseline-reader limits. The qualification
+handoff is preserved externally at
+`/home/dev/.shared/handoffs/storage-workflow-correction-20261102-1808/FUTURE-REVALIDATION-ADAPTER-PREREQUISITE.md`.
+No existing reader function was executed for this source work.
+
+Raw PVE/metrics FSID, active-manager availability, advertised endpoint and body/receipt
+semantics stay externally verified. There is no fake parser, capacity oracle or admin
+oracle here. Any future raw parser must retain 8MiB and allow legitimate additional
+manager services. Capacity, physical/byte/object quotas, usable versus raw replication,
+concurrent-write budgets and admin approval need external evidence/review. Missing
+series are `UNKNOWN`, never zero/unlimited. Live versions and samples are unverified.
+
+Continuous regression CI uses the current `ubuntu-26.04` runner pattern, pinned
+checkout without persisted credentials, `contents: read`, five-minute timeout and
+bounded concurrency. `Storage Workflow Fixtures` is a **delivery gate** alongside
+normal `Flux Local - Success` and `Diff Scope - Success`; branch protection is unchanged.
+It does not activate this guard in any live reader. Run its exact isolated command:
+
+```bash
+nice -n 19 python3 -I -B -m unittest discover -s scripts/dev-env -p test_bounded_backend_workflow.py -v
+```
+
+Tests use only synthetic local files, at most two competing workers and one focused
+suite. No image builds, cluster tests, backend contact or credentials are involved.
