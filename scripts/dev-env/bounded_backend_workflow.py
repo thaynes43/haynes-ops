@@ -66,17 +66,139 @@ def parse_endpoint(text):
     return text
 
 
-def load_ledger(path):
+def read_json_file(path, label):
+    """Bound both local inputs before parsing; never follow a final symlink or FIFO."""
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, 'rb') as handle:
-        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
-            raise Reject('ledger must be a regular file')
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise Reject(label + ' must be a regular file')
+        if info.st_size > MAX_LEDGER_BYTES:
+            raise Reject(label + ' exceeds bounded size')
         payload = handle.read(MAX_LEDGER_BYTES + 1)
     if len(payload) > MAX_LEDGER_BYTES:
-        raise Reject('ledger exceeds bounded size')
-    state = json.loads(payload)
-    if not isinstance(state, dict) or state.get('schema') != 1 or type(state.get('revision')) is not int:
+        raise Reject(label + ' exceeds bounded size')
+
+    def invalid_constant(value):
+        raise Reject('nonfinite JSON value')
+
+    return json.loads(payload, parse_constant=invalid_constant), payload
+
+
+def fields(record, specification, label):
+    """Validate required local record shapes before indexing or hashing values."""
+    if not isinstance(record, dict):
+        raise Reject('invalid ' + label + ' record')
+    for key, types in specification.items():
+        types = types if isinstance(types, tuple) else (types,)
+        if key not in record or type(record[key]) not in types:
+            raise Reject('invalid or missing ' + label + '.' + key)
+
+
+def binding_fields(record):
+    fields(record, dict(identity=str, scope=str, attempt=str), 'binding')
+    for key in ('identity', 'scope', 'attempt'):
+        _token(record[key], key)
+
+
+def proof_fields(record):
+    fields(record, dict(binding=dict, request_at=int, observed_at=int, receipt=str,
+                        body_sha256=str, fsid=str, manager=str, endpoint=str), 'proof')
+    binding_fields(record['binding'])
+    for key in ('receipt', 'fsid', 'manager'):
+        _token(record[key], key)
+    parse_endpoint(record['endpoint'])
+
+
+def load_ledger(path):
+    state, _ = read_json_file(path, 'ledger')
+    nullable = (str, type(None))
+    fields(state, dict(schema=int, revision=int, last_now=int, binding=dict, owner=dict,
+           contract=dict, cleanup=dict, candidates=list, selected_head=nullable,
+           selected_manager=nullable, selected_endpoint=nullable, branch=nullable,
+           merge=dict, delivery=dict, reversal=dict, proof=dict, intents=dict,
+           slot_intent=dict, blockers=list, operation_complete=bool,
+           successor_authorized=bool, capacity_gate=str, admin_gate=str, series=str,
+           quotas=str, prior_pve_bundle=str), 'ledger')
+    if state['schema'] != 1 or state['revision'] < 1 or state['last_now'] < 0:
         raise Reject('unknown ledger format; no implicit migration')
+    binding_fields(state['binding'])
+    fields(state['owner'], dict(kind=str, ready=bool, live=bool, lost=bool,
+                               operations_owner_accepted=bool), 'owner')
+    contract = state['contract']
+    fields(contract, dict(fsid=str, endpoints=list, covered_endpoints=list,
+                          planned_revalidation=bool), 'contract')
+    _token(contract['fsid'], 'FSID')
+    if not 1 <= len(contract['endpoints']) <= 4 or len(contract['covered_endpoints']) > 4:
+        raise Reject('invalid endpoint inventory')
+    for endpoint in contract['endpoints'] + contract['covered_endpoints']:
+        parse_endpoint(endpoint)
+    cleanup = state['cleanup']
+    fields(cleanup, dict(reserved_s=int, deadline=(int, type(None)),
+                        ci_estimate_s=(int, type(None)), grants=list,
+                        evaluation=(dict, type(None))), 'cleanup')
+    if len(cleanup['grants']) > 16:
+        raise Reject('bounded residual list full')
+    for row in cleanup['grants']:
+        fields(row, dict(uid=str, owner_class=str, expires_at=int, active=bool,
+                         cnp=str, cnp_uid=str, reason=str, receipt=str, observed_at=int), 'residual')
+        for key in ('uid', 'cnp_uid', 'receipt'):
+            _token(row[key], key)
+    if len(state['candidates']) > MAX_CANDIDATES or len(state['blockers']) > 8:
+        raise Reject('bounded candidate or blocker list exceeded')
+    for row in state['candidates']:
+        fields(row, dict(head=str, reviewed_head=str, ci_head=str, pr=str, manager=str,
+                         endpoint=str, checks=dict, ci_started_at=int, ci_finished_at=int), 'candidate')
+        fields(row['checks'], dict.fromkeys(REQUIRED_CHECKS, str), 'candidate checks')
+    for row in state['blockers']:
+        fields(row, dict(kind=str, nonterminal=bool), 'blocker')
+        # Earlier offline records have no recovery metadata. Keep cleanup writable,
+        # but never invent their event time or silently qualify them for resolution.
+        if any(key in row for key in ('id', 'recorded_at', 'resolution')):
+            fields(row, dict(id=str, recorded_at=int, resolution=(dict, type(None))), 'blocker')
+            _token(row['id'], 'blocker ID')
+        if row['kind'] not in ('recoverable', 'turn-end', 'lost-owner'):
+            raise Reject('invalid blocker kind')
+        if row.get('resolution') is not None:
+            fields(row['resolution'], dict(reason=str, prerequisite_ref=str, verified_at=int,
+                                           resolved_at=int, binding=dict), 'resolution')
+            binding_fields(row['resolution']['binding'])
+            if row['kind'] != 'recoverable' or row['resolution']['binding'] != state['binding']:
+                raise Reject('invalid blocker resolution')
+    if state['merge']:
+        fields(state['merge'], dict(pr_head=str, merged=str, flux_source=str, flux_applied=str), 'merge')
+    if state['delivery']:
+        fields(state['delivery'], dict(deployment=str, grant=str, cnp=str), 'delivery')
+    if state['reversal']:
+        fields(state['reversal'], dict(head=str, precertified=bool, removal_ci=str), 'reversal')
+    if not set(state['proof']) <= {'discovery', 'revalidation'}:
+        raise Reject('unknown proof key')
+    for proof in state['proof'].values():
+        proof_fields(proof)
+    if (not set(state['slot_intent']) <= set(ALL_SLOTS)
+            or len(state['intents']) > len(ALL_SLOTS)):
+        raise Reject('invalid intent inventory')
+    for key, row in state['intents'].items():
+        _token(key, 'intent ID')
+        fields(row, dict(slot=str, fingerprint=dict, admitted_at=int, dispatch=int,
+                         decision=str, reason=(str, type(None)), outcome=(str, type(None))), 'intent')
+        fields(row['fingerprint'], dict(slot=str, decision=str, observed_fsid=str,
+               observed_manager=str, observed_endpoint=str, proof_receipt=str), 'fingerprint')
+        if row['slot'] not in ALL_SLOTS or row['dispatch'] not in (0, 1):
+            raise Reject('invalid intent slot or dispatch')
+        if row['outcome'] is not None:
+            if row['outcome'] not in OUTCOMES:
+                raise Reject('invalid outcome')
+            fields(row, dict(result=dict, receipt=str), 'completed intent')
+            fields(row['result'], dict(outcome=str, request_at=(int, type(None)),
+                   observed_at=(int, type(None)), receipt=str, body_sha256=(str, type(None)),
+                   fsid=str, manager=str, endpoint=str), 'outcome')
+        if state['slot_intent'].get(row['slot']) != key:
+            raise Reject('intent missing exact slot binding')
+    for slot, intent_id in state['slot_intent'].items():
+        _token(intent_id, 'slot intent ID')
+        if intent_id not in state['intents'] or state['intents'][intent_id]['slot'] != slot:
+            raise Reject('slot missing exact intent binding')
     return state
 
 
@@ -170,11 +292,15 @@ def advance_clock(state, now):
     state['last_now'] = now
 
 
-def require_owner(state):
+def require_owner_observation(state):
     owner = state['owner']
     if owner['kind'] != 'persistent' or not owner['ready'] or not owner['live'] or owner['lost']:
         raise Gate('observed ready/live persistent owner required')
-    if state['blockers']:
+
+
+def require_owner(state):
+    require_owner_observation(state)
+    if any(row.get('resolution') is None for row in state['blockers']):
         raise Gate('blocker is nonterminal; cleanup remains recordable')
 
 
@@ -269,7 +395,7 @@ def mutate_command(state, args):
     # Cleanup, blocker and outcomes are writable after owner loss or plan expiry.
     if command in ('reserve-cleanup', 'record-outcome', 'record-blocker', 'record-residual'):
         advance_clock(state, args.now)
-    elif command not in ('admit', 'evaluate-clean'):
+    elif command not in ('admit', 'evaluate-clean', 'resolve-blocker'):
         normal_stage(state, args)
 
     if command == 'reserve-cleanup':
@@ -344,9 +470,13 @@ def mutate_command(state, args):
     elif command == 'record-blocker':
         if len(state['blockers']) >= 8:
             raise Reject('bounded blocker list full')
-        state['blockers'].append(dict(kind=args.kind, nonterminal=True))
+        state['blockers'].append(dict(id='blocker-' + str(len(state['blockers']) + 1),
+                                     kind=args.kind, nonterminal=True, recorded_at=args.now,
+                                     resolution=None))
         if args.kind == 'lost-owner':
             state['owner']['lost'] = True
+    elif command == 'resolve-blocker':
+        return resolve_blocker(state, args)
     elif command == 'record-residual':
         return residual(state, args)
     elif command == 'evaluate-clean':
@@ -356,6 +486,32 @@ def mutate_command(state, args):
     else:
         raise Reject('no publication, operation completion or successor authority in this offline helper')
     return {}
+
+
+def resolve_blocker(state, args):
+    # A local recovery record is neither owner liveness nor approval evidence.
+    require_owner_observation(state)
+    advance_clock(state, args.now)
+    next_budget = METRICS_BUDGET_S if 'revalidation' in state['slot_intent'] else PVE_BUDGET_S
+    require_reserve(state, args.now, max(next_budget, args.stage_budget_s))
+    blocker_id = _token(args.blocker_id, 'blocker ID')
+    record = next((row for row in state['blockers'] if row.get('id') == blocker_id), None)
+    if not record or record['kind'] != 'recoverable' or record['resolution'] is not None:
+        raise Gate('only an unresolved recoverable blocker can be resolved once')
+    if any(row['kind'] != 'recoverable' for row in state['blockers']):
+        raise Gate('turn-end or lost-owner cannot be locally resurrected')
+    if ('metrics' in state['slot_intent'] or any(
+            row['outcome'] != 'success' or row['decision'] != 'admit' or not row['dispatch']
+            for row in state['intents'].values())):
+        raise Gate('consumed non-success or exhausted attempt remains blocked; no retry or refund')
+    if not record['recorded_at'] <= args.verified_at <= args.now:
+        raise Gate('external prerequisite observation must follow blocker and not be future')
+    record['resolution'] = dict(reason=_token(args.reason, 'resolution reason'),
+                                prerequisite_ref=_token(args.prerequisite_ref, 'external prerequisite reference'),
+                                verified_at=args.verified_at, resolved_at=args.now,
+                                binding=copy.deepcopy(state['binding']))
+    state['cleanup']['evaluation'] = None
+    return dict(resolved_blocker=blocker_id)
 
 
 def admit(state, args):
@@ -467,11 +623,7 @@ def residual(state, args):
 def evaluate(state, args):
     # A qualified external auditor supplies this complete observation; the helper
     # compares its references, not truth/authenticity. Status flags alone cannot clean.
-    with open(args.audit_file, 'rb') as handle:
-        payload = handle.read(MAX_LEDGER_BYTES + 1)
-    if len(payload) > MAX_LEDGER_BYTES:
-        raise Reject('audit exceeds bounded size')
-    audit = json.loads(payload)
+    audit, payload = read_json_file(args.audit_file, 'audit')
     if not isinstance(audit, dict) or audit.get('binding') != state['binding']:
         raise Gate('audit identity/scope/attempt mismatch')
     _token(audit.get('receipt'), 'external audit receipt')
@@ -488,6 +640,11 @@ def evaluate(state, args):
     rows = audit.get('grants')
     if not isinstance(rows, list) or len(rows) > 16 or any(not isinstance(row, dict) for row in rows):
         raise Reject('audit needs bounded exact class-grant observations')
+    for row in rows:
+        fields(row, dict(uid=str, owner_class=str, expires_at=int, cnp_uid=str,
+                         active=bool, cnp_present=bool), 'audited grant')
+        _token(row['uid'], 'audited grant UID')
+        _token(row['cnp_uid'], 'audited grant CNP UID')
     if (len({row.get('uid') for row in rows}) != len(rows)
             or {row.get('uid') for row in rows} != {row['uid'] for row in grants}):
         raise Gate('audit must enumerate exact own AND other residual UIDs; record newly found residuals first')
@@ -584,6 +741,10 @@ def build_parser():
             item.add_argument('--' + key, default='')
     admit_parser.add_argument('--proof-receipt', default='')
     command('record-blocker').add_argument('--kind', choices=('recoverable', 'turn-end', 'lost-owner'), required=True)
+    resolution = command('resolve-blocker')
+    for key in ('blocker-id', 'reason', 'prerequisite-ref'):
+        resolution.add_argument('--' + key, required=True)
+    resolution.add_argument('--verified-at', type=int, required=True)
     residual_parser = command('record-residual')
     for key in ('uid', 'receipt', 'cnp-uid'):
         residual_parser.add_argument('--' + key, required=True)
@@ -614,7 +775,7 @@ def main(argv=None):
             result = dict(ok=True, ledger=state, dispatch=False)
         else:
             result = cas(args.ledger, args.expect_revision, lambda state: mutate_command(state, args), args)
-    except (Conflict, Gate, Reject, OSError, ValueError) as exc:
+    except (Conflict, Gate, Reject, OSError, ValueError, TypeError, KeyError, RecursionError) as exc:
         code = 2 if isinstance(exc, Conflict) else 3 if isinstance(exc, Gate) else 4
         print(json.dumps(dict(ok=False, dispatch=False, next_metrics_reads=0,
                               error=type(exc).__name__, detail=str(exc)), sort_keys=True))

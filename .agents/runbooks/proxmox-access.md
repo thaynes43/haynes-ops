@@ -421,6 +421,47 @@ reserve again at its real action edge. `publish` always refuses here. The plan d
 blocks new stages but never prevents recording outcomes, blockers or exact residuals.
 Cleanup can remain outstanding beyond it; extending a local estimate grants no access.
 
+Recoverable technical dependencies have one explicit local recovery path. Record
+`record-blocker --kind recoverable`; the ledger assigns `blocker-1` through
+`blocker-8` and preserves each record for the entire attempt. After the qualified
+external adapter verifies the prerequisite, the same bound identity/scope/attempt
+may record:
+
+```bash
+step resolve-blocker --blocker-id blocker-1 --reason dependency-restored \
+  --prerequisite-ref verified-external-receipt --verified-at "$NOW"
+```
+
+The `step` fixture below supplies the ledger's expected revision and caller binding.
+Reason and reference are nonsecret tokens of at most 80 characters. The external
+observation time must be between the blocker's recorded time and current time.
+Resolution stores that time, current resolution time and caller binding once; it
+never deletes a blocker or resets the eight-record limit. Every other unresolved
+blocker still gates normal work. A blocker from the earlier offline format without
+an ID/event time stays unresolved and cleanupable; this command does not invent
+missing evidence or migrate it implicitly.
+
+Resolution requires the existing observed ready/live persistent owner, monotonic
+clock and caller deadline with cleanup reserve plus at least the next read budget
+(12s, or 10s after revalidation), or a larger `--stage-budget-s`. It refuses a
+`turn-end`/`lost-owner`, any such record elsewhere in the attempt, a consumed intent
+without successful outcome, or an already consumed metrics slot. A delayed real
+successful outcome may still be recorded for a dispatched pending intent; no
+non-success outcome can be overwritten. Exhausted or uncertain attempts remain
+blocked and cleanupable. No resolution changes owner readiness/liveness/loss,
+intents, slot counts, admission decisions, outcomes, receipts, proof origins,
+access, approval or successor authority. A fresh external caller/liveness/readiness
+observation remains the adapter's separate obligation at every action edge.
+Resolution only removes that dependency gate: stale proof or less than a full 10s
+still denies and consumes metrics; clock/reserve gates continue to refuse admission.
+It grants no retry, backend read, new attempt or human approval.
+
+Both ledger and audit inputs use a bounded regular-file read with no final symlink
+following and nonblocking open. Inputs over 64KiB, FIFOs, symlinks, malformed or
+truncated JSON, nonfinite constants and missing/incorrect required record types
+return structured `ok=false, dispatch=false` without changing ledger bytes or
+revision. File type/shape checks establish neither authenticity nor completeness.
+
 Synthetic local CLI example (values are fixtures, not qualified operational evidence):
 
 ```bash

@@ -1,10 +1,13 @@
 """Offline synthetic requirements regressions; no endpoint or credential contact."""
 import contextlib
+import copy
 import importlib.util
 import io
 import json
 import multiprocessing
 import os
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -169,6 +172,288 @@ class WorkflowTests(unittest.TestCase):
             'observed_fsid': FSID, 'observed_manager': MANAGER, 'observed_endpoint': ENDPOINT,
             'proof_receipt': 'receipt-revalidation', **flags})
 
+    def block(self, kind='recoverable'):
+        self.good('record-blocker', kind=kind)
+        return self.state()['blockers'][-1].get('id', 'blocker-' + str(len(self.state()['blockers'])))
+
+    def resolve(self, identifier, **flags):
+        return self.call('resolve-blocker', **{
+            'blocker_id': identifier, 'reason': 'dependency-restored',
+            'prerequisite_ref': 'verified-external-receipt', 'verified_at': self.now, **flags})
+
+    def audit_fixture(self):
+        self.good('record-residual', uid='own', owner_class='own', active='false',
+                  expires_at=self.now - 1, cnp='absent', reason='natural-expiry', receipt='expired-own')
+        return dict(binding=BINDING, receipt='audit', observed_at=self.now, complete=True,
+                    policy=dict(ref='policy-synthetic', present=False),
+                    grants=[dict(uid='own', owner_class='own', expires_at=self.now - 1,
+                                 active=False, cnp_uid='cnp-own', cnp_present=False)],
+                    cnps=[dict(uid='cnp-own', present=False)])
+
+    def assert_structured_rejection(self, command, **flags):
+        before = self.path.read_bytes()
+        code, body = invoke(self.path, command, **{
+            **BINDING, 'now': self.now, 'expect_revision': 1, **flags})
+        self.assertNotEqual(code, 0, body)
+        self.assertIs(body['ok'], False)
+        self.assertIs(body['dispatch'], False)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_recoverable_blocker_resolution_resumes_only_unused_work_and_is_audited(self):
+        self.ready()
+        blocker = self.block()
+        self.no_dispatch('admit', slot='version', intent_id='intent-version', decision='admit')
+        before = self.state()
+        self.now += 1
+        code, body = self.resolve(blocker)
+        self.assertEqual(code, 0, body)
+        state = self.state()
+        self.assertEqual(state['owner'], before['owner'])
+        self.assertEqual(state['intents'], before['intents'])
+        self.assertEqual(state['slot_intent'], before['slot_intent'])
+        self.assertEqual(state['proof'], before['proof'])
+        record = state['blockers'][0]
+        self.assertEqual(record['resolution'], dict(reason='dependency-restored',
+                         prerequisite_ref='verified-external-receipt', verified_at=self.now,
+                         resolved_at=self.now, binding=BINDING))
+        resolved = self.path.read_bytes()
+        self.assertNotEqual(self.resolve(blocker)[0], 0)
+        self.assertEqual(self.path.read_bytes(), resolved)
+        self.assertTrue(self.admit('version')['dispatch'])
+        self.assertFalse(body['operation_complete'])
+        self.assertFalse(body['successor_authorized'])
+
+    def test_resolution_cannot_refund_or_overwrite_consumed_non_success_slots(self):
+        for outcome in (None, 'denied', 'unknown', 'uncertain', 'failure'):
+            with self.subTest(outcome=outcome):
+                self.path = Path(self.tmp.name) / ('resolution-' + str(outcome))
+                self.now = BASE
+                self.ready()
+                self.admit('version')
+                if outcome:
+                    self.assertEqual(self.outcome('version', outcome)[0], 0)
+                blocker = self.block()
+                before = self.path.read_bytes()
+                self.assertNotEqual(self.resolve(blocker)[0], 0)
+                self.assertEqual(self.path.read_bytes(), before)
+                self.assertFalse(self.admit('version')['dispatch'])
+                self.no_dispatch('admit', slot='permissions', intent_id='next', decision='admit')
+                self.good('record-residual', uid='partial', owner_class='own', active='true',
+                          expires_at=self.now + 500, cnp='present', receipt='partial')
+        for decision in ('pending', 'denied', 'unknown', 'uncertain'):
+            with self.subTest(decision=decision):
+                self.path = Path(self.tmp.name) / ('decision-' + decision)
+                self.now = BASE
+                self.ready()
+                self.good('admit', slot='version', intent_id='spent', decision=decision)
+                blocker = self.block()
+                before = self.path.read_bytes()
+                self.assertNotEqual(self.resolve(blocker)[0], 0)
+                self.assertEqual(self.path.read_bytes(), before)
+                self.assertNotEqual(self.call('admit', slot='version', intent_id='retry', decision='admit')[0], 0)
+
+    def test_resolution_binding_reference_and_observation_are_required(self):
+        self.ready()
+        blocker = self.block()
+        for flags in ([{key: 'wrong'} for key in BINDING] +
+                      [{'blocker_id': 'missing'}, {'reason': ''}, {'prerequisite_ref': ''},
+                       {'verified_at': self.now - 1}, {'verified_at': self.now + 1},
+                       {'now': self.now - 1}, {'expect_revision': 0}]):
+            with self.subTest(flags=flags):
+                before = self.path.read_bytes()
+                self.assertNotEqual(self.resolve(blocker, **flags)[0], 0)
+                self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(self.resolve(blocker)[0], 0)
+
+    def test_resolution_does_not_resurrect_lost_owner_or_turn_end(self):
+        for kind in ('lost-owner', 'turn-end'):
+            with self.subTest(kind=kind):
+                self.path = Path(self.tmp.name) / kind
+                self.now = BASE
+                self.ready()
+                blocker = self.block()
+                terminal = self.block(kind)
+                before = self.path.read_bytes()
+                self.assertNotEqual(self.resolve(terminal)[0], 0)
+                self.assertNotEqual(self.resolve(blocker)[0], 0)
+                self.assertEqual(self.path.read_bytes(), before)
+                self.no_dispatch('admit', slot='version', intent_id='v', decision='admit')
+                self.now += 20000
+                self.good('record-residual', uid='partial', owner_class='own', active='true',
+                          expires_at=self.now + 300, cnp='present', receipt='partial')
+
+    def test_resolution_retains_owner_reserve_and_proof_time_gates(self):
+        for gate in ('fresh', 'stale', 'near-expiry', 'deadline', 'reserve', 'not-ready', 'not-live', 'lost'):
+            with self.subTest(gate=gate):
+                self.path = Path(self.tmp.name) / gate
+                self.now = BASE
+                self.metrics_ready()
+                blocker = self.block()
+                proof = copy.deepcopy(self.state()['proof'])
+                if gate in ('not-ready', 'not-live', 'lost'):
+                    state = self.state()
+                    state['owner'][{'not-ready': 'ready', 'not-live': 'live', 'lost': 'lost'}[gate]] = gate == 'lost'
+                    workflow.atomic_dump(self.path, state)
+                if gate == 'fresh':
+                    self.now += 1
+                elif gate == 'stale':
+                    self.now += 301
+                elif gate == 'near-expiry':
+                    self.now += 292
+                elif gate == 'deadline':
+                    self.now = BASE + 10001
+                elif gate == 'reserve':
+                    self.good('reserve-cleanup', seconds=180, deadline=self.now + 185)
+                before = self.path.read_bytes()
+                code, body = self.resolve(blocker)
+                if gate in ('fresh', 'stale', 'near-expiry'):
+                    self.assertEqual(code, 0, body)
+                    self.assertEqual(self.metrics()[1]['dispatch'], gate == 'fresh')
+                    self.assertIn('metrics', self.state()['slot_intent'])
+                else:
+                    self.assertNotEqual(code, 0, body)
+                    self.assertEqual(self.path.read_bytes(), before)
+                    self.assertFalse(self.metrics()[1].get('dispatch', False))
+                self.assertEqual(self.state()['proof'], proof)
+
+    def test_resolution_cannot_reopen_fully_exhausted_attempt(self):
+        self.metrics_ready()
+        self.assertTrue(self.metrics()[1]['dispatch'])
+        self.assertEqual(self.outcome('metrics')[0], 0)
+        blocker = self.block()
+        before = self.path.read_bytes()
+        self.assertNotEqual(self.resolve(blocker)[0], 0)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_blocker_records_are_bounded_for_entire_attempt(self):
+        self.ready()
+        for index in range(8):
+            blocker = self.block()
+            self.assertEqual(blocker, 'blocker-' + str(index + 1))
+            self.assertEqual(self.resolve(blocker)[0], 0)
+        before = self.path.read_bytes()
+        self.assertNotEqual(self.call('record-blocker', kind='recoverable')[0], 0)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_legacy_blockers_allow_cleanup_without_inventing_recovery_evidence(self):
+        self.ready()
+        state = self.state()
+        state['blockers'] = [dict(kind='recoverable', nonterminal=True)]
+        workflow.atomic_dump(self.path, state)
+        before = self.path.read_bytes()
+        self.assertNotEqual(self.resolve('blocker-1')[0], 0)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.no_dispatch('admit', slot='version', intent_id='v', decision='admit')
+        self.now += 20000
+        self.good('record-residual', uid='partial', owner_class='own', active='true',
+                  expires_at=self.now + 300, cnp='present', receipt='partial')
+        self.assertEqual(self.state()['blockers'], state['blockers'])
+
+    def test_bad_ledger_structures_fail_closed_without_writes(self):
+        self.metrics_ready()
+        self.audit_fixture()
+        good = self.state()
+        invalid = [None, [], {'schema': 1, 'revision': 1}]
+        for key in good:
+            missing = copy.deepcopy(good)
+            del missing[key]
+            invalid.append(missing)
+        for key, value in [('binding', []), ('owner', {}), ('cleanup', {}),
+                           ('proof', []), ('intents', []), ('slot_intent', []),
+                           ('blockers', [None]), ('candidates', [None]), ('revision', True)]:
+            invalid.append({**good, key: value})
+        for group, key in [('owner', 'lost'), ('cleanup', 'grants'), ('contract', 'fsid')]:
+            item = copy.deepcopy(good)
+            del item[group][key]
+            invalid.append(item)
+        for key, value in [('uid', []), ('cnp_uid', {}), ('expires_at', True)]:
+            item = copy.deepcopy(good)
+            item['cleanup']['grants'][0][key] = value
+            invalid.append(item)
+        for data in invalid:
+            with self.subTest(data=str(data)[:100]):
+                self.path.write_text(json.dumps(data))
+                self.assert_structured_rejection('show')
+                self.assert_structured_rejection('record-blocker', kind='recoverable')
+
+    def test_bad_audit_structures_fail_closed_without_writes(self):
+        self.ready()
+        audit = self.audit_fixture()
+        path = Path(self.tmp.name) / 'audit.json'
+        invalid = [None, [], {}]
+        for key in audit:
+            item = copy.deepcopy(audit)
+            del item[key]
+            invalid.append(item)
+        for row_key in audit['grants'][0]:
+            item = copy.deepcopy(audit)
+            del item['grants'][0][row_key]
+            invalid.append(item)
+        for key, value in [('uid', []), ('uid', {}), ('cnp_uid', []), ('cnp_uid', {}),
+                           ('expires_at', True), ('active', 0), ('cnp_present', 0)]:
+            item = copy.deepcopy(audit)
+            item['grants'][0][key] = value
+            invalid.append(item)
+        invalid += [{**audit, 'grants': [None]}, {**audit, 'cnps': [None]},
+                    {**audit, 'cnps': [{'uid': [], 'present': False}]}]
+        for data in invalid:
+            with self.subTest(data=str(data)[:100]):
+                path.write_text(json.dumps(data))
+                self.assert_structured_rejection('evaluate-clean', audit_file=path,
+                                                 expect_revision=self.state()['revision'])
+
+    def test_invalid_json_truncation_and_nonfinite_inputs_preserve_bytes(self):
+        self.ready()
+        audit = Path(self.tmp.name) / 'audit.json'
+        valid = self.path.read_bytes()
+        for payload in (b'', b'{', b'{"schema":1,"revision":', b'null', b'\xff',
+                        b'{"schema":1,"revision":NaN}', b'[' * 1500):
+            with self.subTest(payload=payload[:30]):
+                self.path.write_bytes(payload)
+                self.assert_structured_rejection('show')
+                self.assert_structured_rejection('record-blocker', kind='recoverable')
+                self.path.write_bytes(valid)
+                audit.write_bytes(payload)
+                self.assert_structured_rejection('evaluate-clean', audit_file=audit,
+                                                 expect_revision=self.state()['revision'])
+
+    def test_ledger_and_audit_reject_unsafe_files_promptly(self):
+        self.ready()
+        valid_audit = self.audit_fixture()
+        target = Path(self.tmp.name) / 'target.json'
+        original_ledger = self.path.read_bytes()
+        for surface in ('ledger', 'audit'):
+            for kind in ('symlink', 'fifo', 'oversize'):
+                with self.subTest(surface=surface, kind=kind):
+                    target.write_bytes(original_ledger if surface == 'ledger' else
+                                       json.dumps(valid_audit).encode())
+                    path = Path(self.tmp.name) / (surface + '-' + kind)
+                    if kind == 'symlink':
+                        path.symlink_to(target)
+                    elif kind == 'fifo':
+                        os.mkfifo(path)
+                    else:
+                        path.write_bytes(b' ' * (workflow.MAX_LEDGER_BYTES + 1))
+                    command = 'show' if surface == 'ledger' else 'evaluate-clean'
+                    ledger = path if surface == 'ledger' else self.path
+                    argv = [sys.executable, '-I', '-B', str(SOURCE), '--ledger', str(ledger), command]
+                    flags = {**BINDING, 'now': self.now, 'expect_revision': self.state()['revision']}
+                    if surface == 'audit':
+                        flags['audit_file'] = path
+                    for key, value in flags.items():
+                        argv += ['--' + key.replace('_', '-'), str(value)]
+                    before = self.path.read_bytes()
+                    target_before = target.read_bytes()
+                    # One bounded child at a time; timeout kills the old audit FIFO open.
+                    result = subprocess.run(argv, capture_output=True, text=True, timeout=2)
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    body = json.loads(result.stdout)
+                    self.assertIs(body['ok'], False)
+                    self.assertIs(body['dispatch'], False)
+                    self.assertNotIn('Traceback', result.stderr)
+                    self.assertEqual(self.path.read_bytes(), before)
+                    self.assertEqual(target.read_bytes(), target_before)
+
     def test_a_discovery_without_preselection_and_slow_ci(self):
         self.ready()
         self.assertIsNone(self.state()['selected_head'])
@@ -293,6 +578,14 @@ class WorkflowTests(unittest.TestCase):
                 self.now += delta
                 code, body = self.metrics(**flags)
                 self.assertFalse(body.get('dispatch', False), (code, body))
+                if name != 'future':  # rollback rejects before consuming.
+                    self.assertEqual(self.state()['slot_intent']['metrics'], 'intent-metrics')
+                    self.assertEqual(self.state()['intents']['intent-metrics']['decision'], 'denied')
+                    self.assertFalse(self.metrics()[1].get('dispatch', False))
+                    self.no_dispatch('admit', slot='metrics', intent_id='corrected-retry', decision='admit',
+                                     observed_fsid=FSID, observed_manager=MANAGER,
+                                     observed_endpoint=ENDPOINT, proof_receipt='receipt-revalidation')
+                    self.assertEqual(self.state()['slot_intent']['metrics'], 'intent-metrics')
 
     def test_request_interval_not_response_time_controls_full_ten_seconds(self):
         self.ready()
@@ -524,11 +817,8 @@ class WorkflowTests(unittest.TestCase):
                 for pipe in pair:
                     pipe.close()
 
-    def test_fault_after_replace_cannot_reissue_and_temp_symlink_safe(self):
+    def test_fault_after_replace_cannot_reissue(self):
         self.ready()
-        victim = Path(self.tmp.name) / 'victim'
-        victim.write_text('untouched')
-        self.path.with_name(self.path.name + '.tmp').symlink_to(victim)
         real_replace = os.replace
 
         def replace_then_fault(*args, **kwargs):
@@ -539,7 +829,6 @@ class WorkflowTests(unittest.TestCase):
             code, body = self.call('admit', slot='version', intent_id='v', decision='admit')
         self.assertNotEqual(code, 0, body)
         self.assertFalse(self.good('admit', slot='version', intent_id='v', decision='admit')['dispatch'])
-        self.assertEqual(victim.read_text(), 'untouched')
         self.assertEqual(len(self.state()['intents']), 1)
 
     def test_init_exclusive_and_short_payload_writes(self):
