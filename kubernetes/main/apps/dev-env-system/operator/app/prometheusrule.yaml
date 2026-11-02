@@ -35,8 +35,9 @@ spec:
             or
             ((max by (session, reason) (dev_env_session_rescue_failed) > 0)
               unless on (session) dev_env_session_rescue_notification)
-          for: 20m
-          keep_firing_for: 30m
+          # RescueFailed is already a persisted failed verdict. Dynamic routing
+          # facts must not reset a pending timer or retain obsolete ownership.
+          for: 0m
           labels:
             severity: critical
           annotations:

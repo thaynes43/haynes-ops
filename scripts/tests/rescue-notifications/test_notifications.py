@@ -5,9 +5,12 @@
 """Offline source fixtures; no cluster, provider, credentials or notifications."""
 import copy
 import json
+import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
+import tempfile
 import unittest
 
 import yaml
@@ -152,9 +155,52 @@ class RoutingTests(unittest.TestCase):
         self.assertIn("session_uid, session_generation, reason, risk_key, owner_uid, pending_delete", expression)
         self.assertIn("unless on (session) dev_env_session_rescue_notification", expression)
         self.assertEqual(rule["labels"]["severity"], "critical")
+        self.assertEqual(rule["for"], "0m")
+        self.assertNotIn("keep_firing_for", rule)
         self.assertNotIn("latest_attempt", expression)
         self.assertIn("transcript failure", rule["annotations"]["description"])
         self.assertNotIn("human can exec", rule["annotations"]["description"])
+
+
+@unittest.skipUnless(os.environ.get("PROMTOOL") or shutil.which("promtool"), "set PROMTOOL for actual rule-timing evaluation")
+class PrometheusTimingTests(unittest.TestCase):
+    def test_risk_churn_and_owner_loss_never_restart_or_retain_alert(self):
+        source = yaml.safe_load((APPS / "dev-env-system/operator/app/prometheusrule.yaml").read_text())
+        rule = source["spec"]["groups"][0]["rules"][0]
+        variants = []
+        first = alert()["labels"]
+        first["owner_uid"] = "22222222-2222-2222-2222-222222222222"
+        variants.append(first)
+        variants.append({**first, "owner_uid": ""})
+        variants.append({**variants[-1], "reason": "FetchFailed", "risk_key": "unclassified"})
+        variants.append({**variants[-1], "session_uid": "44444444-4444-4444-4444-444444444444"})
+
+        def selector(name, labels):
+            return name + "{" + ",".join(f'{k}={json.dumps(v)}' for k, v in sorted(labels.items()) if v != "") + "}"
+
+        inputs, evaluations = [], []
+        for i, labels in enumerate(variants):
+            labels = {k: v for k, v in labels.items() if k not in ("alertname", "severity")}
+            start = i * 6
+            samples = ["_"] * start + ["1"] * 6 + ["stale"] + ["_"] * (24 - start - 6)
+            inputs.append({"series": selector("dev_env_session_rescue_notification", labels), "values": " ".join(samples)})
+            for minute in (start, start + 5):
+                current = {**labels, "alertname": "DevEnvRescueFailed", "alertstate": "firing", "severity": "critical"}
+                evaluations.append({"expr": 'ALERTS{alertname="DevEnvRescueFailed",alertstate="firing"}', "eval_time": f"{minute}m", "exp_samples": [{"labels": selector("ALERTS", current), "value": 1}]})
+        # The old continuous metric remains available throughout. It must not
+        # duplicate new identity, and must notify immediately when no new metric
+        # exists (old operator compatibility at minute24).
+        old = {"session": first["session"], "reason": "NotProven"}
+        inputs.append({"series": selector("dev_env_session_rescue_failed", old), "values": "1x24"})
+        evaluations.append({"expr": 'ALERTS{alertname="DevEnvRescueFailed",alertstate="firing"}', "eval_time": "24m", "exp_samples": [{"labels": selector("ALERTS", {**old, "alertname": "DevEnvRescueFailed", "alertstate": "firing", "severity": "critical"}), "value": 1}]})
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            rules = directory / "rules.yml"
+            rules.write_text(yaml.safe_dump({"groups": [{"name": "fixture", "interval": "1m", "rules": [rule]}]}))
+            fixture = directory / "test.yml"
+            fixture.write_text(yaml.safe_dump({"rule_files": [str(rules)], "evaluation_interval": "1m", "tests": [{"interval": "1m", "input_series": inputs, "promql_expr_test": evaluations}]}))
+            result = subprocess.run([os.environ.get("PROMTOOL") or shutil.which("promtool"), "test", "rules", str(fixture)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

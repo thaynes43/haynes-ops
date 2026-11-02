@@ -25,12 +25,19 @@ owner Session UID and native conversation. Its maximum duration is 24 hours;
 there is no automatic renewal. An absent/expired/mismatched acknowledgment or
 missing, stale, terminal or different owner-native evidence stays unowned.
 A task cap, saved handoff or ready Pod does not establish native availability.
+The owner must still be Running/Idle and requesting Running mode. Even matching
+recent process metadata does not certify provider authentication, API health or
+next-turn availability; the acknowledgment establishes bounded accountability.
+There is no autonomous renewal.
 
 An unchanged, exactly owned incident stays visible in Alertmanager and receives
 normal-priority Pushover notifications with a longer repeat interval. Unowned,
 changed-risk and unrelated critical alerts retain the urgent receiver. This is
 not a blanket rescue silence. Ownership changes notification urgency only;
 it grants no rescue, preservation, deletion, storage or credential authority.
+The recorded failed verdict is immediately notification-eligible: the old
+20-minute pending delay and 30-minute keep-firing are removed so risk/ownership
+changes cannot hide continuous failure or retain an obsolete owned identity.
 
 The responder uses typed incident identity in addition to fingerprint/start time.
 Changed UID, generation, reason, risk or deletion state cannot inherit an old
