@@ -79,6 +79,9 @@ spec:
               it; agents never write AgentSession objects themselves (DESIGN-001 6.11). The
               operator never writes spec either: what it resolves (the default profile and
               tools, the timers per mode) it reads from the templates or records in status.
+
+              coordinatorInstructions is default false. An existing object may gain that
+              default once. Any other add, remove, or value change is refused.
             properties:
               agent:
                 description: Agent is the agent CLI to run.
@@ -166,6 +169,14 @@ spec:
                 - message: immutable after create; coordinator instruction parent
                     UID does not change
                   rule: self == oldSelf
+              coordinatorInstructions:
+                default: false
+                description: |-
+                  CoordinatorInstructions is the explicit per-new-ordinary-task opt-in.
+                  The API sets it only for an accepted private catalog task child. Omission
+                  and false stay off. It is not a privilege grant, not taken from a parent
+                  UID in the request body, and it does not change an existing Session.
+                type: boolean
               effort:
                 description: |-
                   Effort is the reasoning effort. The levels differ per model, so the API
@@ -615,6 +626,12 @@ spec:
                 && self.commonRules.commonRevision == self.privatePilot.commonRevision
                 && has(self.sessionDirectory) && self.sessionDirectory.version ==
                 1 && self.sessionDirectory.project == ''dev-env'')'
+            - message: coordinator instruction opt-in is immutable
+              rule: (!has(self.coordinatorInstructions) && !has(oldSelf.coordinatorInstructions))
+                || (has(self.coordinatorInstructions) && has(oldSelf.coordinatorInstructions)
+                && self.coordinatorInstructions == oldSelf.coordinatorInstructions)
+                || (!has(oldSelf.coordinatorInstructions) && has(self.coordinatorInstructions)
+                && self.coordinatorInstructions == false)
           status:
             description: |-
               AgentSessionStatus is what the operator and agentd observed. Reconcile is
