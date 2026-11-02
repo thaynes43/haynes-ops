@@ -115,10 +115,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# Source e18fabb5 (dev-env#846); publish41446700722 signed and verified this digest.
+# Source e5c93e4 (dev-env#850); publish41470219938 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-e18fabb"
-    "@sha256:5f56ea70e46f1232be254245f055ba30cd10ee85a19ceaa5906511fd6881ef46"
+    "sha-e5c93e4"
+    "@sha256:f0df7e1bc4f0ad3761b095793f263c842f92143e680ef4a5cce5aed614dda021"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
