@@ -152,6 +152,20 @@ spec:
                 x-kubernetes-validations:
                 - message: common instruction binding is immutable
                   rule: self == oldSelf
+              coordinatorInstructionParentUID:
+                description: |-
+                  CoordinatorInstructionParentUID is the authenticated parent Session UID
+                  captured at create from a live read of that parent. It designates who may
+                  submit in-scope coordinator instructions. It is not a privilege grant, not
+                  a usage-capture permission, and not taken from the request body. Absent
+                  means the task has no instruction binding and submission fails closed.
+                maxLength: 128
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: immutable after create; coordinator instruction parent
+                    UID does not change
+                  rule: self == oldSelf
               effort:
                 description: |-
                   Effort is the reasoning effort. The levels differ per model, so the API
@@ -562,6 +576,7 @@ spec:
                 && has(self.commonRules) == has(oldSelf.commonRules) && has(self.sessionDirectory)
                 == has(oldSelf.sessionDirectory) && has(self.privatePilot) == has(oldSelf.privatePilot)
                 && has(self.usageCaptureParentUID) == has(oldSelf.usageCaptureParentUID)
+                && has(self.coordinatorInstructionParentUID) == has(oldSelf.coordinatorInstructionParentUID)
             - message: project canaries require their fixed private bounded subscription
                 task contract
               rule: '!has(self.projectCanary) || (self.mode == ''task'' && self.agent
@@ -1656,6 +1671,249 @@ spec:
                     == 0) : (has(self.models) && size(self.models) > 0)'
                 - message: a reason is given exactly when the result is not Final
                   rule: (self.resultState == 'Final') == !has(self.reasonCode)
+              coordinatorInstructionAttempt:
+                description: |-
+                  CoordinatorInstructionAttempt is the recipient pod's current native attempt
+                  for instruction delivery. Absence fails closed. It is not a grant.
+                properties:
+                  attemptID:
+                    description: |-
+                      AttemptID is a child-decision UUID or the platform initial-usage attempt
+                      (64 lowercase hex). Both name one invocation. Neither is a quota grant.
+                    maxLength: 64
+                    minLength: 36
+                    pattern: ^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})$
+                    type: string
+                  phase:
+                    enum:
+                    - active
+                    - ended
+                    type: string
+                  podUID:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                  sessionUID:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                    x-kubernetes-validations:
+                    - message: instruction attempt session UID is immutable
+                      rule: self == oldSelf
+                required:
+                - attemptID
+                - phase
+                - podUID
+                - sessionUID
+                type: object
+              coordinatorInstructionEndedAttempts:
+                description: |-
+                  CoordinatorInstructionEndedAttempts is the append-only ledger of attempt
+                  IDs this task has ended. A full ledger refuses another attempt. Removing
+                  or rewriting an entry is rejected. The ledger is not a grant.
+                items:
+                  description: |-
+                    CoordinatorInstructionEndedAttemptStatus retains one attempt ID after that
+                    attempt has ended. The record is immutable. It grants no delivery, no
+                    consumption and no new attempt.
+                  properties:
+                    attemptID:
+                      maxLength: 64
+                      minLength: 36
+                      pattern: ^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})$
+                      type: string
+                    podUID:
+                      maxLength: 128
+                      minLength: 1
+                      type: string
+                    sessionUID:
+                      maxLength: 128
+                      minLength: 1
+                      type: string
+                      x-kubernetes-validations:
+                      - message: ended instruction attempt session UID is immutable
+                        rule: self == oldSelf
+                  required:
+                  - attemptID
+                  - podUID
+                  - sessionUID
+                  type: object
+                  x-kubernetes-validations:
+                  - message: ended instruction attempt is immutable
+                    rule: self == oldSelf
+                maxItems: 4
+                type: array
+                x-kubernetes-list-map-keys:
+                - attemptID
+                x-kubernetes-list-type: map
+              coordinatorInstructions:
+                description: |-
+                  CoordinatorInstructions are delivery records for this task. The text lives
+                  in the inbox message. A nested consumption receipt is not an inbox read ACK.
+                  The list is a map keyed by the immutable delivery key, so item and nested
+                  consumption transition rules stay correlatable. MaxItems stays 4. A later
+                  update cannot drop the list, remove an old key, or swap an old key for a
+                  new key at the same length. Duplicate keys are rejected.
+                items:
+                  description: |-
+                    CoordinatorInstructionStatus is one server-authored delivery record. The
+                    instruction text stays in the inbox message. Consumption is added once.
+                  properties:
+                    attemptID:
+                      description: |-
+                        AttemptID is a child-decision UUID or the platform initial-usage attempt
+                        (64 lowercase hex). Both name one invocation. Neither is a quota grant.
+                      maxLength: 64
+                      minLength: 36
+                      pattern: ^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})$
+                      type: string
+                    consumed:
+                      description: |-
+                        CoordinatorInstructionConsumptionStatus is the native task's consume receipt.
+                        It is not an inbox read acknowledgement and not a grant or human decision.
+                      properties:
+                        at:
+                          format: date-time
+                          type: string
+                        attemptID:
+                          description: |-
+                            AttemptID is a child-decision UUID or the platform initial-usage attempt
+                            (64 lowercase hex). Both name one invocation. Neither is a quota grant.
+                          maxLength: 64
+                          minLength: 36
+                          pattern: ^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{64})$
+                          type: string
+                        messageUID:
+                          maxLength: 128
+                          minLength: 1
+                          pattern: ^[A-Za-z0-9-]+$
+                          type: string
+                        nonce:
+                          maxLength: 64
+                          minLength: 64
+                          pattern: ^[0-9a-f]{64}$
+                          type: string
+                        podUID:
+                          maxLength: 128
+                          minLength: 1
+                          type: string
+                        sessionUID:
+                          maxLength: 128
+                          minLength: 1
+                          type: string
+                        textSHA256:
+                          maxLength: 64
+                          minLength: 64
+                          pattern: ^[0-9a-f]{64}$
+                          type: string
+                      required:
+                      - at
+                      - attemptID
+                      - messageUID
+                      - nonce
+                      - podUID
+                      - sessionUID
+                      - textSHA256
+                      type: object
+                      x-kubernetes-validations:
+                      - message: native consumption receipt is immutable
+                        rule: self == oldSelf
+                    deliveredAt:
+                      format: date-time
+                      type: string
+                    key:
+                      maxLength: 120
+                      minLength: 1
+                      pattern: ^[a-z0-9]([a-z0-9._-]{0,118}[a-z0-9])?$
+                      type: string
+                    messageName:
+                      maxLength: 80
+                      minLength: 1
+                      pattern: ^message\.[a-f0-9]{32}\.[a-f0-9]{32}$
+                      type: string
+                    messageUID:
+                      maxLength: 128
+                      minLength: 1
+                      pattern: ^[A-Za-z0-9-]+$
+                      type: string
+                    nonce:
+                      maxLength: 64
+                      minLength: 64
+                      pattern: ^[0-9a-f]{64}$
+                      type: string
+                    project:
+                      maxLength: 63
+                      minLength: 1
+                      type: string
+                    repository:
+                      maxLength: 128
+                      minLength: 1
+                      type: string
+                    senderPodUID:
+                      maxLength: 128
+                      minLength: 1
+                      type: string
+                    senderUID:
+                      maxLength: 128
+                      minLength: 1
+                      type: string
+                    targetPodUID:
+                      maxLength: 128
+                      minLength: 1
+                      type: string
+                    targetSessionUID:
+                      maxLength: 128
+                      minLength: 1
+                      type: string
+                    taskKey:
+                      maxLength: 160
+                      minLength: 1
+                      type: string
+                    textSHA256:
+                      maxLength: 64
+                      minLength: 64
+                      pattern: ^[0-9a-f]{64}$
+                      type: string
+                  required:
+                  - attemptID
+                  - deliveredAt
+                  - key
+                  - messageName
+                  - messageUID
+                  - nonce
+                  - project
+                  - repository
+                  - senderPodUID
+                  - senderUID
+                  - targetPodUID
+                  - targetSessionUID
+                  - taskKey
+                  - textSHA256
+                  type: object
+                  x-kubernetes-validations:
+                  - message: native consumption must bind this delivery
+                    rule: '!has(self.consumed) || (self.consumed.attemptID == self.attemptID
+                      && self.consumed.sessionUID == self.targetSessionUID && self.consumed.podUID
+                      == self.targetPodUID && self.consumed.messageUID == self.messageUID
+                      && self.consumed.nonce == self.nonce && self.consumed.textSHA256
+                      == self.textSHA256)'
+                  - message: instruction delivery is immutable; consumption is set
+                      once
+                    rule: self.key == oldSelf.key && self.messageName == oldSelf.messageName
+                      && self.messageUID == oldSelf.messageUID && self.senderUID ==
+                      oldSelf.senderUID && self.senderPodUID == oldSelf.senderPodUID
+                      && self.targetSessionUID == oldSelf.targetSessionUID && self.targetPodUID
+                      == oldSelf.targetPodUID && self.attemptID == oldSelf.attemptID
+                      && self.project == oldSelf.project && self.repository == oldSelf.repository
+                      && self.taskKey == oldSelf.taskKey && self.textSHA256 == oldSelf.textSHA256
+                      && self.nonce == oldSelf.nonce && self.deliveredAt == oldSelf.deliveredAt
+                      && (!has(oldSelf.consumed) || (has(self.consumed) && self.consumed
+                      == oldSelf.consumed))
+                maxItems: 4
+                type: array
+                x-kubernetes-list-map-keys:
+                - key
+                x-kubernetes-list-type: map
               decisionAnswer:
                 description: |-
                   DecisionAnswer is written only by the authenticated direct-parent API route.
@@ -3220,6 +3478,19 @@ spec:
               rule: '!has(oldSelf.capturedUsage) || has(self.capturedUsage)'
             - message: directory creation evidence cannot be removed
               rule: '!has(oldSelf.sessionDirectory) || has(self.sessionDirectory)'
+            - message: instruction attempt evidence cannot be removed
+              rule: '!has(oldSelf.coordinatorInstructionAttempt) || has(self.coordinatorInstructionAttempt)'
+            - message: ended instruction attempts cannot be removed or rewritten
+              rule: '!has(oldSelf.coordinatorInstructionEndedAttempts) || (has(self.coordinatorInstructionEndedAttempts)
+                && size(self.coordinatorInstructionEndedAttempts) >= size(oldSelf.coordinatorInstructionEndedAttempts)
+                && oldSelf.coordinatorInstructionEndedAttempts.all(old, self.coordinatorInstructionEndedAttempts.exists(cur,
+                cur.attemptID == old.attemptID && cur.sessionUID == old.sessionUID
+                && cur.podUID == old.podUID)))'
+            - message: instruction delivery records cannot be removed or replaced
+              rule: '!has(oldSelf.coordinatorInstructions) || (has(self.coordinatorInstructions)
+                && size(self.coordinatorInstructions) >= size(oldSelf.coordinatorInstructions)
+                && oldSelf.coordinatorInstructions.all(old, self.coordinatorInstructions.exists(cur,
+                cur.key == old.key)))'
         required:
         - spec
         type: object
