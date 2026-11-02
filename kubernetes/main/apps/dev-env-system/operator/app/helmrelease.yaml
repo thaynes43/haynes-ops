@@ -137,7 +137,8 @@ spec:
               # PROPOSED RD2 source bfd5143; publish41253643759 and local cosign verified; activation HELD.
               # Previous pin: claim metadata source dev-env#815 merge79085ea; publish41294218791 signed/verified its digest.
               # Schema4573 and compatible broker4574 are verified first. Existing arguments, permissions and Session pods are preserved.
-              # Release 2.85.0 source 4fb35ee0b52c9e3124cbdaa608caef61a3a259e2; publish41369865692 Sign + Verify succeeded for this digest.
+              # Source dev-env#846 e18fabb52c3148db4858031d28a8cc22d8e8b33a; publish41446700722 signed and verified this digest.
+              # Previous pin: release 2.85.0 source 4fb35ee0b52c9e3124cbdaa608caef61a3a259e2; publish41369865692 (rollback target).
               # HOME sizing revision fix preserves ordinary Session pod identity. All arguments and dormant feature holds remain unchanged.
               tag: sha-e18fabb@sha256:5f56ea70e46f1232be254245f055ba30cd10ee85a19ceaa5906511fd6881ef46
               pullPolicy: IfNotPresent
