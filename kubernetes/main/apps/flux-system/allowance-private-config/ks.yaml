@@ -1,0 +1,21 @@
+---
+# OP192 metadata-only private configuration; existing Flux SOPS controller/key.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: dev-env-allowance-private-config
+  namespace: flux-system
+spec:
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+  path: ./kubernetes/main/apps/dev-env-system/allowance-private-config/app
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  prune: true
+  wait: true
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m
