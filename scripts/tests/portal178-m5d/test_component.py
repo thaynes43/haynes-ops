@@ -116,10 +116,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# Claude 2.1.312 qualification 6fd5ce1 (dev-env#890) and Cursor Unicode-class diagnostics 84fa61c (dev-env#889); publish41721912009 signed and verified this digest.
+# Cursor pictograph sub-class diagnostics 1365b60 (dev-env#893); publish41730629224 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-84fa61c"
-    "@sha256:55da8b930b21e592c432eb02c6e16e489416f1a2452fff0cf34dfd75673dec4b"
+    "sha-1365b60"
+    "@sha256:d67703e3fd28b4044180abb5468c2b927dc971d2aea1150eacafdd2e2d26890e"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
