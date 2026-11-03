@@ -116,10 +116,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# Claude empty quota retention and Cursor refusal categories 1e2c814 (dev-env#884); publish41660008527 signed and verified this digest.
+# Operator-native collector handoff 821c69a (dev-env#887) and eviction observation witness 2d42e72 (dev-env#888); publish41706862872 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-1e2c814"
-    "@sha256:a44dc8a5cfb062be5a5686907077dcc13538eb31b280cf26db138ce0491b99f3"
+    "sha-2d42e72"
+    "@sha256:99bb9f00d794e94e43ab02fe205f4bae8c9032cda9022f1d2719f90b616afa99"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
