@@ -116,10 +116,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# Builtin menu/refusal correction 1322f53 (dev-env#881); publish41606840834 signed and verified this digest.
+# Provider display/zero-counter correction 312c52e (dev-env#882); publish41623184280 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-1322f53"
-    "@sha256:812a475cd1528bb5ad0c2170fa4788068616963570e73dedc1c57b8302f866fc"
+    "sha-312c52e"
+    "@sha256:f5383629d01be12dc809fe0cfe116a68f1298396fb1eb9d684764822cf8399a5"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
