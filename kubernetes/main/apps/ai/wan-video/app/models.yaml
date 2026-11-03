@@ -14,6 +14,24 @@
       "path": "vae/wan2.2_vae.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/ee6f4a40737a995bf5818954cfce6d59443b0f04/split_files/vae/wan2.2_vae.safetensors",
       "sha256": "e40321bd36b9709991dae2530eb4ac303dd168276980d3e9bc4b6e2b75fed156"
+    },
+    {
+      "path": "diffusion_models/wan2.2_s2v_14B_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/ee6f4a40737a995bf5818954cfce6d59443b0f04/split_files/diffusion_models/wan2.2_s2v_14B_fp8_scaled.safetensors",
+      "sha256": "140e75af5534ac3d91e710d9df756f7032addd64b341ba2c1c70e3e6da9aa216",
+      "note": "Wan 2.2 S2V for haynes-studio E0.4 speech-to-video PoC; Apache-2.0"
+    },
+    {
+      "path": "audio_encoders/wav2vec2_large_english_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/ee6f4a40737a995bf5818954cfce6d59443b0f04/split_files/audio_encoders/wav2vec2_large_english_fp16.safetensors",
+      "sha256": "f0017a43ea57ef6b3d4866be607844bbd8cada6d30966f7d70044ed0d63d3f9e",
+      "note": "Wan 2.2 S2V for haynes-studio E0.4 speech-to-video PoC; Apache-2.0"
+    },
+    {
+      "path": "vae/wan_2.1_vae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/ee6f4a40737a995bf5818954cfce6d59443b0f04/split_files/vae/wan_2.1_vae.safetensors",
+      "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+      "note": "Wan 2.2 S2V for haynes-studio E0.4 speech-to-video PoC; Apache-2.0"
     }
   ]
 }
