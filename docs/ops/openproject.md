@@ -357,3 +357,44 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
 - **Tests**: `python3 -I -B scripts/tests/openproject/test_opwork.py -v` (offline fake API:
   pagination, claims, conflicts, attribution, uncertain create, outage). These are mocked
   tests; the live fixture acceptance is recorded in the story result, not by CI.
+
+## Scoped agent project organization (2026-11-03)
+
+Tom requested repair of the existing agent account's project-organization permissions,
+then creation of private [Haynes Studio](https://work.haynesnetwork.com/projects/haynes-studio)
+under HaynesNetwork and moving existing [Saga362](https://work.haynesnetwork.com/work_packages/362).
+Both actions completed through the same `openproject-agent` user5. The move is
+journal5418; Saga type, Ungroomed status, description, owner, all13 tracking fields,
+relations and earlier history were preserved. No epics or stories were added.
+
+The shared **Haynes agent writer** role15 remains unchanged across its existing
+projects3,8,9,10. A separate **Haynes agent child project organizer** role17 grants
+only `add_subprojects`, assigned only to user5's existing HaynesNetwork project10
+membership17. This is a project-scoped supplement, not global `add_project` or
+administrator access. Do not add it to the shared writer role.
+
+The source Agentic OS project3 needed `move_work_packages` for the move. A separate
+minimal role18 was temporarily assigned to the existing membership3, then assignment20
+was removed after the verified move. Project3 again has only writer15 and no move
+permission. Role18 remains unassigned; do not reconcile that temporary assignment back.
+Studio11 received only the ordinary existing default creator membership (user5,
+Project admin role5). The global creator default and all unrelated memberships stayed
+unchanged. User5 remains non-admin and has no global project-creation permission.
+
+Native permissions operate at project scope. The temporary source grant could
+therefore authorize moves within project3 while present; only Saga362 was moved.
+Studio's default Task, Milestone and Summary task types remain, with only the existing
+Saga type10 and its existing tracking fields1–13 added for the lossless move. Epic
+and Story types were left for later backlog setup.
+
+The operator used the vendor-supported Rails administration entrypoint only for
+this authorized role repair and permission readbacks, without obtaining credentials.
+Studio type setup used the contracted `Projects::Types::AddService` as user5 with
+its normal new-project permissions. Project creation and Saga move used the existing
+private API client as user5. Tokens, global roles and the client allowlist were unchanged.
+
+`scripts/openproject/work-model.json` records the exact scope and readbacks. Its
+earlier `worker.project_only` field describes initial provisioning. It is not a
+live role reconciler; no consumer that enforces it was found in the scripts or
+Kubernetes manifests. A future reconciler must retain the parent10 supplement,
+leave writer15 unchanged, and keep the temporary source move assignment absent.

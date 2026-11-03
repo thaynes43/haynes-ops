@@ -138,5 +138,99 @@
     "completion": "Agents complete when the actual acceptance criteria and existing authorization permit it and the workflow allows it. An explicit hold (Needs answer, Needs approval, a review hold) stays a hold.",
     "tracker_down": "Return a clear error, keep bounded authorized work going, save notes with opwork checkpoint, replay with opwork flush. No daemon or enforcement layer.",
     "uncertain_writes": "Never repeat an uncertain create; success is reported only after a read back."
+  },
+  "organization_permission_repair_2026_11_03": {
+    "principal": {
+      "id": 5,
+      "login": "openproject-agent",
+      "admin": false
+    },
+    "authorization": "Tom explicitly requested repair of the existing agent permissions for private Haynes Studio creation under HaynesNetwork and moving existing Saga362, 2026-11-03.",
+    "baseline_writer": {
+      "role_id": 15,
+      "name": "Haynes agent writer",
+      "unchanged": true,
+      "existing_project_ids": [
+        3,
+        8,
+        9,
+        10
+      ],
+      "note": "worker.project_only above records the original central-project provisioning contract, not a current membership reconciler."
+    },
+    "durable_supplement": {
+      "role_id": 17,
+      "name": "Haynes agent child project organizer",
+      "permissions": [
+        "add_subprojects"
+      ],
+      "principal_id": 5,
+      "project_id": 10,
+      "project_identifier": "haynesnetwork",
+      "membership_id": 17,
+      "scope": "Assign only to this existing parent-project membership; never add to the shared writer role or a global role."
+    },
+    "source_move": {
+      "permission": "move_work_packages",
+      "project_id": 3,
+      "saga_id": 362,
+      "temporary_role_id": 18,
+      "temporary_member_role_id": 20,
+      "assignment_removed_after_move": true,
+      "ongoing_source_move_grant": false
+    },
+    "created_project": {
+      "id": 11,
+      "identifier": "haynes-studio",
+      "parent_id": 10,
+      "public": false,
+      "creator_membership": {
+        "principal_id": 5,
+        "role_id": 5,
+        "role_name": "Project admin",
+        "ordinary_existing_default": true
+      },
+      "added_existing_type_id": 10,
+      "tracking_custom_field_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ]
+    },
+    "saga_move": {
+      "id": 362,
+      "project_id": 11,
+      "journal_id": 5418,
+      "actor_id": 5,
+      "preserved": [
+        "type",
+        "status",
+        "subject",
+        "description",
+        "owner",
+        "assignee",
+        "custom fields",
+        "relations",
+        "history"
+      ]
+    },
+    "reconciliation": "This JSON is documentary. No role reconciliation consumer was found in scripts, docs or Kubernetes manifests. Any future reconciler must preserve the scoped parent10 supplement and must not recreate the removed source3 move assignment.",
+    "prohibited_expansion": [
+      "global add_project",
+      "global admin",
+      "shared writer permission expansion",
+      "new or rotated credentials",
+      "unrelated project memberships"
+    ]
   }
 }
