@@ -209,10 +209,10 @@ expand scope or bypass an access or approval control.
   processes over the memory limit.
 - **Its filesystem.** The root filesystem is read-only. You run as uid 1000 with no
   capabilities, no `sudo` and no package manager for the system. Writable: `/home/dev`
-  (your volume), `/tmp` and `$XDG_RUNTIME_DIR` (`/dev/shm/run-1000`). `/tmp` is 8Gi of
-  node disk, lost with the pod. Past 8Gi the kubelet evicts the pod and the session
-  fails, so large scratch goes under `~`. Install tools under `~/.local`;
-  `~/.local/bin` leads `PATH`.
+  (your volume), `/tmp` and `$XDG_RUNTIME_DIR` (`/dev/shm/run-1000`). `/tmp` uses node disk and is lost with the pod. A typical
+  cap is 8Gi, but the configured cap can differ by environment; exceeding
+  the applicable cap can evict the pod. Put large scratch under `~`. Install tools
+  under `~/.local`; `~/.local/bin` leads `PATH`.
 - **No approval prompts** (D-23). Claude runs with `--dangerously-skip-permissions` and
   Codex with approval `never`. The boundary is the platform: what your identity may do,
   where the pod may connect, and what it holds.
@@ -228,10 +228,41 @@ expand scope or bypass an access or approval control.
 
 ## Your volume
 
-- **`/home/dev` is your own volume**, `home-<session>`: 20Gi, one writer, on
-  `gasha01-rbd`. It holds `~/repos/<repo>`, `~/work/<session>`, `~/.claude`,
+- **`/home/dev` is your own volume**, `home-<session>`: typically 20Gi, one writer, on
+  `gasha01-rbd`; actual capacity and available headroom can differ. It holds `~/repos/<repo>`, `~/work/<session>`, `~/.claude`,
   `~/.codex` and caches. It survives pod restarts, drains and suspend. Archive deletes
   it.
+- **Check capacity before heavy or long jobs.** Confirm the actual configured `/tmp`
+  cap from the environment's configuration; if unavailable, it is unknown. Measure
+  `/tmp` directory usage separately from backing filesystem free space: `du -sx /tmp`
+  reports directory usage, while `df -h /tmp /home/dev` and `df -i /tmp /home/dev`
+  report filesystem space and inodes. Check HOME free space and inodes, and choose an
+  explicit per-job byte and inode budget plus a reserve for HOME and other work.
+  Caps and measurements are not reservations, and other writers can change headroom.
+  If capacity or headroom is unknown or insufficient, stop and obtain capacity or use
+  a fresh build environment. Never override `HOME` or delete credentials or another
+  writer's files to make room.
+- **Keep Go work on your persistent volume.** Use short, owned paths under `~` for
+  compiler and test scratch, module and build caches, and set `TMPDIR`, `GOTMPDIR`,
+  `GOCACHE` and `GOMODCACHE` as appropriate within the job budget. Short paths leave
+  room for Unix socket names. `GOTMPDIR` routes compiler work directories only; it
+  does not route all test scratch or replace the cache settings.
+- **Preserve work before heavy or long jobs.** Commit or export all changed and
+  untracked source, including committed changes, in a private durable handoff, and
+  verify its hashes; a clean Git status alone does not establish complete preservation.
+  Keep credentials out of it.
+  If the reviewed `dev-env-storage-run.py` helper is installed, use its `plan` and
+  `run` interface with explicit sources, budget, reserve and timeout; consult its
+  help for required arguments. It checks point-in-time headroom and checkpoints
+  explicitly listed files, so verify the list covers the full source handoff. The
+  helper is cooperative and may not be installed; its absence is not an automatic
+  storage guard.
+- **Contain test output.** For the standard test path, use the reviewed
+  `dev-env-test-run.py -- COMMAND [ARGS...]` helper if installed: it supplies a
+  minimal environment allowlist and discards raw output. Otherwise apply the same
+  minimal-environment and raw-output-discard practice explicitly. Do not emit
+  environment dumps, assertion mock-call dumps or raw failure tails. This cooperative
+  path is neither universal redaction nor a permission boundary.
 - **Clones are partial** (`git clone --filter=blob:none`). git fetches old file
   contents on demand, so `git log -p` or `git blame` over old history is slower and
   needs the network. Clone another repo the same way:
