@@ -6,6 +6,9 @@
 # - prune: disabled keeps Flux from garbage-collecting the claim if this file is removed.
 # - The Kustomization must keep force=false and this file must never carry the
 #   kustomize.toolkit.fluxcd.io/force annotation: the PV reclaimPolicy is Delete.
+#   Do not add the kustomize.toolkit.fluxcd.io/ssa or /reconcile annotations either:
+#   ssa: IfNotPresent or Ignore, or reconcile: disabled, would silently stop Flux
+#   applying the 256Gi request.
 # - The StatefulSet volumeClaimTemplate (128Gi) is immutable and is left alone; the claim
 #   will differ from the template. A claim cannot shrink.
 apiVersion: v1
