@@ -116,10 +116,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# Source ce6edc5 (dev-env#865); publish41536642759 signed and verified this digest.
+# Usage command exit fix a8a64ed (dev-env#879); publish41582940722 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-ce6edc5"
-    "@sha256:6c27a91d6be9be4dd24b6d81e26470d753144077c56286ad93122821b883c843"
+    "sha-a8a64ed"
+    "@sha256:a0b135953830ad68ddf6f6ba9a3fefd93bac755d1742beff3cc6c8a69567b22a"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
