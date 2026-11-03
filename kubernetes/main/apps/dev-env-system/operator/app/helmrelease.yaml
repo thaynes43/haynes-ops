@@ -143,9 +143,10 @@ spec:
               # Historical pin: release 2.85.0 source 4fb35ee0b52c9e3124cbdaa608caef61a3a259e2; publish41369865692.
               # HOME sizing revision fix preserves ordinary Session pod identity. All arguments and dormant feature holds remain unchanged.
               # Rollback target: sha-e5c93e4@sha256:f0df7e1bc4f0ad3761b095793f263c842f92143e680ef4a5cce5aed614dda021.
-              # Source ce6edc599fef4fc50a145760247561eadb3bbb00 (dev-env#865); publish41536642759 signed and verified this exact digest.
-              # Aggregate reports/recurring collectors remain default off; no allowance config, report slot or named ConfigMap rights are installed here.
-              tag: sha-ce6edc5@sha256:6c27a91d6be9be4dd24b6d81e26470d753144077c56286ad93122821b883c843
+              # Previous ce6 pin preceded approved usage activation #4598/#4611/#4612.
+              # Usage command exit fix dev-env#879 a8a64ede01cb6a11c5af2035e6ff74ab190bb060; publish41582940722 signed and verified this digest.
+              # Existing activation, private configuration, named-object rights and original collection deadline stay unchanged.
+              tag: sha-a8a64ed@sha256:a0b135953830ad68ddf6f6ba9a3fefd93bac755d1742beff3cc6c8a69567b22a
               pullPolicy: IfNotPresent
             args:
               # OP192 precise recurring activation; independently approved private selection.
