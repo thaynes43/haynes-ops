@@ -110,6 +110,11 @@ metadata:
   name: dev-env-operator
   namespace: dev-env-system
 rules:
+  # OP192: existing principal and exact precreated object only; no create/patch/delete.
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-provider-allowances]
+    verbs: [get, update]
   # Exact public inputs for the single approved owned root; no list/watch/write.
   - apiGroups: [""]
     resources: [configmaps]

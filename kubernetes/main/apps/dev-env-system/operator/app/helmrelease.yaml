@@ -36,6 +36,8 @@ spec:
       createDefaultServiceAccount: false
     controllers:
       dev-env-operator:
+        annotations:
+          secret.reloader.stakater.com/reload: dev-env-allowance-collector-config
         replicas: 2
         # app-template's default is Recreate; roll one replica at a time so the API
         # stays up through an upgrade.
@@ -146,6 +148,11 @@ spec:
               tag: sha-ce6edc5@sha256:6c27a91d6be9be4dd24b6d81e26470d753144077c56286ad93122821b883c843
               pullPolicy: IfNotPresent
             args:
+              # OP192 precise recurring activation; independently approved private selection.
+              - --enable-aggregate-allowance-reports
+              - --aggregate-allowance-config-file=/etc/dev-env-operator/allowances/selection.json
+              - --enable-operator-allowance-collector
+              - --allowance-collector-config-file=/etc/dev-env-operator/allowances/collector.json
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
               # pods use ndots:1 and the DNS allowlist refuses search-expanded names.
               - --api-url=https://dev-env-operator.dev-env-system.svc.cluster.local:8443
@@ -413,6 +420,13 @@ spec:
             interval: 1m
             scrapeTimeout: 10s
     persistence:
+      allowances:
+        type: secret
+        name: dev-env-allowance-collector-config
+        defaultMode: 288 # 0440, existing fsGroup 65532; normal read-only directory.
+        globalMounts:
+          - path: /etc/dev-env-operator/allowances
+            readOnly: true
       # The API's serving certificate (dev-env-pki). A Secret volume, not a subPath, so
       # a renewal reaches the files and the operator reloads them (D-46).
       api-tls:

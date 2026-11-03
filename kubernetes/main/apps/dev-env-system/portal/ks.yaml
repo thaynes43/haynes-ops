@@ -25,6 +25,8 @@ spec:
       namespace: cert-manager
     - name: external-secrets-stores
       namespace: external-secrets
+    - name: dev-env-allowance-private-config
+      namespace: flux-system
   path: ./kubernetes/main/apps/dev-env-system/portal/app
   prune: true
   sourceRef:
