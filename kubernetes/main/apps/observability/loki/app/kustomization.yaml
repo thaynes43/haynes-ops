@@ -5,6 +5,7 @@ kind: Kustomization
 resources:
   - ./helmrepository.yaml
   - ./helmrelease.yaml
+  - ./pvc.yaml
 configMapGenerator:
   - name: loki-kernel-rules
     files:

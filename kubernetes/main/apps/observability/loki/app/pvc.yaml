@@ -1,0 +1,27 @@
+---
+# Loki data volume: one-time online growth 128Gi -> 256Gi (user-approved, GitOps only).
+# This declares the EXISTING claim the StatefulSet created; it is not a new volume.
+# - metadata.uid is a fail-closed precondition: a wrong UID or a missing claim makes the
+#   apply fail instead of creating an empty volume. Never remove it.
+# - prune: disabled keeps Flux from garbage-collecting the claim if this file is removed.
+# - The Kustomization must keep force=false and this file must never carry the
+#   kustomize.toolkit.fluxcd.io/force annotation: the PV reclaimPolicy is Delete.
+# - The StatefulSet volumeClaimTemplate (128Gi) is immutable and is left alone; the claim
+#   will differ from the template. A claim cannot shrink.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: storage-loki-0
+  namespace: observability
+  uid: 72965587-4239-461d-b7a3-33fdb7da26f8
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gasha01-rbd
+  volumeMode: Filesystem
+  volumeName: pvc-72965587-4239-461d-b7a3-33fdb7da26f8
+  resources:
+    requests:
+      storage: 256Gi
