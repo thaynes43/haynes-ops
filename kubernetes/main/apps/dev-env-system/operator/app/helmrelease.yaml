@@ -154,7 +154,12 @@ spec:
               # Operator image only; collector configuration, host/accounts, reader, cadence, backoff and original expiry remain unchanged.
               # Claude empty quota retention and Cursor refusal categories dev-env#884, merge1e2c814; publish41660008527 signed and verified this digest.
               # Empty results stay unavailable; original bound history is retained. All unsupported terminal characters still refuse.
-              tag: sha-1e2c814@sha256:a44dc8a5cfb062be5a5686907077dcc13538eb31b280cf26db138ce0491b99f3
+              # Previous pin sha-1e2c814 (dev-env#884); rollback target for this change.
+              # Operator-native collector handoff: dev-env#887 merge 821c69a (default-off --allowance-handoff-file, in-slot full backup,
+              # leader-only HandoffRunner) and dev-env#888 merge 2d42e72 (retained eviction observation as the old-Pod witness).
+              # publish41706862872 signed and verified this digest. Operator source between the two pins changes only the handoff route.
+              # Same Root host/Session/HOME/ServiceAccount/provider scope; approved collector window now ends 2026-11-04T15:33:23Z.
+              tag: sha-2d42e72@sha256:99bb9f00d794e94e43ab02fe205f4bae8c9032cda9022f1d2719f90b616afa99
               pullPolicy: IfNotPresent
             args:
               # OP192 precise recurring activation; independently approved private selection.
@@ -162,6 +167,9 @@ spec:
               - --aggregate-allowance-config-file=/etc/dev-env-operator/allowances/selection.json
               - --enable-operator-allowance-collector
               - --allowance-collector-config-file=/etc/dev-env-operator/allowances/collector.json
+              # One-time, hash-fenced handoff of the collector journal to the replacement Pod; applied by the elected operator that already
+              # holds get/update on the named slot. Refused and logged (never fatal) if the file is invalid. Remove after acknowledgement.
+              - --allowance-handoff-file=/etc/dev-env-operator/allowances/handoff.json
               # Session pods report here (AGENTD_API_URL, D-41). The full name: session
               # pods use ndots:1 and the DNS allowlist refuses search-expanded names.
               - --api-url=https://dev-env-operator.dev-env-system.svc.cluster.local:8443
