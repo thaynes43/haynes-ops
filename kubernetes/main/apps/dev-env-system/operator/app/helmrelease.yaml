@@ -142,12 +142,13 @@ spec:
               # Source dev-env#846 e18fabb52c3148db4858031d28a8cc22d8e8b33a; publish41446700722 signed and verified this digest.
               # Historical pin: release 2.85.0 source 4fb35ee0b52c9e3124cbdaa608caef61a3a259e2; publish41369865692.
               # HOME sizing revision fix preserves ordinary Session pod identity. All arguments and dormant feature holds remain unchanged.
-              # Rollback target: sha-a8a64ed@sha256:a0b135953830ad68ddf6f6ba9a3fefd93bac755d1742beff3cc6c8a69567b22a (supports the active collector flags).
+              # Rollback target: sha-7da5b93@sha256:57c2f1dd124e290cf3b6cb0c6b4bc5dc2d6df2a10b8db6dc5260c186ba2d5516 (supports the active collector flags).
               # Previous ce6 pin preceded approved usage activation #4598/#4611/#4612.
-              # Previous usage command exit fix dev-env#879 a8a64ede01cb6a11c5af2035e6ff74ab190bb060; publish41582940722 signed and verified the rollback image.
-              # Closed scheduled acquisition diagnostics dev-env#880 7da5b93d5357ff268a4d54329a30c51cd95e73ca; publish41595886267 signed and verified this digest.
+              # Historical usage command exit fix dev-env#879 a8a64ede01cb6a11c5af2035e6ff74ab190bb060; publish41582940722 signed and verified its operator image.
+              # Previous closed diagnostics dev-env#880 7da5b93d5357ff268a4d54329a30c51cd95e73ca; publish41595886267 signed and verified the rollback image.
+              # Builtin menu/refusal correction dev-env#881 1322f531f0f46b5345694686ed492e901463b32f; publish41606840834 signed and verified this digest.
               # Existing activation, private configuration, named-object rights and original collection deadline stay unchanged.
-              tag: sha-7da5b93@sha256:57c2f1dd124e290cf3b6cb0c6b4bc5dc2d6df2a10b8db6dc5260c186ba2d5516
+              tag: sha-1322f53@sha256:812a475cd1528bb5ad0c2170fa4788068616963570e73dedc1c57b8302f866fc
               pullPolicy: IfNotPresent
             args:
               # OP192 precise recurring activation; independently approved private selection.
