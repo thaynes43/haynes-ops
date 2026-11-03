@@ -14,16 +14,16 @@
 # the proof the operator's terminal task pod reclaim needs (dev-env#729; the reclaim flag stays off until its own PR).
 # publish-agent.yml run 41088393425 smoke-tested/signed/verified on refs/tags/v2.71.0. Supersedes v2.45.0 (86cef5bb, dev-env#555).
 # New sessions use it at once; running pods keep their image and show Outdated, and the operator drains idle, unattached sessions onto the new revision (designed preserving path).
-# v2.88.0 source f8939029e26286e689f9bb88c75c24444df8af7f (dev-env#863).
-# publish-agent.yml41528765460 signed/verified this exact tag digest. Includes
-# explicit same-Pod Claude continuation, instruction publisher CLI and supported
-# finite allowance collectors; source capability does not enroll or activate them.
+# v2.89.0 source 632e72a4251cebfc4f4ab657a0f7d1aa0a90de86 (dev-env#866).
+# publish-agent.yml41562815822 built, smoke-tested, signed and verified this digest.
+# Carries safe native protocol diagnostics (dev-env#872) and canonical claim
+# contract coverage; publication is separate from live continuation acceptance.
 # Automatic revision drain excludes Remote and retained private-history sessions;
 # busy/attached, summoned and shared sessions retain their existing guards.
-# Native22:07Z inventory:16 owned Pod pairs, no structurally unprotected drain
-# candidate. Recheck before merge; no user RC/session lifecycle action is requested.
-# Rollback image:2.71.0@sha256:a9421cd1c837f236a9d7f0ee8dd2c2574e21faaa30ef2733a38daf6d0a8b9023.
-image: ghcr.io/thaynes43/dev-env:2.88.0@sha256:f785580c06f6854a5a531f591eba2272164a0a66417d889ef9eaa9ab9ba7d09b
+# Recheck live structural protection and preserve existing Session/Pod UIDs before
+# merge. This changes the default image only; instruction image selectors stay fixed.
+# Rollback image:2.88.0@sha256:f785580c06f6854a5a531f591eba2272164a0a66417d889ef9eaa9ab9ba7d09b.
+image: ghcr.io/thaynes43/dev-env:2.89.0@sha256:632859c47e8ed597013d2ad651ea644327afe335155f338069dbeb101a836630
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
