@@ -40,6 +40,7 @@ PRODUCTION_FILES = {
                    "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
                    "absolute-ttl", "fresh-for", "clock-skew", "pages-alertmanager.json",
                    "session-actions.json")},
+    "config/provider-allowances.json": ("Secret", "dev-env-v2-portal-allowance-trust", "provider-allowances.json"),
     "secrets/OIDC_CLIENT_ID": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_ID"),
     "secrets/OIDC_CLIENT_SECRET": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_SECRET"),
     "secrets/DB_USERNAME": ("Secret", "dev-env-v2-portal-runtime", "DB_USERNAME"),
@@ -1585,6 +1586,7 @@ class RegisteredInputsTest(unittest.TestCase):
                     {"name": "dev-env-v2-portal-policy", "namespace": "dev-env-system"},
                     {"name": "cert-manager", "namespace": "cert-manager"},
                     {"name": "external-secrets-stores", "namespace": "external-secrets"},
+                    {"name": "dev-env-allowance-private-config", "namespace": "flux-system"},
                 ],
                 "path": "./kubernetes/main/apps/dev-env-system/portal/app",
                 "prune": True,
@@ -1774,11 +1776,20 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertNotIn("launch", parsed)
         for needle in ("issuer", "subject", "principal", "launch", "repos"):
             self.assertNotIn(needle, raw)
-        # The ConfigMap is projected whole, so the key is the file config/session-actions.json,
+        # All existing ConfigMap keys are explicitly projected, including config/session-actions.json,
         # and Reloader restarts the portal when the ConfigMap changes.
         deployment = self.by_key[("Deployment", "dev-env-v2-portal")]
         volume = next(v for v in deployment["spec"]["template"]["spec"]["volumes"] if v["name"] == "config")
-        self.assertEqual(volume["configMap"], {"name": "dev-env-v2-portal-config"})
+        self.assertEqual(volume["projected"], {
+            "defaultMode": 288,
+            "sources": [
+                {"configMap": {"name": "dev-env-v2-portal-config", "items": [
+                    {"key": source[2], "path": source[2]} for source in PRODUCTION_FILES.values()
+                    if source[:2] == ("ConfigMap", "dev-env-v2-portal-config")]}},
+                {"secret": {"name": "dev-env-v2-portal-allowance-trust", "items": [
+                    {"key": "provider-allowances.json", "path": "provider-allowances.json"}]}},
+            ],
+        })
         self.assertIn("dev-env-v2-portal-config",
                       deployment["metadata"]["annotations"]["configmap.reloader.stakater.com/reload"].split(","))
         self.assertEqual(expand_config_files(mounted_files(deployment), self.docs)["config/session-actions.json"],
@@ -1879,6 +1890,20 @@ class RegisteredInputsTest(unittest.TestCase):
         registered |= {doc["spec"]["target"]["name"] for doc in self.docs if doc["kind"] == "ExternalSecret"}
         registered |= {doc["spec"]["secretName"] for doc in self.docs if doc["kind"] == "Certificate"}
         registered |= {"dev-env-v2-portal-oidc", "dev-env-api-ca"}
+        # OP192: config-only Flux SOPS resources are registered separately, never decrypted here.
+        allowance_path = ROOT / "kubernetes/main/apps/dev-env-system/allowance-private-config/app/portal-trust.sops.yaml"
+        allowance = json.loads(allowance_path.read_text())
+        self.assertEqual((allowance["kind"], allowance["metadata"]["namespace"], allowance["metadata"]["name"], allowance["type"]),
+                         ("Secret", "dev-agents", "dev-env-v2-portal-allowance-trust", "Opaque"))
+        self.assertEqual(set(allowance["stringData"]), {"provider-allowances.json"})
+        self.assertTrue(allowance["stringData"]["provider-allowances.json"].startswith("ENC["))
+        private_ks = load(ROOT / "kubernetes/main/apps/flux-system/allowance-private-config/ks.yaml")
+        self.assertEqual(private_ks["metadata"]["namespace"], "flux-system")
+        self.assertEqual(private_ks["spec"]["decryption"], {"provider": "sops", "secretRef": {"name": "sops-age"}})
+        self.assertNotIn("targetNamespace", private_ks["spec"])
+        self.assertIn({"name": "dev-env-allowance-private-config", "namespace": "flux-system"},
+                      load(INPUTS_KS)["spec"]["dependsOn"])
+        registered.add(allowance["metadata"]["name"])
         for path, (kind, name, _) in PRODUCTION_FILES.items():
             if kind in {"ConfigMap", "Secret"}:
                 self.assertIn(name, registered, path)

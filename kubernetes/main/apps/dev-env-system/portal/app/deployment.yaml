@@ -32,7 +32,7 @@ metadata:
     app.kubernetes.io/name: dev-env-v2-portal
   annotations:
     configmap.reloader.stakater.com/reload: dev-env-v2-portal-config,dev-env-v2-portal-postgres-ca,dev-env-v2-portal-issuer-ca,dev-env-v2-portal-openproject-ca,dev-env-api-ca
-    secret.reloader.stakater.com/reload: dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-openproject,dev-env-v2-portal-tls
+    secret.reloader.stakater.com/reload: dev-env-v2-portal-oidc,dev-env-v2-portal-runtime,dev-env-v2-portal-openproject,dev-env-v2-portal-tls,dev-env-v2-portal-allowance-trust
 spec:
   replicas: 2
   revisionHistoryLimit: 2
@@ -147,8 +147,49 @@ spec:
               mountPath: /tmp
       volumes:
         - name: config
-          configMap:
-            name: dev-env-v2-portal-config
+          projected:
+            defaultMode: 288 # 0440; read-only existing mount, no subPath.
+            sources:
+              - configMap:
+                  name: dev-env-v2-portal-config
+                  items:
+                    - key: origin
+                      path: origin
+                    - key: issuer
+                      path: issuer
+                    - key: authorization-url
+                      path: authorization-url
+                    - key: token-url
+                      path: token-url
+                    - key: userinfo-url
+                      path: userinfo-url
+                    - key: jwks-url
+                      path: jwks-url
+                    - key: openproject-base-url
+                      path: openproject-base-url
+                    - key: operator-api-url
+                      path: operator-api-url
+                    - key: auth-style
+                      path: auth-style
+                    - key: login-ttl
+                      path: login-ttl
+                    - key: idle-ttl
+                      path: idle-ttl
+                    - key: absolute-ttl
+                      path: absolute-ttl
+                    - key: fresh-for
+                      path: fresh-for
+                    - key: clock-skew
+                      path: clock-skew
+                    - key: pages-alertmanager.json
+                      path: pages-alertmanager.json
+                    - key: session-actions.json
+                      path: session-actions.json
+              - secret:
+                  name: dev-env-v2-portal-allowance-trust
+                  items:
+                    - key: provider-allowances.json
+                      path: provider-allowances.json
         - name: secrets
           projected:
             sources:

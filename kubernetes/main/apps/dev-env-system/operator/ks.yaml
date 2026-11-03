@@ -21,6 +21,8 @@ spec:
       app.kubernetes.io/name: *app
       dev-env.haynesops.com/native-fixture-version: native-fixture-cc8ba3c
   dependsOn:
+    - name: dev-env-allowance-private-config
+      namespace: flux-system
     - name: dev-env-crds
     - name: dev-env-rbac
     - name: dev-env-templates
