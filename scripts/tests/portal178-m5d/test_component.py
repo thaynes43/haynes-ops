@@ -116,10 +116,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# Cursor membership refusal diagnostic ae21128 (dev-env#883); publish41636958604 signed and verified this digest.
+# Claude empty quota retention and Cursor refusal categories 1e2c814 (dev-env#884); publish41660008527 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-ae21128"
-    "@sha256:1792104db3594d26ef1d782605a4cbe12dc3f2664e0773095df9ab4e4170fff6"
+    "sha-1e2c814"
+    "@sha256:a44dc8a5cfb062be5a5686907077dcc13538eb31b280cf26db138ce0491b99f3"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
