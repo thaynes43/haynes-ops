@@ -1,0 +1,12 @@
+---
+# OP192: metadata-only precreation. Actual UID is independently bound before
+# activation; no report, journal, private account or credential is stored in git.
+# Preserve producer-owned state through reconciliation and rollback.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-provider-allowances
+  namespace: dev-env-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled
