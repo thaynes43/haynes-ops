@@ -233,7 +233,10 @@ expand scope or bypass an access or approval control.
   `~/.codex` and caches. It survives pod restarts, drains and suspend. Archive deletes
   it.
 - **Check capacity before heavy or long jobs.** Confirm the actual configured `/tmp`
-  cap from the environment's configuration; if unavailable, it is unknown. Measure
+  cap from your own session pod's `spec.volumes` entry named `tmp`, at
+  `emptyDir.sizeLimit`, using an already authorized own-session metadata interface.
+  If unavailable, the cap is unknown: have the coordinator qualify the actual
+  metadata before a heavy job; ordinary session work can continue. Measure
   `/tmp` directory usage separately from backing filesystem free space: `du -sx /tmp`
   reports directory usage, while `df -h /tmp /home/dev` and `df -i /tmp /home/dev`
   report filesystem space and inodes. Check HOME free space and inodes, and choose an
@@ -251,18 +254,22 @@ expand scope or bypass an access or approval control.
   untracked source, including committed changes, in a private durable handoff, and
   verify its hashes; a clean Git status alone does not establish complete preservation.
   Keep credentials out of it.
-  If the reviewed `dev-env-storage-run.py` helper is installed, use its `plan` and
-  `run` interface with explicit sources, budget, reserve and timeout; consult its
-  help for required arguments. It checks point-in-time headroom and checkpoints
-  explicitly listed files, so verify the list covers the full source handoff. The
-  helper is cooperative and may not be installed; its absence is not an automatic
-  storage guard.
-- **Contain test output.** For the standard test path, use the reviewed
-  `dev-env-test-run.py -- COMMAND [ARGS...]` helper if installed: it supplies a
-  minimal environment allowlist and discards raw output. Otherwise apply the same
-  minimal-environment and raw-output-discard practice explicitly. Do not emit
-  environment dumps, assertion mock-call dumps or raw failure tails. This cooperative
-  path is neither universal redaction nor a permission boundary.
+  Check availability with `command -v dev-env-storage-run`. If the reviewed helper
+  is installed, use its `plan` and `run` interface with explicit sources, budget,
+  reserve and timeout; consult its help for required arguments. It checks point-in-time
+  headroom and checkpoints explicitly listed files, so verify the list covers the full
+  source handoff. It is cooperative and may not be installed; its absence is not an
+  automatic storage guard.
+- **Contain test output.** Check availability with `command -v dev-env-test-run`.
+  For the standard test path, use the reviewed `dev-env-test-run -- COMMAND [ARGS...]`
+  helper if installed: it supplies a minimal environment allowlist and discards raw
+  output. Otherwise apply the same minimal-environment and raw-output-discard practice
+  explicitly. Do not emit environment dumps, assertion mock-call dumps or raw failure
+  tails. This cooperative path is neither universal redaction nor a permission boundary.
+- **When a helper is absent**, do not download or run an unreviewed replacement or
+  silently proceed with heavy work. Coordinate verified manual headroom checks and a
+  complete source export, and use a fresh appropriately sized source environment
+  while preserving active sessions.
 - **Clones are partial** (`git clone --filter=blob:none`). git fetches old file
   contents on demand, so `git log -p` or `git blame` over old history is slower and
   needs the network. Clone another repo the same way:
