@@ -142,7 +142,7 @@ spec:
               # Source dev-env#846 e18fabb52c3148db4858031d28a8cc22d8e8b33a; publish41446700722 signed and verified this digest.
               # Historical pin: release 2.85.0 source 4fb35ee0b52c9e3124cbdaa608caef61a3a259e2; publish41369865692.
               # HOME sizing revision fix preserves ordinary Session pod identity. All arguments and dormant feature holds remain unchanged.
-              # Rollback target: sha-312c52e@sha256:f5383629d01be12dc809fe0cfe116a68f1298396fb1eb9d684764822cf8399a5 (supports the active collector flags).
+              # Rollback target: sha-ae21128@sha256:1792104db3594d26ef1d782605a4cbe12dc3f2664e0773095df9ab4e4170fff6 (supports the active collector flags).
               # Previous ce6 pin preceded approved usage activation #4598/#4611/#4612.
               # Historical usage command exit fix dev-env#879 a8a64ede01cb6a11c5af2035e6ff74ab190bb060; publish41582940722 signed and verified its operator image.
               # Previous closed diagnostics dev-env#880 7da5b93d5357ff268a4d54329a30c51cd95e73ca; publish41595886267 signed and verified its image.
@@ -152,7 +152,9 @@ spec:
               # Cursor membership refusal diagnostic dev-env#883 ae211287c25fa4ac99fa80a9f667f9f0bd4f1bba; publish41636958604 signed and verified this digest.
               # The same five diagnostic fields remain; all unsupported characters still refuse. No provider output or individual character is logged.
               # Operator image only; collector configuration, host/accounts, reader, cadence, backoff and original expiry remain unchanged.
-              tag: sha-ae21128@sha256:1792104db3594d26ef1d782605a4cbe12dc3f2664e0773095df9ab4e4170fff6
+              # Claude empty quota retention and Cursor refusal categories dev-env#884, merge1e2c814; publish41660008527 signed and verified this digest.
+              # Empty results stay unavailable; original bound history is retained. All unsupported terminal characters still refuse.
+              tag: sha-1e2c814@sha256:a44dc8a5cfb062be5a5686907077dcc13538eb31b280cf26db138ce0491b99f3
               pullPolicy: IfNotPresent
             args:
               # OP192 precise recurring activation; independently approved private selection.
