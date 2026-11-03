@@ -159,7 +159,12 @@ spec:
               # leader-only HandoffRunner) and dev-env#888 merge 2d42e72 (retained eviction observation as the old-Pod witness).
               # publish41706862872 signed and verified this digest. Operator source between the two pins changes only the handoff route.
               # Same Root host/Session/HOME/ServiceAccount/provider scope; approved collector window now ends 2026-11-04T15:33:23Z.
-              tag: sha-2d42e72@sha256:99bb9f00d794e94e43ab02fe205f4bae8c9032cda9022f1d2719f90b616afa99
+              # Previous pin sha-2d42e72 (dev-env#887/#888, haynes-ops#4624); rollback target for this change.
+              # Claude Code 2.1.312 exact qualification dev-env#890 merge 6fd5ce1 and Cursor refused-character Unicode classes
+              # dev-env#889 merge 84fa61c; publish41721912009 signed and verified this digest.
+              # Operator image only: the handoff flag, private configuration, host, accounts, cadence, backoff and the
+              # absolute 2026-11-04T15:33:23Z window are unchanged. Diagnostics emit closed labels only, never a character.
+              tag: sha-84fa61c@sha256:55da8b930b21e592c432eb02c6e16e489416f1a2452fff0cf34dfd75673dec4b
               pullPolicy: IfNotPresent
             args:
               # OP192 precise recurring activation; independently approved private selection.
