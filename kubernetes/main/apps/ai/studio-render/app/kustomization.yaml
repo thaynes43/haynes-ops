@@ -6,3 +6,11 @@ resources:
   - helmrelease.yaml
 components:
   - ../../../../../shared/components/common/repos/app-template
+configMapGenerator:
+  - name: studio-render-requirements
+    files:
+      - requirements.txt
+generatorOptions:
+  disableNameSuffixHash: true
+  annotations:
+    kustomize.toolkit.fluxcd.io/substitute: disabled

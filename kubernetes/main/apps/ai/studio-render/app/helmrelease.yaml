@@ -6,8 +6,8 @@
 # Low priority: a small CPU request (cpu.weight) yields under contention, the
 # dev-env-agent class never preempts, and jobs run under nice. Media lives on
 # gasha01 NFS (decision D4) under data/studio. Agents drive it with
-# kubectl cp/exec; it serves nothing. The Python env lives on the NFS share so
-# the root filesystem stays read-only.
+# kubectl cp/exec; it serves nothing. The Python env (pinned in
+# requirements.txt) lives on the NFS share so the root filesystem stays read-only.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -21,6 +21,8 @@ spec:
   values:
     controllers:
       studio-render:
+        annotations:
+          reloader.stakater.com/auto: "true"
         strategy: Recreate
         pod:
           nodeSelector:
@@ -36,17 +38,22 @@ spec:
             args:
               - |
                 set -e
-                V=/studio/.venv-py312
-                if [ ! -x "$V/bin/python" ] || ! "$V/bin/python" -c 'import numpy, PIL, scipy, av, cv2, imageio_ffmpeg' 2>/dev/null; then
-                  python -m venv "$V"
-                  "$V/bin/pip" install --no-cache-dir -q \
-                    numpy pillow scipy av opencv-python-headless imageio-ffmpeg wyoming
+                # The venv is keyed by the Python version and the pinned requirements, so a
+                # tag bump or a requirements change builds a fresh one beside the old.
+                py=$(python -c 'import sys; print("%d%d" % sys.version_info[:2])')
+                req=$(sha256sum /config/requirements.txt | cut -c1-12)
+                V=/studio/.venv/py$py-$req
+                if [ ! -f "$V/.complete" ]; then
+                  rm -rf "$V"; python -m venv "$V"
+                  "$V/bin/pip" install --no-cache-dir -q -r /config/requirements.txt
+                  touch "$V/.complete"
                 fi
+                ln -sfn "$V" /tmp/venv
                 touch /tmp/ready
                 exec sleep infinity
             env:
               HOME: /tmp
-              PATH: /studio/.venv-py312/bin:/usr/local/bin:/usr/bin:/bin
+              PATH: /tmp/venv/bin:/usr/local/bin:/usr/bin:/bin
               PYTHONDONTWRITEBYTECODE: "1"
               OMP_NUM_THREADS: "24"
               OPENBLAS_NUM_THREADS: "24"
@@ -83,6 +90,12 @@ spec:
         globalMounts:
           - path: /studio
             subPath: data/studio
+      config:
+        type: configMap
+        name: studio-render-requirements
+        globalMounts:
+          - path: /config
+            readOnly: true
       tmp:
         type: emptyDir
         sizeLimit: 8Gi
