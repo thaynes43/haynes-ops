@@ -32,6 +32,12 @@
       "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/ee6f4a40737a995bf5818954cfce6d59443b0f04/split_files/vae/wan_2.1_vae.safetensors",
       "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
       "note": "Wan 2.2 S2V for haynes-studio E0.4 speech-to-video PoC; Apache-2.0"
+    },
+    {
+      "path": "loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/ee6f4a40737a995bf5818954cfce6d59443b0f04/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
+      "sha256": "698321cb86bd30c4af06c9b84e656a1048c8cb54e06d50694536fb5de37fde41",
+      "note": "4-step lightning LoRA from ComfyUI's own Wan 2.2 S2V template (4 steps, cfg 1) for the haynes-studio S2V remake; Apache-2.0"
     }
   ]
 }
