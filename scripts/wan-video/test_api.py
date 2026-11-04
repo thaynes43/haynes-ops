@@ -94,6 +94,31 @@ class VideoTests(unittest.TestCase):
         self.assertEqual(saved["bytes"], out.stat().st_size)
         self.assertEqual(len(saved["telemetry"]), 1)
 
+    def test_slow_history_poll_does_not_kill_the_render(self):
+        out = api.ROOT / "output/video/result.mp4"
+        out.parent.mkdir(parents=True)
+        out.write_bytes(b"validity checked separately by a real MP4 decoder")
+        job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
+        sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
+        history = {"p1": {"status": {"status_str": "success"}, "outputs": {"12": {"images": [{"filename": "result.mp4", "subfolder": "video"}]}}}}
+        replies = [{}, {"prompt_id": "p1"}, TimeoutError("timed out"), TimeoutError("timed out"), history]
+        with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=replies) as engine, \
+                patch.object(api.time, "sleep"):
+            api.generate(job, "test")
+        self.assertEqual(job["state"], "succeeded")
+        self.assertEqual(job["poll_misses"], 2)
+        self.assertNotIn(unittest.mock.call("/interrupt", {}), engine.call_args_list)
+
+    def test_persistent_poll_failure_still_fails_the_job(self):
+        job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
+        sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
+        replies = [{}, {"prompt_id": "p1"}] + [TimeoutError("timed out")] * 12 + [{"queue_running": [[1, "p1"]]}, {}, {"queue_running": []}]
+        with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=replies) as engine, \
+                patch.object(api.time, "sleep"):
+            api.generate(job, "test")
+        self.assertEqual(job["state"], "failed")
+        self.assertIn(unittest.mock.call("/interrupt", {}), engine.call_args_list)
+
     def test_failed_inference_interrupts_only_own_job(self):
         job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
         sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
