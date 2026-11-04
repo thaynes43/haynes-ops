@@ -119,6 +119,18 @@ class VideoTests(unittest.TestCase):
         self.assertEqual(job["state"], "failed")
         self.assertIn(unittest.mock.call("/interrupt", {}), engine.call_args_list)
 
+    def test_slow_poll_window_bounds_the_retries(self):
+        job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
+        sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
+        replies = [{}, {"prompt_id": "p1"}, TimeoutError("timed out"), TimeoutError("timed out"),
+                   {"queue_running": [[1, "p1"]]}, {}, {"queue_running": []}]
+        clock = iter([0, 0, 10, 10, 200, 200, 200, 200, 200, 200])
+        with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=replies), \
+                patch.object(api.time, "sleep"), patch.object(api.time, "monotonic", side_effect=lambda: next(clock, 200)):
+            api.generate(job, "test")
+        self.assertEqual(job["state"], "failed")
+        self.assertEqual(job["poll_misses"], 2)
+
     def test_failed_inference_interrupts_only_own_job(self):
         job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
         sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
