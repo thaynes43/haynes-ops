@@ -1,6 +1,6 @@
 # Haynes Studio render worker: the versions the E0 PoC was rendered with.
 av==18.1.0
-imageio-ffmpeg==0.7.0
+imageio-ffmpeg==0.8.1
 numpy==2.2.6
 opencv-python-headless==4.14.0.94
 pillow==13.0.0
