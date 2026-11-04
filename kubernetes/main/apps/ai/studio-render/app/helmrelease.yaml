@@ -21,8 +21,8 @@ spec:
   values:
     controllers:
       studio-render:
-        annotations:
-          reloader.stakater.com/auto: "true"
+        # No Reloader: a pin bump (Renovate) must not restart the pod mid-render. The new
+        # env is built on the next natural restart.
         strategy: Recreate
         pod:
           nodeSelector:
@@ -43,6 +43,8 @@ spec:
                 py=$(python -c 'import sys; print("%d%d" % sys.version_info[:2])')
                 req=$(sha256sum /config/requirements.txt | cut -c1-12)
                 V=/studio/.venv/py$py-$req
+                # Only this worker uses /studio/.venv: drop envs from older pins.
+                for old in /studio/.venv/*; do [ "$old" = "$V" ] || rm -rf "$old"; done
                 if [ ! -f "$V/.complete" ]; then
                   rm -rf "$V"; python -m venv "$V"
                   "$V/bin/pip" install --no-cache-dir -q -r /config/requirements.txt
