@@ -1,0 +1,67 @@
+name: Log retention preparation tests
+on:
+  pull_request:
+    paths:
+      - kubernetes/main/apps/observability/loki/app/helmrelease.yaml
+      - kubernetes/main/apps/observability/promtail/app/helmrelease.yaml
+      - scripts/log-retention-policy/**
+      - .github/workflows/log-retention-test.yml
+  push:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/observability/loki/app/helmrelease.yaml
+      - kubernetes/main/apps/observability/promtail/app/helmrelease.yaml
+      - scripts/log-retention-policy/**
+      - .github/workflows/log-retention-test.yml
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-test:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fetch pinned public test tools and charts
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 2 -o helm.tgz https://get.helm.sh/helm-v4.3.1-linux-amd64.tar.gz
+          curl -fsSL --retry 2 -o yq https://github.com/mikefarah/yq/releases/download/v4.54.1/yq_linux_amd64
+          curl -fsSL --retry 2 -o loki.zip https://github.com/grafana/loki/releases/download/v3.6.11/loki-linux-amd64.zip
+          curl -fsSL --retry 2 -o promtail.zip https://github.com/grafana/loki/releases/download/v3.5.1/promtail-linux-amd64.zip
+          sha256sum -c <<'SUMS'
+          0403a88ae20913d11b10a2467b50087721fea7581736da6b9d3992f5357fe54b  helm.tgz
+          8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f  yq
+          e87959e3d7f32ae3e6a74704d71f5721d51c7558ff42614a7a0c85b5da2a9c9d  loki.zip
+          b70d5a5e259a64f6f9b6805bd42d725e50978bcd520fb46113a86cd8b418bbca  promtail.zip
+          SUMS
+          tar -xzf helm.tgz
+          unzip -q loki.zip
+          unzip -q promtail.zip
+          chmod +x yq loki-linux-amd64 promtail-linux-amd64
+          echo "$RUNNER_TEMP/linux-amd64" >> "$GITHUB_PATH"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          linux-amd64/helm pull loki --repo https://grafana.github.io/helm-charts --version 7.5.0
+          linux-amd64/helm pull promtail --repo https://grafana.github.io/helm-charts --version 6.17.1
+          sha256sum -c <<'SUMS'
+          bb8b254a57afc6b31ab23a6061216760c91c8ad3499d340442398b88ec603ca8  loki-7.5.0.tgz
+          12115103a3b94932473fb3873aa670a68da9504e2f323c03790257088b479d9f  promtail-6.17.1.tgz
+          SUMS
+          tar -xzf loki-7.5.0.tgz
+          tar -xzf promtail-6.17.1.tgz
+      - name: Render and run pinned collector checks
+        env:
+          LOKI_BIN: ${{ runner.temp }}/loki-linux-amd64
+          PROMTAIL_BIN: ${{ runner.temp }}/promtail-linux-amd64
+          LOKI_CHART: ${{ runner.temp }}/loki
+          PROMTAIL_CHART: ${{ runner.temp }}/promtail
+        run: |
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP" TMPDIR="$RUNNER_TEMP" \
+            LOKI_BIN="$LOKI_BIN" PROMTAIL_BIN="$PROMTAIL_BIN" \
+            LOKI_CHART="$LOKI_CHART" PROMTAIL_CHART="$PROMTAIL_CHART" \
+            nice -n 19 python3 -I -B scripts/log-retention-policy/test_policy.py
