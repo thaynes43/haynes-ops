@@ -2,6 +2,6 @@
 av==18.1.0
 imageio-ffmpeg==0.7.0
 numpy==2.2.6
-opencv-python-headless==4.12.0.88
+opencv-python-headless==4.14.0.94
 pillow==13.0.0
 scipy==1.16.3
