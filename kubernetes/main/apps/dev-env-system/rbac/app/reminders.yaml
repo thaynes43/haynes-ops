@@ -1,0 +1,45 @@
+---
+# Provider-neutral reminders (dev-env DESIGN-032, dev-env#600; OpenProject #396).
+# The keeper's scheduler reads Reminder objects with an uncached client (no watch)
+# and records each occurrence's claim and delivery in status with a compare-and-set.
+# It never creates, edits or deletes a Reminder.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-keeper-reminders
+  namespace: dev-env-system
+rules:
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [reminders]
+    verbs: [get, list]
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [reminders/status]
+    verbs: [update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-keeper-reminders
+  namespace: dev-env-system
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-keeper-reminders}
+subjects: [{kind: ServiceAccount, name: dev-env-keeper, namespace: dev-env-system}]
+---
+# The operator's /v1/reminders routes create a caller's Reminder, edit its spec and
+# cancel it (an update), reading live. No delete, no watch, no status write.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-operator-reminders
+  namespace: dev-env-system
+rules:
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [reminders]
+    verbs: [get, list, create, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-operator-reminders
+  namespace: dev-env-system
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-operator-reminders}
+subjects: [{kind: ServiceAccount, name: dev-env-operator, namespace: dev-env-system}]

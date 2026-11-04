@@ -92,6 +92,12 @@ spec:
               # in the same change. Tom's action-specific approval 2026-10-28T01:37:41Z.
               - --enable-hw-ssh-grants=true
               - --hw-ssh-key-secret=dev-env-hw-ssh-secret
+              # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): the
+              # leader-only scheduler delivers due Reminder objects to the one default Pushover
+              # destination with the existing dev-env-keeper-pushover files. No new credential or
+              # egress. Calendar targets are recorded as skipped (no adapter). Role
+              # dev-env-keeper-reminders (rbac/app/reminders.yaml), CRD crds/app/reminders.yaml.
+              - --enable-reminders=true
             # Other flags retain the defaults: plan 01's names (--secret-namespace dev-agents,
             # --gh-token-secret dev-env-gh-token, --github-app-dir
             # /etc/dev-env-keeper/github-dev-bot, the Lease in POD_NAMESPACE, v1's
