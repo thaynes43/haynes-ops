@@ -21,6 +21,7 @@ resources:
   - ./keeper-codex-auth.yaml
   - ./keeper-claude-auth.yaml
   - ./keeper-notices.yaml
+  - ./reminders.yaml
   - ./broker.yaml
   - ./broker-credentials.yaml
   - ./broker-guard.yaml

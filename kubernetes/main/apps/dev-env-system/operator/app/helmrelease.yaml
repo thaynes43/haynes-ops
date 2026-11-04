@@ -178,6 +178,10 @@ spec:
               tag: sha-2828fa9@sha256:527af95af80283ade64611d26508e1487f98a1db4578856fc82f32d23cd8f24a
               pullPolicy: IfNotPresent
             args:
+              # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
+              # /v1/reminders; the owner is the caller's token. No calendar reference is
+              # accepted (--reminder-calendar-refs unset). Role dev-env-operator-reminders.
+              - --enable-reminders-api=true
               # OP192 precise recurring activation; independently approved private selection.
               - --enable-aggregate-allowance-reports
               - --aggregate-allowance-config-file=/etc/dev-env-operator/allowances/selection.json
