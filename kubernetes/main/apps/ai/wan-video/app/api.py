@@ -169,9 +169,24 @@ def generate(job, prompt, lease=None):
         job.update(state="running", started_at=time.time(), prompt_id=prompt_id)
         save(job)
         deadline = time.monotonic() + 1200
+        misses, first_miss = 0, None
         while time.monotonic() < deadline:
             job["telemetry"].append(gpu_sample())
-            history = engine("/history/" + prompt_id).get(prompt_id)
+            try:
+                history = engine("/history/" + prompt_id).get(prompt_id)
+                misses, first_miss = 0, None
+            except (TimeoutError, OSError):
+                # ComfyUI can stall a read past the 20 s HTTP timeout while it decodes a long
+                # S2V clip. That is not a failed job: keep polling (the deadline still applies).
+                # Give up after 12 misses in a row or 90 s since the first of them, whichever
+                # comes first, so a dead ComfyUI does not hold the compute lease for long.
+                misses += 1
+                first_miss = first_miss or time.monotonic()
+                job["poll_misses"] = job.get("poll_misses", 0) + 1
+                if misses >= 12 or time.monotonic() - first_miss >= 90:
+                    raise
+                time.sleep(5)
+                continue
             if history:
                 if history.get("status", {}).get("status_str") == "error":
                     raise RuntimeError("ComfyUI generation failed; inspect the worker log")
