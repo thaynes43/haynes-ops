@@ -49,7 +49,7 @@ class VideoTests(unittest.TestCase):
 
     def test_model_downloads_are_revision_and_checksum_pinned(self):
         manifest = json.loads((APP / "models.yaml").read_text())
-        self.assertEqual(len(manifest["models"]), 6)
+        self.assertEqual(len(manifest["models"]), 7)
         for model in manifest["models"]:
             self.assertRegex(model["sha256"], r"^[0-9a-f]{64}$")
             self.assertRegex(model["url"], r"/resolve/[0-9a-f]{40}/")
