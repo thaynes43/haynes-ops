@@ -1,0 +1,90 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s-labs/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+# Haynes Studio CPU render worker (decals, keying, compositing, encoding) on
+# talosw01, next to wan-video. Tom approved up to 24 vCPUs on talosw01 (studio
+# decision D18, 2026-11-03); the host keeps 8 threads for Ceph and nas01.
+# Low priority: a small CPU request (cpu.weight) yields under contention, the
+# dev-env-agent class never preempts, and jobs run under nice. Media lives on
+# gasha01 NFS (decision D4) under data/studio. Agents drive it with
+# kubectl cp/exec; it serves nothing. The Python env lives on the NFS share so
+# the root filesystem stays read-only.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: studio-render
+  namespace: ai
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  values:
+    controllers:
+      studio-render:
+        strategy: Recreate
+        pod:
+          nodeSelector:
+            kubernetes.io/hostname: talosw01
+          priorityClassName: dev-env-agent
+          automountServiceAccountToken: false
+        containers:
+          app:
+            image:
+              repository: docker.io/library/python
+              tag: 3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337
+            command: [sh, -c]
+            args:
+              - |
+                set -e
+                V=/studio/.venv-py312
+                if [ ! -x "$V/bin/python" ] || ! "$V/bin/python" -c 'import numpy, PIL, scipy, av, cv2, imageio_ffmpeg' 2>/dev/null; then
+                  python -m venv "$V"
+                  "$V/bin/pip" install --no-cache-dir -q \
+                    numpy pillow scipy av opencv-python-headless imageio-ffmpeg wyoming
+                fi
+                touch /tmp/ready
+                exec sleep infinity
+            env:
+              HOME: /tmp
+              PATH: /studio/.venv-py312/bin:/usr/local/bin:/usr/bin:/bin
+              PYTHONDONTWRITEBYTECODE: "1"
+              OMP_NUM_THREADS: "24"
+              OPENBLAS_NUM_THREADS: "24"
+            probes:
+              liveness: {enabled: false}
+              startup: {enabled: false}
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  exec: {command: [test, -f, /tmp/ready]}
+                  periodSeconds: 10
+            resources:
+              requests: {cpu: 250m, memory: 1Gi}
+              limits: {cpu: "24", memory: 32Gi}
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+    defaultContainerOptions:
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: {drop: [ALL]}
+    persistence:
+      studio:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        globalMounts:
+          - path: /studio
+            subPath: data/studio
+      tmp:
+        type: emptyDir
+        sizeLimit: 8Gi
+        globalMounts:
+          - path: /tmp
