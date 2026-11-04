@@ -8,7 +8,8 @@
     "hass-sandbox": { "github": "thaynes43/hass-sandbox", "defaultBranch": "main" },
     "haynes-ops": { "github": "thaynes43/haynes-ops", "defaultBranch": "main" },
     "haynesnetwork": { "github": "thaynes43/haynesnetwork", "defaultBranch": "main" },
-    "libretto": { "github": "thaynes43/libretto", "defaultBranch": "main" }
+    "libretto": { "github": "thaynes43/libretto", "defaultBranch": "main" },
+    "haynes-studio": { "github": "thaynes43/haynes-studio", "defaultBranch": "main" }
   },
   "projects": {
     "dev-env": {
@@ -38,6 +39,10 @@
     "libretto": {
       "repositories": [{ "name": "libretto" }],
       "rules": "Project rule revision libretto-project-rules-20261020-v1. Keep task repositories and worktrees private to this session. Fetch and pin the selected repository freshly before a new task; preserve original WIP on resume. Share only authorized session metadata, claims, messages and context through the operator API. Record built, deployed and accepted separately. This catalog rule grants no credential, enrollment, inference or lifecycle authority."
+    },
+    "haynes-studio": {
+      "repositories": [{ "name": "haynes-studio" }],
+      "rules": "Project rule revision haynes-studio-project-rules-20261104-v1. Keep task repositories and worktrees private to this session. Fetch and pin the selected repository freshly before a new task; preserve original WIP on resume. Share only authorized session metadata, claims, messages and context through the operator API. Record built, deployed and accepted separately. This catalog rule grants no credential, enrollment, inference or lifecycle authority."
     }
   }
 }
