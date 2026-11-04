@@ -1,0 +1,13 @@
+{
+  "overrides": {
+    "fake": {
+      "retention_period": "90d",
+      "retention_stream": [
+        {"selector": "{retention_policy=\"classified-v1\", retention_class=\"protected_90\"}", "priority": 100, "period": "90d"},
+        {"selector": "{retention_policy=\"classified-v1\", retention_class=\"routine_30\"}", "priority": 10, "period": "30d"},
+        {"selector": "{retention_policy=\"classified-v1\", retention_class=\"noisy_14\"}", "priority": 10, "period": "14d"},
+        {"selector": "{retention_policy=\"classified-v1\", retention_class=\"debug_3\"}", "priority": 10, "period": "3d"}
+      ]
+    }
+  }
+}
