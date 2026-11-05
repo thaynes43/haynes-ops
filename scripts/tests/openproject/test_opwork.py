@@ -39,6 +39,7 @@ def load(name, file):
 
 op = load("opwork", "opwork.py")
 api = load("agent_api", "agent-api.py")
+PROJECTS = {"haynes-engineering": 3, "other-project": 4}  # identifier -> id
 STATUSES = {"Draft": 23, "Ungroomed": 24, "Needs answer": 25, "Needs approval": 26, "Approved": 27, "In progress": 7, "In review": 28, "Accepted": 29, "Paused": 30}
 TYPES = {"Saga": 10, "Epic": 5, "Story": 11}
 
@@ -61,7 +62,9 @@ class Fake:
     def __init__(self):
         self.wps, self.acts, self.rels, self.calls, self.fail, self.next_id, self.next_act = {}, {}, [], [], {}, 100, 1000
         self.created = []  # (project, payload) for every create POST, as sent
-        self.store = None  # optional (field, raw) -> stored raw for a create: models a server that changes the text
+        self.store = None  # optional (field, raw) -> stored raw for a create, None drops the field: a server that changes the text
+        self.after_create = None  # optional callable(wp) that changes what a create stored (links, fields)
+        self.readback = None  # optional callable(wp) that changes only what a GET of one item returns
         self.deny = set()  # statuses denied regardless of the current state
         self.transitions = {}  # optional current-state -> allowed next statuses
         self.form_checks, self.status_changes = [], []
@@ -103,6 +106,10 @@ class Fake:
             return 200, {"_embedded": {"elements": [{"id": v, "name": k} for k, v in table.items()]}}
         if path == "/api/v3/users/me":
             return 200, {"login": "openproject-agent", "id": 5}
+        m = re.fullmatch(r"/api/v3/projects/([^/]+)", path)
+        if m and method == "GET":
+            name = next((k for k, v in PROJECTS.items() if m.group(1) in (k, str(v))), None)
+            return (200, {"id": PROJECTS[name], "identifier": name, "name": name}) if name else (404, {"message": "not found"})
         if path.startswith("/api/v3/projects/") and path.endswith("/work_packages"):
             if method == "POST":
                 return self.create(payload, path.split("/")[4])
@@ -115,7 +122,10 @@ class Fake:
                 return 404, {"message": "not found"}
             wp = self.wps[i]
             if sub is None and method == "GET":
-                return 200, copy.deepcopy(wp)  # independent snapshot, like the real API
+                snapshot = copy.deepcopy(wp)  # independent snapshot, like the real API
+                if self.readback:
+                    self.readback(snapshot)
+                return 200, snapshot
             if sub == "/available_assignees":
                 return 200, {"_embedded": {"elements": [{"id": 5}, {"id": 6}]}}
             if sub == "/form" and method == "POST":
@@ -205,12 +215,18 @@ class Fake:
         status = next(n for n, i in STATUSES.items() if i == self.hrefid(payload["_links"]["status"]["href"]))
         parent = self.hrefid(payload["_links"]["parent"]["href"]) if "parent" in payload["_links"] else None
         wp = self.add(self.next_id, kind, payload["subject"], parent, status, key=payload.get(op.SOURCE_KEY))
+        wp["_links"]["project"] = {"href": "/api/v3/projects/%d" % PROJECTS[project], "title": project}
         for key in self.CREATE_FORMATTABLE:
             if key in payload:
                 raw = self.store(key, payload[key]["raw"]) if self.store else payload[key]["raw"]
+                if raw is None:
+                    wp.pop(key, None)  # dropped
+                    continue
                 wp[key] = {"format": "markdown", "raw": raw, "html": "<p>%s</p>" % raw if raw else ""}
         if op.REPOS in payload:
             wp[op.REPOS] = payload[op.REPOS]
+        if self.after_create:
+            self.after_create(wp)
         return 201, copy.deepcopy(wp)
 
 
@@ -681,11 +697,13 @@ class CreateTests(Base):
     ACCEPTANCE_TEXT = "1. RED before\n2. GREEN after\n"
     CONSTRAINTS_TEXT = "- no live writes\n- *zero* network\n"
 
-    def recorded(self):
-        """Every request as sent: (method, path, payload copy)."""
+    def recorded(self, down_on=None):
+        """Every request as sent: (method, path, payload copy). `down_on` is one exact GET path that fails."""
         sent, original = [], self.fake.request
         def recording(method, path, payload=None):
             sent.append((method, path, copy.deepcopy(payload)))
+            if method == "GET" and path == down_on:
+                raise Down("synthetic read loss")
             return original(method, path, payload)
         self.tracker.request = recording
         return sent
@@ -751,49 +769,136 @@ class CreateTests(Base):
         return self.run_cli("create", "--epic", "5", "--origin", "10", "--source-key", "followup:10:full", "--subject", "Full staged story",
                             "--description", self.DESCRIPTION_TEXT, "--acceptance", self.ACCEPTANCE_TEXT, "--constraints", self.CONSTRAINTS_TEXT, *extra)
 
-    def test_create_reads_the_new_item_and_confirms_every_formattable_field(self):
+    def test_create_positive_control_reads_back_every_intended_field_once(self):
         self.story()
         sent = self.recorded()
         code, out, err = self.full_create()
         self.assertEqual(code, 0, err)
-        self.assertIn("created (read back)", out)
+        self.assertIn("created (read back): #101", out)
+        self.assertIn("related to #10", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
         made, = [w for w in self.fake.wps.values() if w[op.SOURCE_KEY] == "followup:10:full"]
-        reads = [path for method, path, _ in sent if method == "GET" and path == "/api/v3/work_packages/%d" % made["id"]]
-        self.assertEqual(len(reads), 1)  # the created item itself is read back, not only found by its key
+        self.assertEqual(made["id"], 101)
+        gets = [path for method, path, _ in sent if method == "GET"]
+        self.assertEqual(gets.count("/api/v3/work_packages/101"), 1)  # the created item itself, by id
+        self.assertEqual(gets.count("/api/v3/projects/haynes-engineering"), 1)  # the project it must sit in
         (_, payload), = self.created_posts(sent)
         for key in ("description", op.ACCEPT, op.CONSTRAINTS, op.PROVENANCE):
             self.assertEqual(op.text_of(made[key]), payload[key]["raw"])
 
-    def test_create_whose_field_reads_back_different_is_uncertain_and_never_reposted(self):
-        cases = {"emptied description": ("description", lambda raw: ""),
-                 "dropped acceptance": (op.ACCEPT, lambda raw: ""),
-                 "normalized constraints": (op.CONSTRAINTS, lambda raw: raw.rstrip("\n"))}  # exact compare: no normalization tolerance
-        for name, (field, change) in cases.items():
+    # A synthetic server that accepts the POST but stores something else. Each case must fail
+    # closed: exit 6, one create POST, the ID kept, nothing more written, and a clear report.
+    MISMATCHES = {
+        "changed description": ({"store": lambda key, raw: "different text" if key == "description" else raw}, "description (changed)"),
+        "emptied description": ({"store": lambda key, raw: "" if key == "description" else raw}, "description (missing)"),
+        "normalized constraints": ({"store": lambda key, raw: raw.rstrip("\n") if key == op.CONSTRAINTS else raw}, "constraints (changed)"),
+        "dropped acceptance": ({"store": lambda key, raw: None if key == op.ACCEPT else raw}, "acceptance (missing)"),
+        "dropped provenance": ({"store": lambda key, raw: None if key == op.PROVENANCE else raw}, "provenance (missing)"),
+        "wrong parent": ({"after": lambda wp: wp["_links"].update(parent={"href": "/api/v3/work_packages/6"})}, "parent (sent /api/v3/work_packages/5, read back /api/v3/work_packages/6)"),
+        "no parent": ({"after": lambda wp: wp["_links"].update(parent={"href": None})}, "parent (sent /api/v3/work_packages/5, read back none)"),
+        "wrong type": ({"after": lambda wp: wp["_links"].update(type={"href": "/api/v3/types/5", "title": "Epic"})}, "type (sent /api/v3/types/11, read back /api/v3/types/5)"),
+        "wrong project": ({"after": lambda wp: wp["_links"].update(project={"href": "/api/v3/projects/4", "title": "other-project"})}, "project (sent haynes-engineering, read back /api/v3/projects/4)"),
+        "changed source key": ({"readback": lambda wp: wp.update({op.SOURCE_KEY: "followup:10:other"})}, "source key (changed)"),
+        "missing source key": ({"readback": lambda wp: wp.pop(op.SOURCE_KEY)}, "source key (missing)"),
+    }
+
+    def test_create_that_reads_back_different_fails_closed_with_one_post_and_the_id(self):
+        for name, (hooks, expected) in self.MISMATCHES.items():
             with self.subTest(case=name):
                 self.setUp()
                 self.story()
-                self.fake.store = lambda key, raw, field=field, change=change: change(raw) if key == field else raw
+                self.fake.store, self.fake.after_create, self.fake.readback = hooks.get("store"), hooks.get("after"), hooks.get("readback")
+                sent = self.recorded()
                 code, out, err = self.full_create()
                 self.assertEqual(code, 6, err)
-                self.assertIn("UNCERTAIN", err)
-                self.assertIn({"description": "description", op.ACCEPT: "acceptance", op.CONSTRAINTS: "constraints"}[field], err)
+                self.assertNotIn("created (read back)", out)  # no success claim
+                self.assertIn("created, NOT confirmed: #101", out)
+                self.assertIn("UNCERTAIN: #101 (source key 'followup:10:full')", err)
+                self.assertIn(expected, err)
                 self.assertIn("Do NOT repeat the create", err)
-                self.assertIn("related to #10", out)  # the origin relation is still made
-                self.assertEqual(len(self.posts("/projects/")), 1)
-                self.assertIn("intent", self.run_cli("pending")[1])
-                again = self.full_create()  # a re-run reuses the item and never posts it again
-                self.assertIn("REUSED", again[1])
-                self.assertEqual(len(self.posts("/projects/")), 1)
+                self.assertEqual(len(self.created_posts(sent)), 1)  # a single create POST
+                self.assertEqual([p for m, p, _ in sent if m == "POST" and p != "/api/v3/projects/haynes-engineering/work_packages"], [])  # nothing more written: no relation
+                self.assertEqual(self.fake.rels, [])
+                self.assertEqual(sorted(w["id"] for w in self.fake.wps.values() if w["id"] > 100), [101])  # the ID kept, no second item
+                self.assertIn("#101 intent", self.run_cli("pending")[1])  # recorded with the created ID
+                again = self.full_create()  # the same command again: validated, refused, never a second POST
+                self.assertEqual(again[0], 6, again[2])
+                self.assertIn("UNCERTAIN: #101 (source key 'followup:10:full') already exists", again[2])
+                self.assertNotIn("REUSED", again[1])
+                self.assertEqual(len(self.created_posts(sent)), 1)
+                self.assertEqual(self.fake.rels, [])
 
-    def test_create_whose_field_read_back_is_unavailable_is_uncertain_and_never_reposted(self):
+    def test_create_whose_read_back_fails_is_uncertain_with_one_post_and_the_id(self):
+        for path in ("/api/v3/work_packages/101", "/api/v3/projects/haynes-engineering"):
+            with self.subTest(path=path):
+                self.setUp()
+                self.story()
+                sent = self.recorded(down_on=path)
+                code, out, err = self.full_create()
+                self.assertEqual(code, 6, err)
+                self.assertNotIn("created (read back)", out)
+                self.assertIn("UNCERTAIN: #101 (source key 'followup:10:full')", err)
+                self.assertIn("reading it back failed", err)
+                self.assertEqual(len(self.created_posts(sent)), 1)
+                self.assertEqual(self.fake.rels, [])
+                self.assertEqual(sorted(w["id"] for w in self.fake.wps.values() if w["id"] > 100), [101])
+
+    def test_relation_failure_cannot_hide_a_create_mismatch(self):
         self.story()
-        self.fake.fail["GET /api/v3/work_packages/101"] = "before"  # the new item's own read
+        self.fake.store = lambda key, raw: "different text" if key == "description" else raw
+        self.fake.fail["POST /relations"] = "before"  # would fail if it were tried
+        sent = self.recorded()
         code, out, err = self.full_create()
         self.assertEqual(code, 6, err)
-        self.assertIn("UNCERTAIN", err)
-        self.assertIn("#101", err)
+        self.assertIn("UNCERTAIN: #101 (source key 'followup:10:full') was created", err)
+        self.assertIn("description (changed)", err)
+        self.assertNotIn("TRACKER UNAVAILABLE", err)
+        self.assertEqual([p for m, p, _ in sent if m == "POST" and "/relations" in p], [])  # never tried
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertIn("#101 intent", self.run_cli("pending")[1])
+
+    def test_reuse_after_a_mismatch_fails_until_the_item_is_reconciled(self):
+        self.story()
+        self.fake.store = lambda key, raw: None if key == op.ACCEPT else raw  # the acceptance is dropped
+        sent = self.recorded()
+        self.assertEqual(self.full_create()[0], 6)
+        for _ in range(2):  # every re-run validates; none succeeds while the content is unresolved
+            code, out, err = self.full_create()
+            self.assertEqual(code, 6, err)
+            self.assertIn("UNCERTAIN: #101 (source key 'followup:10:full') already exists", err)
+            self.assertIn("acceptance (missing)", err)
+            self.assertNotIn("REUSED", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(self.fake.rels, [])
+        self.fake.wps[101][op.ACCEPT] = {"format": "markdown", "raw": self.ACCEPTANCE_TEXT, "html": ""}  # reconciled by an update
+        code, out, err = self.full_create()
+        self.assertEqual(code, 0, err)
+        self.assertIn("REUSED, not created: #101 ", out)
+        self.assertIn("related to #10", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(len(self.fake.rels), 1)
+
+    def test_reuse_compares_what_the_rerun_asks_for(self):
+        self.story()
+        self.assertEqual(self.full_create()[0], 0)
+        code, out, err = self.full_create()  # the same content: reused
+        self.assertEqual(code, 0, err)
+        self.assertIn("REUSED, not created: #101 ", out)
+        code, _, err = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:full", "--subject", "Full staged story", "--description", "other text")
+        self.assertEqual(code, 6, err)  # this run asks for a different description
+        self.assertIn("description (changed)", err)
+        code, _, err = self.run_cli("create", "--epic", "6", "--type", "Epic", "--source-key", "followup:10:full", "--subject", "Full staged story")
+        self.assertEqual(code, 6, err)  # a different parent and type
+        self.assertIn("type (sent /api/v3/types/5, read back /api/v3/types/11)", err)
+        self.assertIn("parent (sent /api/v3/work_packages/6, read back /api/v3/work_packages/5)", err)
         self.assertEqual(len(self.posts("/projects/")), 1)
-        self.assertEqual(len([w for w in self.fake.wps.values() if w[op.SOURCE_KEY] == "followup:10:full"]), 1)
+
+    def test_omitted_markdown_fields_are_not_compared_on_create(self):
+        self.story()
+        self.fake.store = lambda key, raw: "template text" if key == "description" else raw  # nothing was intended for it
+        code, out, err = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:bare", "--subject", "Minimal follow-up item")
+        self.assertEqual(code, 0, err)
+        self.assertIn("created (read back)", out)
 
     def test_existing_duplicates_of_a_key_are_reused_not_created_over(self):
         self.story()
