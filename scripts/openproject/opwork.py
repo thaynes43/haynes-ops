@@ -17,6 +17,14 @@ scope, the routine lifecycle writes are yours. Run `opwork.py --help` for the co
   opwork.py checkpoint-update 97 --next-action TEXT --check-after UTC --evidence TEXT
   opwork.py pending | flush                     # tracker was down: list / replay notes
 
+Updates are partial: an update sends only the fields given, with lockVersion. Formattable fields
+(description, acceptance, constraints, provenance) always go out as {"raw": markdown}; a bare string
+is not that form (on Studio #423 a bare-string description update left the description empty).
+Scripts that call Tracker.patch directly pass Markdown text or exactly {"raw": text}. An omitted
+field is not sent. None, empty or blank text would clear the field, so it is refused (exit 3) before
+any request unless the call names the field in allow_clear; then it is sent as {"raw": ""}. Any other
+value is refused (exit 1) before any request. No command here changes a description.
+
 Every item line carries the canonical OpenProject link, for example
 https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/97. OPWORK_BASE_URL
 overrides that default (a plain https hostname: no credentials, port, path or query); opwork prints no other links.
@@ -59,7 +67,10 @@ LINK_BASE = BASE_URL  # main() sets it from OPWORK_BASE_URL after validating it,
 BASE_RULE = "OPWORK_BASE_URL must be a plain https://hostname (ASCII letters, digits, hyphens and dots; no credentials, port, path or query)"
 HOSTNAME = re.compile(r"https://(?=.{1,253}/?\Z)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*/?\Z", re.ASCII)
 OWNER, REPOS, ACCEPT, CONSTRAINTS, SOURCE_KEY, PROVENANCE = "customField2", "customField3", "customField4", "customField5", "customField6", "customField11"
-MARKDOWN = (ACCEPT, CONSTRAINTS, PROVENANCE)
+DESCRIPTION = "description"
+# Formattable fields: every write sends {"raw": markdown}. The description was missing here until
+# Studio #423 (journal 5819, 2026-11-05), so a Tracker.patch description went out as a bare string.
+MARKDOWN = (DESCRIPTION, ACCEPT, CONSTRAINTS, PROVENANCE)
 HOLDS = ("Needs answer", "Needs approval", "Paused")  # an explicit hold or pause stays one without --force
 RELATIONS = ("relates", "follows", "precedes", "blocks", "blocked")
 REVERSE = {"follows": "precedes", "precedes": "follows", "blocks": "blocked", "blocked": "blocks", "relates": "relates"}
@@ -101,6 +112,24 @@ def session_id():
 
 def text_of(value):
     return (value or {}).get("raw", "") if isinstance(value, dict) else (value or "")
+
+
+def formattable(field, value, allow_clear):
+    """The text of one Formattable field update, checked before anything is sent.
+
+    Markdown text, or exactly {"raw": text}. None, empty or blank text is a clear: refused (exit 3)
+    unless allow_clear names the field, then "" (sent as {"raw": ""}). Anything else is refused
+    (exit 1). Messages name the field and the type, never the value."""
+    if isinstance(value, dict) and set(value) == {"raw"} and isinstance(value["raw"], str):
+        value = value["raw"]
+    if value is None or (isinstance(value, str) and not value.strip()):
+        if field not in allow_clear:
+            raise Fail("REFUSED: this update would clear %s (%s). Nothing was sent. Omit the field to keep it, or name it in allow_clear to clear it." % (
+                field, "null" if value is None else "empty text"), 3)
+        return ""
+    if not isinstance(value, str):
+        raise Fail('REFUSED: %s must be Markdown text (a string, or {"raw": string}), not %s. Nothing was sent.' % (field, type(value).__name__))
+    return value
 
 
 def href_id(link):
@@ -190,11 +219,16 @@ class Tracker:
     def by_source_key(self, key):
         return [w for w in self.scan([{"status": {"operator": "*", "values": []}}]) if text_of(w.get(SOURCE_KEY)) == key]
 
-    def patch(self, wp, fields=None, status=None, lock=None, assignee=None):
-        """PATCH with lockVersion, then read back. Conflict re-reads and refuses; never overwrites."""
+    def patch(self, wp, fields=None, status=None, lock=None, assignee=None, allow_clear=()):
+        """PATCH only the supplied fields, with lockVersion, then read back. Conflict re-reads and
+        refuses; never overwrites, never retries. Formattable fields (MARKDOWN) go out as
+        {"raw": text}, checked by formattable() before any request: an omitted field is not sent,
+        and a clear (None, empty or blank) needs the field named in allow_clear."""
         fields = dict(fields or {})
+        allow_clear = (allow_clear,) if isinstance(allow_clear, str) else tuple(allow_clear)
+        texts = {k: formattable(k, v, allow_clear) for k, v in fields.items() if k in MARKDOWN}
         payload = {"lockVersion": wp["lockVersion"] if lock is None else lock}
-        payload.update({k: ({"raw": v} if k in MARKDOWN else v) for k, v in fields.items()})
+        payload.update({k: ({"raw": texts[k]} if k in texts else v) for k, v in fields.items()})
         links = {}
         if status:
             links["status"] = {"href": "/api/v3/statuses/%d" % self.resolve("statuses", status)}
@@ -212,7 +246,7 @@ class Tracker:
         if code is not None and code >= 400:
             raise Fail("PATCH #%d rejected HTTP %s: %s" % (wp["id"], code, data.get("message", data.get("raw", ""))))
         now = self.wp(wp["id"])  # tracker still down: the caller reports unavailable
-        ok = all(text_of(now.get(k)) == v for k, v in fields.items()) and (not status or now["_links"]["status"]["title"].lower() == status.lower()) \
+        ok = all(text_of(now.get(k)) == texts.get(k, v) for k, v in fields.items()) and (not status or now["_links"]["status"]["title"].lower() == status.lower()) \
             and (not assignee or (now["_links"].get("assignee") or {}).get("href") == "/api/v3/users/%d" % assignee)
         if not ok and code is None:
             raise Fail("NOT APPLIED: tracker error on the update of #%d; read back shows no change, safe to retry: %s" % (wp["id"], line(now)), 5)
@@ -767,7 +801,10 @@ def cmd_flush(t, a, session):
 
 
 def build_parser():
-    p = argparse.ArgumentParser(prog="opwork", description=__doc__.split("\n\n")[0])
+    p = argparse.ArgumentParser(prog="opwork", description=__doc__.split("\n\n")[0], epilog=(
+        'Updates send only the fields given, with lockVersion. Formattable fields (description, acceptance, '
+        'constraints, provenance) go out as {"raw": markdown}; for Tracker.patch, a null, empty or blank value '
+        'is refused unless allow_clear names the field. No command here changes a description.'))
     p.add_argument("--project", default=os.environ.get("OPWORK_PROJECT", PROJECT))
     sub = p.add_subparsers(dest="cmd", required=True)
     def add(name, fn, *args, **kw):

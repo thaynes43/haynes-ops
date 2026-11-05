@@ -281,6 +281,28 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
 - **Conflicts**: every write sends `lockVersion`; a stale one (409), another owner, or an
   explicit hold or pause (`Needs answer`, `Needs approval`, `Paused`) is re-read and refused (exit 3), never
   overwritten. `--force` is a takeover/override for an explicitly authorized case only.
+- **Partial updates and Formattable fields** (Studio #423, 2026-11-05): an update sends only
+  the fields given, with `lockVersion`; nothing else is sent, so it asks for no other change. The
+  description and the acceptance, constraints and provenance fields are Formattable, and every
+  write sends them as `{"raw": markdown}`. Before this fix `Tracker.patch` sent a description
+  as a bare string (`MARKDOWN` omitted it); on #423 (journal 5819) such an update from a
+  direct `Tracker.patch` caller left the description empty; a later `{"raw": ...}` update
+  restored it. No `opwork` command sends a description on update: `claim`, `status` and
+  `complete` change only the owner, the status and (`claim --assignee`) the assignee, and
+  `create` already wrapped it. For scripts that call
+  `Tracker.patch(wp, fields, ...)`:
+  - pass Markdown text, or exactly `{"raw": text}` (sent once, not double-wrapped);
+  - an omitted field is not sent and keeps its value; `None` never means "omit";
+  - `None`, empty or blank text would clear the field, so it is refused with exit 3 before any
+    request, unless the call names the field in `allow_clear` (for example
+    `allow_clear={"description"}`); then it is sent as `{"raw": ""}`. This opt-in is a
+    deliberate policy: a clear has to be asked for;
+  - any other value (a number, a list, bytes, another dict) is refused with exit 1 before any
+    request; the message names the field and the type, never the value;
+  - one refused field stops the whole update: nothing is sent.
+  A conflict (409) is read back and refused (exit 3), never retried. A lost connection or
+  answer is read back once before anything else: applied means success, not applied is exit 5,
+  an answer whose change is missing is exit 6. The PATCH is never sent twice.
 - **Read back**: success is printed only after a read back. A write missing on read-back is
   UNCONFIRMED (exit 6); an unavailable connection/read-back is exit 5.
   `show --history` marks any truncated text; `--full` returns it whole. `claim --assignee me` also sets the
@@ -355,5 +377,7 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
 - **Networking**: v1 (dev/dev-env) reaches the API today. v2 session pods need the separate,
   held Cilium policy (egress + frontend ingress, TCP 8082); until applied v2 gets exit 5.
 - **Tests**: `python3 -I -B scripts/tests/openproject/test_opwork.py -v` (offline fake API:
-  pagination, claims, conflicts, attribution, uncertain create, outage). These are mocked
-  tests; the live fixture acceptance is recorded in the story result, not by CI.
+  pagination, claims, conflicts, attribution, uncertain create, outage, and Formattable partial
+  updates against a strict synthetic fake). These are mocked tests; the live fixture acceptance
+  is recorded in the story result, not by CI. The strict fake models the outcome recorded on
+  #423, not the server's mechanism.
