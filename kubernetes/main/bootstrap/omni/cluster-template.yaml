@@ -1568,3 +1568,6 @@ patches:
         nodeLabels:
             topology.kubernetes.io/region: main
             topology.kubernetes.io/zone: w
+            # Keep this label (#4663): the nvidia-device-plugin affinity selects
+            # talosw04 by it; dropping it on 2026-11-05 took the node's GPU to 0.
+            haynesops.com/gpu-test: "true"
