@@ -175,7 +175,16 @@ spec:
               # signed and verified this digest. Diagnostics emit closed labels only, never a character.
               # Operator image only: the handoff flag, private configuration, host, accounts, cadence, backoff and the
               # absolute 2026-11-04T15:33:23Z window are unchanged. Nothing is qualified or widened.
-              tag: sha-2828fa9@sha256:527af95af80283ade64611d26508e1487f98a1db4578856fc82f32d23cd8f24a
+              # Previous pin sha-2828fa9 (dev-env#895, haynes-ops#4630); rollback target for this change.
+              # AgentSession status-write loop fix, dev-env#934 (merge ce38fd83, haynes-ops#4663): an unchanged
+              # retained Session writes no status. publish 42066436988 signed and verified this digest.
+              # The 35 source commits since 2828fa9 also carry default-off scheduled work (DESIGN-054; its CRD is
+              # not a startup dependency with its flags off), the C3 stall-field opt-in (#922), never draining a
+              # waiting session (#923), the one-image drain hold (#925; unused: no templates file sets it), and the
+              # Cursor usage diagnostics #910/#913 (labels and wording only).
+              # Operator image only: every flag, the allowance configuration and its expired 2026-11-04T15:33:23Z
+              # window, templates, permissions and existing Session pods stay unchanged. --kube-api-qps stays off.
+              tag: sha-ce38fd8@sha256:c2a954726ac3aa0dd77262223f248c42abed4273e1645d48cfb184f7684e3088
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve

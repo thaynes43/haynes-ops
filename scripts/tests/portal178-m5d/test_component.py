@@ -116,10 +116,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# Cursor misc-symbol window diagnostics 2828fa9 (dev-env#895); publish 41750111738 signed and verified this digest.
+# AgentSession status-write loop fix ce38fd8 (dev-env#934, haynes-ops#4663); publish 42066436988 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-2828fa9"
-    "@sha256:527af95af80283ade64611d26508e1487f98a1db4578856fc82f32d23cd8f24a"
+    "sha-ce38fd8"
+    "@sha256:c2a954726ac3aa0dd77262223f248c42abed4273e1645d48cfb184f7684e3088"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
