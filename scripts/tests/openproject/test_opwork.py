@@ -61,6 +61,7 @@ class Fake:
     def __init__(self):
         self.wps, self.acts, self.rels, self.calls, self.fail, self.next_id, self.next_act = {}, {}, [], [], {}, 100, 1000
         self.created = []  # (project, payload) for every create POST, as sent
+        self.store = None  # optional (field, raw) -> stored raw for a create: models a server that changes the text
         self.deny = set()  # statuses denied regardless of the current state
         self.transitions = {}  # optional current-state -> allowed next statuses
         self.form_checks, self.status_changes = [], []
@@ -206,7 +207,7 @@ class Fake:
         wp = self.add(self.next_id, kind, payload["subject"], parent, status, key=payload.get(op.SOURCE_KEY))
         for key in self.CREATE_FORMATTABLE:
             if key in payload:
-                raw = payload[key]["raw"]
+                raw = self.store(key, payload[key]["raw"]) if self.store else payload[key]["raw"]
                 wp[key] = {"format": "markdown", "raw": raw, "html": "<p>%s</p>" % raw if raw else ""}
         if op.REPOS in payload:
             wp[op.REPOS] = payload[op.REPOS]
@@ -745,6 +746,54 @@ class CreateTests(Base):
                 self.assertEqual(code, 422)
                 self.assertEqual(len(self.fake.wps), before)  # nothing created
         self.assertEqual(self.fake.request("POST", "/api/v3/projects/haynes-engineering/work_packages", good)[0], 201)
+
+    def full_create(self, *extra):
+        return self.run_cli("create", "--epic", "5", "--origin", "10", "--source-key", "followup:10:full", "--subject", "Full staged story",
+                            "--description", self.DESCRIPTION_TEXT, "--acceptance", self.ACCEPTANCE_TEXT, "--constraints", self.CONSTRAINTS_TEXT, *extra)
+
+    def test_create_reads_the_new_item_and_confirms_every_formattable_field(self):
+        self.story()
+        sent = self.recorded()
+        code, out, err = self.full_create()
+        self.assertEqual(code, 0, err)
+        self.assertIn("created (read back)", out)
+        made, = [w for w in self.fake.wps.values() if w[op.SOURCE_KEY] == "followup:10:full"]
+        reads = [path for method, path, _ in sent if method == "GET" and path == "/api/v3/work_packages/%d" % made["id"]]
+        self.assertEqual(len(reads), 1)  # the created item itself is read back, not only found by its key
+        (_, payload), = self.created_posts(sent)
+        for key in ("description", op.ACCEPT, op.CONSTRAINTS, op.PROVENANCE):
+            self.assertEqual(op.text_of(made[key]), payload[key]["raw"])
+
+    def test_create_whose_field_reads_back_different_is_uncertain_and_never_reposted(self):
+        cases = {"emptied description": ("description", lambda raw: ""),
+                 "dropped acceptance": (op.ACCEPT, lambda raw: ""),
+                 "normalized constraints": (op.CONSTRAINTS, lambda raw: raw.rstrip("\n"))}  # exact compare: no normalization tolerance
+        for name, (field, change) in cases.items():
+            with self.subTest(case=name):
+                self.setUp()
+                self.story()
+                self.fake.store = lambda key, raw, field=field, change=change: change(raw) if key == field else raw
+                code, out, err = self.full_create()
+                self.assertEqual(code, 6, err)
+                self.assertIn("UNCERTAIN", err)
+                self.assertIn({"description": "description", op.ACCEPT: "acceptance", op.CONSTRAINTS: "constraints"}[field], err)
+                self.assertIn("Do NOT repeat the create", err)
+                self.assertIn("related to #10", out)  # the origin relation is still made
+                self.assertEqual(len(self.posts("/projects/")), 1)
+                self.assertIn("intent", self.run_cli("pending")[1])
+                again = self.full_create()  # a re-run reuses the item and never posts it again
+                self.assertIn("REUSED", again[1])
+                self.assertEqual(len(self.posts("/projects/")), 1)
+
+    def test_create_whose_field_read_back_is_unavailable_is_uncertain_and_never_reposted(self):
+        self.story()
+        self.fake.fail["GET /api/v3/work_packages/101"] = "before"  # the new item's own read
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertIn("UNCERTAIN", err)
+        self.assertIn("#101", err)
+        self.assertEqual(len(self.posts("/projects/")), 1)
+        self.assertEqual(len([w for w in self.fake.wps.values() if w[op.SOURCE_KEY] == "followup:10:full"]), 1)
 
     def test_existing_duplicates_of_a_key_are_reused_not_created_over(self):
         self.story()
