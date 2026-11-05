@@ -9,10 +9,9 @@ spec:
     kind: OCIRepository
     name: app-template
   interval: 30m
-  # The cutover that drops the hostpath scratch PVC (epic haynes-ops#4648)
-  # can move the pod to another worker: image pull, config-volume re-attach
-  # and the 5m startup probe. A failed-upgrade rollback would return to a
-  # revision whose PVC Flux has pruned, so give the upgrade room.
+  # Without the hostpath scratch mount (epic haynes-ops#4648) the pod can
+  # move to another worker: image pull, config-volume re-attach and the 5m
+  # startup probe all fit in one upgrade without a spurious rollback.
   timeout: 15m
   install:
     remediation:
@@ -26,12 +25,11 @@ spec:
     controllers:
       sabnzbd:
         # Scratch moved to NFS (epic haynes-ops#4648): download_dir, set
-        # through SAB's API, is a folder on the haynestower share (see
+        # through SAB's API, is a folder on the gasha01 export (see
         # persistence below), so downloads no longer fill a node's /var (the
         # 2026-08-01 DiskPressure incident) or talosw02's shared 511G scratch
         # disk (the 2026-11-03 full-disk pause). download_free=150G
-        # (sabnzbd.ini) now measures the share's free space. Unraid lands new
-        # writes on its cache pool first, and SAB cannot see that pool fill.
+        # (sabnzbd.ini) now measures that export's free space.
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
@@ -193,15 +191,6 @@ spec:
     persistence:
       config:
         existingClaim: sabnzbd
-      # Scratch (incomplete + unpack) is a per-instance folder on this share,
-      # not a volume of its own: download_dir =
-      # /data/haynestower/usenet/incomplete-k8s/sabnzbd-main, set through
-      # SAB's API. It sits in the same mount as complete_dir
-      # (usenet/complete-k8s), so finishing a job is a rename on the Unraid
-      # server, not a copy over NFS. Never share the folder with another SAB:
-      # each instance's nightly orphan sweep deletes every entry there that is
-      # not one of its jobs. "-main" keeps it from being a string prefix of
-      # sabnzbd-fast's folder (SAB bounds some deletes with startswith).
       data-tower:
         type: nfs
         server: haynestower.haynesnetwork
@@ -213,6 +202,17 @@ spec:
                 readOnly: false
       # Same mount convention as qbittorrent so *arr remote-path mappings are
       # identical across download clients.
+      #
+      # Scratch (incomplete + unpack) is a per-instance folder on this export,
+      # not a volume of its own: download_dir =
+      # /data/cephfs-hdd/data/usenet/incomplete-k8s/sabnzbd-main, set through
+      # SAB's API (gasha01 serves CephFS on the PVE Ceph HDD pool). Categories
+      # that complete under /data/cephfs-hdd finish with a rename; the rest
+      # are copied to /data/haynestower. Never share the folder with another
+      # SAB: each instance's nightly orphan sweep deletes every entry there
+      # that is not one of its jobs. "-main" keeps it from being
+      # a string prefix of sabnzbd-fast's folder (SAB bounds some deletes with
+      # startswith).
       data-proxmox:
         type: nfs
         server: gasha01.haynesnetwork

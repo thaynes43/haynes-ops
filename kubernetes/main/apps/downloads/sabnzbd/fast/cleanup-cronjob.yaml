@@ -9,8 +9,8 @@
 # behind). Retries stay enabled in the *arrs; this only removes the corpses
 # they leave.
 #
-# The folder is now this instance's own folder on the haynestower NFS share,
-# next to the media library (epic haynes-ops#4648). delete_all_orphan removes
+# The folder is now this instance's own folder on the gasha01 NFS export,
+# next to other apps' data (epic haynes-ops#4648). delete_all_orphan removes
 # every entry in download_dir that is not one of this instance's jobs, so the
 # job first checks that download_dir is exactly EXPECTED_DOWNLOAD_DIR and
 # deletes nothing otherwise. DRY_RUN set to anything but "0" runs that check
@@ -63,7 +63,7 @@ spec:
                       name: sabnzbd-fast-secret
                       key: SABNZBD__API_KEY
                 - name: EXPECTED_DOWNLOAD_DIR
-                  value: /data/haynestower/usenet/incomplete-k8s/sabnzbd-fast
+                  value: /data/cephfs-hdd/data/usenet/incomplete-k8s/sabnzbd-fast
                 - name: DRY_RUN
                   value: "0"
               command:
