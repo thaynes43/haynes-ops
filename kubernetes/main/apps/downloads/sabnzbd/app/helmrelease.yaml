@@ -20,11 +20,13 @@ spec:
   values:
     controllers:
       sabnzbd:
-        # Guardrail against the 2026-08-01 DiskPressure incident: SAB's
-        # download_free=150G (sabnzbd.ini) pauses downloads well before
-        # kubelet's 15% eviction threshold on talosw02's 548G /var. The
-        # hostpath incomplete PV has no enforced quota — the ini setting
-        # is the real backstop.
+        # Scratch moved to NFS (epic haynes-ops#4648): download_dir, set
+        # through SAB's API, is a folder on the haynestower share (see
+        # persistence below), so downloads no longer fill a node's /var (the
+        # 2026-08-01 DiskPressure incident) or talosw02's shared 511G scratch
+        # disk (the 2026-11-03 full-disk pause). download_free=150G
+        # (sabnzbd.ini) now measures the share's free space. Unraid lands new
+        # writes on its cache pool first, and SAB cannot see that pool fill.
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
@@ -186,12 +188,13 @@ spec:
     persistence:
       config:
         existingClaim: sabnzbd
-      # Local scratch for incomplete + unpack: par2/unrar on node-local disk,
-      # only the finished move crosses to NFS (usenet has no hardlink needs).
-      incomplete:
-        existingClaim: sabnzbd-incomplete
-        globalMounts:
-          - path: /incomplete
+      # Scratch (incomplete + unpack) is a per-instance folder on this share,
+      # not a volume of its own: download_dir =
+      # /data/haynestower/usenet/incomplete-k8s/sabnzbd, set through SAB's
+      # API. It sits in the same mount as complete_dir (usenet/complete-k8s),
+      # so finishing a job is a rename on the Unraid server, not a copy over
+      # NFS. Never share the folder with another SAB: each instance's nightly
+      # orphan sweep deletes every entry there that is not one of its jobs.
       data-tower:
         type: nfs
         server: haynestower.haynesnetwork

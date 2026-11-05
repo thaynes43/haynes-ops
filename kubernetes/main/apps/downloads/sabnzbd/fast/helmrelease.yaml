@@ -20,8 +20,8 @@ spec:
   values:
     controllers:
       sabnzbd-fast:
-        # download_free=150G guardrail in sabnzbd.ini — see
-        # sabnzbd/app/helmrelease.yaml for the 2026-08-01 incident notes.
+        # Scratch on the haynestower NFS share and the download_free=150G
+        # guardrail in sabnzbd.ini: see sabnzbd/app/helmrelease.yaml.
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
@@ -183,12 +183,14 @@ spec:
     persistence:
       config:
         existingClaim: sabnzbd-fast
-      # Local scratch for incomplete + unpack: par2/unrar on node-local disk,
-      # only the finished move crosses to NFS (usenet has no hardlink needs).
-      incomplete:
-        existingClaim: sabnzbd-fast-incomplete
-        globalMounts:
-          - path: /incomplete
+      # Scratch (incomplete + unpack) is a per-instance folder on this share,
+      # not a volume of its own: download_dir =
+      # /data/haynestower/usenet/incomplete-k8s/sabnzbd-fast, set through
+      # SAB's API. It sits in the same mount as complete_dir
+      # (usenet/complete-k8s), so finishing a job is a rename on the Unraid
+      # server, not a copy over NFS. Never share the folder with another SAB:
+      # each instance's nightly orphan sweep deletes every entry there that is
+      # not one of its jobs.
       data-tower:
         type: nfs
         server: haynestower.haynesnetwork

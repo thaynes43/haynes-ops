@@ -6,7 +6,6 @@ components:
   - ../../../../../shared/components/gatus/gaurded
   - ../../../../../shared/components/volsync/aws
 resources:
-  - ./pvc.yaml
   - ./externalsecret.yaml
   - ./helmrelease.yaml
   - ./cleanup-cronjob.yaml
