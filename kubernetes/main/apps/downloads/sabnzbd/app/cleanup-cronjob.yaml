@@ -1,16 +1,35 @@
 ---
 # Nightly SAB scratch janitor (2026-08-01 talosw02 DiskPressure incident).
-# Failed/orphaned downloads accumulate in the hostpath incomplete PV forever
-# unless something deletes them — ~460GB of dead scratch (across both SAB
-# instances) pinned /var at kubelet's eviction threshold and evicted half the
-# node. SAB owns the cleanup: purge failed history WITH files, then sweep
-# orphaned incomplete folders (dirs no queue/history entry references — every
-# re-add of the same NZB leaves one behind). Retries stay enabled in the
-# *arrs; this only removes the corpses they leave.
+# Failed/orphaned downloads accumulate in SAB's temporary download folder
+# forever unless something deletes them — ~460GB of dead scratch (across both
+# SAB instances, then on node-local disk) pinned /var at kubelet's eviction
+# threshold and evicted half the node. SAB owns the cleanup: purge failed
+# history WITH files, then sweep orphaned incomplete folders (dirs no
+# queue/history entry references — every re-add of the same NZB leaves one
+# behind). Retries stay enabled in the *arrs; this only removes the corpses
+# they leave.
+#
+# The folder is now this instance's own folder on the gasha01 NFS export,
+# next to other apps' data (epic haynes-ops#4648). delete_all_orphan removes
+# every entry in download_dir that is not one of this instance's jobs, so the
+# job first checks that download_dir is exactly EXPECTED_DOWNLOAD_DIR and
+# deletes nothing otherwise. DRY_RUN set to anything but "0" runs that check
+# and lists what would be deleted, without deleting. The jq refuses a CronJob
+# without DRY_RUN (one from before this guard would delete for real):
+#   kubectl -n downloads create job sabnzbd-scratch-cleanup-dry \
+#     --from=cronjob/sabnzbd-scratch-cleanup --dry-run=client -o json \
+#     | jq '(.spec.template.spec.containers[0].env | map(.name) | index("DRY_RUN")) as $i
+#           | if $i == null then error("no DRY_RUN env: refusing")
+#             else .spec.template.spec.containers[0].env[$i].value = "1" end' \
+#     | kubectl create -f -
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: sabnzbd-scratch-cleanup
+  annotations:
+    # The script below uses shell variables; keep Flux's postBuild envsubst
+    # (strict mode) away from them.
+    kustomize.toolkit.fluxcd.io/substitute: disabled
 spec:
   schedule: "30 4 * * *"
   timeZone: America/New_York
@@ -43,12 +62,37 @@ spec:
                     secretKeyRef:
                       name: sabnzbd-secret
                       key: SABNZBD__API_KEY
+                - name: EXPECTED_DOWNLOAD_DIR
+                  value: /data/cephfs-hdd/data/usenet/incomplete-k8s/sabnzbd-main
+                - name: DRY_RUN
+                  value: "0"
               command:
                 - /bin/sh
                 - -c
                 - |
-                  set -e
+                  set -eu
                   base="http://sabnzbd.downloads.svc.cluster.local:8080/api"
+                  echo "download_dir (expect $EXPECTED_DOWNLOAD_DIR):"
+                  cfg="$(curl -fsS "$base?mode=get_config&section=misc&keyword=download_dir&apikey=$APIKEY&output=json")"
+                  echo "$cfg"
+                  # SAB 5.1.3 answers compact JSON (orjson). If an image bump changes
+                  # that, this match refuses every night (cleanup stops, visibly);
+                  # it can never match a wrong folder.
+                  case "$cfg" in
+                    *"\"download_dir\":\"$EXPECTED_DOWNLOAD_DIR\""*) ;;
+                    *)
+                      echo "download_dir is not $EXPECTED_DOWNLOAD_DIR: deleting nothing" >&2
+                      exit 1
+                      ;;
+                  esac
+                  if [ "$DRY_RUN" != "0" ]; then
+                    echo "DRY_RUN: nothing deleted. Failed history entries:"
+                    curl -fsS "$base?mode=history&failed_only=1&limit=1&apikey=$APIKEY&output=json" | grep -o '"noofslots":[0-9]*'
+                    # Display only: a folder name containing "]" cuts this list short.
+                    echo "Orphaned folders delete_all_orphan would remove:"
+                    curl -fsS "$base?mode=fullstatus&skip_dashboard=1&apikey=$APIKEY&output=json" | grep -o '"folders":\[[^]]*\]'
+                    exit 0
+                  fi
                   echo "purge failed history (+files):"
                   curl -fsS "$base?mode=history&name=delete&value=failed&del_files=1&apikey=$APIKEY&output=json"
                   echo

@@ -9,6 +9,10 @@ spec:
     kind: OCIRepository
     name: app-template
   interval: 30m
+  # Without the hostpath scratch mount (epic haynes-ops#4648) the pod can
+  # move to another worker: image pull, config-volume re-attach and the 5m
+  # startup probe all fit in one upgrade without a spurious rollback.
+  timeout: 15m
   install:
     remediation:
       retries: 3
@@ -20,8 +24,8 @@ spec:
   values:
     controllers:
       sabnzbd-fast:
-        # download_free=150G guardrail in sabnzbd.ini — see
-        # sabnzbd/app/helmrelease.yaml for the 2026-08-01 incident notes.
+        # Scratch on the gasha01 NFS export and the download_free=150G
+        # guardrail in sabnzbd.ini: see sabnzbd/app/helmrelease.yaml.
         annotations:
           reloader.stakater.com/auto: "true"
         pod:
@@ -183,12 +187,6 @@ spec:
     persistence:
       config:
         existingClaim: sabnzbd-fast
-      # Local scratch for incomplete + unpack: par2/unrar on node-local disk,
-      # only the finished move crosses to NFS (usenet has no hardlink needs).
-      incomplete:
-        existingClaim: sabnzbd-fast-incomplete
-        globalMounts:
-          - path: /incomplete
       data-tower:
         type: nfs
         server: haynestower.haynesnetwork
@@ -200,6 +198,15 @@ spec:
                 readOnly: false
       # Same mount convention as qbittorrent so *arr remote-path mappings are
       # identical across download clients.
+      #
+      # Scratch (incomplete + unpack) is a per-instance folder on this export,
+      # not a volume of its own: download_dir =
+      # /data/cephfs-hdd/data/usenet/incomplete-k8s/sabnzbd-fast, set through
+      # SAB's API (gasha01 serves CephFS on the PVE Ceph HDD pool). Categories
+      # that complete under /data/cephfs-hdd finish with a rename; the rest
+      # are copied to /data/haynestower. Never share the folder with another
+      # SAB: each instance's nightly orphan sweep deletes every entry there
+      # that is not one of its jobs.
       data-proxmox:
         type: nfs
         server: gasha01.haynesnetwork

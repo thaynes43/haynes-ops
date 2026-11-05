@@ -1,6 +1,8 @@
 ---
-# Node-local scratch for incomplete downloads + unpack. Regenerable (SAB
-# re-downloads on loss), so no VolSync and no prune protection needed.
+# Former node-local scratch for incomplete downloads + unpack. Unmounted since
+# epic haynes-ops#4648 (scratch is on the gasha01 NFS export). Kept for one
+# release so a revert of that change mounts it again; it is deleted in a
+# follow-up once the cutover is verified. Regenerable, so no VolSync.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
