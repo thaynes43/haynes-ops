@@ -799,6 +799,8 @@ class CreateTests(Base):
         "wrong type": ({"after": lambda wp: wp["_links"].update(type={"href": "/api/v3/types/5", "title": "Epic"})}, "type (sent /api/v3/types/11, read back /api/v3/types/5)"),
         "wrong project": ({"after": lambda wp: wp["_links"].update(project={"href": "/api/v3/projects/4", "title": "other-project"})}, "project (sent haynes-engineering, read back /api/v3/projects/4)"),
         "changed source key": ({"readback": lambda wp: wp.update({op.SOURCE_KEY: "followup:10:other"})}, "source key (changed)"),
+        "changed subject": ({"after": lambda wp: wp.update(subject="Renamed by the server")}, "subject (changed)"),
+        "missing subject": ({"readback": lambda wp: wp.pop("subject")}, "subject (missing)"),
         "missing source key": ({"readback": lambda wp: wp.pop(op.SOURCE_KEY)}, "source key (missing)"),
     }
 
@@ -842,6 +844,22 @@ class CreateTests(Base):
                 self.assertEqual(len(self.created_posts(sent)), 1)
                 self.assertEqual(self.fake.rels, [])
                 self.assertEqual(sorted(w["id"] for w in self.fake.wps.values() if w["id"] > 100), [101])
+
+    def test_initial_status_is_confirmed_on_create_but_not_required_on_reuse(self):
+        self.story()
+        moved = {"href": "/api/v3/statuses/%d" % STATUSES["In progress"], "title": "In progress"}
+        self.fake.after_create = lambda wp: wp["_links"].update(status=moved)  # the server did not file it Ungroomed
+        sent = self.recorded()
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertIn("status (sent /api/v3/statuses/24, read back /api/v3/statuses/7)", err)
+        self.assertEqual(self.fake.rels, [])
+        self.fake.after_create = None
+        code, out, err = self.full_create()  # a reused item may have moved on since: its status is not compared
+        self.assertEqual(code, 0, err)
+        self.assertIn("REUSED, not created: #101 Story [In progress]", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(len(self.fake.rels), 1)
 
     def test_relation_failure_cannot_hide_a_create_mismatch(self):
         self.story()
@@ -887,6 +905,9 @@ class CreateTests(Base):
         code, _, err = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:full", "--subject", "Full staged story", "--description", "other text")
         self.assertEqual(code, 6, err)  # this run asks for a different description
         self.assertIn("description (changed)", err)
+        code, _, err = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:full", "--subject", "Another subject")
+        self.assertEqual(code, 6, err)  # this run asks for a different subject
+        self.assertIn("subject (changed)", err)
         code, _, err = self.run_cli("create", "--epic", "6", "--type", "Epic", "--source-key", "followup:10:full", "--subject", "Full staged story")
         self.assertEqual(code, 6, err)  # a different parent and type
         self.assertIn("type (sent /api/v3/types/5, read back /api/v3/types/11)", err)
