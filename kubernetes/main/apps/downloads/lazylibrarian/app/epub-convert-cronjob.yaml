@@ -92,7 +92,7 @@ spec:
                 - name: STATE_DIR
                   value: /data/cephfs-hdd/data/media/books/.epub-convert
                 - name: STRIP_SERIES_METADATA
-                  value: "0"
+                  value: "1"
                 - name: LIBRARY_HOLD_FOLDERS_JSON
                   value: '["Daniel Silva/Ransom"]'
                 - name: RUN_BUDGET_SECONDS
