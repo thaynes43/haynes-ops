@@ -633,6 +633,75 @@ class CreateTests(Base):
         self.assertEqual(len(self.posts("/projects/")), 1)
         self.assertIn("intent", self.run_cli("pending")[1])
 
+    DESCRIPTION_TEXT = "## Scope\n\n- one outcome\n- `opwork` and [a link](https://example.invalid/x)\n"
+    ACCEPTANCE_TEXT = "1. RED before\n2. GREEN after\n"
+    CONSTRAINTS_TEXT = "- no live writes\n- *zero* network\n"
+
+    def recorded(self):
+        """Every request as sent: (method, path, payload copy)."""
+        sent, original = [], self.fake.request
+        def recording(method, path, payload=None):
+            sent.append((method, path, copy.deepcopy(payload)))
+            return original(method, path, payload)
+        self.tracker.request = recording
+        return sent
+
+    def created_posts(self, sent):
+        return [(path, payload) for method, path, payload in sent if method == "POST" and path.endswith("/work_packages") and path.startswith("/api/v3/projects/")]
+
+    def test_create_sends_markdown_fields_formattable_with_project_type_and_parent_and_reads_them_back(self):
+        self.story()
+        sent = self.recorded()
+        code, out, err = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:full", "--subject", "Full staged story",
+                                      "--description", self.DESCRIPTION_TEXT, "--acceptance", self.ACCEPTANCE_TEXT,
+                                      "--constraints", self.CONSTRAINTS_TEXT, "--repos", "thaynes43/haynes-ops, thaynes43/dev-env")
+        self.assertEqual(code, 0, err)
+        (path, payload), = self.created_posts(sent)
+        self.assertEqual(path, "/api/v3/projects/haynes-engineering/work_packages")  # the project is the path
+        self.assertEqual(set(payload), {"subject", "description", op.SOURCE_KEY, op.PROVENANCE, op.ACCEPT, op.CONSTRAINTS, op.REPOS, "_links"})
+        self.assertEqual(payload["description"], {"raw": self.DESCRIPTION_TEXT})
+        self.assertEqual(payload[op.ACCEPT], {"raw": self.ACCEPTANCE_TEXT})
+        self.assertEqual(payload[op.CONSTRAINTS], {"raw": self.CONSTRAINTS_TEXT})
+        self.assertEqual(set(payload[op.PROVENANCE]), {"raw"})
+        self.assertEqual(payload[op.REPOS], "thaynes43/haynes-ops, thaynes43/dev-env")  # a String field: bare
+        self.assertEqual(payload["_links"], {"type": {"href": "/api/v3/types/11"}, "status": {"href": "/api/v3/statuses/24"},
+                                             "parent": {"href": "/api/v3/work_packages/5"}})
+        made, = [w for w in self.fake.wps.values() if w[op.SOURCE_KEY] == "followup:10:full"]
+        now = self.tracker.wp(made["id"])  # the read back, through the API
+        self.assertEqual(op.text_of(now["description"]), self.DESCRIPTION_TEXT)
+        self.assertEqual(op.text_of(now[op.ACCEPT]), self.ACCEPTANCE_TEXT)
+        self.assertEqual(op.text_of(now[op.CONSTRAINTS]), self.CONSTRAINTS_TEXT)
+        self.assertEqual(op.text_of(now[op.REPOS]), "thaynes43/haynes-ops, thaynes43/dev-env")
+        self.assertIn("Created by <codex-test | worktree w1", op.text_of(now[op.PROVENANCE]))
+        self.assertEqual((now["_links"]["type"]["title"], now["_links"]["status"]["title"], self.fake.hrefid(now["_links"]["parent"]["href"])), ("Story", "Ungroomed", 5))
+
+    def test_create_omits_unset_optional_fields_and_sends_an_empty_description(self):
+        self.story()
+        sent = self.recorded()
+        code, _, err = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:bare", "--subject", "Minimal follow-up item", "--acceptance", "")
+        self.assertEqual(code, 0, err)
+        (_, payload), = self.created_posts(sent)
+        self.assertEqual(set(payload), {"subject", "description", op.SOURCE_KEY, op.PROVENANCE, "_links"})  # no acceptance, constraints or repos
+        self.assertEqual(payload["description"], {"raw": ""})  # a new item: nothing to clear
+        made, = [w for w in self.fake.wps.values() if w[op.SOURCE_KEY] == "followup:10:bare"]
+        now = self.tracker.wp(made["id"])
+        self.assertEqual(op.text_of(now["description"]), "")
+        self.assertEqual((op.text_of(now.get(op.ACCEPT)), op.text_of(now.get(op.CONSTRAINTS)), op.text_of(now.get(op.REPOS))), ("", "", ""))
+
+    def test_strict_fake_create_rejects_unknown_or_malformed_fields(self):
+        good = {"subject": "s", "description": {"raw": "d"}, op.SOURCE_KEY: "k", op.PROVENANCE: {"raw": "p"},
+                "_links": {"type": {"href": "/api/v3/types/11"}, "status": {"href": "/api/v3/statuses/24"}, "parent": {"href": "/api/v3/work_packages/5"}}}
+        bad = [dict(good, description="bare"), dict(good, **{op.ACCEPT: "bare"}), dict(good, **{op.CONSTRAINTS: {"raw": 5}}),
+               dict(good, **{op.REPOS: {"raw": "r"}}), dict(good, customField99="x"), dict(good, subject=""),
+               dict(good, _links={"type": {"href": "/api/v3/types/11"}})]
+        for payload in bad:
+            with self.subTest(payload=sorted(payload)):
+                before = len(self.fake.wps)
+                code, _ = self.fake.request("POST", "/api/v3/projects/haynes-engineering/work_packages", copy.deepcopy(payload))
+                self.assertEqual(code, 422)
+                self.assertEqual(len(self.fake.wps), before)  # nothing created
+        self.assertEqual(self.fake.request("POST", "/api/v3/projects/haynes-engineering/work_packages", good)[0], 201)
+
     def test_existing_duplicates_of_a_key_are_reused_not_created_over(self):
         self.story()
         self.fake.add(30, "Story", "unrelated", 5, key="followup:10:cache")
