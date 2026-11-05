@@ -1513,13 +1513,9 @@ patches:
             kubeReserved:
               cpu: 500m
               memory: 2Gi
-            # talosw04 keeps the gpu-test taint and label (restored 2026-11-05, #4663):
-            # the nvidia-device-plugin affinity and llama-server still select on
-            # haynesops.com/gpu-test, so dropping it here removed the node's GPUs.
-            registerWithTaints:
-              - key: haynesops.com/gpu-test
-                value: "true"
-                effect: NoSchedule
+            # No registerWithTaints: the gpu-test taint went with the test role (#279).
+            # Removing it here does not untaint the existing Node object; that takes
+            # `kubectl taint nodes talosw04 haynesops.com/gpu-test-` once.
           defaultRuntimeSeccompProfileEnabled: true
           nodeIP:
             validSubnets:
@@ -1572,4 +1568,6 @@ patches:
         nodeLabels:
             topology.kubernetes.io/region: main
             topology.kubernetes.io/zone: w
+            # Keep this label (#4663): the nvidia-device-plugin affinity selects
+            # talosw04 by it; dropping it on 2026-11-05 took the node's GPU to 0.
             haynesops.com/gpu-test: "true"
