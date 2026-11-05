@@ -20,11 +20,12 @@ scope, the routine lifecycle writes are yours. Run `opwork.py --help` for the co
 Updates are partial: an update sends only the fields given, with lockVersion. Formattable fields
 (description, acceptance, constraints, provenance) always go out as {"raw": markdown}; a bare string
 is not that form (on Studio #423 a bare-string description update left the description empty).
-A create reads the new item back by id and compares, exactly (no normalization tolerance), every
-non-empty Markdown field it sent and the parent, type, project and source key. A difference or a
-failed read is UNCERTAIN (exit 6): not confirmed, nothing more written (no second create, no
-relation), the intent kept with the item's ID. A re-run that finds the item by its key runs the
-same check against what it asks for (provenance: present) and reuses it only on a match.
+A create reads the new item back by id and compares, exactly (no normalization tolerance), the
+subject, every non-empty Markdown field it sent, and the parent, type, starting status, project
+and source key. A difference or a failed read is UNCERTAIN (exit 6): not confirmed, nothing more
+written (no second create, no relation), the intent kept with the item's ID. A re-run that finds
+the item by its key runs the same check against what it asks for, without the status (it may have
+moved on) and with provenance only required present, and reuses the item only on a match.
 Scripts that call Tracker.patch directly pass Markdown text or exactly {"raw": text}. An omitted
 field is not sent. None, empty or blank text would clear the field, so it is refused (exit 3)
 before any request unless the call names the field in allow_clear; then it is sent as {"raw": ""}.
@@ -576,9 +577,10 @@ def safe_line(wp):
 
 def read_back_problems(t, wp_id, key, want, state):
     """Read one item back by id and list where it differs from `want`, exactly: no normalization
-    tolerance. want = {"markdown": {field: non-empty text}, "present": [fields], "type": href,
-    "parent": href}; the source key must be `key` and the project t.project. A failed read is
-    UNCERTAIN (exit 6), naming the item and the key: nothing was confirmed."""
+    tolerance. want = {"subject": text, "markdown": {field: non-empty text}, "present": [fields],
+    "type": href, "parent": href, optional "status": href}; the source key must be `key` and the
+    project t.project. A failed read is UNCERTAIN (exit 6), naming the item and the key: nothing
+    was confirmed. Values are never printed; links are printed as hrefs."""
     try:
         now = t.wp(wp_id)
         project = t.get("/api/v3/projects/%s" % t.project)
@@ -588,6 +590,9 @@ def read_back_problems(t, wp_id, key, want, state):
         failure.wp = wp_id
         raise failure from error
     problems = []
+    got = now.get("subject") if isinstance(now.get("subject"), str) else ""
+    if got != want["subject"]:
+        problems.append("subject (%s)" % ("missing" if not got else "changed"))
     for field, text in want["markdown"].items():
         got = text_of(now.get(field))
         if got != text:
@@ -600,8 +605,8 @@ def read_back_problems(t, wp_id, key, want, state):
     def href(name):
         link = links.get(name)
         return link.get("href") if isinstance(link, dict) else None
-    for name in ("type", "parent"):
-        if href(name) != want[name]:
+    for name in ("type", "parent", "status"):
+        if name in want and href(name) != want[name]:
             problems.append("%s (sent %s, read back %s)" % (name, want[name], href(name) or "none"))
     if href("project") not in ("/api/v3/projects/%s" % project.get("id"), "/api/v3/projects/%s" % t.project):
         problems.append("project (sent %s, read back %s)" % (t.project, href("project") or "none"))
@@ -620,9 +625,9 @@ def not_confirmed(now, key, state, problems, label):
 def cmd_create(t, a, session):
     existing = t.by_source_key(a.source_key)  # search first: the stable key is the identity
     if len(existing) == 1:  # reuse only an item whose read back shows what this run asks for
-        want = {"markdown": {k: v for k, v in ((DESCRIPTION, a.description), (ACCEPT, a.acceptance), (CONSTRAINTS, a.constraints)) if v},
+        want = {"subject": a.subject, "markdown": {k: v for k, v in ((DESCRIPTION, a.description), (ACCEPT, a.acceptance), (CONSTRAINTS, a.constraints)) if v},
                 "present": [PROVENANCE],  # it names the creating session, so a re-run checks it is there, not equal
-                "type": "/api/v3/types/%d" % t.resolve("types", a.type), "parent": "/api/v3/work_packages/%d" % a.epic}
+                "type": "/api/v3/types/%d" % t.resolve("types", a.type), "parent": "/api/v3/work_packages/%d" % a.epic}  # no status: it may have moved on
         now, problems = read_back_problems(t, existing[0]["id"], a.source_key, want, "already exists")
         if problems:
             raise not_confirmed(now, a.source_key, "already exists", problems, "REUSE refused, NOT confirmed: ")
@@ -660,10 +665,11 @@ def cmd_create(t, a, session):
         raise down  # nothing was created; reported as tracker unavailable
     if len(made) != 1:
         raise Fail("UNCERTAIN: after the create, %d items carry source key %r. Do NOT repeat the create; inspect with `search --source-key`." % (len(made), a.source_key), 6)
-    # The item exists. Its own read back must show every non-empty Markdown field exactly as sent,
-    # and the parent, type, project and source key; only then is it confirmed and related.
-    want = {"markdown": {k: payload[k]["raw"] for k in MARKDOWN if k in payload and payload[k]["raw"]}, "present": [],
-            "type": payload["_links"]["type"]["href"], "parent": payload["_links"]["parent"]["href"]}
+    # The item exists. Its own read back must show the subject and every non-empty Markdown field
+    # exactly as sent, and the parent, type, starting status, project and source key; only then is
+    # it confirmed and related.
+    want = {"subject": a.subject, "markdown": {k: payload[k]["raw"] for k in MARKDOWN if k in payload and payload[k]["raw"]}, "present": [],
+            "type": payload["_links"]["type"]["href"], "parent": payload["_links"]["parent"]["href"], "status": payload["_links"]["status"]["href"]}
     now, problems = read_back_problems(t, made[0]["id"], a.source_key, want, "was created")
     if problems:
         raise not_confirmed(now, a.source_key, "was created", problems, "created, NOT confirmed: ")
