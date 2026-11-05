@@ -75,6 +75,9 @@ spec:
                   echo "download_dir (expect $EXPECTED_DOWNLOAD_DIR):"
                   cfg="$(curl -fsS "$base?mode=get_config&section=misc&keyword=download_dir&apikey=$APIKEY&output=json")"
                   echo "$cfg"
+                  # SAB 5.1.3 answers compact JSON (orjson). If an image bump changes
+                  # that, this match refuses every night (cleanup stops, visibly);
+                  # it can never match a wrong folder.
                   case "$cfg" in
                     *"\"download_dir\":\"$EXPECTED_DOWNLOAD_DIR\""*) ;;
                     *)
@@ -85,6 +88,7 @@ spec:
                   if [ "$DRY_RUN" != "0" ]; then
                     echo "DRY_RUN: nothing deleted. Failed history entries:"
                     curl -fsS "$base?mode=history&failed_only=1&limit=1&apikey=$APIKEY&output=json" | grep -o '"noofslots":[0-9]*'
+                    # Display only: a folder name containing "]" cuts this list short.
                     echo "Orphaned folders delete_all_orphan would remove:"
                     curl -fsS "$base?mode=fullstatus&skip_dashboard=1&apikey=$APIKEY&output=json" | grep -o '"folders":\[[^]]*\]'
                     exit 0
