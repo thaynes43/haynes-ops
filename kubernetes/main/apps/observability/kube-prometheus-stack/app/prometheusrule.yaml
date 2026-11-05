@@ -271,8 +271,8 @@ spec:
               Check talosctl etcd alarm list and talosctl etcd status. For NOSPACE: defragment
               each member one at a time, then talosctl etcd alarm disarm.
           expr: |
-            sum by (instance, job) (rate(grpc_server_handled_total{job="kube-etcd", grpc_code="ResourceExhausted"}[5m])) > 0
-          for: 2m
+            sum by (instance, job) (rate(grpc_server_handled_total{job="kube-etcd", grpc_code="ResourceExhausted"}[2m])) > 0.1
+          for: 5m
           labels:
             severity: critical
 ---
