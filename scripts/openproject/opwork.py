@@ -20,12 +20,15 @@ scope, the routine lifecycle writes are yours. Run `opwork.py --help` for the co
 Updates are partial: an update sends only the fields given, with lockVersion. Formattable fields
 (description, acceptance, constraints, provenance) always go out as {"raw": markdown}; a bare string
 is not that form (on Studio #423 a bare-string description update left the description empty).
-A create reads the new item back and compares those fields exactly (no normalization tolerance):
-a difference, or a failed read, is UNCERTAIN (exit 6) and is never posted again. Scripts that call
-Tracker.patch directly pass Markdown text or exactly {"raw": text}. An omitted field is not sent.
-None, empty or blank text would clear the field, so it is refused (exit 3) before any request
-unless the call names the field in allow_clear; then it is sent as {"raw": ""}. Any other value is
-refused (exit 1) before any request. No command here changes a description.
+A create reads the new item back by id and compares, exactly (no normalization tolerance), every
+non-empty Markdown field it sent and the parent, type, project and source key. A difference or a
+failed read is UNCERTAIN (exit 6): not confirmed, nothing more written (no second create, no
+relation), the intent kept with the item's ID. A re-run that finds the item by its key runs the
+same check against what it asks for (provenance: present) and reuses it only on a match.
+Scripts that call Tracker.patch directly pass Markdown text or exactly {"raw": text}. An omitted
+field is not sent. None, empty or blank text would clear the field, so it is refused (exit 3)
+before any request unless the call names the field in allow_clear; then it is sent as {"raw": ""}.
+Any other value is refused (exit 1) before any request. No command here changes a description.
 
 Every item line carries the canonical OpenProject link, for example
 https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/97. OPWORK_BASE_URL
@@ -564,14 +567,72 @@ def cmd_relate(t, a, session):
     return "%s relation #%d %s #%d (read back)" % ("created" if created else "already present:", a.src, a.type, a.dst)
 
 
+def safe_line(wp):
+    try:
+        return line(wp)
+    except (KeyError, TypeError, AttributeError, ValueError):
+        return "#%s %s" % (wp.get("id"), wp_url(wp.get("id")))
+
+
+def read_back_problems(t, wp_id, key, want, state):
+    """Read one item back by id and list where it differs from `want`, exactly: no normalization
+    tolerance. want = {"markdown": {field: non-empty text}, "present": [fields], "type": href,
+    "parent": href}; the source key must be `key` and the project t.project. A failed read is
+    UNCERTAIN (exit 6), naming the item and the key: nothing was confirmed."""
+    try:
+        now = t.wp(wp_id)
+        project = t.get("/api/v3/projects/%s" % t.project)
+    except (t.unavailable, Fail) as error:
+        failure = Fail("UNCERTAIN: #%d (source key %r) %s, but reading it back failed (%s). Not confirmed; nothing more was written. Do NOT repeat the create; inspect with `show %d`." % (
+            wp_id, key, state, type(error).__name__, wp_id), 6)
+        failure.wp = wp_id
+        raise failure from error
+    problems = []
+    for field, text in want["markdown"].items():
+        got = text_of(now.get(field))
+        if got != text:
+            problems.append("%s (%s)" % (FIELD_NAMES[field], "missing" if not got else "changed"))
+    problems += ["%s (missing)" % FIELD_NAMES[field] for field in want["present"] if not text_of(now.get(field))]
+    got = text_of(now.get(SOURCE_KEY))
+    if got != key:
+        problems.append("source key (%s)" % ("missing" if not got else "changed"))
+    links = now.get("_links") if isinstance(now.get("_links"), dict) else {}
+    def href(name):
+        link = links.get(name)
+        return link.get("href") if isinstance(link, dict) else None
+    for name in ("type", "parent"):
+        if href(name) != want[name]:
+            problems.append("%s (sent %s, read back %s)" % (name, want[name], href(name) or "none"))
+    if href("project") not in ("/api/v3/projects/%s" % project.get("id"), "/api/v3/projects/%s" % t.project):
+        problems.append("project (sent %s, read back %s)" % (t.project, href("project") or "none"))
+    return now, problems
+
+
+def not_confirmed(now, key, state, problems, label):
+    """The failure for a create or reuse whose read back differs: exit 6, the item and the key named,
+    nothing more written. run() keeps the intent pending with the item's ID."""
+    failure = Fail("UNCERTAIN: #%d (source key %r) %s, but its read back does not match: %s. Not confirmed; nothing more was written (no second create, no origin relation). Do NOT repeat the create: inspect with `show %d` and correct the item with an update; a re-run then reuses #%d once its read back matches." % (
+        now["id"], key, state, "; ".join(problems), now["id"], now["id"]), 6)
+    failure.wp, failure.output = now["id"], label + safe_line(now)
+    return failure
+
+
 def cmd_create(t, a, session):
     existing = t.by_source_key(a.source_key)  # search first: the stable key is the identity
-    if existing:
-        out = ["REUSED, not created: " + "; ".join(line(w) for w in existing)]
-        if a.origin and len(existing) == 1:  # a re-run completes a relation that was lost
-            t.relate(existing[0]["id"], a.origin, "relates")
+    if len(existing) == 1:  # reuse only an item whose read back shows what this run asks for
+        want = {"markdown": {k: v for k, v in ((DESCRIPTION, a.description), (ACCEPT, a.acceptance), (CONSTRAINTS, a.constraints)) if v},
+                "present": [PROVENANCE],  # it names the creating session, so a re-run checks it is there, not equal
+                "type": "/api/v3/types/%d" % t.resolve("types", a.type), "parent": "/api/v3/work_packages/%d" % a.epic}
+        now, problems = read_back_problems(t, existing[0]["id"], a.source_key, want, "already exists")
+        if problems:
+            raise not_confirmed(now, a.source_key, "already exists", problems, "REUSE refused, NOT confirmed: ")
+        out = ["REUSED, not created: " + line(now)]
+        if a.origin:  # a re-run completes a relation that was lost
+            t.relate(now["id"], a.origin, "relates")
             out.append("related to #%d (read back)" % a.origin)
         return "\n".join(out)
+    if existing:  # several items carry the key: listed, nothing written
+        return "REUSED, not created: " + "; ".join(line(w) for w in existing)
     epic = t.wp(a.epic)
     kind = a.type
     if epic["_links"]["type"]["title"] != PARENT_OF[kind]:
@@ -599,22 +660,17 @@ def cmd_create(t, a, session):
         raise down  # nothing was created; reported as tracker unavailable
     if len(made) != 1:
         raise Fail("UNCERTAIN: after the create, %d items carry source key %r. Do NOT repeat the create; inspect with `search --source-key`." % (len(made), a.source_key), 6)
-    new_id = made[0]["id"]
-    try:  # the item exists: now its own read back must show every Formattable field exactly as sent
-        now = t.wp(new_id)
-    except t.unavailable as error:
-        raise Fail("UNCERTAIN: #%d was created (found by its source key), but reading its fields back failed (%s). Do NOT repeat the create; inspect with `show %d`." % (
-            new_id, type(error).__name__, new_id), 6) from error
-    differ = [FIELD_NAMES[k] for k in MARKDOWN if k in payload and text_of(now.get(k)) != payload[k]["raw"]]  # exact: no normalization tolerance
-    out = [("created (fields not confirmed): " if differ else "created (read back): ") + line(now)]
+    # The item exists. Its own read back must show every non-empty Markdown field exactly as sent,
+    # and the parent, type, project and source key; only then is it confirmed and related.
+    want = {"markdown": {k: payload[k]["raw"] for k in MARKDOWN if k in payload and payload[k]["raw"]}, "present": [],
+            "type": payload["_links"]["type"]["href"], "parent": payload["_links"]["parent"]["href"]}
+    now, problems = read_back_problems(t, made[0]["id"], a.source_key, want, "was created")
+    if problems:
+        raise not_confirmed(now, a.source_key, "was created", problems, "created, NOT confirmed: ")
+    out = ["created (read back): " + line(now)]
     if a.origin:
-        t.relate(new_id, a.origin, "relates")
+        t.relate(now["id"], a.origin, "relates")
         out.append("related to #%d (read back)" % a.origin)
-    if differ:
-        failure = Fail("UNCERTAIN: #%d was created, but the read back of its %s does not match what was sent. Do NOT repeat the create (a re-run reuses this item and does not rewrite it); inspect with `show %d` and correct the field with an update." % (
-            new_id, ", ".join(differ), new_id), 6)
-        failure.output = "\n".join(out)
-        raise failure
     return "\n".join(out)
 
 
@@ -885,7 +941,7 @@ def run(argv, tracker, unavailable):
         print(failure, file=sys.stderr)  # the original failure first: a failing local save must not hide it
         if failure.code == 6 and args.fn in (cmd_claim, cmd_status, cmd_complete, cmd_create, cmd_relate):
             try:
-                path, _ = save_pending("intent", getattr(failure, "token", None), wp=getattr(args, "id", None),
+                path, _ = save_pending("intent", getattr(failure, "token", None), wp=getattr(args, "id", None) or getattr(failure, "wp", None),
                                        session=session, argv=command_argv, body=getattr(failure, "body", None), **posted_fields(failure))
             except LocalWriteFail as saving:
                 print(saving, file=sys.stderr)

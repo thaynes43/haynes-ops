@@ -278,11 +278,17 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   under the Epic unless `--confirm-new`. New items are filed Ungroomed under the Epic, with a
   `relates` link to the originating Story and the creator in Decision provenance. A create is
   never retried: if the answer is lost, the source key is searched and the result reported.
-  The new item is then read back by id, and its description, acceptance, constraints and
-  provenance must equal what was sent, exactly. A difference (an emptied, dropped or changed
-  field) or a failed read is UNCERTAIN (exit 6): the intent is kept pending, nothing is posted
-  again, and a re-run reuses the item without rewriting it, so inspect it with `show` and fix
-  the field with an update.
+  The new item is then read back by id and checked exactly, with no normalization tolerance:
+  every non-empty Markdown field it sent (description, acceptance, constraints, provenance),
+  and its parent, type, project and source key. On any difference (a changed, emptied or
+  dropped field, a wrong parent, type or project, a changed or missing key) or a failed read,
+  the result is UNCERTAIN (exit 6). Nothing is confirmed and nothing more is written: no second
+  create and no origin relation. The message names the item, its source key and each field,
+  and the intent is kept pending with the item's ID. Inspect it with `show` and correct it with
+  an update. A re-run that finds one item by the key runs the same check against what that
+  re-run asks for. Provenance names the creating session, so a re-run checks only that it is
+  present. The item is reused, and the origin relation added, only when the check passes; until
+  then every re-run exits 6 and posts nothing. Several items with one key are listed as before.
 - **Conflicts**: every write sends `lockVersion`; a stale one (409), another owner, or an
   explicit hold or pause (`Needs answer`, `Needs approval`, `Paused`) is re-read and refused (exit 3), never
   overwritten. `--force` is a takeover/override for an explicitly authorized case only.
