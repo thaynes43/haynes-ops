@@ -278,6 +278,11 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   under the Epic unless `--confirm-new`. New items are filed Ungroomed under the Epic, with a
   `relates` link to the originating Story and the creator in Decision provenance. A create is
   never retried: if the answer is lost, the source key is searched and the result reported.
+  The new item is then read back by id, and its description, acceptance, constraints and
+  provenance must equal what was sent, exactly. A difference (an emptied, dropped or changed
+  field) or a failed read is UNCERTAIN (exit 6): the intent is kept pending, nothing is posted
+  again, and a re-run reuses the item without rewriting it, so inspect it with `show` and fix
+  the field with an update.
 - **Conflicts**: every write sends `lockVersion`; a stale one (409), another owner, or an
   explicit hold or pause (`Needs answer`, `Needs approval`, `Paused`) is re-read and refused (exit 3), never
   overwritten. `--force` is a takeover/override for an explicitly authorized case only.
@@ -307,6 +312,10 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   A conflict (409) is read back and refused (exit 3), never retried. A lost connection or
   answer is read back once before anything else: applied means success, not applied is exit 5,
   an answer whose change is missing is exit 6. The PATCH is never sent twice.
+  Read backs compare the text exactly, with no normalization tolerance. Whether the live
+  server rewrites Markdown (line endings, a trailing newline) is not qualified. If it does,
+  an applied update or create reports exit 6 UNCERTAIN: that fails safe (no retry, nothing
+  overwritten), and a tolerance waits until the server's rule is known.
 - **Read back**: success is printed only after a read back. A write missing on read-back is
   UNCONFIRMED (exit 6); an unavailable connection/read-back is exit 5.
   `show --history` marks any truncated text; `--full` returns it whole. `claim --assignee me` also sets the

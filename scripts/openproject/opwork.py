@@ -20,10 +20,12 @@ scope, the routine lifecycle writes are yours. Run `opwork.py --help` for the co
 Updates are partial: an update sends only the fields given, with lockVersion. Formattable fields
 (description, acceptance, constraints, provenance) always go out as {"raw": markdown}; a bare string
 is not that form (on Studio #423 a bare-string description update left the description empty).
-Scripts that call Tracker.patch directly pass Markdown text or exactly {"raw": text}. An omitted
-field is not sent. None, empty or blank text would clear the field, so it is refused (exit 3) before
-any request unless the call names the field in allow_clear; then it is sent as {"raw": ""}. Any other
-value is refused (exit 1) before any request. No command here changes a description.
+A create reads the new item back and compares those fields exactly (no normalization tolerance):
+a difference, or a failed read, is UNCERTAIN (exit 6) and is never posted again. Scripts that call
+Tracker.patch directly pass Markdown text or exactly {"raw": text}. An omitted field is not sent.
+None, empty or blank text would clear the field, so it is refused (exit 3) before any request
+unless the call names the field in allow_clear; then it is sent as {"raw": ""}. Any other value is
+refused (exit 1) before any request. No command here changes a description.
 
 Every item line carries the canonical OpenProject link, for example
 https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/97. OPWORK_BASE_URL
@@ -71,6 +73,7 @@ DESCRIPTION = "description"
 # Formattable fields: every write sends {"raw": markdown}. The description was missing here until
 # Studio #423 (journal 5819, 2026-11-05), so a Tracker.patch description went out as a bare string.
 MARKDOWN = (DESCRIPTION, ACCEPT, CONSTRAINTS, PROVENANCE)
+FIELD_NAMES = {DESCRIPTION: "description", ACCEPT: "acceptance", CONSTRAINTS: "constraints", PROVENANCE: "provenance"}
 HOLDS = ("Needs answer", "Needs approval", "Paused")  # an explicit hold or pause stays one without --force
 RELATIONS = ("relates", "follows", "precedes", "blocks", "blocked")
 REVERSE = {"follows": "precedes", "precedes": "follows", "blocks": "blocked", "blocked": "blocks", "relates": "relates"}
@@ -596,10 +599,22 @@ def cmd_create(t, a, session):
         raise down  # nothing was created; reported as tracker unavailable
     if len(made) != 1:
         raise Fail("UNCERTAIN: after the create, %d items carry source key %r. Do NOT repeat the create; inspect with `search --source-key`." % (len(made), a.source_key), 6)
-    out = ["created (read back): " + line(made[0])]
+    new_id = made[0]["id"]
+    try:  # the item exists: now its own read back must show every Formattable field exactly as sent
+        now = t.wp(new_id)
+    except t.unavailable as error:
+        raise Fail("UNCERTAIN: #%d was created (found by its source key), but reading its fields back failed (%s). Do NOT repeat the create; inspect with `show %d`." % (
+            new_id, type(error).__name__, new_id), 6) from error
+    differ = [FIELD_NAMES[k] for k in MARKDOWN if k in payload and text_of(now.get(k)) != payload[k]["raw"]]  # exact: no normalization tolerance
+    out = [("created (fields not confirmed): " if differ else "created (read back): ") + line(now)]
     if a.origin:
-        t.relate(made[0]["id"], a.origin, "relates")
+        t.relate(new_id, a.origin, "relates")
         out.append("related to #%d (read back)" % a.origin)
+    if differ:
+        failure = Fail("UNCERTAIN: #%d was created, but the read back of its %s does not match what was sent. Do NOT repeat the create (a re-run reuses this item and does not rewrite it); inspect with `show %d` and correct the field with an update." % (
+            new_id, ", ".join(differ), new_id), 6)
+        failure.output = "\n".join(out)
+        raise failure
     return "\n".join(out)
 
 
