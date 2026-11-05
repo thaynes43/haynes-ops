@@ -17,6 +17,20 @@ scope, the routine lifecycle writes are yours. Run `opwork.py --help` for the co
   opwork.py checkpoint-update 97 --next-action TEXT --check-after UTC --evidence TEXT
   opwork.py pending | flush                     # tracker was down: list / replay notes
 
+Updates are partial: an update sends only the fields given, with lockVersion. Formattable fields
+(description, acceptance, constraints, provenance) always go out as {"raw": markdown}; a bare string
+is not that form (on Studio #423 a bare-string description update left the description empty).
+A create reads the new item back by id and compares, exactly (no normalization tolerance), the
+subject, every non-empty Markdown field it sent, and the parent, type, starting status, project
+and source key. A difference or a failed read is UNCERTAIN (exit 6): not confirmed, nothing more
+written (no second create, no relation), the intent kept with the item's ID. A re-run that finds
+the item by its key runs the same check against what it asks for, without the status (it may have
+moved on) and with provenance only required present, and reuses the item only on a match.
+Scripts that call Tracker.patch directly pass Markdown text or exactly {"raw": text}. An omitted
+field is not sent. None, empty or blank text would clear the field, so it is refused (exit 3)
+before any request unless the call names the field in allow_clear; then it is sent as {"raw": ""}.
+Any other value is refused (exit 1) before any request. No command here changes a description.
+
 Every item line carries the canonical OpenProject link, for example
 https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/97. OPWORK_BASE_URL
 overrides that default (a plain https hostname: no credentials, port, path or query); opwork prints no other links.
@@ -59,7 +73,11 @@ LINK_BASE = BASE_URL  # main() sets it from OPWORK_BASE_URL after validating it,
 BASE_RULE = "OPWORK_BASE_URL must be a plain https://hostname (ASCII letters, digits, hyphens and dots; no credentials, port, path or query)"
 HOSTNAME = re.compile(r"https://(?=.{1,253}/?\Z)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*/?\Z", re.ASCII)
 OWNER, REPOS, ACCEPT, CONSTRAINTS, SOURCE_KEY, PROVENANCE = "customField2", "customField3", "customField4", "customField5", "customField6", "customField11"
-MARKDOWN = (ACCEPT, CONSTRAINTS, PROVENANCE)
+DESCRIPTION = "description"
+# Formattable fields: every write sends {"raw": markdown}. The description was missing here until
+# Studio #423 (journal 5819, 2026-11-05), so a Tracker.patch description went out as a bare string.
+MARKDOWN = (DESCRIPTION, ACCEPT, CONSTRAINTS, PROVENANCE)
+FIELD_NAMES = {DESCRIPTION: "description", ACCEPT: "acceptance", CONSTRAINTS: "constraints", PROVENANCE: "provenance"}
 HOLDS = ("Needs answer", "Needs approval", "Paused")  # an explicit hold or pause stays one without --force
 RELATIONS = ("relates", "follows", "precedes", "blocks", "blocked")
 REVERSE = {"follows": "precedes", "precedes": "follows", "blocks": "blocked", "blocked": "blocks", "relates": "relates"}
@@ -101,6 +119,24 @@ def session_id():
 
 def text_of(value):
     return (value or {}).get("raw", "") if isinstance(value, dict) else (value or "")
+
+
+def formattable(field, value, allow_clear):
+    """The text of one Formattable field update, checked before anything is sent.
+
+    Markdown text, or exactly {"raw": text}. None, empty or blank text is a clear: refused (exit 3)
+    unless allow_clear names the field, then "" (sent as {"raw": ""}). Anything else is refused
+    (exit 1). Messages name the field and the type, never the value."""
+    if isinstance(value, dict) and set(value) == {"raw"} and isinstance(value["raw"], str):
+        value = value["raw"]
+    if value is None or (isinstance(value, str) and not value.strip()):
+        if field not in allow_clear:
+            raise Fail("REFUSED: this update would clear %s (%s). Nothing was sent. Omit the field to keep it, or name it in allow_clear to clear it." % (
+                field, "null" if value is None else "empty text"), 3)
+        return ""
+    if not isinstance(value, str):
+        raise Fail('REFUSED: %s must be Markdown text (a string, or {"raw": string}), not %s. Nothing was sent.' % (field, type(value).__name__))
+    return value
 
 
 def href_id(link):
@@ -190,11 +226,16 @@ class Tracker:
     def by_source_key(self, key):
         return [w for w in self.scan([{"status": {"operator": "*", "values": []}}]) if text_of(w.get(SOURCE_KEY)) == key]
 
-    def patch(self, wp, fields=None, status=None, lock=None, assignee=None):
-        """PATCH with lockVersion, then read back. Conflict re-reads and refuses; never overwrites."""
+    def patch(self, wp, fields=None, status=None, lock=None, assignee=None, allow_clear=()):
+        """PATCH only the supplied fields, with lockVersion, then read back. Conflict re-reads and
+        refuses; never overwrites, never retries. Formattable fields (MARKDOWN) go out as
+        {"raw": text}, checked by formattable() before any request: an omitted field is not sent,
+        and a clear (None, empty or blank) needs the field named in allow_clear."""
         fields = dict(fields or {})
+        allow_clear = (allow_clear,) if isinstance(allow_clear, str) else tuple(allow_clear)
+        texts = {k: formattable(k, v, allow_clear) for k, v in fields.items() if k in MARKDOWN}
         payload = {"lockVersion": wp["lockVersion"] if lock is None else lock}
-        payload.update({k: ({"raw": v} if k in MARKDOWN else v) for k, v in fields.items()})
+        payload.update({k: ({"raw": texts[k]} if k in texts else v) for k, v in fields.items()})
         links = {}
         if status:
             links["status"] = {"href": "/api/v3/statuses/%d" % self.resolve("statuses", status)}
@@ -212,7 +253,7 @@ class Tracker:
         if code is not None and code >= 400:
             raise Fail("PATCH #%d rejected HTTP %s: %s" % (wp["id"], code, data.get("message", data.get("raw", ""))))
         now = self.wp(wp["id"])  # tracker still down: the caller reports unavailable
-        ok = all(text_of(now.get(k)) == v for k, v in fields.items()) and (not status or now["_links"]["status"]["title"].lower() == status.lower()) \
+        ok = all(text_of(now.get(k)) == texts.get(k, v) for k, v in fields.items()) and (not status or now["_links"]["status"]["title"].lower() == status.lower()) \
             and (not assignee or (now["_links"].get("assignee") or {}).get("href") == "/api/v3/users/%d" % assignee)
         if not ok and code is None:
             raise Fail("NOT APPLIED: tracker error on the update of #%d; read back shows no change, safe to retry: %s" % (wp["id"], line(now)), 5)
@@ -527,14 +568,76 @@ def cmd_relate(t, a, session):
     return "%s relation #%d %s #%d (read back)" % ("created" if created else "already present:", a.src, a.type, a.dst)
 
 
+def safe_line(wp):
+    try:
+        return line(wp)
+    except (KeyError, TypeError, AttributeError, ValueError):
+        return "#%s %s" % (wp.get("id"), wp_url(wp.get("id")))
+
+
+def read_back_problems(t, wp_id, key, want, state):
+    """Read one item back by id and list where it differs from `want`, exactly: no normalization
+    tolerance. want = {"subject": text, "markdown": {field: non-empty text}, "present": [fields],
+    "type": href, "parent": href, optional "status": href}; the source key must be `key` and the
+    project t.project. A failed read is UNCERTAIN (exit 6), naming the item and the key: nothing
+    was confirmed. Values are never printed; links are printed as hrefs."""
+    try:
+        now = t.wp(wp_id)
+        project = t.get("/api/v3/projects/%s" % t.project)
+    except (t.unavailable, Fail) as error:
+        failure = Fail("UNCERTAIN: #%d (source key %r) %s, but reading it back failed (%s). Not confirmed; nothing more was written. Do NOT repeat the create; inspect with `show %d`." % (
+            wp_id, key, state, type(error).__name__, wp_id), 6)
+        failure.wp = wp_id
+        raise failure from error
+    problems = []
+    got = now.get("subject") if isinstance(now.get("subject"), str) else ""
+    if got != want["subject"]:
+        problems.append("subject (%s)" % ("missing" if not got else "changed"))
+    for field, text in want["markdown"].items():
+        got = text_of(now.get(field))
+        if got != text:
+            problems.append("%s (%s)" % (FIELD_NAMES[field], "missing" if not got else "changed"))
+    problems += ["%s (missing)" % FIELD_NAMES[field] for field in want["present"] if not text_of(now.get(field))]
+    got = text_of(now.get(SOURCE_KEY))
+    if got != key:
+        problems.append("source key (%s)" % ("missing" if not got else "changed"))
+    links = now.get("_links") if isinstance(now.get("_links"), dict) else {}
+    def href(name):
+        link = links.get(name)
+        return link.get("href") if isinstance(link, dict) else None
+    for name in ("type", "parent", "status"):
+        if name in want and href(name) != want[name]:
+            problems.append("%s (sent %s, read back %s)" % (name, want[name], href(name) or "none"))
+    if href("project") not in ("/api/v3/projects/%s" % project.get("id"), "/api/v3/projects/%s" % t.project):
+        problems.append("project (sent %s, read back %s)" % (t.project, href("project") or "none"))
+    return now, problems
+
+
+def not_confirmed(now, key, state, problems, label):
+    """The failure for a create or reuse whose read back differs: exit 6, the item and the key named,
+    nothing more written. run() keeps the intent pending with the item's ID."""
+    failure = Fail("UNCERTAIN: #%d (source key %r) %s, but its read back does not match: %s. Not confirmed; nothing more was written (no second create, no origin relation). Do NOT repeat the create: inspect with `show %d` and correct the item with an update; a re-run then reuses #%d once its read back matches." % (
+        now["id"], key, state, "; ".join(problems), now["id"], now["id"]), 6)
+    failure.wp, failure.output = now["id"], label + safe_line(now)
+    return failure
+
+
 def cmd_create(t, a, session):
     existing = t.by_source_key(a.source_key)  # search first: the stable key is the identity
-    if existing:
-        out = ["REUSED, not created: " + "; ".join(line(w) for w in existing)]
-        if a.origin and len(existing) == 1:  # a re-run completes a relation that was lost
-            t.relate(existing[0]["id"], a.origin, "relates")
+    if len(existing) == 1:  # reuse only an item whose read back shows what this run asks for
+        want = {"subject": a.subject, "markdown": {k: v for k, v in ((DESCRIPTION, a.description), (ACCEPT, a.acceptance), (CONSTRAINTS, a.constraints)) if v},
+                "present": [PROVENANCE],  # it names the creating session, so a re-run checks it is there, not equal
+                "type": "/api/v3/types/%d" % t.resolve("types", a.type), "parent": "/api/v3/work_packages/%d" % a.epic}  # no status: it may have moved on
+        now, problems = read_back_problems(t, existing[0]["id"], a.source_key, want, "already exists")
+        if problems:
+            raise not_confirmed(now, a.source_key, "already exists", problems, "REUSE refused, NOT confirmed: ")
+        out = ["REUSED, not created: " + line(now)]
+        if a.origin:  # a re-run completes a relation that was lost
+            t.relate(now["id"], a.origin, "relates")
             out.append("related to #%d (read back)" % a.origin)
         return "\n".join(out)
+    if existing:  # several items carry the key: listed, nothing written
+        return "REUSED, not created: " + "; ".join(line(w) for w in existing)
     epic = t.wp(a.epic)
     kind = a.type
     if epic["_links"]["type"]["title"] != PARENT_OF[kind]:
@@ -562,9 +665,17 @@ def cmd_create(t, a, session):
         raise down  # nothing was created; reported as tracker unavailable
     if len(made) != 1:
         raise Fail("UNCERTAIN: after the create, %d items carry source key %r. Do NOT repeat the create; inspect with `search --source-key`." % (len(made), a.source_key), 6)
-    out = ["created (read back): " + line(made[0])]
+    # The item exists. Its own read back must show the subject and every non-empty Markdown field
+    # exactly as sent, and the parent, type, starting status, project and source key; only then is
+    # it confirmed and related.
+    want = {"subject": a.subject, "markdown": {k: payload[k]["raw"] for k in MARKDOWN if k in payload and payload[k]["raw"]}, "present": [],
+            "type": payload["_links"]["type"]["href"], "parent": payload["_links"]["parent"]["href"], "status": payload["_links"]["status"]["href"]}
+    now, problems = read_back_problems(t, made[0]["id"], a.source_key, want, "was created")
+    if problems:
+        raise not_confirmed(now, a.source_key, "was created", problems, "created, NOT confirmed: ")
+    out = ["created (read back): " + line(now)]
     if a.origin:
-        t.relate(made[0]["id"], a.origin, "relates")
+        t.relate(now["id"], a.origin, "relates")
         out.append("related to #%d (read back)" % a.origin)
     return "\n".join(out)
 
@@ -767,7 +878,10 @@ def cmd_flush(t, a, session):
 
 
 def build_parser():
-    p = argparse.ArgumentParser(prog="opwork", description=__doc__.split("\n\n")[0])
+    p = argparse.ArgumentParser(prog="opwork", description=__doc__.split("\n\n")[0], epilog=(
+        'Updates send only the fields given, with lockVersion. Formattable fields (description, acceptance, '
+        'constraints, provenance) go out as {"raw": markdown}; for Tracker.patch, a null, empty or blank value '
+        'is refused unless allow_clear names the field. No command here changes a description.'))
     p.add_argument("--project", default=os.environ.get("OPWORK_PROJECT", PROJECT))
     sub = p.add_subparsers(dest="cmd", required=True)
     def add(name, fn, *args, **kw):
@@ -833,7 +947,7 @@ def run(argv, tracker, unavailable):
         print(failure, file=sys.stderr)  # the original failure first: a failing local save must not hide it
         if failure.code == 6 and args.fn in (cmd_claim, cmd_status, cmd_complete, cmd_create, cmd_relate):
             try:
-                path, _ = save_pending("intent", getattr(failure, "token", None), wp=getattr(args, "id", None),
+                path, _ = save_pending("intent", getattr(failure, "token", None), wp=getattr(args, "id", None) or getattr(failure, "wp", None),
                                        session=session, argv=command_argv, body=getattr(failure, "body", None), **posted_fields(failure))
             except LocalWriteFail as saving:
                 print(saving, file=sys.stderr)

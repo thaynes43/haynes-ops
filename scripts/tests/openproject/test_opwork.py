@@ -39,6 +39,7 @@ def load(name, file):
 
 op = load("opwork", "opwork.py")
 api = load("agent_api", "agent-api.py")
+PROJECTS = {"haynes-engineering": 3, "other-project": 4}  # identifier -> id
 STATUSES = {"Draft": 23, "Ungroomed": 24, "Needs answer": 25, "Needs approval": 26, "Approved": 27, "In progress": 7, "In review": 28, "Accepted": 29, "Paused": 30}
 TYPES = {"Saga": 10, "Epic": 5, "Story": 11}
 
@@ -49,10 +50,21 @@ class Down(Exception):
 
 class Fake:
     """Just enough of the OpenProject v3 API. `fail` maps 'METHOD substring' -> 'before'|'after':
-    raise Down before applying, or after applying (the uncertain case)."""
+    raise Down before applying, or after applying (the uncertain case). A create is strict:
+    `created` keeps every POST payload exactly as sent, and an unknown or malformed field is a 422
+    that creates nothing."""
+
+    # Work package schema 11-11 as read from the live API on 2026-11-05 (read-only GET, types only):
+    # these fields are Formattable, the others used by create are String. The fake's own list, not opwork's.
+    CREATE_FORMATTABLE = ("description", op.ACCEPT, op.CONSTRAINTS, op.PROVENANCE)
+    CREATE_STRINGS = ("subject", op.SOURCE_KEY, op.REPOS)
 
     def __init__(self):
         self.wps, self.acts, self.rels, self.calls, self.fail, self.next_id, self.next_act = {}, {}, [], [], {}, 100, 1000
+        self.created = []  # (project, payload) for every create POST, as sent
+        self.store = None  # optional (field, raw) -> stored raw for a create, None drops the field: a server that changes the text
+        self.after_create = None  # optional callable(wp) that changes what a create stored (links, fields)
+        self.readback = None  # optional callable(wp) that changes only what a GET of one item returns
         self.deny = set()  # statuses denied regardless of the current state
         self.transitions = {}  # optional current-state -> allowed next statuses
         self.form_checks, self.status_changes = [], []
@@ -94,9 +106,13 @@ class Fake:
             return 200, {"_embedded": {"elements": [{"id": v, "name": k} for k, v in table.items()]}}
         if path == "/api/v3/users/me":
             return 200, {"login": "openproject-agent", "id": 5}
+        m = re.fullmatch(r"/api/v3/projects/([^/]+)", path)
+        if m and method == "GET":
+            name = next((k for k, v in PROJECTS.items() if m.group(1) in (k, str(v))), None)
+            return (200, {"id": PROJECTS[name], "identifier": name, "name": name}) if name else (404, {"message": "not found"})
         if path.startswith("/api/v3/projects/") and path.endswith("/work_packages"):
             if method == "POST":
-                return self.create(payload)
+                return self.create(payload, path.split("/")[4])
             filters = json.loads(query.get("filters", ["[]"])[0])
             return self.collection(self.filter(filters), query)
         m = re.fullmatch(r"/api/v3/work_packages/(\d+)(/activities|/relations|/form|/available_assignees)?", path)
@@ -106,7 +122,10 @@ class Fake:
                 return 404, {"message": "not found"}
             wp = self.wps[i]
             if sub is None and method == "GET":
-                return 200, copy.deepcopy(wp)  # independent snapshot, like the real API
+                snapshot = copy.deepcopy(wp)  # independent snapshot, like the real API
+                if self.readback:
+                    self.readback(snapshot)
+                return 200, snapshot
             if sub == "/available_assignees":
                 return 200, {"_embedded": {"elements": [{"id": 5}, {"id": 6}]}}
             if sub == "/form" and method == "POST":
@@ -161,13 +180,54 @@ class Fake:
                 rows = [w for w in rows if spec["values"][0].lower() in w["subject"].lower()]
         return rows
 
-    def create(self, payload):
+    def create_problem(self, payload):
+        """Why a create payload breaks the contract, else None."""
+        if not isinstance(payload, dict):
+            return "payload is not an object"
+        unknown = set(payload) - set(self.CREATE_FORMATTABLE) - set(self.CREATE_STRINGS) - {"_links"}
+        if unknown:
+            return "unknown fields %s" % sorted(unknown)
+        if not isinstance(payload.get("subject"), str) or not payload["subject"].strip():
+            return "subject is required"
+        for key in self.CREATE_STRINGS:
+            if key in payload and not isinstance(payload[key], str):
+                return "%s must be a string" % key
+        for key in self.CREATE_FORMATTABLE:
+            if key in payload and not (isinstance(payload[key], dict) and set(payload[key]) == {"raw"} and isinstance(payload[key]["raw"], str)):
+                return "%s must be Formattable {raw}" % key
+        links = payload.get("_links")
+        if not isinstance(links, dict) or set(links) - {"type", "status", "parent"} or not {"type", "status"} <= set(links) \
+                or not all(isinstance(v, dict) and set(v) == {"href"} and isinstance(v["href"], str) for v in links.values()):
+            return "_links must be type and status (and optionally parent) hrefs"
+        if self.hrefid(links["type"]["href"]) not in TYPES.values() or self.hrefid(links["status"]["href"]) not in STATUSES.values():
+            return "unknown type or status"
+        if "parent" in links and self.hrefid(links["parent"]["href"]) not in self.wps:
+            return "unknown parent"
+        return None
+
+    def create(self, payload, project):
+        self.created.append((project, copy.deepcopy(payload)))
+        problem = self.create_problem(payload)
+        if problem:
+            return 422, {"message": "strict fake create: " + problem}
         self.next_id += 1
         kind = next(n for n, i in TYPES.items() if i == self.hrefid(payload["_links"]["type"]["href"]))
         status = next(n for n, i in STATUSES.items() if i == self.hrefid(payload["_links"]["status"]["href"]))
-        wp = self.add(self.next_id, kind, payload["subject"], self.hrefid(payload["_links"]["parent"]["href"]), status, key=payload[op.SOURCE_KEY])
-        wp[op.PROVENANCE] = payload[op.PROVENANCE]
-        return 201, wp
+        parent = self.hrefid(payload["_links"]["parent"]["href"]) if "parent" in payload["_links"] else None
+        wp = self.add(self.next_id, kind, payload["subject"], parent, status, key=payload.get(op.SOURCE_KEY))
+        wp["_links"]["project"] = {"href": "/api/v3/projects/%d" % PROJECTS[project], "title": project}
+        for key in self.CREATE_FORMATTABLE:
+            if key in payload:
+                raw = self.store(key, payload[key]["raw"]) if self.store else payload[key]["raw"]
+                if raw is None:
+                    wp.pop(key, None)  # dropped
+                    continue
+                wp[key] = {"format": "markdown", "raw": raw, "html": "<p>%s</p>" % raw if raw else ""}
+        if op.REPOS in payload:
+            wp[op.REPOS] = payload[op.REPOS]
+        if self.after_create:
+            self.after_create(wp)
+        return 201, copy.deepcopy(wp)
 
 
 class Base(unittest.TestCase):
@@ -632,6 +692,234 @@ class CreateTests(Base):
         self.assertNotIn("nothing was recorded", err)
         self.assertEqual(len(self.posts("/projects/")), 1)
         self.assertIn("intent", self.run_cli("pending")[1])
+
+    DESCRIPTION_TEXT = "## Scope\n\n- one outcome\n- `opwork` and [a link](https://example.invalid/x)\n"
+    ACCEPTANCE_TEXT = "1. RED before\n2. GREEN after\n"
+    CONSTRAINTS_TEXT = "- no live writes\n- *zero* network\n"
+
+    def recorded(self, down_on=None):
+        """Every request as sent: (method, path, payload copy). `down_on` is one exact GET path that fails."""
+        sent, original = [], self.fake.request
+        def recording(method, path, payload=None):
+            sent.append((method, path, copy.deepcopy(payload)))
+            if method == "GET" and path == down_on:
+                raise Down("synthetic read loss")
+            return original(method, path, payload)
+        self.tracker.request = recording
+        return sent
+
+    def created_posts(self, sent):
+        return [(path, payload) for method, path, payload in sent if method == "POST" and path.endswith("/work_packages") and path.startswith("/api/v3/projects/")]
+
+    def test_create_sends_markdown_fields_formattable_with_project_type_and_parent_and_reads_them_back(self):
+        self.story()
+        sent = self.recorded()
+        code, out, err = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:full", "--subject", "Full staged story",
+                                      "--description", self.DESCRIPTION_TEXT, "--acceptance", self.ACCEPTANCE_TEXT,
+                                      "--constraints", self.CONSTRAINTS_TEXT, "--repos", "thaynes43/haynes-ops, thaynes43/dev-env")
+        self.assertEqual(code, 0, err)
+        (path, payload), = self.created_posts(sent)
+        self.assertEqual(path, "/api/v3/projects/haynes-engineering/work_packages")  # the project is the path
+        self.assertEqual(self.fake.created, [("haynes-engineering", payload)])  # what the strict fake received
+        self.assertEqual(set(payload), {"subject", "description", op.SOURCE_KEY, op.PROVENANCE, op.ACCEPT, op.CONSTRAINTS, op.REPOS, "_links"})
+        self.assertEqual(payload["description"], {"raw": self.DESCRIPTION_TEXT})
+        self.assertEqual(payload[op.ACCEPT], {"raw": self.ACCEPTANCE_TEXT})
+        self.assertEqual(payload[op.CONSTRAINTS], {"raw": self.CONSTRAINTS_TEXT})
+        self.assertEqual(set(payload[op.PROVENANCE]), {"raw"})
+        self.assertEqual(payload[op.REPOS], "thaynes43/haynes-ops, thaynes43/dev-env")  # a String field: bare
+        self.assertEqual(payload["_links"], {"type": {"href": "/api/v3/types/11"}, "status": {"href": "/api/v3/statuses/24"},
+                                             "parent": {"href": "/api/v3/work_packages/5"}})
+        made, = [w for w in self.fake.wps.values() if w[op.SOURCE_KEY] == "followup:10:full"]
+        now = self.tracker.wp(made["id"])  # the read back, through the API
+        self.assertEqual(op.text_of(now["description"]), self.DESCRIPTION_TEXT)
+        self.assertEqual(op.text_of(now[op.ACCEPT]), self.ACCEPTANCE_TEXT)
+        self.assertEqual(op.text_of(now[op.CONSTRAINTS]), self.CONSTRAINTS_TEXT)
+        self.assertEqual(op.text_of(now[op.REPOS]), "thaynes43/haynes-ops, thaynes43/dev-env")
+        self.assertIn("Created by <codex-test | worktree w1", op.text_of(now[op.PROVENANCE]))
+        self.assertEqual((now["_links"]["type"]["title"], now["_links"]["status"]["title"], self.fake.hrefid(now["_links"]["parent"]["href"])), ("Story", "Ungroomed", 5))
+
+    def test_create_omits_unset_optional_fields_and_sends_an_empty_description(self):
+        self.story()
+        sent = self.recorded()
+        code, _, err = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:bare", "--subject", "Minimal follow-up item", "--acceptance", "")
+        self.assertEqual(code, 0, err)
+        (_, payload), = self.created_posts(sent)
+        self.assertEqual(set(payload), {"subject", "description", op.SOURCE_KEY, op.PROVENANCE, "_links"})  # no acceptance, constraints or repos
+        self.assertEqual(payload["description"], {"raw": ""})  # a new item: nothing to clear
+        made, = [w for w in self.fake.wps.values() if w[op.SOURCE_KEY] == "followup:10:bare"]
+        now = self.tracker.wp(made["id"])
+        self.assertEqual(op.text_of(now["description"]), "")
+        self.assertEqual((op.text_of(now.get(op.ACCEPT)), op.text_of(now.get(op.CONSTRAINTS)), op.text_of(now.get(op.REPOS))), ("", "", ""))
+
+    def test_strict_fake_create_rejects_unknown_or_malformed_fields(self):
+        good = {"subject": "s", "description": {"raw": "d"}, op.SOURCE_KEY: "k", op.PROVENANCE: {"raw": "p"},
+                "_links": {"type": {"href": "/api/v3/types/11"}, "status": {"href": "/api/v3/statuses/24"}, "parent": {"href": "/api/v3/work_packages/5"}}}
+        bad = [dict(good, description="bare"), dict(good, **{op.ACCEPT: "bare"}), dict(good, **{op.CONSTRAINTS: {"raw": 5}}),
+               dict(good, **{op.REPOS: {"raw": "r"}}), dict(good, customField99="x"), dict(good, subject=""),
+               dict(good, _links={"type": {"href": "/api/v3/types/11"}})]
+        for payload in bad:
+            with self.subTest(payload=sorted(payload)):
+                before = len(self.fake.wps)
+                code, _ = self.fake.request("POST", "/api/v3/projects/haynes-engineering/work_packages", copy.deepcopy(payload))
+                self.assertEqual(code, 422)
+                self.assertEqual(len(self.fake.wps), before)  # nothing created
+        self.assertEqual(self.fake.request("POST", "/api/v3/projects/haynes-engineering/work_packages", good)[0], 201)
+
+    def full_create(self, *extra):
+        return self.run_cli("create", "--epic", "5", "--origin", "10", "--source-key", "followup:10:full", "--subject", "Full staged story",
+                            "--description", self.DESCRIPTION_TEXT, "--acceptance", self.ACCEPTANCE_TEXT, "--constraints", self.CONSTRAINTS_TEXT, *extra)
+
+    def test_create_positive_control_reads_back_every_intended_field_once(self):
+        self.story()
+        sent = self.recorded()
+        code, out, err = self.full_create()
+        self.assertEqual(code, 0, err)
+        self.assertIn("created (read back): #101", out)
+        self.assertIn("related to #10", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        made, = [w for w in self.fake.wps.values() if w[op.SOURCE_KEY] == "followup:10:full"]
+        self.assertEqual(made["id"], 101)
+        gets = [path for method, path, _ in sent if method == "GET"]
+        self.assertEqual(gets.count("/api/v3/work_packages/101"), 1)  # the created item itself, by id
+        self.assertEqual(gets.count("/api/v3/projects/haynes-engineering"), 1)  # the project it must sit in
+        (_, payload), = self.created_posts(sent)
+        for key in ("description", op.ACCEPT, op.CONSTRAINTS, op.PROVENANCE):
+            self.assertEqual(op.text_of(made[key]), payload[key]["raw"])
+
+    # A synthetic server that accepts the POST but stores something else. Each case must fail
+    # closed: exit 6, one create POST, the ID kept, nothing more written, and a clear report.
+    MISMATCHES = {
+        "changed description": ({"store": lambda key, raw: "different text" if key == "description" else raw}, "description (changed)"),
+        "emptied description": ({"store": lambda key, raw: "" if key == "description" else raw}, "description (missing)"),
+        "normalized constraints": ({"store": lambda key, raw: raw.rstrip("\n") if key == op.CONSTRAINTS else raw}, "constraints (changed)"),
+        "dropped acceptance": ({"store": lambda key, raw: None if key == op.ACCEPT else raw}, "acceptance (missing)"),
+        "dropped provenance": ({"store": lambda key, raw: None if key == op.PROVENANCE else raw}, "provenance (missing)"),
+        "wrong parent": ({"after": lambda wp: wp["_links"].update(parent={"href": "/api/v3/work_packages/6"})}, "parent (sent /api/v3/work_packages/5, read back /api/v3/work_packages/6)"),
+        "no parent": ({"after": lambda wp: wp["_links"].update(parent={"href": None})}, "parent (sent /api/v3/work_packages/5, read back none)"),
+        "wrong type": ({"after": lambda wp: wp["_links"].update(type={"href": "/api/v3/types/5", "title": "Epic"})}, "type (sent /api/v3/types/11, read back /api/v3/types/5)"),
+        "wrong project": ({"after": lambda wp: wp["_links"].update(project={"href": "/api/v3/projects/4", "title": "other-project"})}, "project (sent haynes-engineering, read back /api/v3/projects/4)"),
+        "changed source key": ({"readback": lambda wp: wp.update({op.SOURCE_KEY: "followup:10:other"})}, "source key (changed)"),
+        "changed subject": ({"after": lambda wp: wp.update(subject="Renamed by the server")}, "subject (changed)"),
+        "missing subject": ({"readback": lambda wp: wp.pop("subject")}, "subject (missing)"),
+        "missing source key": ({"readback": lambda wp: wp.pop(op.SOURCE_KEY)}, "source key (missing)"),
+    }
+
+    def test_create_that_reads_back_different_fails_closed_with_one_post_and_the_id(self):
+        for name, (hooks, expected) in self.MISMATCHES.items():
+            with self.subTest(case=name):
+                self.setUp()
+                self.story()
+                self.fake.store, self.fake.after_create, self.fake.readback = hooks.get("store"), hooks.get("after"), hooks.get("readback")
+                sent = self.recorded()
+                code, out, err = self.full_create()
+                self.assertEqual(code, 6, err)
+                self.assertNotIn("created (read back)", out)  # no success claim
+                self.assertIn("created, NOT confirmed: #101", out)
+                self.assertIn("UNCERTAIN: #101 (source key 'followup:10:full')", err)
+                self.assertIn(expected, err)
+                self.assertIn("Do NOT repeat the create", err)
+                self.assertEqual(len(self.created_posts(sent)), 1)  # a single create POST
+                self.assertEqual([p for m, p, _ in sent if m == "POST" and p != "/api/v3/projects/haynes-engineering/work_packages"], [])  # nothing more written: no relation
+                self.assertEqual(self.fake.rels, [])
+                self.assertEqual(sorted(w["id"] for w in self.fake.wps.values() if w["id"] > 100), [101])  # the ID kept, no second item
+                self.assertIn("#101 intent", self.run_cli("pending")[1])  # recorded with the created ID
+                again = self.full_create()  # the same command again: validated, refused, never a second POST
+                self.assertEqual(again[0], 6, again[2])
+                self.assertIn("UNCERTAIN: #101 (source key 'followup:10:full') already exists", again[2])
+                self.assertNotIn("REUSED", again[1])
+                self.assertEqual(len(self.created_posts(sent)), 1)
+                self.assertEqual(self.fake.rels, [])
+
+    def test_create_whose_read_back_fails_is_uncertain_with_one_post_and_the_id(self):
+        for path in ("/api/v3/work_packages/101", "/api/v3/projects/haynes-engineering"):
+            with self.subTest(path=path):
+                self.setUp()
+                self.story()
+                sent = self.recorded(down_on=path)
+                code, out, err = self.full_create()
+                self.assertEqual(code, 6, err)
+                self.assertNotIn("created (read back)", out)
+                self.assertIn("UNCERTAIN: #101 (source key 'followup:10:full')", err)
+                self.assertIn("reading it back failed", err)
+                self.assertEqual(len(self.created_posts(sent)), 1)
+                self.assertEqual(self.fake.rels, [])
+                self.assertEqual(sorted(w["id"] for w in self.fake.wps.values() if w["id"] > 100), [101])
+
+    def test_initial_status_is_confirmed_on_create_but_not_required_on_reuse(self):
+        self.story()
+        moved = {"href": "/api/v3/statuses/%d" % STATUSES["In progress"], "title": "In progress"}
+        self.fake.after_create = lambda wp: wp["_links"].update(status=moved)  # the server did not file it Ungroomed
+        sent = self.recorded()
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertIn("status (sent /api/v3/statuses/24, read back /api/v3/statuses/7)", err)
+        self.assertEqual(self.fake.rels, [])
+        self.fake.after_create = None
+        code, out, err = self.full_create()  # a reused item may have moved on since: its status is not compared
+        self.assertEqual(code, 0, err)
+        self.assertIn("REUSED, not created: #101 Story [In progress]", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(len(self.fake.rels), 1)
+
+    def test_relation_failure_cannot_hide_a_create_mismatch(self):
+        self.story()
+        self.fake.store = lambda key, raw: "different text" if key == "description" else raw
+        self.fake.fail["POST /relations"] = "before"  # would fail if it were tried
+        sent = self.recorded()
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertIn("UNCERTAIN: #101 (source key 'followup:10:full') was created", err)
+        self.assertIn("description (changed)", err)
+        self.assertNotIn("TRACKER UNAVAILABLE", err)
+        self.assertEqual([p for m, p, _ in sent if m == "POST" and "/relations" in p], [])  # never tried
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertIn("#101 intent", self.run_cli("pending")[1])
+
+    def test_reuse_after_a_mismatch_fails_until_the_item_is_reconciled(self):
+        self.story()
+        self.fake.store = lambda key, raw: None if key == op.ACCEPT else raw  # the acceptance is dropped
+        sent = self.recorded()
+        self.assertEqual(self.full_create()[0], 6)
+        for _ in range(2):  # every re-run validates; none succeeds while the content is unresolved
+            code, out, err = self.full_create()
+            self.assertEqual(code, 6, err)
+            self.assertIn("UNCERTAIN: #101 (source key 'followup:10:full') already exists", err)
+            self.assertIn("acceptance (missing)", err)
+            self.assertNotIn("REUSED", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(self.fake.rels, [])
+        self.fake.wps[101][op.ACCEPT] = {"format": "markdown", "raw": self.ACCEPTANCE_TEXT, "html": ""}  # reconciled by an update
+        code, out, err = self.full_create()
+        self.assertEqual(code, 0, err)
+        self.assertIn("REUSED, not created: #101 ", out)
+        self.assertIn("related to #10", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(len(self.fake.rels), 1)
+
+    def test_reuse_compares_what_the_rerun_asks_for(self):
+        self.story()
+        self.assertEqual(self.full_create()[0], 0)
+        code, out, err = self.full_create()  # the same content: reused
+        self.assertEqual(code, 0, err)
+        self.assertIn("REUSED, not created: #101 ", out)
+        code, _, err = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:full", "--subject", "Full staged story", "--description", "other text")
+        self.assertEqual(code, 6, err)  # this run asks for a different description
+        self.assertIn("description (changed)", err)
+        code, _, err = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:full", "--subject", "Another subject")
+        self.assertEqual(code, 6, err)  # this run asks for a different subject
+        self.assertIn("subject (changed)", err)
+        code, _, err = self.run_cli("create", "--epic", "6", "--type", "Epic", "--source-key", "followup:10:full", "--subject", "Full staged story")
+        self.assertEqual(code, 6, err)  # a different parent and type
+        self.assertIn("type (sent /api/v3/types/5, read back /api/v3/types/11)", err)
+        self.assertIn("parent (sent /api/v3/work_packages/6, read back /api/v3/work_packages/5)", err)
+        self.assertEqual(len(self.posts("/projects/")), 1)
+
+    def test_omitted_markdown_fields_are_not_compared_on_create(self):
+        self.story()
+        self.fake.store = lambda key, raw: "template text" if key == "description" else raw  # nothing was intended for it
+        code, out, err = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:bare", "--subject", "Minimal follow-up item")
+        self.assertEqual(code, 0, err)
+        self.assertIn("created (read back)", out)
 
     def test_existing_duplicates_of_a_key_are_reused_not_created_over(self):
         self.story()
@@ -1942,6 +2230,306 @@ class HelperSafetyTests(unittest.TestCase):
         self.assertNotIn('"DELETE"', text)
         self.assertNotIn("opapi-", text)
         self.assertNotIn("delete", op.build_parser().format_help().lower())
+
+
+class StrictFake:
+    """One synthetic work package behind a strict PATCH contract, for Tracker.patch.
+
+    Ported from the zero-network acceptance fixture for Studio #423 (sha256 f3e4bd3c...,
+    2026-11-05), without its in-memory hypothesis: these tests load the real opwork.py. PATCH
+    applies exactly the supplied keys, like OpenProject's partial update, and only after every
+    key passed the contract. Its list of Formattable fields is its own, not opwork's, so the
+    fake cannot agree with a client bug. A Formattable field must arrive as {"raw": str}.
+    `bare` chooses what happens otherwise: "reject" answers 422 (the fixture's contract);
+    "clear" stores an empty text, the outcome recorded on #423 (journal 5819: a bare-string
+    description update left the description empty). Neither proves the live server's
+    mechanism. `loss` drops the connection before or after applying; `apply=False` answers
+    200 and applies nothing."""
+
+    FORMATTABLE = ("description", op.ACCEPT, op.CONSTRAINTS, op.PROVENANCE, "customField99")
+    PATH = "/api/v3/work_packages/999999"
+
+    def __init__(self, bare="reject"):
+        self.bare, self.loss, self.apply, self.calls = bare, None, True, []
+        self.record = {
+            "id": 999999, "subject": "synthetic protected subject", "lockVersion": 7,
+            "description": self.formatted("synthetic protected description"),
+            op.OWNER: "synthetic original owner", op.REPOS: "synthetic/repo", op.SOURCE_KEY: "fixture-only",
+            op.ACCEPT: self.formatted("acceptance"), op.CONSTRAINTS: self.formatted("constraints"),
+            op.PROVENANCE: self.formatted("provenance"), "customField99": self.formatted("unknown future field"),
+            "startDate": "2026-01-01", "dueDate": "2026-01-02",
+            "_links": {"type": {"href": "/api/v3/types/11", "title": "Story"}, "status": {"href": "/api/v3/statuses/7", "title": "In progress"},
+                       "project": {"href": "/api/v3/projects/999"}, "parent": {"href": "/api/v3/work_packages/888888"}}}
+
+    @staticmethod
+    def formatted(text):
+        return {"format": "markdown", "raw": text, "html": "<p>%s</p>" % text if text else ""}
+
+    def request(self, method, path, payload=None):
+        self.calls.append((method, path, copy.deepcopy(payload)))
+        if path != self.PATH:
+            raise AssertionError("strict fake: unexpected path %s" % path)
+        if method == "GET":
+            return 200, copy.deepcopy(self.record)
+        if method != "PATCH":
+            raise AssertionError("strict fake: unexpected method %s" % method)
+        if self.loss == "before":
+            raise Down("synthetic loss before apply")
+        if payload["lockVersion"] != self.record["lockVersion"]:
+            return 409, {"errorIdentifier": "urn:openproject-org:api:v3:errors:UpdateConflict", "message": "synthetic lock conflict"}
+        changes = {}
+        for key, value in payload.items():
+            if key in ("lockVersion", "_links"):
+                continue
+            if key in self.FORMATTABLE:
+                if not (isinstance(value, dict) and isinstance(value.get("raw"), str)):
+                    if self.bare == "reject":
+                        return 422, {"message": "synthetic contract: %s must be Formattable {raw}" % key}
+                    value = {"raw": ""}  # the outcome recorded on #423
+                value = self.formatted(value["raw"])
+            changes[key] = copy.deepcopy(value)
+        if self.apply:
+            self.record.update(changes)
+            self.record["lockVersion"] += 1
+        if self.loss == "after":
+            raise Down("synthetic loss after apply")
+        return 200, copy.deepcopy(self.record)
+
+
+class FormattableUpdateTests(unittest.TestCase):
+    """Tracker.patch sends Formattable fields as {"raw": markdown}, and only the fields supplied.
+
+    Studio #423 (journal 5819, 2026-11-05T01:52:07Z): a direct Tracker.patch call with a
+    description sent it as a bare string, and the description was left empty. Stock commands
+    never send a description (StockCommandDescriptionTests). Zero network: StrictFake only."""
+
+    MARKDOWN_TEXT = "## Scope\n\n- one *concrete* outcome\n- `code` and [a link](https://example.invalid/x)\n\n```text\nblock\n```\n"
+
+    def setUp(self):
+        self.fake = StrictFake()
+        self.before = copy.deepcopy(self.fake.record)
+        self.tracker = op.Tracker(self.fake.request, Down)
+
+    def update(self, fields, **kw):
+        return self.tracker.patch(copy.deepcopy(self.before), fields=fields, **kw)
+
+    def patches(self):
+        return [p for method, _, p in self.fake.calls if method == "PATCH"]
+
+    def assert_only_changed(self, *keys):
+        expected = copy.deepcopy(self.before)
+        for key in keys:
+            expected[key] = copy.deepcopy(self.fake.record[key])
+        expected["lockVersion"] = self.before["lockVersion"] + 1  # applied once
+        self.assertEqual(self.fake.record, expected)
+        self.assertEqual(len(self.patches()), 1)
+
+    def assert_refused_before_sending(self, fields, code, **kw):
+        with self.assertRaises(op.Fail) as got:
+            self.update(fields, **kw)
+        self.assertEqual(got.exception.code, code, got.exception)
+        self.assertEqual(self.fake.calls, [])  # nothing sent: no PATCH, not even a read
+        self.assertEqual(self.fake.record, self.before)
+        return str(got.exception)
+
+    # -- the defect: a non-empty Markdown description update --------------------------------
+
+    def test_nonempty_markdown_description_is_sent_in_formattable_form(self):
+        now, error = None, None
+        try:
+            now = self.update({"description": self.MARKDOWN_TEXT})
+        except op.Fail as failure:
+            error = failure
+        self.assertEqual(self.patches()[0]["description"], {"raw": self.MARKDOWN_TEXT})  # the wire shape first
+        self.assertIsNone(error)
+        self.assertEqual(op.text_of(now["description"]), self.MARKDOWN_TEXT)  # the read back
+        self.assert_only_changed("description")
+
+    def test_lenient_server_that_clears_a_bare_string_keeps_the_new_description(self):
+        self.fake.bare = "clear"  # the outcome recorded on #423, not a proven server mechanism
+        now = self.update({"description": self.MARKDOWN_TEXT})
+        self.assertEqual(op.text_of(self.fake.record["description"]), self.MARKDOWN_TEXT)
+        self.assertEqual(op.text_of(now["description"]), self.MARKDOWN_TEXT)
+        self.assert_only_changed("description")
+
+    # -- partial updates --------------------------------------------------------------------
+
+    def test_description_update_preserves_every_unrelated_fixture_field(self):
+        self.update({"description": "synthetic replacement"})
+        self.assertEqual(set(self.patches()[0]), {"lockVersion", "description"})
+        self.assert_only_changed("description")
+
+    def test_update_without_description_never_sends_or_changes_it(self):
+        self.update({op.OWNER: "synthetic next owner"})
+        self.assertEqual(self.patches()[0], {"lockVersion": 7, op.OWNER: "synthetic next owner"})
+        self.assertEqual(self.fake.record["description"], self.before["description"])
+        self.assert_only_changed(op.OWNER)
+
+    # -- omitted, null, empty ---------------------------------------------------------------
+
+    def test_explicit_null_description_is_refused_and_nothing_is_sent(self):
+        message = self.assert_refused_before_sending({"description": None}, 3)
+        self.assertIn("REFUSED", message)
+        self.assertIn("allow_clear", message)
+
+    def test_empty_or_blank_description_is_refused_and_nothing_is_sent(self):
+        for value in ("", "  \n\t", {"raw": ""}):
+            with self.subTest(value=value):
+                self.assert_refused_before_sending({"description": value}, 3)
+
+    def test_named_clear_sends_formattable_empty_and_changes_only_the_description(self):
+        for value in ("", None, " \n", {"raw": ""}):
+            with self.subTest(value=value):
+                self.setUp()
+                now = self.update({"description": value}, allow_clear={"description"})
+                self.assertEqual(self.patches()[0], {"lockVersion": 7, "description": {"raw": ""}})
+                self.assertEqual(op.text_of(now["description"]), "")
+                self.assert_only_changed("description")
+
+    def test_allow_clear_still_sends_a_nonempty_update_unchanged(self):
+        self.update({"description": "kept text"}, allow_clear={"description"})
+        self.assertEqual(self.patches()[0]["description"], {"raw": "kept text"})
+
+    def test_allow_clear_as_a_plain_string_names_exactly_one_field(self):
+        now = self.update({"description": ""}, allow_clear="description")  # the documented plain-string form
+        self.assertEqual(self.patches()[0], {"lockVersion": 7, "description": {"raw": ""}})
+        self.assertEqual(op.text_of(now["description"]), "")
+        self.assert_only_changed("description")
+        self.setUp()
+        self.assert_refused_before_sending({"description": ""}, 3, allow_clear=op.ACCEPT)  # names another field
+        self.assert_refused_before_sending({"description": ""}, 3, allow_clear="descriptions")  # a whole name, not a substring
+
+    def test_allow_clear_for_another_field_does_not_permit_a_description_clear(self):
+        self.assert_refused_before_sending({"description": ""}, 3, allow_clear={op.ACCEPT})
+
+    # -- typed input ------------------------------------------------------------------------
+
+    def test_already_wrapped_raw_is_sent_once_not_double_wrapped(self):
+        self.update({"description": {"raw": self.MARKDOWN_TEXT}})
+        self.assertEqual(self.patches()[0]["description"], {"raw": self.MARKDOWN_TEXT})
+        self.assert_only_changed("description")
+
+    def test_non_string_or_malformed_description_is_refused_and_nothing_is_sent(self):
+        for value in (42, 0, True, False, ["text"], b"bytes", {"raw": 5}, {"raw": None}, {"html": "<p>x</p>"},
+                      {"raw": "x", "html": "<p>x</p>"}, {"format": "markdown", "raw": "x"}):
+            with self.subTest(value=value):
+                message = self.assert_refused_before_sending({"description": value}, 1)
+                self.assertIn("description", message)
+
+    def test_formattable_custom_fields_follow_the_same_rules(self):
+        self.update({op.ACCEPT: "new acceptance"})
+        self.assertEqual(self.patches()[0][op.ACCEPT], {"raw": "new acceptance"})
+        self.setUp()
+        for field in (op.ACCEPT, op.CONSTRAINTS, op.PROVENANCE):
+            with self.subTest(field=field):
+                self.assert_refused_before_sending({field: ""}, 3)
+                self.assert_refused_before_sending({field: None}, 3)
+                self.assert_refused_before_sending({field: {"raw": {"raw": "x"}}}, 1)
+
+    def test_one_refused_field_sends_none_of_the_others(self):
+        self.assert_refused_before_sending({op.OWNER: "synthetic next owner", "description": ""}, 3)
+
+    # -- optimistic lock and uncertain writes -----------------------------------------------
+
+    # Each runs for an owner update (the stock commands' path, unchanged) and a description update.
+    UPDATES = ({op.OWNER: "synthetic next owner"}, {"description": "synthetic replacement"})
+
+    def test_lock_version_is_sent_from_the_read_item_or_the_expected_lock(self):
+        for fields in self.UPDATES:
+            with self.subTest(field=next(iter(fields))):
+                self.setUp()
+                self.update(fields)
+                self.assertEqual(self.patches()[0]["lockVersion"], 7)
+                self.setUp()
+                with self.assertRaises(op.Fail) as got:
+                    self.update(fields, lock=3)
+                self.assertEqual(got.exception.code, 3)
+                self.assertEqual(self.patches()[0]["lockVersion"], 3)
+
+    def test_conflict_reads_back_and_refuses_without_retrying(self):
+        for fields in self.UPDATES:
+            with self.subTest(field=next(iter(fields))):
+                self.setUp()
+                stale = copy.deepcopy(self.before)
+                stale["lockVersion"] -= 1
+                with self.assertRaises(op.Fail) as got:
+                    self.tracker.patch(stale, fields=fields)
+                self.assertEqual(got.exception.code, 3)
+                self.assertIn("CONFLICT", str(got.exception))
+                self.assertIn("lock 6 -> 7", str(got.exception))
+                self.assertEqual([m for m, _, _ in self.fake.calls], ["PATCH", "GET"])  # read back, no second PATCH
+                self.assertEqual(self.fake.record, self.before)
+
+    def test_response_lost_after_apply_is_confirmed_by_read_back_without_a_second_patch(self):
+        for fields in self.UPDATES:
+            with self.subTest(field=next(iter(fields))):
+                self.setUp()
+                key = next(iter(fields))
+                self.fake.loss = "after"
+                now = self.update(fields)
+                self.assertEqual(op.text_of(now[key]), fields[key])
+                self.assertEqual([m for m, _, _ in self.fake.calls], ["PATCH", "GET"])
+                self.assert_only_changed(key)
+
+    def test_connection_lost_before_apply_reads_back_and_reports_not_applied_without_retrying(self):
+        for fields in self.UPDATES:
+            with self.subTest(field=next(iter(fields))):
+                self.setUp()
+                self.fake.loss = "before"
+                with self.assertRaises(op.Fail) as got:
+                    self.update(fields)
+                self.assertEqual(got.exception.code, 5)
+                self.assertIn("NOT APPLIED", str(got.exception))
+                self.assertEqual([m for m, _, _ in self.fake.calls], ["PATCH", "GET"])
+                self.assertEqual(self.fake.record, self.before)
+
+    def test_answer_without_the_change_is_uncertain_and_not_retried(self):
+        for fields in self.UPDATES:
+            with self.subTest(field=next(iter(fields))):
+                self.setUp()
+                self.fake.apply = False
+                with self.assertRaises(op.Fail) as got:
+                    self.update(fields)
+                self.assertEqual(got.exception.code, 6)
+                self.assertIn("UNCERTAIN", str(got.exception))
+                self.assertEqual([m for m, _, _ in self.fake.calls], ["PATCH", "GET"])
+                self.assertEqual(self.fake.record, self.before)
+
+    def test_read_back_that_is_down_after_a_lost_answer_propagates_unavailable(self):
+        for fields in self.UPDATES:
+            with self.subTest(field=next(iter(fields))):
+                self.setUp()
+                self.fake.loss = "after"
+                original = self.fake.request
+                def down_on_read(method, path, payload=None):
+                    if method == "GET":
+                        self.fake.calls.append((method, path, None))
+                        raise Down("synthetic read back loss")
+                    return original(method, path, payload)
+                self.tracker.request = down_on_read
+                with self.assertRaises(Down):
+                    self.update(fields)
+                self.assertEqual([m for m, _, _ in self.fake.calls], ["PATCH", "GET"])  # no second PATCH
+
+
+class StockCommandDescriptionTests(Base):
+    """claim, status and complete never send a description, so they cannot clear one."""
+
+    def test_claim_status_and_complete_never_send_a_description(self):
+        self.story(10, description={"format": "markdown", "raw": "reviewed text", "html": "<p>reviewed text</p>"})
+        sent, original = [], self.fake.request
+        def recording(method, path, payload=None):
+            sent.append((method, copy.deepcopy(payload)))
+            return original(method, path, payload)
+        self.tracker.request = recording
+        for argv in (("claim", "10"), ("status", "10", "In review"), ("complete", "10", "--evidence", "tests")):
+            self.assertEqual(self.run_cli(*argv)[0], 0, argv)
+        patches = [p for method, p in sent if method == "PATCH"]
+        self.assertEqual(len(patches), 3)
+        for payload in patches:
+            self.assertIn("lockVersion", payload)
+            self.assertNotIn("description", payload)
+        self.assertEqual(self.fake.wps[10]["description"]["raw"], "reviewed text")
 
 
 if __name__ == "__main__":

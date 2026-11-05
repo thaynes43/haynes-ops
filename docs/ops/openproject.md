@@ -278,9 +278,51 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   under the Epic unless `--confirm-new`. New items are filed Ungroomed under the Epic, with a
   `relates` link to the originating Story and the creator in Decision provenance. A create is
   never retried: if the answer is lost, the source key is searched and the result reported.
+  The new item is then read back by id and checked exactly, with no normalization tolerance:
+  its subject, every non-empty Markdown field it sent (description, acceptance, constraints,
+  provenance), and its parent, type, starting status (Ungroomed), project and source key. On
+  any difference (a changed, emptied or dropped field, a wrong parent, type, status or project,
+  a changed or missing key) or a failed read,
+  the result is UNCERTAIN (exit 6). Nothing is confirmed and nothing more is written: no second
+  create and no origin relation. The message names the item, its source key and each field,
+  and the intent is kept pending with the item's ID. Inspect it with `show` and correct it with
+  an update. A re-run that finds one item by the key runs the same check against what that
+  re-run asks for, except the status, because a reused item may have moved on since.
+  Provenance names the creating session, so a re-run checks only that it is present. The item is reused, and the origin relation added, only when the check passes; until
+  then every re-run exits 6 and posts nothing. Several items with one key are listed as before.
 - **Conflicts**: every write sends `lockVersion`; a stale one (409), another owner, or an
   explicit hold or pause (`Needs answer`, `Needs approval`, `Paused`) is re-read and refused (exit 3), never
   overwritten. `--force` is a takeover/override for an explicitly authorized case only.
+- **Partial updates and Formattable fields** (Studio #423, 2026-11-05): an update sends only
+  the fields given, with `lockVersion`; nothing else is sent, so it asks for no other change. The
+  description and the acceptance, constraints and provenance fields are Formattable, and every
+  write sends them as `{"raw": markdown}`. Before this fix `Tracker.patch` sent a description
+  as a bare string (`MARKDOWN` omitted it); on #423 (journal 5819) such an update from a
+  direct `Tracker.patch` caller left the description empty; a later `{"raw": ...}` update
+  restored it. No `opwork` command sends a description on update: `claim`, `status` and
+  `complete` change only the owner, the status and (`claim --assignee`) the assignee, and
+  `create` already wrapped it. `create` sends the description, acceptance, constraints and
+  provenance as `{"raw": markdown}` and the repositories as plain text (a String field). It
+  always sends the description, as `{"raw": ""}` when `--description` is not given (a new
+  item has nothing to clear), and leaves out an unset or empty `--acceptance`,
+  `--constraints` or `--repos`. For scripts that call
+  `Tracker.patch(wp, fields, ...)`:
+  - pass Markdown text, or exactly `{"raw": text}` (sent once, not double-wrapped);
+  - an omitted field is not sent and keeps its value; `None` never means "omit";
+  - `None`, empty or blank text would clear the field, so it is refused with exit 3 before any
+    request, unless the call names the field in `allow_clear` (for example
+    `allow_clear={"description"}`); then it is sent as `{"raw": ""}`. This opt-in is a
+    deliberate policy: a clear has to be asked for;
+  - any other value (a number, a list, bytes, another dict) is refused with exit 1 before any
+    request; the message names the field and the type, never the value;
+  - one refused field stops the whole update: nothing is sent.
+  A conflict (409) is read back and refused (exit 3), never retried. A lost connection or
+  answer is read back once before anything else: applied means success, not applied is exit 5,
+  an answer whose change is missing is exit 6. The PATCH is never sent twice.
+  Read backs compare the text exactly, with no normalization tolerance. Whether the live
+  server rewrites Markdown (line endings, a trailing newline) is not qualified. If it does,
+  an applied update or create reports exit 6 UNCERTAIN: that fails safe (no retry, nothing
+  overwritten), and a tolerance waits until the server's rule is known.
 - **Read back**: success is printed only after a read back. A write missing on read-back is
   UNCONFIRMED (exit 6); an unavailable connection/read-back is exit 5.
   `show --history` marks any truncated text; `--full` returns it whole. `claim --assignee me` also sets the
@@ -355,5 +397,7 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
 - **Networking**: v1 (dev/dev-env) reaches the API today. v2 session pods need the separate,
   held Cilium policy (egress + frontend ingress, TCP 8082); until applied v2 gets exit 5.
 - **Tests**: `python3 -I -B scripts/tests/openproject/test_opwork.py -v` (offline fake API:
-  pagination, claims, conflicts, attribution, uncertain create, outage). These are mocked
-  tests; the live fixture acceptance is recorded in the story result, not by CI.
+  pagination, claims, conflicts, attribution, uncertain create, outage, and Formattable partial
+  updates and the full create payload against strict synthetic fakes). These are mocked tests; the live fixture acceptance
+  is recorded in the story result, not by CI. The strict fake models the outcome recorded on
+  #423, not the server's mechanism.
