@@ -48,6 +48,14 @@ patches:
             # Expose etcd metrics on a node-reachable address so the
             # kube-prometheus-stack kubeEtcd ServiceMonitor can scrape :2381
             listen-metrics-urls: http://0.0.0.0:2381
+            # 8 GiB backend quota (etcd's suggested maximum; default is 2 GiB). The DB hit
+            # the 2 GiB default on 2026-11-05 and the NOSPACE alarm left the API read-only
+            # for ~5 h (haynes-ops#4663). Masters have ~94 GiB RAM and ~900 GB free on /var.
+            # Talos applies this without a reboot, but the running etcd keeps its old quota
+            # until the etcd service restarts: restart one member at a time, leader last,
+            # and confirm etcd_server_quota_backend_bytes per member. The quota is a ceiling,
+            # not the fix for whatever fills the DB; EtcdDatabaseNearQuota pages at 80%.
+            quota-backend-bytes: "8589934592"
         coreDNS:
             disabled: true
         allowSchedulingOnControlPlanes: true
