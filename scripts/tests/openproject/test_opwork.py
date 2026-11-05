@@ -1944,5 +1944,296 @@ class HelperSafetyTests(unittest.TestCase):
         self.assertNotIn("delete", op.build_parser().format_help().lower())
 
 
+class StrictFake:
+    """One synthetic work package behind a strict PATCH contract, for Tracker.patch.
+
+    Ported from the zero-network acceptance fixture for Studio #423 (sha256 f3e4bd3c...,
+    2026-11-05), without its in-memory hypothesis: these tests load the real opwork.py. PATCH
+    applies exactly the supplied keys, like OpenProject's partial update, and only after every
+    key passed the contract. Its list of Formattable fields is its own, not opwork's, so the
+    fake cannot agree with a client bug. A Formattable field must arrive as {"raw": str}.
+    `bare` chooses what happens otherwise: "reject" answers 422 (the fixture's contract);
+    "clear" stores an empty text, the outcome recorded on #423 (journal 5819: a bare-string
+    description update left the description empty). Neither proves the live server's
+    mechanism. `loss` drops the connection before or after applying; `apply=False` answers
+    200 and applies nothing."""
+
+    FORMATTABLE = ("description", op.ACCEPT, op.CONSTRAINTS, op.PROVENANCE, "customField99")
+    PATH = "/api/v3/work_packages/999999"
+
+    def __init__(self, bare="reject"):
+        self.bare, self.loss, self.apply, self.calls = bare, None, True, []
+        self.record = {
+            "id": 999999, "subject": "synthetic protected subject", "lockVersion": 7,
+            "description": self.formatted("synthetic protected description"),
+            op.OWNER: "synthetic original owner", op.REPOS: "synthetic/repo", op.SOURCE_KEY: "fixture-only",
+            op.ACCEPT: self.formatted("acceptance"), op.CONSTRAINTS: self.formatted("constraints"),
+            op.PROVENANCE: self.formatted("provenance"), "customField99": self.formatted("unknown future field"),
+            "startDate": "2026-01-01", "dueDate": "2026-01-02",
+            "_links": {"type": {"href": "/api/v3/types/11", "title": "Story"}, "status": {"href": "/api/v3/statuses/7", "title": "In progress"},
+                       "project": {"href": "/api/v3/projects/999"}, "parent": {"href": "/api/v3/work_packages/888888"}}}
+
+    @staticmethod
+    def formatted(text):
+        return {"format": "markdown", "raw": text, "html": "<p>%s</p>" % text if text else ""}
+
+    def request(self, method, path, payload=None):
+        self.calls.append((method, path, copy.deepcopy(payload)))
+        if path != self.PATH:
+            raise AssertionError("strict fake: unexpected path %s" % path)
+        if method == "GET":
+            return 200, copy.deepcopy(self.record)
+        if method != "PATCH":
+            raise AssertionError("strict fake: unexpected method %s" % method)
+        if self.loss == "before":
+            raise Down("synthetic loss before apply")
+        if payload["lockVersion"] != self.record["lockVersion"]:
+            return 409, {"errorIdentifier": "urn:openproject-org:api:v3:errors:UpdateConflict", "message": "synthetic lock conflict"}
+        changes = {}
+        for key, value in payload.items():
+            if key in ("lockVersion", "_links"):
+                continue
+            if key in self.FORMATTABLE:
+                if not (isinstance(value, dict) and isinstance(value.get("raw"), str)):
+                    if self.bare == "reject":
+                        return 422, {"message": "synthetic contract: %s must be Formattable {raw}" % key}
+                    value = {"raw": ""}  # the outcome recorded on #423
+                value = self.formatted(value["raw"])
+            changes[key] = copy.deepcopy(value)
+        if self.apply:
+            self.record.update(changes)
+            self.record["lockVersion"] += 1
+        if self.loss == "after":
+            raise Down("synthetic loss after apply")
+        return 200, copy.deepcopy(self.record)
+
+
+class FormattableUpdateTests(unittest.TestCase):
+    """Tracker.patch sends Formattable fields as {"raw": markdown}, and only the fields supplied.
+
+    Studio #423 (journal 5819, 2026-11-05T01:52:07Z): a direct Tracker.patch call with a
+    description sent it as a bare string, and the description was left empty. Stock commands
+    never send a description (StockCommandDescriptionTests). Zero network: StrictFake only."""
+
+    MARKDOWN_TEXT = "## Scope\n\n- one *concrete* outcome\n- `code` and [a link](https://example.invalid/x)\n\n```text\nblock\n```\n"
+
+    def setUp(self):
+        self.fake = StrictFake()
+        self.before = copy.deepcopy(self.fake.record)
+        self.tracker = op.Tracker(self.fake.request, Down)
+
+    def update(self, fields, **kw):
+        return self.tracker.patch(copy.deepcopy(self.before), fields=fields, **kw)
+
+    def patches(self):
+        return [p for method, _, p in self.fake.calls if method == "PATCH"]
+
+    def assert_only_changed(self, *keys):
+        expected = copy.deepcopy(self.before)
+        for key in keys:
+            expected[key] = copy.deepcopy(self.fake.record[key])
+        expected["lockVersion"] = self.before["lockVersion"] + 1  # applied once
+        self.assertEqual(self.fake.record, expected)
+        self.assertEqual(len(self.patches()), 1)
+
+    def assert_refused_before_sending(self, fields, code, **kw):
+        with self.assertRaises(op.Fail) as got:
+            self.update(fields, **kw)
+        self.assertEqual(got.exception.code, code, got.exception)
+        self.assertEqual(self.fake.calls, [])  # nothing sent: no PATCH, not even a read
+        self.assertEqual(self.fake.record, self.before)
+        return str(got.exception)
+
+    # -- the defect: a non-empty Markdown description update --------------------------------
+
+    def test_nonempty_markdown_description_is_sent_in_formattable_form(self):
+        now, error = None, None
+        try:
+            now = self.update({"description": self.MARKDOWN_TEXT})
+        except op.Fail as failure:
+            error = failure
+        self.assertEqual(self.patches()[0]["description"], {"raw": self.MARKDOWN_TEXT})  # the wire shape first
+        self.assertIsNone(error)
+        self.assertEqual(op.text_of(now["description"]), self.MARKDOWN_TEXT)  # the read back
+        self.assert_only_changed("description")
+
+    def test_lenient_server_that_clears_a_bare_string_keeps_the_new_description(self):
+        self.fake.bare = "clear"  # the outcome recorded on #423, not a proven server mechanism
+        now = self.update({"description": self.MARKDOWN_TEXT})
+        self.assertEqual(op.text_of(self.fake.record["description"]), self.MARKDOWN_TEXT)
+        self.assertEqual(op.text_of(now["description"]), self.MARKDOWN_TEXT)
+        self.assert_only_changed("description")
+
+    # -- partial updates --------------------------------------------------------------------
+
+    def test_description_update_preserves_every_unrelated_fixture_field(self):
+        self.update({"description": "synthetic replacement"})
+        self.assertEqual(set(self.patches()[0]), {"lockVersion", "description"})
+        self.assert_only_changed("description")
+
+    def test_update_without_description_never_sends_or_changes_it(self):
+        self.update({op.OWNER: "synthetic next owner"})
+        self.assertEqual(self.patches()[0], {"lockVersion": 7, op.OWNER: "synthetic next owner"})
+        self.assertEqual(self.fake.record["description"], self.before["description"])
+        self.assert_only_changed(op.OWNER)
+
+    # -- omitted, null, empty ---------------------------------------------------------------
+
+    def test_explicit_null_description_is_refused_and_nothing_is_sent(self):
+        message = self.assert_refused_before_sending({"description": None}, 3)
+        self.assertIn("REFUSED", message)
+        self.assertIn("allow_clear", message)
+
+    def test_empty_or_blank_description_is_refused_and_nothing_is_sent(self):
+        for value in ("", "  \n\t", {"raw": ""}):
+            with self.subTest(value=value):
+                self.assert_refused_before_sending({"description": value}, 3)
+
+    def test_named_clear_sends_formattable_empty_and_changes_only_the_description(self):
+        for value in ("", None, " \n", {"raw": ""}):
+            with self.subTest(value=value):
+                self.setUp()
+                now = self.update({"description": value}, allow_clear={"description"})
+                self.assertEqual(self.patches()[0], {"lockVersion": 7, "description": {"raw": ""}})
+                self.assertEqual(op.text_of(now["description"]), "")
+                self.assert_only_changed("description")
+
+    def test_allow_clear_still_sends_a_nonempty_update_unchanged(self):
+        self.update({"description": "kept text"}, allow_clear={"description"})
+        self.assertEqual(self.patches()[0]["description"], {"raw": "kept text"})
+
+    def test_allow_clear_for_another_field_does_not_permit_a_description_clear(self):
+        self.assert_refused_before_sending({"description": ""}, 3, allow_clear={op.ACCEPT})
+
+    # -- typed input ------------------------------------------------------------------------
+
+    def test_already_wrapped_raw_is_sent_once_not_double_wrapped(self):
+        self.update({"description": {"raw": self.MARKDOWN_TEXT}})
+        self.assertEqual(self.patches()[0]["description"], {"raw": self.MARKDOWN_TEXT})
+        self.assert_only_changed("description")
+
+    def test_non_string_or_malformed_description_is_refused_and_nothing_is_sent(self):
+        for value in (42, 0, True, False, ["text"], b"bytes", {"raw": 5}, {"raw": None}, {"html": "<p>x</p>"},
+                      {"raw": "x", "html": "<p>x</p>"}, {"format": "markdown", "raw": "x"}):
+            with self.subTest(value=value):
+                message = self.assert_refused_before_sending({"description": value}, 1)
+                self.assertIn("description", message)
+
+    def test_formattable_custom_fields_follow_the_same_rules(self):
+        self.update({op.ACCEPT: "new acceptance"})
+        self.assertEqual(self.patches()[0][op.ACCEPT], {"raw": "new acceptance"})
+        self.setUp()
+        for field in (op.ACCEPT, op.CONSTRAINTS, op.PROVENANCE):
+            with self.subTest(field=field):
+                self.assert_refused_before_sending({field: ""}, 3)
+                self.assert_refused_before_sending({field: None}, 3)
+                self.assert_refused_before_sending({field: {"raw": {"raw": "x"}}}, 1)
+
+    def test_one_refused_field_sends_none_of_the_others(self):
+        self.assert_refused_before_sending({op.OWNER: "synthetic next owner", "description": ""}, 3)
+
+    # -- optimistic lock and uncertain writes -----------------------------------------------
+
+    # Each runs for an owner update (the stock commands' path, unchanged) and a description update.
+    UPDATES = ({op.OWNER: "synthetic next owner"}, {"description": "synthetic replacement"})
+
+    def test_lock_version_is_sent_from_the_read_item_or_the_expected_lock(self):
+        for fields in self.UPDATES:
+            with self.subTest(field=next(iter(fields))):
+                self.setUp()
+                self.update(fields)
+                self.assertEqual(self.patches()[0]["lockVersion"], 7)
+                self.setUp()
+                with self.assertRaises(op.Fail) as got:
+                    self.update(fields, lock=3)
+                self.assertEqual(got.exception.code, 3)
+                self.assertEqual(self.patches()[0]["lockVersion"], 3)
+
+    def test_conflict_reads_back_and_refuses_without_retrying(self):
+        for fields in self.UPDATES:
+            with self.subTest(field=next(iter(fields))):
+                self.setUp()
+                stale = copy.deepcopy(self.before)
+                stale["lockVersion"] -= 1
+                with self.assertRaises(op.Fail) as got:
+                    self.tracker.patch(stale, fields=fields)
+                self.assertEqual(got.exception.code, 3)
+                self.assertIn("CONFLICT", str(got.exception))
+                self.assertIn("lock 6 -> 7", str(got.exception))
+                self.assertEqual([m for m, _, _ in self.fake.calls], ["PATCH", "GET"])  # read back, no second PATCH
+                self.assertEqual(self.fake.record, self.before)
+
+    def test_response_lost_after_apply_is_confirmed_by_read_back_without_a_second_patch(self):
+        for fields in self.UPDATES:
+            with self.subTest(field=next(iter(fields))):
+                self.setUp()
+                key = next(iter(fields))
+                self.fake.loss = "after"
+                now = self.update(fields)
+                self.assertEqual(op.text_of(now[key]), fields[key])
+                self.assertEqual([m for m, _, _ in self.fake.calls], ["PATCH", "GET"])
+                self.assert_only_changed(key)
+
+    def test_connection_lost_before_apply_reads_back_and_reports_not_applied_without_retrying(self):
+        for fields in self.UPDATES:
+            with self.subTest(field=next(iter(fields))):
+                self.setUp()
+                self.fake.loss = "before"
+                with self.assertRaises(op.Fail) as got:
+                    self.update(fields)
+                self.assertEqual(got.exception.code, 5)
+                self.assertIn("NOT APPLIED", str(got.exception))
+                self.assertEqual([m for m, _, _ in self.fake.calls], ["PATCH", "GET"])
+                self.assertEqual(self.fake.record, self.before)
+
+    def test_answer_without_the_change_is_uncertain_and_not_retried(self):
+        for fields in self.UPDATES:
+            with self.subTest(field=next(iter(fields))):
+                self.setUp()
+                self.fake.apply = False
+                with self.assertRaises(op.Fail) as got:
+                    self.update(fields)
+                self.assertEqual(got.exception.code, 6)
+                self.assertIn("UNCERTAIN", str(got.exception))
+                self.assertEqual([m for m, _, _ in self.fake.calls], ["PATCH", "GET"])
+                self.assertEqual(self.fake.record, self.before)
+
+    def test_read_back_that_is_down_after_a_lost_answer_propagates_unavailable(self):
+        for fields in self.UPDATES:
+            with self.subTest(field=next(iter(fields))):
+                self.setUp()
+                self.fake.loss = "after"
+                original = self.fake.request
+                def down_on_read(method, path, payload=None):
+                    if method == "GET":
+                        self.fake.calls.append((method, path, None))
+                        raise Down("synthetic read back loss")
+                    return original(method, path, payload)
+                self.tracker.request = down_on_read
+                with self.assertRaises(Down):
+                    self.update(fields)
+                self.assertEqual([m for m, _, _ in self.fake.calls], ["PATCH", "GET"])  # no second PATCH
+
+
+class StockCommandDescriptionTests(Base):
+    """claim, status and complete never send a description, so they cannot clear one."""
+
+    def test_claim_status_and_complete_never_send_a_description(self):
+        self.story(10, description={"format": "markdown", "raw": "reviewed text", "html": "<p>reviewed text</p>"})
+        sent, original = [], self.fake.request
+        def recording(method, path, payload=None):
+            sent.append((method, copy.deepcopy(payload)))
+            return original(method, path, payload)
+        self.tracker.request = recording
+        for argv in (("claim", "10"), ("status", "10", "In review"), ("complete", "10", "--evidence", "tests")):
+            self.assertEqual(self.run_cli(*argv)[0], 0, argv)
+        patches = [p for method, p in sent if method == "PATCH"]
+        self.assertEqual(len(patches), 3)
+        for payload in patches:
+            self.assertIn("lockVersion", payload)
+            self.assertNotIn("description", payload)
+        self.assertEqual(self.fake.wps[10]["description"]["raw"], "reviewed text")
+
+
 if __name__ == "__main__":
     unittest.main()
