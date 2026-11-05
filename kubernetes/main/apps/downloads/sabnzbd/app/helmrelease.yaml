@@ -9,6 +9,11 @@ spec:
     kind: OCIRepository
     name: app-template
   interval: 30m
+  # The cutover that drops the hostpath scratch PVC (epic haynes-ops#4648)
+  # can move the pod to another worker: image pull, config-volume re-attach
+  # and the 5m startup probe. A failed-upgrade rollback would return to a
+  # revision whose PVC Flux has pruned, so give the upgrade room.
+  timeout: 15m
   install:
     remediation:
       retries: 3
@@ -190,11 +195,13 @@ spec:
         existingClaim: sabnzbd
       # Scratch (incomplete + unpack) is a per-instance folder on this share,
       # not a volume of its own: download_dir =
-      # /data/haynestower/usenet/incomplete-k8s/sabnzbd, set through SAB's
-      # API. It sits in the same mount as complete_dir (usenet/complete-k8s),
-      # so finishing a job is a rename on the Unraid server, not a copy over
-      # NFS. Never share the folder with another SAB: each instance's nightly
-      # orphan sweep deletes every entry there that is not one of its jobs.
+      # /data/haynestower/usenet/incomplete-k8s/sabnzbd-main, set through
+      # SAB's API. It sits in the same mount as complete_dir
+      # (usenet/complete-k8s), so finishing a job is a rename on the Unraid
+      # server, not a copy over NFS. Never share the folder with another SAB:
+      # each instance's nightly orphan sweep deletes every entry there that is
+      # not one of its jobs. "-main" keeps it from being a string prefix of
+      # sabnzbd-fast's folder (SAB bounds some deletes with startswith).
       data-tower:
         type: nfs
         server: haynestower.haynesnetwork
