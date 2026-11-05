@@ -49,10 +49,18 @@ class Down(Exception):
 
 class Fake:
     """Just enough of the OpenProject v3 API. `fail` maps 'METHOD substring' -> 'before'|'after':
-    raise Down before applying, or after applying (the uncertain case)."""
+    raise Down before applying, or after applying (the uncertain case). A create is strict:
+    `created` keeps every POST payload exactly as sent, and an unknown or malformed field is a 422
+    that creates nothing."""
+
+    # Work package schema 11-11 as read from the live API on 2026-11-05 (read-only GET, types only):
+    # these fields are Formattable, the others used by create are String. The fake's own list, not opwork's.
+    CREATE_FORMATTABLE = ("description", op.ACCEPT, op.CONSTRAINTS, op.PROVENANCE)
+    CREATE_STRINGS = ("subject", op.SOURCE_KEY, op.REPOS)
 
     def __init__(self):
         self.wps, self.acts, self.rels, self.calls, self.fail, self.next_id, self.next_act = {}, {}, [], [], {}, 100, 1000
+        self.created = []  # (project, payload) for every create POST, as sent
         self.deny = set()  # statuses denied regardless of the current state
         self.transitions = {}  # optional current-state -> allowed next statuses
         self.form_checks, self.status_changes = [], []
@@ -96,7 +104,7 @@ class Fake:
             return 200, {"login": "openproject-agent", "id": 5}
         if path.startswith("/api/v3/projects/") and path.endswith("/work_packages"):
             if method == "POST":
-                return self.create(payload)
+                return self.create(payload, path.split("/")[4])
             filters = json.loads(query.get("filters", ["[]"])[0])
             return self.collection(self.filter(filters), query)
         m = re.fullmatch(r"/api/v3/work_packages/(\d+)(/activities|/relations|/form|/available_assignees)?", path)
@@ -161,13 +169,48 @@ class Fake:
                 rows = [w for w in rows if spec["values"][0].lower() in w["subject"].lower()]
         return rows
 
-    def create(self, payload):
+    def create_problem(self, payload):
+        """Why a create payload breaks the contract, else None."""
+        if not isinstance(payload, dict):
+            return "payload is not an object"
+        unknown = set(payload) - set(self.CREATE_FORMATTABLE) - set(self.CREATE_STRINGS) - {"_links"}
+        if unknown:
+            return "unknown fields %s" % sorted(unknown)
+        if not isinstance(payload.get("subject"), str) or not payload["subject"].strip():
+            return "subject is required"
+        for key in self.CREATE_STRINGS:
+            if key in payload and not isinstance(payload[key], str):
+                return "%s must be a string" % key
+        for key in self.CREATE_FORMATTABLE:
+            if key in payload and not (isinstance(payload[key], dict) and set(payload[key]) == {"raw"} and isinstance(payload[key]["raw"], str)):
+                return "%s must be Formattable {raw}" % key
+        links = payload.get("_links")
+        if not isinstance(links, dict) or set(links) - {"type", "status", "parent"} or not {"type", "status"} <= set(links) \
+                or not all(isinstance(v, dict) and set(v) == {"href"} and isinstance(v["href"], str) for v in links.values()):
+            return "_links must be type and status (and optionally parent) hrefs"
+        if self.hrefid(links["type"]["href"]) not in TYPES.values() or self.hrefid(links["status"]["href"]) not in STATUSES.values():
+            return "unknown type or status"
+        if "parent" in links and self.hrefid(links["parent"]["href"]) not in self.wps:
+            return "unknown parent"
+        return None
+
+    def create(self, payload, project):
+        self.created.append((project, copy.deepcopy(payload)))
+        problem = self.create_problem(payload)
+        if problem:
+            return 422, {"message": "strict fake create: " + problem}
         self.next_id += 1
         kind = next(n for n, i in TYPES.items() if i == self.hrefid(payload["_links"]["type"]["href"]))
         status = next(n for n, i in STATUSES.items() if i == self.hrefid(payload["_links"]["status"]["href"]))
-        wp = self.add(self.next_id, kind, payload["subject"], self.hrefid(payload["_links"]["parent"]["href"]), status, key=payload[op.SOURCE_KEY])
-        wp[op.PROVENANCE] = payload[op.PROVENANCE]
-        return 201, wp
+        parent = self.hrefid(payload["_links"]["parent"]["href"]) if "parent" in payload["_links"] else None
+        wp = self.add(self.next_id, kind, payload["subject"], parent, status, key=payload.get(op.SOURCE_KEY))
+        for key in self.CREATE_FORMATTABLE:
+            if key in payload:
+                raw = payload[key]["raw"]
+                wp[key] = {"format": "markdown", "raw": raw, "html": "<p>%s</p>" % raw if raw else ""}
+        if op.REPOS in payload:
+            wp[op.REPOS] = payload[op.REPOS]
+        return 201, copy.deepcopy(wp)
 
 
 class Base(unittest.TestCase):
@@ -658,6 +701,7 @@ class CreateTests(Base):
         self.assertEqual(code, 0, err)
         (path, payload), = self.created_posts(sent)
         self.assertEqual(path, "/api/v3/projects/haynes-engineering/work_packages")  # the project is the path
+        self.assertEqual(self.fake.created, [("haynes-engineering", payload)])  # what the strict fake received
         self.assertEqual(set(payload), {"subject", "description", op.SOURCE_KEY, op.PROVENANCE, op.ACCEPT, op.CONSTRAINTS, op.REPOS, "_links"})
         self.assertEqual(payload["description"], {"raw": self.DESCRIPTION_TEXT})
         self.assertEqual(payload[op.ACCEPT], {"raw": self.ACCEPTANCE_TEXT})

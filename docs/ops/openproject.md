@@ -289,7 +289,11 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   direct `Tracker.patch` caller left the description empty; a later `{"raw": ...}` update
   restored it. No `opwork` command sends a description on update: `claim`, `status` and
   `complete` change only the owner, the status and (`claim --assignee`) the assignee, and
-  `create` already wrapped it. For scripts that call
+  `create` already wrapped it. `create` sends the description, acceptance, constraints and
+  provenance as `{"raw": markdown}` and the repositories as plain text (a String field). It
+  always sends the description, as `{"raw": ""}` when `--description` is not given (a new
+  item has nothing to clear), and leaves out an unset or empty `--acceptance`,
+  `--constraints` or `--repos`. For scripts that call
   `Tracker.patch(wp, fields, ...)`:
   - pass Markdown text, or exactly `{"raw": text}` (sent once, not double-wrapped);
   - an omitted field is not sent and keeps its value; `None` never means "omit";
@@ -378,6 +382,6 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   held Cilium policy (egress + frontend ingress, TCP 8082); until applied v2 gets exit 5.
 - **Tests**: `python3 -I -B scripts/tests/openproject/test_opwork.py -v` (offline fake API:
   pagination, claims, conflicts, attribution, uncertain create, outage, and Formattable partial
-  updates against a strict synthetic fake). These are mocked tests; the live fixture acceptance
+  updates and the full create payload against strict synthetic fakes). These are mocked tests; the live fixture acceptance
   is recorded in the story result, not by CI. The strict fake models the outcome recorded on
   #423, not the server's mechanism.
