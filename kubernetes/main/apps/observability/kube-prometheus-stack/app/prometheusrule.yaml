@@ -239,6 +239,42 @@ spec:
           for: 30m
           labels:
             severity: warning
+    # etcd backend quota (haynes-ops#4663). On 2026-11-05 the DB reached the 2 GiB quota at
+    # ~09:14 UTC and the NOSPACE alarm left the API read-only for ~5 h. The stock rules gave
+    # no runway: etcdExcessiveDatabaseGrowth warned 12 h earlier but warnings route to "null",
+    # and etcdDatabaseQuotaLowSpace (critical) waits for 95% for 10m, so it fired at 09:30,
+    # after writes had stopped. Once writes stop, the in-cluster responder cannot run either
+    # (no Jobs were created from 09:10 to 14:33), so the page has to come before NOSPACE.
+    # Severity critical = Pushover + alert-responder (only critical pages).
+    - name: etcd-quota
+      rules:
+        - alert: EtcdDatabaseNearQuota
+          annotations:
+            summary: 'etcd member {{ $labels.instance }} DB is {{ printf "%.0f" $value }}% of its backend quota. At 100% etcd raises NOSPACE and the API goes read-only.'
+            description: >-
+              Compare in-use vs total (talosctl etcd status). If in-use is well below total,
+              defragment one member at a time, leader last: talosctl -n <ip> etcd defrag.
+              If in-use is high, find what is writing (apiserver_storage_objects by resource).
+          expr: |
+            100 * max by (instance, job) (
+              last_over_time(etcd_mvcc_db_total_size_in_bytes{job="kube-etcd"}[5m])
+              / last_over_time(etcd_server_quota_backend_bytes{job="kube-etcd"}[5m])
+            ) > 80
+          for: 10m
+          labels:
+            severity: critical
+        - alert: EtcdWritesRejected
+          annotations:
+            summary: 'etcd member {{ $labels.instance }} is rejecting writes (NOSPACE alarm or too many requests). The Kubernetes API is read-only.'
+            description: >-
+              ResourceExhausted from etcd means the NOSPACE alarm is armed (or apply is lagging).
+              Check talosctl etcd alarm list and talosctl etcd status. For NOSPACE: defragment
+              each member one at a time, then talosctl etcd alarm disarm.
+          expr: |
+            sum by (instance, job) (rate(grpc_server_handled_total{job="kube-etcd", grpc_code="ResourceExhausted"}[5m])) > 0
+          for: 2m
+          labels:
+            severity: critical
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
