@@ -2390,6 +2390,15 @@ class FormattableUpdateTests(unittest.TestCase):
         self.update({"description": "kept text"}, allow_clear={"description"})
         self.assertEqual(self.patches()[0]["description"], {"raw": "kept text"})
 
+    def test_allow_clear_as_a_plain_string_names_exactly_one_field(self):
+        now = self.update({"description": ""}, allow_clear="description")  # the documented plain-string form
+        self.assertEqual(self.patches()[0], {"lockVersion": 7, "description": {"raw": ""}})
+        self.assertEqual(op.text_of(now["description"]), "")
+        self.assert_only_changed("description")
+        self.setUp()
+        self.assert_refused_before_sending({"description": ""}, 3, allow_clear=op.ACCEPT)  # names another field
+        self.assert_refused_before_sending({"description": ""}, 3, allow_clear="descriptions")  # a whole name, not a substring
+
     def test_allow_clear_for_another_field_does_not_permit_a_description_clear(self):
         self.assert_refused_before_sending({"description": ""}, 3, allow_clear={op.ACCEPT})
 
