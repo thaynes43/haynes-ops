@@ -1,0 +1,336 @@
+# Story 214: exact pod selectors and a single port per standing approval.
+# These authorize network reachability only; application credentials are separate.
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-32400
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork media service access on TCP 32400 to plex, plexops.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: media
+        matchLabels:
+          app.kubernetes.io/name: plex
+      - namespace: media
+        matchLabels:
+          app.kubernetes.io/name: plexops
+    ports:
+      - port: 32400
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-8181
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork media service access on TCP 8181 to tautulli, tautulli-k8plex.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: media
+        matchLabels:
+          app.kubernetes.io/name: tautulli
+      - namespace: media
+        matchLabels:
+          app.kubernetes.io/name: tautulli-k8plex
+    ports:
+      - port: 8181
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-8989
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork media service access on TCP 8989 to sonarr.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: media
+        matchLabels:
+          app.kubernetes.io/name: sonarr
+    ports:
+      - port: 8989
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-7878
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork media service access on TCP 7878 to radarr.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: media
+        matchLabels:
+          app.kubernetes.io/name: radarr
+    ports:
+      - port: 7878
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-8686
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork media service access on TCP 8686 to lidarr.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: media
+        matchLabels:
+          app.kubernetes.io/name: lidarr
+    ports:
+      - port: 8686
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-5055
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork media service access on TCP 5055 to seerr.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: media
+        matchLabels:
+          app.kubernetes.io/name: seerr
+    ports:
+      - port: 5055
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-6767
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork media service access on TCP 6767 to bazarr.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: media
+        matchLabels:
+          app.kubernetes.io/name: bazarr
+    ports:
+      - port: 6767
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-6246
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork media service access on TCP 6246 to maintainerr.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: media
+        matchLabels:
+          app.kubernetes.io/name: maintainerr
+    ports:
+      - port: 6246
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-5000
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork media service access on TCP 5000 to kavita.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: media
+        matchLabels:
+          app.kubernetes.io/name: kavita
+    ports:
+      - port: 5000
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-13378
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork media service access on TCP 13378 to audiobookshelf.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: media
+        matchLabels:
+          app.kubernetes.io/name: audiobookshelf
+    ports:
+      - port: 13378
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-8080
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork downloads service access on TCP 8080 to sabnzbd, sabnzbd-fast, qbittorrent.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: downloads
+        matchLabels:
+          app.kubernetes.io/name: sabnzbd
+      - namespace: downloads
+        matchLabels:
+          app.kubernetes.io/name: sabnzbd-fast
+      - namespace: downloads
+        matchLabels:
+          app.kubernetes.io/name: qbittorrent
+    ports:
+      - port: 8080
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-9696
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork downloads service access on TCP 9696 to prowlarr.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: downloads
+        matchLabels:
+          app.kubernetes.io/name: prowlarr
+    ports:
+      - port: 9696
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-5299
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork downloads service access on TCP 5299 to lazylibrarian.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: downloads
+        matchLabels:
+          app.kubernetes.io/name: lazylibrarian
+    ports:
+      - port: 5299
+        protocol: TCP
+  maxTTL: 8h
+---
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: GrantPolicy
+metadata:
+  name: haynesnetwork-5656
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/part-of: dev-env-grants
+spec:
+  description: >-
+    Haynesnetwork downloads service access on TCP 5656 to kapowarr.
+  repos: [haynesnetwork]
+  profiles: [full, dev, workbench]
+  type: egress
+  egress:
+    endpoints:
+      - namespace: downloads
+        matchLabels:
+          app.kubernetes.io/name: kapowarr
+    ports:
+      - port: 5656
+        protocol: TCP
+  maxTTL: 8h
