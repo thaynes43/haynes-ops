@@ -58,10 +58,6 @@ PRODUCTION_FILES = {
 }
 POLICY_KS = PORTAL_TREE / "policy/ks.yaml"
 INPUTS_KS = PORTAL_TREE / "ks.yaml"
-# OP477 (dev-env DESIGN-056): the one-shot DB check Job's own Kustomization also
-# depends on the portal policy, so its pod reaches DNS and Postgres. Its cleanup PR
-# removes the Job and this exception together.
-DB_CHECK_KS = ROOT / "kubernetes/main/apps/dev-env-system/portal-db-check/ks.yaml"
 READY_EXPR = "status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')"
 # The config/* files the portal reads, without the admission witness Tom dropped
 # on 2026-10-26 (dev-env#560). No subject file.
@@ -1493,11 +1489,9 @@ spec:
         self.assertNotIn("kubernetes.default", registered_text)
         system = load(ROOT / "kubernetes/main/apps/dev-env-system/kustomization.yaml")["resources"]
         self.assertEqual(system.count("./portal/policy/ks.yaml"), 1)
-        # S4 relaxes "no dependents" to exactly the inputs Kustomization's dependsOn and,
-        # until its cleanup PR, the OP477 db-check Kustomization's.
-        self.assertEqual(policy_mentions(ROOT / "kubernetes"),
-                         {POLICY_KS.resolve(), INPUTS_KS.resolve(), DB_CHECK_KS.resolve()})
-        self.assertEqual(policy_dependents(ROOT / "kubernetes"), [INPUTS_KS.resolve(), DB_CHECK_KS.resolve()])
+        # S4 relaxes "no dependents" to exactly one: the inputs Kustomization's dependsOn.
+        self.assertEqual(policy_mentions(ROOT / "kubernetes"), {POLICY_KS.resolve(), INPUTS_KS.resolve()})
+        self.assertEqual(policy_dependents(ROOT / "kubernetes"), [INPUTS_KS.resolve()])
         self.assertEqual(load(INPUTS_KS)["spec"]["dependsOn"][0],
                          {"name": "dev-env-v2-portal-policy", "namespace": "dev-env-system"})
         self.assertIn("location = /api/v3/projects/3/work_packages", portal_server)
@@ -1616,7 +1610,7 @@ class RegisteredInputsTest(unittest.TestCase):
         self.assertEqual(system.count("./portal/ks.yaml"), 1)
         self.assertEqual(system.count("./portal/policy/ks.yaml"), 1)
         self.assertEqual(dependents(ROOT / "kubernetes", "dev-env-v2-portal"), [])
-        self.assertEqual(policy_dependents(ROOT / "kubernetes"), [INPUTS_KS.resolve(), DB_CHECK_KS.resolve()])
+        self.assertEqual(policy_dependents(ROOT / "kubernetes"), [INPUTS_KS.resolve()])
 
     def test_dependents_scan_finds_yaml_and_json(self):
         with tempfile.TemporaryDirectory() as scratch:

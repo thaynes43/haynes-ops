@@ -34,4 +34,3 @@ resources:
   - ./owned-luna-prep/ks.yaml
   - ./portal/policy/ks.yaml
   - ./portal/ks.yaml
-  - ./portal-db-check/ks.yaml
