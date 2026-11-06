@@ -1493,7 +1493,8 @@ spec:
         self.assertNotIn("kubernetes.default", registered_text)
         system = load(ROOT / "kubernetes/main/apps/dev-env-system/kustomization.yaml")["resources"]
         self.assertEqual(system.count("./portal/policy/ks.yaml"), 1)
-        # S4 relaxes "no dependents" to exactly one: the inputs Kustomization's dependsOn.
+        # S4 relaxes "no dependents" to exactly the inputs Kustomization's dependsOn and,
+        # until its cleanup PR, the OP477 db-check Kustomization's.
         self.assertEqual(policy_mentions(ROOT / "kubernetes"),
                          {POLICY_KS.resolve(), INPUTS_KS.resolve(), DB_CHECK_KS.resolve()})
         self.assertEqual(policy_dependents(ROOT / "kubernetes"), [INPUTS_KS.resolve(), DB_CHECK_KS.resolve()])
