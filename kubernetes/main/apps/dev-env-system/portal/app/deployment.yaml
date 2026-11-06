@@ -77,7 +77,7 @@ spec:
           # Source dev-env#865 ce6edc599fef4fc50a145760247561eadb3bbb00; publish41536642759 signed and verified this exact digest.
           # Rollback target: sha-0a335ad@sha256:80dca3d641fcdae496f885b30e207b7176f241442e0170d679d8f966ecfd48a3.
           # Optional selected-source and question readers stay unconfigured; no config, route flags or access change.
-          image: ghcr.io/thaynes43/dev-env-portal:sha-ce6edc5@sha256:98d95d09623da4e51130c7e5a1e378c79e87d6885e07264a7840d48d594d0bee
+          image: ghcr.io/thaynes43/dev-env-portal:sha-8daf137@sha256:b09c06a1100c24a7b07311db7f0abe066ea843b2ba0e406a232b8c6e9188e4f2
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
