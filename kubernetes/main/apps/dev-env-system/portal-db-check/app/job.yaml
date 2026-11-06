@@ -1,0 +1,91 @@
+---
+# OP477: one-shot read-only portal DB handshake check (dev-env DESIGN-056, docs/portal-db-check.md).
+# Image: the signed portal build of dev-env main 8daf137a (#950), keyless-signed by
+# publish.yml@refs/heads/main. Fixed name, no TTL, backoffLimit 0: Flux creates it once and a
+# completed Job is never re-run. Record its one PASS/FAIL line before the follow-up
+# PR that removes this file (Flux prune is the cleanup).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # One fixed name per run; replace the date with the run date.
+  name: dev-env-v2-portal-db-check-20261106
+  namespace: dev-agents
+  labels:
+    app.kubernetes.io/component: db-check
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 60
+  template:
+    metadata:
+      labels:
+        # Required: the existing CiliumNetworkPolicy dev-env-v2-portal selects
+        # this label for DNS and postgres16:5432 egress.
+        app.kubernetes.io/name: dev-env-v2-portal
+        app.kubernetes.io/component: db-check
+    spec:
+      restartPolicy: Never
+      serviceAccountName: dev-env-v2-portal
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      dnsPolicy: ClusterFirst
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: db-check
+          # The signed digest of a portal image that contains db-check.
+          image: ghcr.io/thaynes43/dev-env-portal:sha-8daf137@sha256:b09c06a1100c24a7b07311db7f0abe066ea843b2ba0e406a232b8c6e9188e4f2
+          imagePullPolicy: IfNotPresent
+          args: ["db-check"]
+          # No container port: the portal Service targets the named port
+          # "https", so this pod is never a ready or routable endpoint. The probe on the
+          # unused port keeps the pod never-Ready, so the PDB's healthy count
+          # is unchanged.
+          readinessProbe:
+            tcpSocket:
+              port: 8443
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: db-secrets
+              mountPath: /etc/dev-env-portal/secrets
+              readOnly: true
+            - name: postgres-ca
+              mountPath: /etc/dev-env-portal/ca
+              readOnly: true
+      volumes:
+        - name: db-secrets
+          secret:
+            secretName: dev-env-v2-portal-runtime
+            defaultMode: 288
+            items:
+              - key: DB_USERNAME
+                path: DB_USERNAME
+              - key: DB_PASSWORD
+                path: DB_PASSWORD
+        - name: postgres-ca
+          configMap:
+            name: dev-env-v2-portal-postgres-ca
+            defaultMode: 288
+            items:
+              - key: ca.crt
+                path: ca.crt
