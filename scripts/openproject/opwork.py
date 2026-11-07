@@ -55,6 +55,11 @@ POST got a 2xx, or whose flush POST was started (a marker is written durably fir
 written, nothing is posted; a record write that fails after a POST is exit 6 UNCONFIRMED naming the
 token. Only a record never posted is posted by `flush`, with read back before removal. Other
 mutation intents stay pending for manual inspection, including any existing note token.
+`flush` exits 0 when every record is posted or nothing valid is pending. A retained record keeps
+its own outcome: a clean rejection is exit 1, a guard refusal is exit 3, and uncertain or manual
+review is exit 6. Several retained records use precedence 6>3>1. Exit 5 (tracker unavailable) and
+a local-write failure (exit 6) stop at that record and leave later records untouched. A corrupt
+record is listed and does not change the exit.
 """
 import argparse
 import contextlib
@@ -907,24 +912,24 @@ def flush_note(t, path, rec):
 def cmd_flush(t, a, session):
     records, corrupt = load_records()
     out = ["skipped corrupt record %s (%s); left in place" % item for item in corrupt]
-    review = 0  # records kept for manual review: the exit code tells a script
+    kept = []  # non-stopping retains; precedence 6 (manual/uncertain) > 3 (guard) > 1 (clean rejection)
     for index, (name, path, rec) in enumerate(records):
         if rec["kind"] == "intent":
             token = "; note token %s may have landed" % rec["token"] if rec.get("body") else ""
             out.append("kept %s for manual inspection (show/search before repeating%s): %s" % (name, token, " ".join(rec["argv"])))
-            review += 1
+            kept.append(6)
             continue
         try:
             out.append(flush_note(t, path, rec))
         except Fail as failure:
             out.append("kept %s: %s" % (name, failure))
-            review += failure.code == 6 and not isinstance(failure, LocalWriteFail)
             if isinstance(failure, LocalWriteFail):  # the local store is failing: stop, do not try more POSTs
                 later = len(records) - index - 1
                 if later:
                     out.append("%d later record(s) not attempted; run `flush` again once the local store works" % later)
                 failure.output = "\n".join(out)
                 raise failure
+            kept.append(failure.code)
         except t.unavailable as down:
             out.append("UNCONFIRMED %s: tracker unavailable during flush (%s); record kept, note token %s may have landed; check `show %s --history` before repeating" % (name, down, rec["token"], rec["wp"]))
             later = len(records) - index - 1
@@ -933,8 +938,20 @@ def cmd_flush(t, a, session):
             failure = Fail("TRACKER UNAVAILABLE: flush stopped at %s" % name, 5)
             failure.output = "\n".join(out)
             raise failure
-    if review:
-        failure = Fail("flush kept %d record(s) for manual review (exit 6); see the lines above" % review, 6)
+    code = 0
+    for item in (6, 3, 1):
+        if item in kept:
+            code = item
+            break
+    else:
+        if kept:
+            code = max(kept)
+    if code:
+        if code == 6:
+            text = "flush kept %d record(s) for manual review (exit 6; precedence 6>3>1); see the lines above" % len(kept)
+        else:
+            text = "flush kept %d record(s) (exit %d; precedence 6>3>1); see the lines above" % (len(kept), code)
+        failure = Fail(text, code)
         failure.output = "\n".join(out)
         raise failure
     return "\n".join(out) or "nothing pending"

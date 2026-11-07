@@ -1489,6 +1489,213 @@ class OutageTests(Base):
         self.fake.handle = lambda m, u, p: (code, {"message": "no"}) if m == "POST" and u.path.endswith("/activities") else original(m, u, p)
         return original
 
+    def test_flush_exit_uses_retained_precedence(self):
+        """Retained flush results use precedence 6>3>1>0. Exit 5 and a local-write failure stop immediately."""
+        def ranked(status, out, err, rank):
+            self.assertEqual(status, rank)
+            self.assertIn("flush kept", err)
+            self.assertIn("exit %d" % rank, err)
+            self.assertIn("precedence 6>3>1", err)
+            if rank == 6:
+                self.assertIn("manual review", err)
+            else:
+                for bad in ("UNCONFIRMED", "may have landed", "manual review"):
+                    self.assertNotIn(bad, out)
+                    self.assertNotIn(bad, err)
+
+        def at(stamp, fn):
+            with mock.patch.object(op.time, "time", return_value=float(stamp)):
+                fn()
+            return next(Path(self.state.name, "pending").glob("%d-*.json" % int(stamp * 1000)))
+
+        def note(wp, text, stamp):
+            at(stamp, lambda: self.run_cli("checkpoint", str(wp), text))
+            return next(Path(self.state.name, "pending").glob("%d-*.json" % int(stamp * 1000)))
+
+        def guard_note(wp, stamp):
+            self.fake.fail["POST /api/v3/work_packages/%d/activities" % wp] = "before"
+            path = at(stamp, lambda: self.assertEqual(self.run_cli(
+                "checkpoint-update", str(wp), "--next-action", "verify", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "saved")[0], 5))
+            del self.fake.fail["POST /api/v3/work_packages/%d/activities" % wp]
+            self.assertEqual(json.loads(path.read_text())["kind"], "structured_note")
+            return path
+
+        def manual_note(wp, text, stamp):
+            path = note(wp, text, stamp)
+            record = json.loads(path.read_text())
+            record["post_started"] = "2026-11-07T16:00:00Z"
+            path.write_text(json.dumps(record, indent=1))
+            return path
+
+        self.assertEqual(self.run_cli("flush")[0], 0)  # empty
+        pending = Path(self.state.name, "pending")
+        garbage = pending / "1-garbage.json"
+        garbage.write_text("{not json")
+        code, out, err = self.run_cli("flush")
+        self.assertEqual((code, err), (0, ""))  # corrupt-only stays 0
+        self.assertIn("skipped corrupt record 1-garbage.json", out)
+        self.assertEqual(garbage.read_text(), "{not json")
+        self.setUp()
+        self.story()
+        self.run_cli("checkpoint", "10", "offline evidence")
+        code, out, err = self.run_cli("flush")
+        self.assertEqual((code, err), (0, ""))  # every retained note posted
+        self.assertIn("flushed #10 (read back)", out)
+        for http in (403, 422):
+            with self.subTest(http=http):
+                self.setUp()
+                self.story()
+                self.run_cli("checkpoint", "10", "offline evidence")
+                path, before = self.pending_record()
+                raw = path.read_bytes()
+                original = self.reject_posts(http)
+                self.fake.calls.clear()
+                status, out, err = self.run_cli("flush")
+                ranked(status, out, err, 1)
+                self.assertIn("rejected HTTP %d" % http, out)
+                self.assertEqual(path.read_bytes(), raw)
+                self.assertEqual(json.loads(path.read_text())["token"], before["token"])
+                self.assertEqual(self.posts("/activities"), [("POST", "/api/v3/work_packages/10/activities")])
+                self.fake.handle = original
+                self.fake.calls.clear()
+                status, out, err = self.run_cli("flush")
+                self.assertEqual((status, err), (0, ""))
+                self.assertIn("flushed #10 (read back)", out)
+                self.assertEqual(self.posts("/activities"), [("POST", "/api/v3/work_packages/10/activities")])
+                self.assertFalse(path.exists())
+        for name, mutate, restore, needle in (
+            ("owner", lambda: self.fake.wps[10].__setitem__(op.OWNER, "synthetic-other-owner"), lambda: self.fake.wps[10].__setitem__(op.OWNER, None), "owned by <synthetic-other-owner>"),
+            ("paused", lambda: self.fake.wps[10]["_links"]["status"].__setitem__("title", "Paused"), lambda: self.fake.wps[10]["_links"]["status"].__setitem__("title", "Ungroomed"), "is [Paused]"),
+        ):
+            with self.subTest(guard=name):
+                self.setUp()
+                self.story()
+                path = guard_note(10, 10)
+                raw = path.read_bytes()
+                self.fake.calls.clear()
+                mutate()
+                status, out, err = self.run_cli("flush")
+                ranked(status, out, err, 3)
+                self.assertIn(needle, out)
+                self.assertEqual(self.posts(), [])
+                self.assertEqual(path.read_bytes(), raw)
+                restore()
+                self.fake.calls.clear()
+                status, out, err = self.run_cli("flush")
+                self.assertEqual((status, err), (0, ""))
+                self.assertIn("flushed #10 (read back)", out)
+                self.assertEqual(self.posts("/activities"), [("POST", "/api/v3/work_packages/10/activities")])
+                self.assertFalse(path.exists())
+        with self.subTest(manual=True):
+            self.setUp()
+            self.story()
+            path = manual_note(10, "review", 10)
+            raw = path.read_bytes()
+            self.fake.calls.clear()
+            status, out, err = self.run_cli("flush")
+            ranked(status, out, err, 6)
+            self.assertIn("needs manual review", out)
+            self.assertIn("2026-11-07T16:00:00Z", out)
+            self.assertEqual(self.posts(), [])
+            self.assertEqual(path.read_bytes(), raw)
+
+        def mix(order, rank):
+            self.setUp()
+            ids, paths = {}, {}
+            for index, kind in enumerate(order):
+                wp, stamp = 10 + index, 10 + index
+                self.story(wp)
+                if kind == "guard":
+                    paths[kind] = guard_note(wp, stamp)
+                    self.fake.wps[wp][op.OWNER] = "synthetic-other-owner"
+                elif kind == "manual":
+                    paths[kind] = manual_note(wp, "review", stamp)
+                else:
+                    paths[kind] = note(wp, kind, stamp)
+                ids[kind] = wp
+            if "reject" in ids:
+                original, wp = self.fake.handle, ids["reject"]
+                self.fake.handle = lambda m, u, p, original=original, wp=wp: (403, {"message": "no"}) if m == "POST" and ("/work_packages/%d/" % wp) in u.path else original(m, u, p)
+            raw = {kind: path.read_bytes() for kind, path in paths.items() if kind != "ok"}
+            self.fake.calls.clear()
+            status, out, err = self.run_cli("flush")
+            ranked(status, out, err, rank)
+            for kind, path in paths.items():
+                if kind == "ok":
+                    self.assertFalse(path.exists())
+                    self.assertIn("flushed #%d (read back)" % ids[kind], out)
+                    self.assertEqual(len(self.fake.acts[ids[kind]]), 1)
+                else:
+                    self.assertEqual(path.read_bytes(), raw[kind])
+            if "reject" in ids:
+                rejected = next(line for line in out.splitlines() if "rejected HTTP 403" in line)
+                self.assertNotIn("UNCONFIRMED", rejected)
+                self.assertNotIn("may have landed", rejected)
+                self.assertEqual(self.fake.acts[ids["reject"]], [])
+            if "guard" in ids:
+                self.assertIn("owned by <synthetic-other-owner>", out)
+            if "manual" in ids:
+                self.assertIn("needs manual review", out)
+            self.assertEqual([c[1] for c in self.posts("/activities")], ["/api/v3/work_packages/%d/activities" % ids[kind] for kind in order if kind in ("ok", "reject")])
+
+        for order, rank in (
+            (("ok", "reject"), 1), (("reject", "ok"), 1),
+            (("ok", "guard"), 3), (("guard", "ok"), 3),
+            (("reject", "guard"), 3), (("guard", "reject"), 3),
+            (("reject", "manual"), 6), (("manual", "reject"), 6),
+            (("guard", "manual"), 6), (("manual", "guard"), 6),
+            (("ok", "manual"), 6), (("manual", "ok"), 6),
+        ):
+            with self.subTest(order=order):
+                mix(order, rank)
+        with self.subTest(stop="unavailable"):
+            self.setUp()
+            paths = []
+            for wp in (10, 11, 12):
+                self.story(wp)
+                paths.append(note(wp, "n%d" % wp, wp))
+            raw = paths[2].read_bytes()
+            original = self.fake.handle
+            self.fake.handle = lambda m, u, p, original=original: (403, {"message": "no"}) if m == "POST" and "/work_packages/10/" in u.path else original(m, u, p)
+            self.fake.fail["POST /api/v3/work_packages/11/activities"] = "before"
+            self.fake.calls.clear()
+            status, out, err = self.run_cli("flush")
+            self.assertEqual(status, 5)
+            self.assertIn("TRACKER UNAVAILABLE", err)
+            self.assertIn("1 later record(s) not attempted", out)
+            rejected = next(line for line in out.splitlines() if "rejected HTTP 403" in line)
+            self.assertNotIn("may have landed", rejected)
+            self.assertNotIn("/work_packages/12/", " ".join(path for _, path in self.posts()))
+            self.assertEqual(paths[2].read_bytes(), raw)
+            self.assertIsNone(json.loads(paths[2].read_text()).get("post_started"))
+        with self.subTest(stop="local-write"):
+            self.setUp()
+            paths = []
+            for wp in (10, 11, 12):
+                self.story(wp)
+                paths.append(note(wp, "n%d" % wp, wp))
+            raw0, raw2 = paths[0].read_bytes(), paths[2].read_bytes()
+            original = self.fake.handle
+            self.fake.handle = lambda m, u, p, original=original: (403, {"message": "no"}) if m == "POST" and "/work_packages/10/" in u.path else original(m, u, p)
+            real, started = op.write_record, {"n": 0}
+            def write(path, record):
+                if record.get("post_started"):
+                    started["n"] += 1
+                    if started["n"] > 1:
+                        raise OSError(28, "No space left on device")
+                return real(path, record)
+            self.fake.calls.clear()
+            with mock.patch.object(op, "write_record", side_effect=write):
+                status, out, err = self.run_cli("flush")
+            self.assertEqual(status, 6)
+            self.assertIn("UNCONFIRMED", err)
+            self.assertNotIn("precedence 6>3>1", err)
+            self.assertIn("1 later record(s) not attempted", out)
+            self.assertEqual(paths[0].read_bytes(), raw0)
+            self.assertEqual(paths[2].read_bytes(), raw2)
+            self.assertIsNone(json.loads(paths[1].read_text()).get("post_started"))
+            self.assertEqual([c[1] for c in self.posts("/activities")], ["/api/v3/work_packages/10/activities"])
+
     def test_a_clean_4xx_during_flush_clears_the_marker_and_is_posted_on_the_next_flush(self):
         for code in (403, 422):
             with self.subTest(code=code):
