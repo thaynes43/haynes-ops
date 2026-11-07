@@ -23,7 +23,7 @@
 # Recheck live structural protection and preserve existing Session/Pod UIDs before
 # merge. This changes the default image only; instruction image selectors stay fixed.
 # Rollback image:2.88.0@sha256:f785580c06f6854a5a531f591eba2272164a0a66417d889ef9eaa9ab9ba7d09b.
-image: ghcr.io/thaynes43/dev-env:2.89.0@sha256:632859c47e8ed597013d2ad651ea644327afe335155f338069dbeb101a836630
+image: ghcr.io/thaynes43/dev-env:2.90.0@sha256:415ae7d571cea72fe7de810be70d2a168f6c9af2e7fe6787e00ac581653a4577
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
