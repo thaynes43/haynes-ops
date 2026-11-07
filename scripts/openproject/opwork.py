@@ -20,12 +20,16 @@ scope, the routine lifecycle writes are yours. Run `opwork.py --help` for the co
 Updates are partial: an update sends only the fields given, with lockVersion. Formattable fields
 (description, acceptance, constraints, provenance) always go out as {"raw": markdown}; a bare string
 is not that form (on Studio #423 a bare-string description update left the description empty).
-A create reads the new item back by id and compares, exactly (no normalization tolerance), the
-subject, every non-empty Markdown field it sent, and the parent, type, starting status, project
-and source key. A difference or a failed read is UNCERTAIN (exit 6): not confirmed, nothing more
-written (no second create, no relation), the intent kept with the item's ID. A re-run that finds
-the item by its key runs the same check against what it asks for, without the status (it may have
-moved on) and with provenance only required present, and reuses the item only on a match.
+A create uses a positive integer id on a successful POST as a locator and reads that item back.
+A response without a usable id falls back to the single source-key match; several matches stay
+unresolved and are not chosen by the locator. The by-id body must be a dict whose id is a positive
+int equal to that locator. It then compares, exactly (no normalization tolerance), the subject,
+every non-empty Markdown field it sent, and the parent, type, starting status, project and source
+key. A difference, a failed read, or any other identity is UNCERTAIN (exit 6): not confirmed,
+nothing more written in that invocation (no second create, no relation), and the intent is kept
+with the known id. A re-run that finds the item by its key runs the same check against what it
+asks for, without the status (it may have moved on) and with provenance only required present,
+and reuses the item only on a match.
 Scripts that call Tracker.patch directly pass Markdown text or exactly {"raw": text}. An omitted
 field is not sent. None, empty or blank text would clear the field, so it is refused (exit 3)
 before any request unless the call names the field in allow_clear; then it is sent as {"raw": ""}.
@@ -119,6 +123,27 @@ def session_id():
 
 def text_of(value):
     return (value or {}).get("raw", "") if isinstance(value, dict) else (value or "")
+
+
+def positive_id(value):
+    """A work-package id: a real int above zero. True, False and floats are not ids."""
+    return value if type(value) is int and value > 0 else None
+
+
+def unknown_locator(key, state):
+    """A collection row has no positive int id. Do not fetch or relate using it."""
+    failure = Fail("UNCERTAIN: (source key %r) %s, but the collection locator is not a usable id. Not confirmed; nothing more was written (no read, no relation)." % (key, state), 6)
+    failure.output = "NOT confirmed: unknown locator"
+    return failure
+
+
+def identity_failure(wp_id, key, state):
+    """The by-id body is not the requested item. Keep that known id and write nothing more."""
+    failure = Fail("UNCERTAIN: #%d (source key %r) %s, but its read back is not item #%d. Not confirmed; nothing more was written (no second create, no origin relation). Inspect with `show %d`." % (
+        wp_id, key, state, wp_id, wp_id), 6)
+    failure.wp = wp_id
+    failure.output = "NOT confirmed: #%d" % wp_id
+    return failure
 
 
 def formattable(field, value, allow_clear):
@@ -581,14 +606,22 @@ def read_back_problems(t, wp_id, key, want, state):
     "type": href, "parent": href, optional "status": href}; the source key must be `key` and the
     project t.project. A failed read is UNCERTAIN (exit 6), naming the item and the key: nothing
     was confirmed. Values are never printed; links are printed as hrefs."""
-    try:
-        now = t.wp(wp_id)
-        project = t.get("/api/v3/projects/%s" % t.project)
-    except (t.unavailable, Fail) as error:
+    def unread(error):
         failure = Fail("UNCERTAIN: #%d (source key %r) %s, but reading it back failed (%s). Not confirmed; nothing more was written. Do NOT repeat the create; inspect with `show %d`." % (
             wp_id, key, state, type(error).__name__, wp_id), 6)
         failure.wp = wp_id
         raise failure from error
+
+    try:
+        now = t.wp(wp_id)
+    except (t.unavailable, Fail) as error:
+        unread(error)
+    if not isinstance(now, dict) or positive_id(now.get("id")) != wp_id:
+        raise identity_failure(wp_id, key, state)  # before any formatter or relation adopts another id
+    try:
+        project = t.get("/api/v3/projects/%s" % t.project)
+    except (t.unavailable, Fail) as error:
+        unread(error)
     problems = []
     got = now.get("subject") if isinstance(now.get("subject"), str) else ""
     if got != want["subject"]:
@@ -616,24 +649,32 @@ def read_back_problems(t, wp_id, key, want, state):
 def not_confirmed(now, key, state, problems, label):
     """The failure for a create or reuse whose read back differs: exit 6, the item and the key named,
     nothing more written. run() keeps the intent pending with the item's ID."""
+    item = positive_id(now.get("id")) if isinstance(now, dict) else None
+    if item is None:
+        return Fail("UNCERTAIN: (source key %r) %s, but its read back is not a confirmed item. Not confirmed; nothing more was written (no second create, no origin relation)." % (key, state), 6)
     failure = Fail("UNCERTAIN: #%d (source key %r) %s, but its read back does not match: %s. Not confirmed; nothing more was written (no second create, no origin relation). Do NOT repeat the create: inspect with `show %d` and correct the item with an update; a re-run then reuses #%d once its read back matches." % (
-        now["id"], key, state, "; ".join(problems), now["id"], now["id"]), 6)
-    failure.wp, failure.output = now["id"], label + safe_line(now)
+        item, key, state, "; ".join(problems), item, item), 6)
+    failure.wp, failure.output = item, label + safe_line(now)
     return failure
 
 
 def cmd_create(t, a, session):
     existing = t.by_source_key(a.source_key)  # search first: the stable key is the identity
     if len(existing) == 1:  # reuse only an item whose read back shows what this run asks for
+        found = positive_id(existing[0].get("id")) if isinstance(existing[0], dict) else None
+        if found is None:
+            raise unknown_locator(a.source_key, "already exists")  # before any by-id read or relation
         want = {"subject": a.subject, "markdown": {k: v for k, v in ((DESCRIPTION, a.description), (ACCEPT, a.acceptance), (CONSTRAINTS, a.constraints)) if v},
                 "present": [PROVENANCE],  # it names the creating session, so a re-run checks it is there, not equal
                 "type": "/api/v3/types/%d" % t.resolve("types", a.type), "parent": "/api/v3/work_packages/%d" % a.epic}  # no status: it may have moved on
-        now, problems = read_back_problems(t, existing[0]["id"], a.source_key, want, "already exists")
+        now, problems = read_back_problems(t, found, a.source_key, want, "already exists")
         if problems:
             raise not_confirmed(now, a.source_key, "already exists", problems, "REUSE refused, NOT confirmed: ")
+        if not isinstance(now, dict) or positive_id(now.get("id")) != found:
+            raise identity_failure(found, a.source_key, "already exists")
         out = ["REUSED, not created: " + line(now)]
         if a.origin:  # a re-run completes a relation that was lost
-            t.relate(now["id"], a.origin, "relates")
+            t.relate(found, a.origin, "relates")
             out.append("related to #%d (read back)" % a.origin)
         return "\n".join(out)
     if existing:  # several items carry the key: listed, nothing written
@@ -660,22 +701,44 @@ def cmd_create(t, a, session):
         down = error
     if code is not None and code >= 400:
         raise Fail("Create rejected HTTP %s: %s %s" % (code, data.get("message", ""), "; ".join(e.get("message", "") for e in data.get("_embedded", {}).get("errors", []))))
-    made = t.by_source_key(a.source_key)
-    if down and not made:
+    locator = positive_id(data.get("id")) if isinstance(data, dict) else None  # before any fallible lookup
+    try:
+        made = t.by_source_key(a.source_key)
+    except (t.unavailable, Fail) as error:
+        if locator is None:  # no known id: the existing read-failure result, with nothing invented
+            raise
+        failure = Fail("UNCERTAIN: #%d (source key %r) was created, but reading it back failed (%s). Not confirmed; nothing more was written (no second create, no origin relation). Inspect with `show %d`." % (
+            locator, a.source_key, type(error).__name__, locator), 6)
+        failure.wp = locator
+        failure.output = "NOT confirmed: #%d" % locator
+        raise failure from error
+    if down and not made and locator is None:
         raise down  # nothing was created; reported as tracker unavailable
-    if len(made) != 1:
-        raise Fail("UNCERTAIN: after the create, %d items carry source key %r. Do NOT repeat the create; inspect with `search --source-key`." % (len(made), a.source_key), 6)
-    # The item exists. Its own read back must show the subject and every non-empty Markdown field
-    # exactly as sent, and the parent, type, starting status, project and source key; only then is
-    # it confirmed and related.
+    if len(made) > 1:  # a POST id must not choose among several source-key matches
+        failure = Fail("UNCERTAIN: after the create, %d items carry source key %r. Do NOT repeat the create; inspect with `search --source-key`." % (len(made), a.source_key), 6)
+        if locator is not None:
+            failure.wp = locator  # the known response id stays on the intent; it does not select an item
+        raise failure
+    if locator is None:
+        if len(made) != 1:  # no usable POST id: the existing single source-key fallback
+            raise Fail("UNCERTAIN: after the create, %d items carry source key %r. Do NOT repeat the create; inspect with `search --source-key`." % (len(made), a.source_key), 6)
+        found = positive_id(made[0].get("id")) if isinstance(made[0], dict) else None
+        if found is None:
+            raise unknown_locator(a.source_key, "was created")  # before any by-id read or relation
+        locator = found
+    # The locator's own read back must show the subject and every non-empty Markdown field exactly
+    # as sent, and the parent, type, starting status, project and source key; only then is it
+    # confirmed and related. A mismatch keeps this invocation's known id and writes nothing more.
     want = {"subject": a.subject, "markdown": {k: payload[k]["raw"] for k in MARKDOWN if k in payload and payload[k]["raw"]}, "present": [],
             "type": payload["_links"]["type"]["href"], "parent": payload["_links"]["parent"]["href"], "status": payload["_links"]["status"]["href"]}
-    now, problems = read_back_problems(t, made[0]["id"], a.source_key, want, "was created")
+    now, problems = read_back_problems(t, locator, a.source_key, want, "was created")
     if problems:
         raise not_confirmed(now, a.source_key, "was created", problems, "created, NOT confirmed: ")
+    if not isinstance(now, dict) or positive_id(now.get("id")) != locator:
+        raise identity_failure(locator, a.source_key, "was created")
     out = ["created (read back): " + line(now)]
     if a.origin:
-        t.relate(now["id"], a.origin, "relates")
+        t.relate(locator, a.origin, "relates")
         out.append("related to #%d (read back)" % a.origin)
     return "\n".join(out)
 

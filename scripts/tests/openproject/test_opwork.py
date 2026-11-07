@@ -2532,5 +2532,289 @@ class StockCommandDescriptionTests(Base):
         self.assertEqual(self.fake.wps[10]["description"]["raw"], "reviewed text")
 
 
+class ReturnedIdContractTests(CreateTests):
+    """A successful POST id is only a locator. The by-id body must be that same item.
+
+    These assertions are the desired contract. They fail on the unchanged PR helper.
+    """
+
+    def created_ids(self):
+        return sorted(i for i in self.fake.wps if i > 100)
+
+    def relation_posts(self, sent):
+        return [path for method, path, _ in sent if method == "POST" and path.endswith("/relations")]
+
+    def test_stripped_source_key_keeps_the_returned_post_id(self):
+        self.story()
+        sent = self.recorded()
+        self.fake.after_create = lambda wp: wp.pop(op.SOURCE_KEY)
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertIn("source key (missing)", err)
+        self.assertNotIn("0 items carry source key", err)
+        self.assertNotIn("created (read back)", out)
+        self.assertIn("NOT confirmed", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(self.created_ids(), [101])
+        self.assertEqual(self.fake.rels, [])
+        self.assertEqual(self.relation_posts(sent), [])
+        self.assertIn("#101 ", self.run_cli("pending")[1])
+
+    def test_missing_readback_id_is_structured_and_keeps_101(self):
+        self.story()
+        sent = self.recorded()
+        self.fake.readback = lambda wp: wp.pop("id")
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertNotIn("created (read back)", out)
+        self.assertIn("NOT confirmed", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(self.created_ids(), [101])
+        self.assertEqual(self.fake.rels, [])
+        self.assertEqual(self.relation_posts(sent), [])
+        self.assertIn("#101 ", self.run_cli("pending")[1])
+
+    def test_foreign_readback_id_does_not_relate_the_other_item(self):
+        self.story()
+        self.fake.add(102, "Story", "Unrelated existing item", 5, key="unrelated")
+        sent = self.recorded()
+        self.fake.readback = lambda wp: wp.update(id=102)
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertNotIn("created (read back)", out)
+        self.assertNotIn("#102", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(self.fake.rels, [])
+        self.assertEqual(self.relation_posts(sent), [])
+        self.assertIn("#101 ", self.run_cli("pending")[1])
+
+    def test_foreign_readback_id_without_origin_is_not_reported_as_102(self):
+        self.story()
+        self.fake.add(102, "Story", "Unrelated existing item", 5, key="unrelated")
+        self.fake.readback = lambda wp: wp.update(id=102)
+        code, out, err = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:full", "--subject", "Full staged story",
+                                      "--description", self.DESCRIPTION_TEXT, "--acceptance", self.ACCEPTANCE_TEXT,
+                                      "--constraints", self.CONSTRAINTS_TEXT)
+        self.assertEqual(code, 6, err)
+        self.assertNotIn("created (read back)", out)
+        self.assertNotIn("102", out)
+        self.assertEqual(self.fake.rels, [])
+        self.assertIn("#101 ", self.run_cli("pending")[1])
+
+    def test_malformed_readback_ids_keep_the_requested_item(self):
+        for value in (True, False, "101", None, 0, -1, 101.0):
+            with self.subTest(value=value):
+                self.setUp()
+                self.story()
+                sent = self.recorded()
+                self.fake.readback = lambda wp, value=value: wp.update(id=value)
+                code, out, err = self.full_create()
+                self.assertEqual(code, 6, err)
+                self.assertNotIn("created (read back)", out)
+                self.assertEqual(len(self.created_posts(sent)), 1)
+                self.assertEqual(self.fake.rels, [])
+                self.assertEqual(self.relation_posts(sent), [])
+                self.assertEqual([path for method, path, _ in sent if "/work_packages/1/" in path], [])
+                self.assertIn("#101 ", self.run_cli("pending")[1])
+
+    def test_reuse_rejects_a_foreign_readback_id(self):
+        self.story()
+        self.assertEqual(self.full_create()[0], 0)
+        self.fake.add(102, "Story", "Unrelated existing item", 5, key="unrelated")
+        before_posts, before_rels = len(self.posts("/projects/")), len(self.fake.rels)
+        self.fake.readback = lambda wp: wp.update(id=102)
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertNotIn("REUSED", out)
+        self.assertNotIn("#102", out)
+        self.assertEqual(len(self.posts("/projects/")), before_posts)
+        self.assertEqual(len(self.fake.rels), before_rels)
+        self.assertIn("#101 ", self.run_cli("pending")[1])
+
+    def test_known_post_id_survives_discovery_outage(self):
+        self.story()
+        sent = self.recorded()
+        self.fake.after_create = lambda wp: self.fake.fail.update({"GET work_packages": "before"})
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertNotIn("created (read back)", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(sorted(i for i in self.fake.wps if i > 100), [101])
+        self.assertEqual(self.fake.rels, [])
+        self.assertEqual([path for method, path, _ in sent if method == "POST" and path.endswith("/relations")], [])
+        self.assertIn("#101 ", self.run_cli("pending")[1])
+
+    def test_known_post_id_survives_discovery_http_503(self):
+        self.story()
+        sent = self.recorded()
+        original = self.fake.handle
+
+        def collection_down(method, url, payload):
+            if method == "GET" and url.path.startswith("/api/v3/projects/") and url.path.endswith("/work_packages"):
+                return 503, {"message": "synthetic discovery unavailable"}
+            return original(method, url, payload)
+
+        self.fake.after_create = lambda wp: setattr(self.fake, "handle", collection_down)
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertNotIn("created (read back)", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(sorted(i for i in self.fake.wps if i > 100), [101])
+        self.assertEqual(self.fake.rels, [])
+        self.assertEqual([path for method, path, _ in sent if method == "POST" and path.endswith("/relations")], [])
+        self.assertIn("#101 ", self.run_cli("pending")[1])
+
+
+class ReturnedIdFallbackTests(CreateTests):
+    """Unusable POST ids keep source-key discovery. Several key matches stay unresolved."""
+
+    def response(self, sent_holder, mutate):
+        sent = self.recorded()
+        sent_holder.append(sent)
+        original = self.tracker.request
+
+        def wrapped(method, path, payload=None):
+            code, data = original(method, path, payload)
+            if method == "POST" and path.startswith("/api/v3/projects/") and isinstance(data, dict):
+                data = copy.deepcopy(data)
+                mutate(data)
+            return code, data
+
+        self.tracker.request = wrapped
+        return sent
+
+    def test_missing_or_unusable_post_id_still_confirms_the_source_key_match(self):
+        samples = (lambda data: data.pop("id", None), lambda data: data.update(id=True), lambda data: data.update(id="101"),
+                   lambda data: data.update(id=None), lambda data: data.update(id=0), lambda data: data.update(id=-2))
+        for mutate in samples:
+            with self.subTest(mutate=getattr(mutate, "__code__", mutate).co_names):
+                self.setUp()
+                self.story()
+                sent = self.response([], mutate)
+                code, out, err = self.full_create()
+                self.assertEqual(code, 0, err)
+                self.assertIn("created (read back): #101", out)
+                self.assertEqual(len(self.created_posts(sent)), 1)
+                self.assertEqual(len(self.fake.rels), 1)
+
+    def test_missing_post_id_and_stripped_key_keeps_the_zero_match_fence(self):
+        self.story()
+        self.fake.after_create = lambda wp: wp.pop(op.SOURCE_KEY)
+        sent = self.response([], lambda data: data.pop("id", None))
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertIn("0 items carry source key", err)
+        self.assertNotIn("created (read back)", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(self.fake.rels, [])
+        self.assertIn("#None ", self.run_cli("pending")[1])
+
+    def test_several_source_keys_stay_unresolved_when_the_post_has_an_id(self):
+        self.story()
+        extra = self.fake.add(80, "Story", "Second key holder", 5)
+        self.fake.after_create = lambda wp: extra.update({op.SOURCE_KEY: wp[op.SOURCE_KEY]})
+        sent = self.recorded()
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertIn("2 items carry source key", err)
+        self.assertNotIn("created (read back)", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(self.fake.rels, [])
+        self.assertIn("#101 ", self.run_cli("pending")[1])
+
+    def test_discovery_outage_without_a_post_id_stays_unavailable(self):
+        self.story()
+        self.fake.after_create = lambda wp: self.fake.fail.update({"GET work_packages": "before"})
+        sent = self.response([], lambda data: data.pop("id", None))
+        code, out, err = self.full_create()
+        self.assertEqual(code, 5, err)
+        self.assertIn("TRACKER UNAVAILABLE", err)
+        self.assertNotIn("created (read back)", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(self.fake.rels, [])
+        self.assertIn("#None ", self.run_cli("pending")[1])
+
+    def test_discovery_http_503_without_a_post_id_stays_a_read_failure(self):
+        self.story()
+        original = self.fake.handle
+
+        def collection_down(method, url, payload):
+            if method == "GET" and url.path.startswith("/api/v3/projects/") and url.path.endswith("/work_packages"):
+                return 503, {"message": "synthetic discovery unavailable"}
+            return original(method, url, payload)
+
+        self.fake.after_create = lambda wp: setattr(self.fake, "handle", collection_down)
+        sent = self.response([], lambda data: data.pop("id", None))
+        code, out, err = self.full_create()
+        self.assertEqual(code, 1, err)
+        self.assertIn("HTTP 503", err)
+        self.assertNotIn("created (read back)", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(self.fake.rels, [])
+        self.assertEqual(self.run_cli("pending")[1], "no pending records\n")
+
+
+class AdjacentCollectionIdTests(CreateTests):
+    """Collection rows are not locators until positive_id accepts them. A bool is not item 1."""
+
+    def response(self, sent_holder, mutate):
+        sent = self.recorded()
+        sent_holder.append(sent)
+        original = self.tracker.request
+
+        def wrapped(method, path, payload=None):
+            code, data = original(method, path, payload)
+            if method == "POST" and path.startswith("/api/v3/projects/") and isinstance(data, dict):
+                data = copy.deepcopy(data)
+                mutate(data)
+            return code, data
+
+        self.tracker.request = wrapped
+        return sent
+
+    def paths(self, sent):
+        return [path for method, path, _ in sent]
+
+    def test_reuse_bool_id_is_not_fetched_as_item_1(self):
+        item = self.story()
+        item[op.SOURCE_KEY] = "followup:10:full"
+        item["id"] = True
+        self.fake.wps[True] = self.fake.wps.pop(10)
+        sent = self.recorded()
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertIn("not a usable id", err)
+        self.assertNotIn("created (read back)", out)
+        self.assertNotIn("REUSED", out)
+        self.assertEqual(self.fake.rels, [])
+        self.assertNotIn("/api/v3/work_packages/1", self.paths(sent))
+        self.assertNotIn("#1 ", self.run_cli("pending")[1])
+
+    def test_fallback_bool_id_is_not_fetched_as_item_1(self):
+        self.story()
+        self.fake.after_create = lambda wp: wp.update(id=True)
+        sent = self.response([], lambda data: data.pop("id", None))
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertIn("not a usable id", err)
+        self.assertNotIn("created (read back)", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(self.fake.rels, [])
+        self.assertNotIn("/api/v3/work_packages/1", self.paths(sent))
+        self.assertNotIn("#1 ", self.run_cli("pending")[1])
+
+    def test_known_post_id_is_kept_when_the_collection_id_is_bool(self):
+        self.story()
+        self.fake.after_create = lambda wp: wp.update(id=True)
+        sent = self.response([], lambda data: data.update(id=101))
+        code, out, err = self.full_create()
+        self.assertEqual(code, 6, err)
+        self.assertNotIn("created (read back)", out)
+        self.assertEqual(len(self.created_posts(sent)), 1)
+        self.assertEqual(self.fake.rels, [])
+        self.assertNotIn("/api/v3/work_packages/1", self.paths(sent))
+        self.assertIn("#101 ", self.run_cli("pending")[1])
+
+
 if __name__ == "__main__":
     unittest.main()
