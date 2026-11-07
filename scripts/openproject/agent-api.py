@@ -43,13 +43,16 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def read_helper(timeout):
     """One read of the dedicated token-only helper: (token, None) or (None, category).
 
-    The category is one of denied, transient, timeout or invalid. Neither stdout nor stderr is
-    printed, stored or put in an exception: stderr is only matched against a fixed allowlist.
+    The category is one of denied, transient, timeout, invalid or launch. A launch failure is a
+    missing or non-executable kubectl and is not retried. Neither stdout nor stderr is printed,
+    stored or put in an exception: stderr is only matched against a fixed allowlist.
     """
     try:
         result = subprocess.run(["kubectl", "exec", "-n", "dev", "deploy/openproject-agent-credentials", "-c", "credentials", "--", "cat", "/run/openproject-agent/token"], capture_output=True, check=False, timeout=timeout, env=dict(os.environ, KUBECTL_REMOTE_COMMAND_WEBSOCKETS="false"))
     except subprocess.TimeoutExpired:
         return None, "timeout"
+    except (FileNotFoundError, PermissionError):
+        return None, "launch"
     except OSError:
         return None, "transient"
     if result.returncode != 0:
@@ -67,8 +70,8 @@ def token(deadline):
     """The helper's token, cached per process. A failed attempt caches nothing.
 
     Transient and timeout failures are retried with the capped backoff until `deadline`; nothing
-    has been sent to the API yet, so nothing is replayed. A denial or a token in the wrong
-    format is never retried.
+    has been sent to the API yet, so nothing is replayed. A denial, a token in the wrong
+    format, or a local launch failure is never retried.
     """
     global _token
     backoff, attempts = 1, 0
