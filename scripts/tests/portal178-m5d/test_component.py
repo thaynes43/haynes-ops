@@ -116,10 +116,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# OP192 reported-exhaustion notice (dev-env#965); publish 42324417118 signed and verified this digest.
+# Exact supplemental native reader (dev-env#973); publish42353692501 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-c272a83"
-    "@sha256:6463e300884472f84cae73eb04ea8bba52ec9e2a013c01712a9cfb0c936b98fd"
+    "sha-a05002d"
+    "@sha256:f02a17ed6040f727cc6057d477c482e1f9275276bd7a0ec1835d505bd5c66d97"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
@@ -1104,6 +1104,8 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(api["ports"]["https"]["port"], 8443)
         operator = release["spec"]["values"]["controllers"]["dev-env-operator"]["containers"]["app"]
         self.assertEqual(operator["image"]["tag"], APPROVED_OPERATOR_IMAGE)
+        self.assertEqual([a for a in operator["args"] if a.startswith("--aggregate-allowance-supplemental-reader")],
+                         ["--aggregate-allowance-supplemental-reader={\"namespace\":\"dev-agents\",\"name\":\"dev-env-1104-010332\",\"sessionUID\":\"9323443a-4a8f-404f-8b41-b583e3bcc1a9\",\"serviceAccount\":\"dev-env-workbench\",\"serviceAccountUID\":\"55cc1f98-5b17-46e7-8770-c8bf9de85437\"}"])
         # Story178 S3: the reader is on, with the namespace it requires stated.
         self.assertIn("--enable-portal-reader", operator["args"])
         # Measured conversation usage (2026-10-28): reported to the portal reader's activity view,
