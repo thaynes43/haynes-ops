@@ -33,7 +33,7 @@ nvidia-nvtx-cu12==12.1.105
 omegaconf==2.3.0
 open-clip-torch==2.29.0
 packaging==26.3
-pillow==11.1.0
+pillow==11.3.0
 pycparser==3.12
 pyyaml==6.0.3
 regex==2026.9.29
