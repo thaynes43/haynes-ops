@@ -2116,6 +2116,54 @@ class HelperTests(unittest.TestCase):
                 api.request("PATCH", "/api/v3/work_packages/12", {"lockVersion": 1})
             self.assertEqual((len(self.runs), self.http), (1, []))
 
+    def test_a_permanent_local_helper_launch_failure_is_not_retried(self):
+        """Missing or non-executable kubectl is one launch failure, not a transient retry."""
+        path_sentinel = "/secret/kubectl-path-sentinel"
+        calls = (
+            ("GET", "/api/v3/users/me", None, FileNotFoundError(errno.ENOENT, "kubectl-missing-sentinel", path_sentinel)),
+            ("GET", "/api/v3/users/me", None, PermissionError(errno.EACCES, "kubectl-nonexecutable-sentinel", path_sentinel)),
+            ("POST", "/api/v3/work_packages/12/activities", {"comment": {"raw": "x"}}, FileNotFoundError(errno.ENOENT, "kubectl-missing-sentinel", path_sentinel)),
+            ("POST", "/api/v3/work_packages/12/activities", {"comment": {"raw": "x"}}, PermissionError(errno.EACCES, "kubectl-nonexecutable-sentinel", path_sentinel)),
+            ("PATCH", "/api/v3/work_packages/12", {"lockVersion": 1}, FileNotFoundError(errno.ENOENT, "kubectl-missing-sentinel", path_sentinel)),
+            ("PATCH", "/api/v3/work_packages/12", {"lockVersion": 1}, PermissionError(errno.EACCES, "kubectl-nonexecutable-sentinel", path_sentinel)),
+        )
+        for method, path, payload, failure in calls:
+            with self.subTest(method=method, failure=type(failure).__name__):
+                api._token = None
+                self.elapsed = 0
+                self.sleeps.clear()
+                self.runs.clear()
+                self.http.clear()
+                self.stderr.seek(0)
+                self.stderr.truncate(0)
+                queued = self.helper()
+                self.outcomes = [failure, queued]
+                with self.assertRaisesRegex(api.ApiUnavailable, r"launch after 1 attempt\(s\)$") as caught:
+                    api.request(method, path, payload)
+                self.assertNotIn("retry budget exhausted", str(caught.exception))
+                self.assertEqual((len(self.runs), self.sleeps, self.elapsed, self.http), (1, [], 0, []))
+                self.assertIsNone(api._token)
+                self.assertEqual(self.outcomes, [queued])
+                lines = self.stderr.getvalue().splitlines()
+                self.assertEqual(len(lines), 1)
+                self.assertRegex(lines[0], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ helper category=launch attempt=1$")
+                self.assert_nothing_leaked(str(caught.exception))
+                for sentinel in ("kubectl-missing-sentinel", "kubectl-nonexecutable-sentinel", path_sentinel, "FileNotFoundError", "PermissionError"):
+                    self.assertNotIn(sentinel, str(caught.exception) + self.stderr.getvalue())
+                self.stderr.seek(0)
+                self.stderr.truncate(0)
+                self.runs.clear()
+                self.http.clear()
+                self.sleeps.clear()
+                timeout = mock.ANY if method == "GET" else 30
+                self.assertEqual(api.request(method, path, payload), (200, {"id": 12}))
+                self.assertEqual(self.outcomes, [])
+                self.assertEqual(self.http, [(method, "Bearer " + TOKEN, timeout)])
+                self.assertEqual(len(self.runs), 1)
+                api.request(method, path, payload)
+                self.assertEqual(len(self.runs), 1)
+                self.assertEqual(self.stderr.getvalue(), "")
+
     def opwork_comment(self, state):
         env = {"OPWORK_STATE_DIR": state, "OPWORK_SESSION": "codex-test | worktree w1 | branch agent/w1"}
         out, err = io.StringIO(), io.StringIO()
