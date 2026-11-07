@@ -84,7 +84,7 @@ spec:
           app:
             image:
               repository: ghcr.io/utkuozdemir/nvidia_gpu_exporter
-              tag: 1.17.0@sha256:b085013de2828d7045c80f6af3db030b69fd81c14a43384c77652f74ad87971c
+              tag: 1.18.0@sha256:26c2a24ddb97356ae9461113a32697a1d7d1697b9e24b5faf86e0d643594a104
             # No --query-field-names: AUTO (the default) discovers every field
             # this driver reports, so a driver upgrade that adds fields needs no
             # edit here.
