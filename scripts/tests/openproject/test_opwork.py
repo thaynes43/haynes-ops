@@ -1795,6 +1795,145 @@ class OutageTests(Base):
         self.assertIn("needs manual review", out)
         self.assertEqual(len(self.posts("/activities")), 1)
 
+    def test_a_failed_pending_save_keeps_the_original_comment_or_checkpoint_diagnostic(self):
+        checkpoint = ("checkpoint-update", "10", "--next-action", "synthetic", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "synthetic")
+
+        def kept(code, out, err, original):
+            self.assertEqual(code, 6)
+            self.assertEqual(out, "")
+            self.assertIn(original, err)
+            self.assertIn("could not be saved locally", err)
+            self.assertLess(err.index(original), err.index("could not be saved locally"))
+            self.assertNotIn("Queued locally", err)
+            self.assertNotIn("Saved locally", err)
+            self.assertNotIn("Traceback", err)
+            self.assertNotIn("Read-only file system", err)
+            self.assertNotIn("synthetic", err)
+            self.assertNotIn("hidden-note-body", err)
+            self.assertEqual(len(self.posts("/activities")), 1)
+            self.assertEqual(list(Path(self.state.name, "pending").glob("*.json")), [])
+            tokens = re.findall(r"note token ([0-9a-f]{12})", err)
+            self.assertGreaterEqual(len(set(tokens)), 1)
+            self.assertEqual(len(set(tokens)), 1)
+            if self.fake.acts[10]:
+                self.assertIn(tokens[0], self.fake.acts[10][0]["comment"]["raw"])
+
+        with self.subTest(case="comment_uncertain"):
+            self.story()
+            self.accept_but_hide_posts()
+            with mock.patch.object(op, "write_record", side_effect=OSError(30, "Read-only file system")):
+                code, out, err = self.run_cli("comment", "10", "hidden-note-body")
+            kept(code, out, err, "not visible on read back")
+        with self.subTest(case="structured_uncertain"):
+            self.setUp()
+            self.story()
+            self.accept_but_hide_posts()
+            with mock.patch.object(op, "write_record", side_effect=OSError(30, "Read-only file system")):
+                code, out, err = self.run_cli(*checkpoint)
+            kept(code, out, err, "not visible on read back")
+        with self.subTest(case="structured_unavailable"):
+            self.setUp()
+            self.story()
+            self.fake.fail["POST /api/v3/work_packages/10/activities"] = "after"
+            with mock.patch.object(op, "write_record", side_effect=OSError(30, "Read-only file system")):
+                code, out, err = self.run_cli(*checkpoint)
+            kept(code, out, err, "fake outage after applying")
+
+    def test_readback_http_and_disk_secrets_stay_out_of_the_kept_diagnostic(self):
+        http_message = "readback-message-sentinel-a91c"
+        http_body = "readback-body-sentinel-b27d"
+        disk_secret = "disk-secret-sentinel-c44e"
+        checkpoint = ("checkpoint-update", "10", "--next-action", "synthetic", "--check-after", "2030-01-01T00:00:00Z", "--evidence", "synthetic")
+        wrapper = re.compile(
+            r"UNCONFIRMED: comment on #10 was posted \(HTTP 201\) but the read back failed \(Fail\); "
+            r"note token ([0-9a-f]{12}) may have landed\. Do not repost; inspect with `show 10 --history`")
+
+        def hide_readback():
+            original = self.fake.handle
+            def handle(method, url, payload):
+                if method == "GET" and url.path.endswith("/activities"):
+                    return 500, {"message": http_message, "raw": http_body, "details": [{"secret": http_body}]}
+                return original(method, url, payload)
+            self.fake.handle = handle
+
+        def assert_secrets_absent(out, err):
+            for secret in (http_message, http_body, disk_secret):
+                self.assertNotIn(secret, out)
+                self.assertNotIn(secret, err)
+            self.assertNotIn("HTTP 500", out)
+            self.assertNotIn("HTTP 500", err)
+            self.assertNotIn("Traceback", err)
+            self.assertNotIn("hidden-note-body", err)
+
+        def activity_gets():
+            return [call for call in self.fake.calls if call[0] == "GET" and call[1].endswith("/activities")]
+
+        def item_gets():
+            return [call for call in self.fake.calls if call == ("GET", "/api/v3/work_packages/10")]
+
+        def failed(kind, item_get_count):
+            code, out, err = self.run_cli("comment", "10", "hidden-note-body") if kind == "note" else self.run_cli(*checkpoint)
+            self.assertEqual(code, 6)
+            self.assertEqual(out, "")
+            assert_secrets_absent(out, err)
+            found = wrapper.findall(err)
+            self.assertEqual(len(found), 1)
+            self.assertEqual(err.count("read back failed"), 1)
+            local = "the %s could not be saved locally (OSError)" % kind
+            self.assertEqual(err.count(local), 1)
+            self.assertLess(err.index("read back failed (Fail)"), err.index(local))
+            self.assertIn(found[0], err[err.index(local):])
+            self.assertNotIn("Saved locally", err)
+            self.assertNotIn("Queued locally", err)
+            self.assertEqual(self.posts("/activities"), [("POST", "/api/v3/work_packages/10/activities")])
+            self.assertEqual(activity_gets(), [("GET", "/api/v3/work_packages/10/activities")])
+            self.assertEqual(item_gets(), [("GET", "/api/v3/work_packages/10")] * item_get_count)
+            self.assertEqual(list(Path(self.state.name, "pending").glob("*.json")), [])
+
+        def saved(kind, marker, item_get_count):
+            code, out, err = self.run_cli("comment", "10", "hidden-note-body") if kind == "note" else self.run_cli(*checkpoint)
+            self.assertEqual(code, 6)
+            self.assertEqual(out, "")
+            assert_secrets_absent(out, err)
+            found = wrapper.findall(err)
+            self.assertEqual(len(found), 1)
+            self.assertEqual(err.count("read back failed"), 1)
+            self.assertEqual(err.count("UNCONFIRMED:"), 1)
+            self.assertEqual(err.count(marker), 1)
+            self.assertLess(err.index("read back failed (Fail)"), err.index(marker))
+            self.assertNotIn("could not be saved locally", err)
+            self.assertEqual(self.posts("/activities"), [("POST", "/api/v3/work_packages/10/activities")])
+            self.assertEqual(activity_gets(), [("GET", "/api/v3/work_packages/10/activities")])
+            self.assertEqual(item_gets(), [("GET", "/api/v3/work_packages/10")] * item_get_count)
+            pending = list(Path(self.state.name, "pending").glob("*.json"))
+            self.assertEqual(len(pending), 1)
+            stored = pending[0].read_text()
+            self.assertNotIn(http_message, stored)
+            self.assertNotIn(http_body, stored)
+            self.assertIn(found[0], stored)
+
+        with self.subTest(case="comment_readback_disk"):
+            self.story()
+            hide_readback()
+            with mock.patch.object(op, "write_record", side_effect=OSError(30, disk_secret)):
+                failed("note", 0)
+        with self.subTest(case="checkpoint_readback_disk"):
+            self.setUp()
+            self.story()
+            hide_readback()
+            with mock.patch.object(op, "write_record", side_effect=OSError(30, disk_secret)):
+                failed("structured_note", 2)
+        with self.subTest(case="comment_saved_once"):
+            self.setUp()
+            self.story()
+            hide_readback()
+            saved("note", "Saved locally", 0)
+        with self.subTest(case="checkpoint_saved_once"):
+            self.setUp()
+            self.story()
+            hide_readback()
+            saved("structured_note", "Queued locally", 2)
+
     def test_record_write_failure_while_saving_an_unavailable_comment_shows_the_original_failure_and_exit_5(self):
         self.story()
         self.fake.fail["POST /api/v3/work_packages/10/activities"] = "after"

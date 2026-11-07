@@ -476,11 +476,17 @@ def cmd_checkpoint_update(t, a, session):
     try:
         found = t.post_note(a.id, body, token)
     except t.unavailable as down:
-        save_pending("structured_note", token, wp=a.id, session=session, text=text, **posted_fields(down))
+        try:
+            save_pending("structured_note", token, wp=a.id, session=session, text=text, **posted_fields(down))
+        except LocalWriteFail as saving:
+            raise Fail("TRACKER UNAVAILABLE: %s.\nWhether the write reached OpenProject is UNCONFIRMED.\n%s" % (down, saving), 6) from None
         raise
     except Fail as error:
         if error.code == 6:
-            path, _ = save_pending("structured_note", token, wp=a.id, session=session, text=text, **posted_fields(error))
+            try:
+                path, _ = save_pending("structured_note", token, wp=a.id, session=session, text=text, **posted_fields(error))
+            except LocalWriteFail as saving:
+                raise Fail("%s\n%s" % (error, saving), 6) from None
             raise Fail("%s\nQueued locally: %s. Do not rerun checkpoint-update; `flush` deduplicates using the same token." % (error, path), 6)
         raise
     try:
@@ -541,7 +547,10 @@ def cmd_comment(t, a, session):
         found = t.comment(a.id, a.text, session)
     except Fail as error:
         if error.code == 6 and hasattr(error, "token"):
-            path, _ = save_pending("note", error.token, wp=a.id, session=session, text=a.text, body=error.body, **posted_fields(error))
+            try:
+                path, _ = save_pending("note", error.token, wp=a.id, session=session, text=a.text, body=error.body, **posted_fields(error))
+            except LocalWriteFail as saving:
+                raise Fail("%s\n%s" % (error, saving), 6) from None
             raise Fail("%s. Saved locally: %s" % (error, path), 6)
         raise
     return "comment %s recorded on #%d (read back)" % (found.get("id"), a.id)
