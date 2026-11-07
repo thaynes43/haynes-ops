@@ -191,7 +191,7 @@ spec:
               # since ce38fd8: #936/#937 (scripts), #938 (docs), #940. Operator image only: flags, allowance config
               # and its expired window, templates, permissions and Session pods unchanged. Rollback while the slot
               # holds 3 rows is direct; if a 4-row document was stored, return it to 3 rows first (docs/provider-allowance-aggregate.md).
-              tag: sha-a33a927@sha256:757eeceff999eb6e80473e654097b777add96725cc026d20dd8a9e2cfcedf219
+              tag: sha-c272a83@sha256:6463e300884472f84cae73eb04ea8bba52ec9e2a013c01712a9cfb0c936b98fd
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
