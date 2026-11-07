@@ -156,7 +156,7 @@ USER root
 # Declared here, with its default, because ARG defaults do NOT cross stages —
 # a bare `ARG PYTEST_VERSION` would expand to the empty string.
 # renovate: datasource=pypi depName=pytest
-ARG PYTEST_VERSION=9.1.1
+ARG PYTEST_VERSION=9.2.0
 RUN pip install --no-cache-dir --disable-pip-version-check "pytest==${PYTEST_VERSION}"
 COPY test_provision.py /opt/comfyui-tools/
 # testdata/deployed/{workflows,api-workflows} are the app's REAL workflow JSONs,
