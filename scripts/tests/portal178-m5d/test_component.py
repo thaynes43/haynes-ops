@@ -116,10 +116,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# OP192 S1 R1 store release a33a927 (dev-env#940); publish 42091965171 signed and verified this digest.
+# OP192 reported-exhaustion notice (dev-env#965); publish 42324417118 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-a33a927"
-    "@sha256:757eeceff999eb6e80473e654097b777add96725cc026d20dd8a9e2cfcedf219"
+    "sha-c272a83"
+    "@sha256:6463e300884472f84cae73eb04ea8bba52ec9e2a013c01712a9cfb0c936b98fd"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
