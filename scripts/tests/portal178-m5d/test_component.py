@@ -116,10 +116,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# Cursor cached reason correction (dev-env#974); publish42360503776 signed and verified this digest.
+# Codex ordinary usage diagnostic (dev-env#975); publish42368650254 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-0094431"
-    "@sha256:3f3c21f0fd414195af00958d5beef6e1b0a6b2b127188ceb78083373227a90d6"
+    "sha-1db8599"
+    "@sha256:47836364916653f4c4be9188e2c78d8989292ef827875317088fb078d99fbdad"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
