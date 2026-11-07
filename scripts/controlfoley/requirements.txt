@@ -6,7 +6,7 @@ av==14.0.1
 certifi==2026.10.23
 cffi==2.1.1
 charset-normalizer==3.5.2
-einops==0.8.0
+einops==0.8.2
 filelock==4.2.6
 fsspec==2026.9.0
 ftfy==6.3.1
