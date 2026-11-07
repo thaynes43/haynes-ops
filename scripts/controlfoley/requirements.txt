@@ -2,7 +2,7 @@
 # Resolved with uv; CUDA/PyTorch versions match the isolated digest-pinned base.
 # No ComfyUI, training, reference-audio CLAP or MusicGen dependencies.
 antlr4-python3-runtime==4.9.3
-av==14.0.1
+av==14.4.0
 certifi==2026.10.23
 cffi==2.1.1
 charset-normalizer==3.5.2
