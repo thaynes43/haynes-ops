@@ -116,10 +116,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# Exact supplemental native reader (dev-env#973); publish42353692501 signed and verified this digest.
+# Cursor cached reason correction (dev-env#974); publish42360503776 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-a05002d"
-    "@sha256:f02a17ed6040f727cc6057d477c482e1f9275276bd7a0ec1835d505bd5c66d97"
+    "sha-0094431"
+    "@sha256:3f3c21f0fd414195af00958d5beef6e1b0a6b2b127188ceb78083373227a90d6"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
