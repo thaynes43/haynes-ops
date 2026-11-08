@@ -301,6 +301,10 @@ spec:
               # with ErrUnavailable (controller/reconciler.go:423, session_directory.go:12) and retry with
               # backoff until a dev-env fix lands; see the T16 PR.
               - '--enable-private-project-tasks=true'
+              # DESIGN-051: qualified image for eligible publishers and explicitly enrolled receivers.
+              # Applies to existing eligible callers; global worker image selectors stay unchanged.
+              # Removal refuses new admission/builds; pending/recreated enrolled Pods fail closed.
+              - '--coordinator-instruction-agent-image=ghcr.io/thaynes43/dev-env:2.91.3@sha256:286ce5f4d03604609a90a4f11016a5347e34d4436b91f023ed0d46e9d3d51a04'
               - '--enable-private-history-retention=true'
               # DESIGN-025 H2: record a private executor's verified terminal state (or the
               # missed marker) in its Session's status. Records only; stops and deletes nothing.

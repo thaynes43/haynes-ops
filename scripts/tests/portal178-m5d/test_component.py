@@ -1104,6 +1104,13 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual(api["ports"]["https"]["port"], 8443)
         operator = release["spec"]["values"]["controllers"]["dev-env-operator"]["containers"]["app"]
         self.assertEqual(operator["image"]["tag"], APPROVED_OPERATOR_IMAGE)
+        # The qualified selector covers existing eligible publisher and enrolled receiver paths.
+        self.assertEqual([a for a in operator["args"] if a.startswith("--coordinator-instruction-agent-image")],
+                         ["--coordinator-instruction-agent-image=ghcr.io/thaynes43/dev-env:2.91.3@sha256:286ce5f4d03604609a90a4f11016a5347e34d4436b91f023ed0d46e9d3d51a04"])
+        controller = release["spec"]["values"]["controllers"]["dev-env-operator"]
+        self.assertEqual(controller["replicas"], 2)
+        self.assertEqual(controller["strategy"], "RollingUpdate")
+        self.assertEqual(controller["rollingUpdate"], {"maxUnavailable": 0, "maxSurge": 1})
         self.assertEqual([a for a in operator["args"] if a.startswith("--aggregate-allowance-supplemental-reader")],
                          ["--aggregate-allowance-supplemental-reader={\"namespace\":\"dev-agents\",\"name\":\"dev-env-1104-010332\",\"sessionUID\":\"9323443a-4a8f-404f-8b41-b583e3bcc1a9\",\"serviceAccount\":\"dev-env-workbench\",\"serviceAccountUID\":\"55cc1f98-5b17-46e7-8770-c8bf9de85437\"}"])
         # Story178 S3: the reader is on, with the namespace it requires stated.
