@@ -22,8 +22,14 @@
 # busy/attached, summoned and shared sessions retain their existing guards.
 # Recheck live structural protection and preserve existing Session/Pod UIDs before
 # merge. This changes the default image only; instruction image selectors stay fixed.
-# Rollback image:2.88.0@sha256:f785580c06f6854a5a531f591eba2272164a0a66417d889ef9eaa9ab9ba7d09b.
-image: ghcr.io/thaynes43/dev-env:2.89.0@sha256:632859c47e8ed597013d2ad651ea644327afe335155f338069dbeb101a836630
+# v2.90.0 source 3cd1f71ae2a94e3fb3264d64af1c009f1e9906ff (release dev-env#878). publish-agent.yml run 41901963068
+# built, smoke-tested, signed and verified this digest. Consumer side of the keeper refresh pilot (OP385):
+# #891 (a just-expired token shows Refreshing), #896 (a provider-rejected login shows before local expiry),
+# #915 (poll order pinned; keeper-to-consumer chain tests). Not included: the CG-7 account guard (#918, still open).
+# New and legitimately eligible sessions only. Automatic drain keeps its existing exclusions (Remote,
+# retained private-history, busy/attached, summoned, shared); running sessions such as Studio keep 2.89.0.
+# Rollback image:2.89.0@sha256:632859c47e8ed597013d2ad651ea644327afe335155f338069dbeb101a836630.
+image: ghcr.io/thaynes43/dev-env:2.90.0@sha256:415ae7d571cea72fe7de810be70d2a168f6c9af2e7fe6787e00ac581653a4577
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
