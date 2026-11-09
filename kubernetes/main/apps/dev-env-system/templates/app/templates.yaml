@@ -30,6 +30,16 @@
 # template field is required by the image. Rollback image:2.89.0@sha256:632859c47e8ed597013d2ad651ea644327afe335155f338069dbeb101a836630.
 image: ghcr.io/thaynes43/dev-env:2.93.0@sha256:bcba6fe253008bb8adffbd037f6ac09e90890466b466d32eeaf2eea83fbd8e98
 
+# New-sessions-only rollout for THIS image (DESIGN-001 5.2, dev-env#925; Q-03 option B, a
+# per-rollout deviation recorded in the PR that sets it). While this equals `image`, the
+# operator marks no session Draining: new sessions and resumes use the 2.93.0 revision and
+# running sessions keep their pods until their own suspend and resume. It is not part of the
+# revision. It MUST equal `image` exactly: the Renovate rule bumps only the `image:` line, so
+# the next image bump PR must update this line to the new image or delete it (deleting it
+# resumes idle drain), otherwise the templates are invalid and new sessions wait.
+rollout:
+  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.93.0@sha256:bcba6fe253008bb8adffbd037f6ac09e90890466b466d32eeaf2eea83fbd8e98
+
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
 # one and any container above class L.
