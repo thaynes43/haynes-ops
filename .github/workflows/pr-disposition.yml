@@ -120,13 +120,14 @@ jobs:
               const m = p.match(/^kubernetes\/[^/]+\/apps\/([^/]+)\/(.+)$/);
               return !!m && (TIER2_DOMAINS.includes(m[1]) || CURATED_LEAVES.includes(m[1] + '/' + m[2].split('/')[0]));
             };
+            // GitHub returns commit_message: null for the auto-merges Renovate enables (OP510); null or a string is enabled.
             const mergeState = pr => {
               if (!Object.hasOwn(pr, 'auto_merge')) return 'Unknown';
               if (pr.auto_merge === null) return 'disabled';
               const m = pr.auto_merge;
               return m && typeof m === 'object' && !Array.isArray(m) &&
                 typeof m.enabled_by?.login === 'string' && m.enabled_by.login.length > 0 &&
-                typeof m.commit_title === 'string' && typeof m.commit_message === 'string' &&
+                typeof m.commit_title === 'string' && (m.commit_message === null || typeof m.commit_message === 'string') &&
                 ['merge','squash','rebase'].includes(m.merge_method) ? 'enabled' : 'Unknown';
             };
             const labelKey = labels => Array.isArray(labels) && labels.every(l => typeof l?.name === 'string')
