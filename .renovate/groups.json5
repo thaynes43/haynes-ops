@@ -121,5 +121,72 @@
       matchFileNames: ['kubernetes/main/apps/ai/vexa/chart/**'],
       bumpVersion: 'patch',
     },
+    // ── Pinned Python requirement sets: one update PR per file (OP511) ───────
+    // Each file below is a fully pinned set that pip installs as a whole, so one
+    // package often cannot move alone. With no group, Renovate opened one PR per
+    // package: 51 open on 2026-11-09. In ControlFoley's torch 2.5.1+cu121 set, 26 of
+    // 39 failed `validate` with "conflicting dependencies"; cursor-mcp's pydantic and
+    // pydantic-core fail apart.
+    //
+    // Grouped by FILE (matchFileNames), never by package name. numpy, scipy, av,
+    // pillow, soundfile, mcp and huggingface-hub sit in more than one of these files,
+    // and each copy belongs to a different image or pod. Renovate names each update's
+    // branch from its own groupSlug and puts updates with the same branch name in one
+    // PR, so a package in two files lands in two file PRs. Today such a package shares
+    // one cross-file PR (renovate/numpy-2.x).
+    //
+    // These rules set grouping ONLY: no automerge, labels or allowedVersions, so
+    // autoMerge.json5 and holds.json5 decide each update exactly as before. A branch
+    // auto-merges only when every update in it does, so the studio-render minor/patch
+    // group still auto-merges under the kubernetes/*/apps/ai/** tier. Majors keep
+    // Renovate's default separateMajorMinor: a second "(major)" PR per file on
+    // renovate/major-<slug>. Folding majors in would turn every studio-render group
+    // manual, which would narrow that tier. These rules come after
+    // config:recommended's group:monorepos in extends, so they win the groupName (the
+    // opentelemetry-python monorepo PR in cursor-mcp joins its file group).
+    // One effective change follows from the split, not from policy: studio-render's
+    // numpy and scipy minors used to share a PR with ControlFoley, which no tier
+    // auto-merges. In their own file group the ai/** tier now applies to them as written.
+    // docs/requirements.txt (one package) is left ungrouped on purpose.
+    {
+      description: 'ControlFoley image Python set: one PR per update type. Its build fails until the torch set is deliberately re-pinned; manual merge (no automerge tier covers scripts/).',
+      groupName: 'controlfoley python requirements',
+      groupSlug: 'pip-controlfoley',
+      matchManagers: ['pip_requirements'],
+      matchFileNames: ['scripts/controlfoley/requirements.txt'],
+      group: {
+        commitMessageTopic: '{{{groupName}}} group',
+      },
+    },
+    {
+      description: 'dev-env v1 cursor-mcp Python set: one PR per update type. Merging it restarts the v1 dev-env pod and its sessions, so the owner merges it as a held draft. Renovate opens it as an ordinary PR; no automerge tier covers dev/dev-env.',
+      groupName: 'cursor-mcp python requirements',
+      groupSlug: 'pip-cursor-mcp',
+      matchManagers: ['pip_requirements'],
+      matchFileNames: ['kubernetes/main/apps/dev/dev-env/app/resources/cursor-mcp-requirements.txt'],
+      group: {
+        commitMessageTopic: '{{{groupName}}} group',
+      },
+    },
+    {
+      description: 'studio-render Python set: one PR per update type. Auto-merge policy is unchanged: the ai/** tier auto-merges the minor/patch group, and majors stay manual.',
+      groupName: 'studio-render python requirements',
+      groupSlug: 'pip-studio-render',
+      matchManagers: ['pip_requirements'],
+      matchFileNames: ['kubernetes/main/apps/ai/studio-render/app/requirements.txt'],
+      group: {
+        commitMessageTopic: '{{{groupName}}} group',
+      },
+    },
+    {
+      description: 'audio-authoring image Python set: one PR per update type; manual merge (no automerge tier covers scripts/). The huggingface-hub <2.0.0 hold in holds.json5 still applies.',
+      groupName: 'audio-authoring python requirements',
+      groupSlug: 'pip-audio-authoring',
+      matchManagers: ['pip_requirements'],
+      matchFileNames: ['scripts/audio-authoring/requirements.txt'],
+      group: {
+        commitMessageTopic: '{{{groupName}}} group',
+      },
+    },
   ],
 }
