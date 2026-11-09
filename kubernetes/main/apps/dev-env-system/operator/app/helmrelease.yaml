@@ -212,6 +212,12 @@ spec:
               # /v1/reminders; the owner is the caller's token. No calendar reference is
               # accepted (--reminder-calendar-refs unset). Role dev-env-operator-reminders.
               - --enable-reminders-api=true
+              # Child usage capture (dev-env DESIGN-018, dev-env#517 in v2.42.0; OpenProject #109). It copies an
+              # accepted direct child's initial usage observation onto its parent Session, so a coordinator's
+              # cost includes the workers it creates. The parent UID comes from a fresh read at create time and
+              # the request body cannot set it. No new RBAC or CRD field: the live AgentSession CRD already has
+              # capturedUsage, and the operator already owns Session status. Tom approved it on 2026-11-09.
+              - --enable-child-usage-capture
               # OP192 precise recurring activation; independently approved private selection.
               - --enable-aggregate-allowance-reports
               - --aggregate-allowance-config-file=/etc/dev-env-operator/allowances/selection.json
