@@ -4,8 +4,8 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main after PR #1009 (OP500), verified by the coordinator at merge:
-# SOURCE_SHA_TBD. Adds the cursor provider kind to the configured-provider enum.
+# Source: dev-env main at the merge of PR #1009 (OP500), verified byte for byte by the coordinator:
+# 2b2ec45539b9103d8d8871661b5f24406927acfb. Adds the cursor provider kind to the configured-provider enum.
 #
 # Keep it in step with the operator: copy a changed file here before (or with) the pin
 # that writes its new fields.
