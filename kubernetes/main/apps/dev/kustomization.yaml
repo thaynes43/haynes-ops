@@ -9,3 +9,4 @@ resources:
   - ./blender-authoring/ks.yaml
   - ./blender-authoring-2/ks.yaml
   - ./audio-authoring/ks.yaml
+  - ./openproject-agent/ks.yaml
