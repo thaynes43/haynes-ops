@@ -116,10 +116,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# Codex ordinary usage diagnostic (dev-env#975); publish42368650254 signed and verified this digest.
+# dev-env v2.93.0 Event-note bound (dev-env#991); publish42641196980 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-1db8599"
-    "@sha256:47836364916653f4c4be9188e2c78d8989292ef827875317088fb078d99fbdad"
+    "sha-5c84486"
+    "@sha256:be854ba47afd6c41edd4fd70edb416e28b039f285a707796cdea1647cbec85df"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
