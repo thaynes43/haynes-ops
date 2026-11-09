@@ -31,8 +31,9 @@
 #
 # Validate on the codex hub's first phone thread (plan 04): in the newest
 # ~/.codex/sessions/**/rollout-*.jsonl the turn_context must show approval_policy
-# "never" + sandbox_policy danger-full-access, and ~/.codex/logs_2.sqlite should carry
-# a "disallowed by requirements" line.
+# "never" + sandbox_policy danger-full-access. If it shows read-only, the client asked
+# for a disallowed sandbox (~/.codex/logs_2.sqlite then carries a "disallowed by
+# requirements" line) and the thread cannot run commands.
 allowed_approval_policies = ["never"]
 # "read-only" MUST be in the set: codex 0.153.4 refuses to load its config otherwise
 # ("invalid value for `allowed_sandbox_modes`: `[DangerFullAccess]` is not in the
