@@ -204,7 +204,9 @@ missing, your profile lacks it; use no other path.
   call by `gh` and git; other tools read the file inline. Leave `GH_TOKEN` unset and
   skip `gh auth login`. Profile `ops` gets the haynes-ops-bot token.
 - **pve:** a read token where carried; LAN access and writes need grants.
-- **hw-ssh:** mounted on the workbench profile; others lease it with a grant.
+- **hw-ssh:** mounted on the workbench profile; others lease it with a grant. It is
+  one shared key: anything in the pod can copy it while it is installed, and removing
+  it does not revoke it. Use it only inside a story that names it.
 - **omnictl, talosctl:** `dev-env-node-triage`, Omni Admin by design (Tom,
   2026-10-31). Reads are free. Write only in an authorized story, one resource at a
   time, with health gates and a saved copy; never as a probe or a full

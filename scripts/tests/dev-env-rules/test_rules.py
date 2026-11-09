@@ -25,7 +25,8 @@ BOUNDARIES = (
     '**Saga = the full project.**',
     'Execute dependent stories serially.',
 )
-# OP499 budget: the auto-loaded common rules stay under about 4k tokens.
+# OP499 budget: the auto-loaded common rules stay short (about 4k tokens today);
+# the cap leaves room for a correction without becoming a second rulebook.
 MAX_COMMON_BYTES = 20000
 
 
