@@ -23,7 +23,12 @@
 # Recheck live structural protection and preserve existing Session/Pod UIDs before
 # merge. This changes the default image only; instruction image selectors stay fixed.
 # Rollback image:2.88.0@sha256:f785580c06f6854a5a531f591eba2272164a0a66417d889ef9eaa9ab9ba7d09b.
-image: ghcr.io/thaynes43/dev-env:2.89.0@sha256:632859c47e8ed597013d2ad651ea644327afe335155f338069dbeb101a836630
+# v2.93.0 source 5c84486c5f963ceb800d99e03eb6d022b6d5bc2b (release #992).
+# publish-agent.yml run 42641234698 built, smoke-tested, signed and verified this digest.
+# Carries the 2.90-2.93 agentd/agent-image changes (Cursor guards, Codex command outcomes,
+# ACP helpers, OpenProject helper fixes, agent-run release binaries). No new env, mount or
+# template field is required by the image. Rollback image:2.89.0@sha256:632859c47e8ed597013d2ad651ea644327afe335155f338069dbeb101a836630.
+image: ghcr.io/thaynes43/dev-env:2.93.0@sha256:bcba6fe253008bb8adffbd037f6ac09e90890466b466d32eeaf2eea83fbd8e98
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
