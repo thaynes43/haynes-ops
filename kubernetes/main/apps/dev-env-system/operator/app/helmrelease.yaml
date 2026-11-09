@@ -205,7 +205,19 @@ spec:
               # does in v2.93.0, and writes status the controller already owns), no template change. Operator image only: every flag, the allowance configuration, templates,
               # permissions and existing Session pods stay unchanged. Previous pin sha-5c84486 (dev-env v2.93.0,
               # haynes-ops#4718); rollback target.
-              tag: sha-c2f785b@sha256:9a9a44e127e0d12f1c7fe69b8279e1dde8140ec0821597d4245bf63d41971567
+              # dev-env main 0864805c (v2.95.0 plus #1007; publish 42708053229's operator job signed and verified this
+              # digest). The one live change is #1007 (OP495): POST /v1/sessions/{host}/threads, on by default with no
+              # flag. The API runs the host's own `agentd ctl thread-start` by exec, as it delivers a message (D-65),
+              # only for a Running Codex remote host, never a coordinator host, and a session caller only on a host of
+              # its own profile or one it is an ancestor of (DESIGN-057 section 10). It uses the pods/exec the message
+              # route already has. The rest of the delta is inert here: --enable-scheduled-work-api (#1004) is new and
+              # default off, not set below; the Reminder projection fields (#917) run only in the keeper's scheduler,
+              # which this pin does not move, and their CRD copy is already live (haynes-ops#4724); thread-launch wire
+              # types (#1005) serve only #1007's route; #1002 changes agent-run display only. No CRD, RBAC, flag or
+              # template change; the controller's source is unchanged, so existing Session pods stay as they are.
+              # Previous pin sha-c2f785b@sha256:9a9a44e127e0d12f1c7fe69b8279e1dde8140ec0821597d4245bf63d41971567
+              # (dev-env v2.94.0, haynes-ops#4721); rollback target.
+              tag: sha-0864805@sha256:dbcd86aedd5db5f92450478f6ab1a23d22d20e70691e4796b694cee0c966c164
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
