@@ -191,7 +191,12 @@ spec:
               # since ce38fd8: #936/#937 (scripts), #938 (docs), #940. Operator image only: flags, allowance config
               # and its expired window, templates, permissions and Session pods unchanged. Rollback while the slot
               # holds 3 rows is direct; if a 4-row document was stored, return it to 3 rows first (docs/provider-allowance-aggregate.md).
-              tag: sha-1db8599@sha256:47836364916653f4c4be9188e2c78d8989292ef827875317088fb078d99fbdad
+              # dev-env v2.93.0 (release 5c84486c, publish 42641196980 signed and verified this digest). Operator source
+              # delta since 1db8599 is one fix: Kubernetes Event notes are bounded to the API's 1024-byte limit
+              # (dev-env#991; controller and broker events). No new flag, no CRD or RBAC change, no template change.
+              # Operator image only: every flag, the allowance configuration, templates, permissions and existing
+              # Session pods stay unchanged. Previous pin sha-1db8599 (dev-env#975, haynes-ops#4703); rollback target.
+              tag: sha-5c84486@sha256:be854ba47afd6c41edd4fd70edb416e28b039f285a707796cdea1647cbec85df
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
