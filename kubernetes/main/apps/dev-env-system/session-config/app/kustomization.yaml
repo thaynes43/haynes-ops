@@ -30,6 +30,8 @@ configMapGenerator:
       # One MCP list for Claude and Codex. JSON has no comments: this file is v1's
       # config/claude/mcp.json, byte for byte. Its ${VAR} placeholders are for agentd
       # (D-40), which is why the Flux Kustomization has no postBuild.substitute.
+      # Exception (2026-11-09): the `openproject` stdio entry is v2-only. opwork-mcp ships in
+      # the v2 agent image (dev-env#998), not in v1's image, so v1's copy does not get it.
       - config/claude/mcp.json
       # agentd copies these to ~/.claude/agents/ without the agent- prefix.
       - config/claude/agent-opus-worker.md
