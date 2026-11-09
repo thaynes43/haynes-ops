@@ -9,9 +9,9 @@ translations:
 | Claude Code term | For you (Codex) |
 |---|---|
 | `AskUserQuestion`: push a question to Tom's phone | your `request_user_input` tool: one question at a time, at the moment it arises, never a prose "open questions" list |
-| `ListAgents` / `SendMessage`: peer sessions | your native `collaboration.list_agents`, `collaboration.send_message`, `collaboration.followup_task` and related tools, for your own task tree. Other sessions are other pods: `agent-run msg <id> "<text>"` *(plan 02)*, git, and work orders |
-| `claude --remote-control`, `/remote-control` | the codex hub: one long-lived session pod that runs the remote-control daemon for the phone (`agent-run codex-remote`, *plan 04*) |
-| Fable / Opus / Sonnet rows, `--effort` | your driving model is `gpt-6-astra` at `max` (config.toml); your native subagents use `gpt-6.1-sol` at `xhigh` |
+| `ListAgents` / `SendMessage`: peer sessions | your native `collaboration.list_agents`, `collaboration.send_message`, `collaboration.followup_task` and related tools, for your own task tree. Other sessions are other pods: `agent-run msg` or `agent-run inbox`, git, and work orders |
+| `claude --remote-control`, `/remote-control` | a Codex `--interactive` session: a phone daemon with no TUI, paired with `agent-run pair` |
+| the Claude model policy, `--effort` | your driving model is `gpt-6-astra` at `max` (config.toml); your native subagents use `gpt-6.1-sol` at `xhigh` |
 | Claude Code's subagent tiers (`opus-worker` / `sonnet-worker`) | native Codex collaboration instead: `collaboration.spawn_agent` with `fork_turns: "none"`, `model: "gpt-6.1-sol"`, `reasoning_effort: "xhigh"`, and a self-contained work order |
 | `~/.claude/CLAUDE.md`, agent memory | your instruction chain is this file plus each repo's `AGENTS.md`, or its `CLAUDE.md` where there is none (config.toml `project_doc_fallback_filenames`) |
 
@@ -29,8 +29,8 @@ Codex-specific traps:
   approval `never` only, and config.toml defaults the sandbox to `danger-full-access`.
   bubblewrap cannot run in a session pod, so a workspace-write sandbox would fail every
   command. Do not try to turn the sandbox on.
-- **Never run `codex login` in a session pod.** The keeper owns the Codex login
-  *(plan 04)*. A second process refreshing it revokes the whole token family.
+- **Never run `codex login` in a session pod.** The keeper owns the Codex login.
+  A second process refreshing it revokes the whole token family.
 - **Your MCP servers are Claude's**, rendered by agentd at boot from one GitOps
   `mcp.json` (haynes-ops
   `kubernetes/main/apps/dev-env-system/session-config/app/config/claude/mcp.json`). If
