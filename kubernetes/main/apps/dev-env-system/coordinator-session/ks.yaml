@@ -1,0 +1,46 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# The owner's Fable 5.2 coordinator session (OpenProject #501, Tom 2026-11-09): one
+# Claude Remote Control AgentSession on the existing `workbench` profile. It is declared
+# here because a session's profile is immutable and only a trusted client may create a
+# workbench session. Flux creates it once and then never changes or deletes it:
+#   - the AgentSession carries `kustomize.toolkit.fluxcd.io/ssa: IfNotPresent` (applied
+#     only while absent, so the operator and `agent-run suspend|resume` keep sole
+#     ownership of spec.operatingMode and spec.lifecycle) and `.../prune: disabled`;
+#   - `prune: false` and `deletionPolicy: Orphan` here, so neither a removed file nor a
+#     deleted Kustomization deletes it. Running sessions are sacred: a session ends only
+#     through `agent-run reap`, which rescues it first.
+# Nothing depends on this Kustomization and it waits on nothing it applies (`wait: false`,
+# no health checks), so a refused or unreconciled session blocks no other app.
+#
+# To end the session, in this order: (1) take this app out of git (remove
+# `./coordinator-session/ks.yaml` from ../kustomization.yaml; the Kustomization object
+# goes and the session is orphaned, not deleted), or `flux suspend kustomization
+# dev-env-coordinator-session -n dev-env-system`; (2) `agent-run reap
+# dev-env-fable-coordinator-1109`. While this app is applied, IfNotPresent would create a
+# new, empty session of the same name on the next reconcile after a reap.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: dev-env-coordinator-session
+  namespace: dev-env-system
+spec:
+  # The AgentSession CRD, the templates its pod is built from (the workbench profile),
+  # and the operator that reconciles it.
+  dependsOn:
+    - name: dev-env-crds
+    - name: dev-env-templates
+    - name: dev-env-operator
+  path: ./kubernetes/main/apps/dev-env-system/coordinator-session/app
+  prune: false
+  deletionPolicy: Orphan
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: false
+  interval: 30m
+  retryInterval: 5m
+  timeout: 5m
+  # NO commonMetadata: it would add labels to the AgentSession, which carries only what
+  # the operator and broker read.

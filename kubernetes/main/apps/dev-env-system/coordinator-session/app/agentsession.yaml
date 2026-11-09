@@ -1,0 +1,36 @@
+---
+# The owner's Fable 5.2 coordinator (OpenProject #501): a Claude Remote Control session on
+# the `workbench` profile, which runs its pod as dev-agents/dev-env-workbench (see
+# ../../templates/app/templates.yaml). Created once by Flux (ssa: IfNotPresent) and never
+# pruned; ../ks.yaml says how it ends. Its pod is `dev-env-fable-coordinator-1109`, its
+# volume `home-dev-env-fable-coordinator-1109`, its branch `agent/dev-env-fable-coordinator-1109`.
+#
+# Only what the operator and broker read is set. There is no idempotency key, request hash
+# or project snapshot: those are the operator API's own create bookkeeping, and the snapshot
+# is authored only by the API's catalog resolver.
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: AgentSession
+metadata:
+  name: dev-env-fable-coordinator-1109
+  namespace: dev-agents
+  labels:
+    # The depth the API records for a session a client creates (a session's child is 1).
+    # The API reads a missing label as 0; the broker's ancestry and maintenance checks
+    # require it to be exactly "0".
+    dev-env.haynesops.com/depth: "0"
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  agent: claude
+  mode: remote
+  model: claude-fable-5-2
+  effort: xhigh
+  repo: dev-env
+  base: main
+  size: L
+  profile: workbench
+  # The creator, in the "<namespace>/<name>" form the API records for a caller that is not
+  # a session: Flux's kustomize-controller ServiceAccount applies this file.
+  parent: flux-system/kustomize-controller
+  operatingMode: Running

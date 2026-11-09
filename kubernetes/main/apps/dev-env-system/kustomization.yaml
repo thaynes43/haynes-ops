@@ -34,3 +34,5 @@ resources:
   - ./owned-luna-prep/ks.yaml
   - ./portal/policy/ks.yaml
   - ./portal/ks.yaml
+  # The owner's Fable 5.2 coordinator session (OpenProject #501). Nothing depends on it.
+  - ./coordinator-session/ks.yaml
