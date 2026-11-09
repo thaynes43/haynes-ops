@@ -217,7 +217,21 @@ spec:
               # template change; the controller's source is unchanged, so existing Session pods stay as they are.
               # Previous pin sha-c2f785b@sha256:9a9a44e127e0d12f1c7fe69b8279e1dde8140ec0821597d4245bf63d41971567
               # (dev-env v2.94.0, haynes-ops#4721); rollback target.
-              tag: sha-0864805@sha256:dbcd86aedd5db5f92450478f6ab1a23d22d20e70691e4796b694cee0c966c164
+              # dev-env main 69662d4f (v2.96.0 plus #1011, #1009, #1014, #1013; publish 42721399106's operator job
+              # signed and verified this digest). Live changes, all without a flag: #1011 (OP490) gives a reaped or
+              # suspended private session a truthful reason and text (ExecutorEnded once its stop is recorded,
+              # RetentionPending and why while it is not), backs off refused terminal checks from 30 seconds to 30
+              # minutes, and adds the gauges dev_env_reaped_sessions_retained and dev_env_reaped_sessions_oldest_seconds;
+              # the rollout rewrites each protected session's status text once. #1014 (OP502): a workbench session's
+              # child runs on the profile it names, or on the default profile when it names none; it no longer
+              # inherits workbench. #1009 (OP500): the API and controller know the cursor agent kind, but refuse it
+              # (provider_unconfigured) until the templates carry cursor.apiKey, which is a later change; its CRD
+              # copy is already live (haynes-ops#4730). #1013 and #1008 change the agent image and docs only. No new
+              # flag, RBAC or template change; no lifecycle or retention change; the templates revision and every
+              # existing Session pod stay as they are.
+              # Previous pin sha-0864805@sha256:dbcd86aedd5db5f92450478f6ab1a23d22d20e70691e4796b694cee0c966c164
+              # (haynes-ops#4728); rollback target.
+              tag: sha-69662d4@sha256:352285df97f944773306b8800ed166ae476937af5f9f5e2250130ef09c52dd0d
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
