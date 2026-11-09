@@ -99,6 +99,8 @@ item securely in 1Password before merge. No other credential flow is authorized:
    Add `API_TOKEN` (`opapi-` followed by 64 random hex characters) in the same
    item. It is delivered only to the dedicated `dev/openproject-agent-credentials`
    helper, which has no service, network access, Kubernetes token or other secret.
+   The helper lives in its own retained Flux app, `kubernetes/main/apps/dev/openproject-agent/`
+   (Kustomization `dev/openproject-agent`), not in the v1 `dev-env` app, so v1 cleanup keeps it.
    `scripts/openproject/agent-api.py` runs inside existing dev-env and captures
    only that token file through its existing approved `pods/exec` capability,
    in process memory, then authenticates to the fixed private API origin. It

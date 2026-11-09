@@ -1,0 +1,27 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# Retained OpenProject token route for v2 sessions (`opwork` execs into
+# deploy/openproject-agent-credentials). Split out of the v1 dev-env app so deleting
+# v1 does not cut it. Standalone on purpose: do not delete with dev-env.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app openproject-agent
+  namespace: dev
+spec:
+  targetNamespace: dev
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: external-secrets-stores # openproject-agent ExternalSecret needs the 1P store
+      namespace: external-secrets
+  path: ./kubernetes/main/apps/dev/openproject-agent/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m
