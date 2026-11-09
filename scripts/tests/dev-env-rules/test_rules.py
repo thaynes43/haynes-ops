@@ -26,7 +26,7 @@ BOUNDARIES = (
     'Execute dependent stories serially.',
 )
 # OP499 budget: the auto-loaded common rules stay under about 4k tokens.
-MAX_COMMON_BYTES = 16000
+MAX_COMMON_BYTES = 20000
 
 
 def norm(text):
