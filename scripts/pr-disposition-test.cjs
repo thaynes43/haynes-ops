@@ -73,13 +73,20 @@ const vet=(verdict,sha=SHA,login='haynes-ops-bot[bot]')=>({id:6540904846,body:`<
   }
   await check('3707 eligible but explicit null',{},'disposition:stranded','eligible-without-merge-request');
   await check('4219 enabled positive control',{pr:{auto_merge:enabled}},'disposition:auto-merge','enabled');
+  // OP510: GitHub returns commit_message null for Renovate-enabled auto-merges (read live on 4711/4712, 2026-11-09).
+  const renovateNull = { enabled_by: { login: 'renovate[bot]' }, merge_method: 'squash', commit_title: 'fix(container): update image (#4711)', commit_message: null };
+  await check('renovate enabled with null commit_message',{pr:{auto_merge:renovateNull}},'disposition:auto-merge','enabled');
+  await check('enabled null commit_message outranks hold',{pr:{auto_merge:renovateNull},comments:[vet('HOLD')]},'disposition:auto-merge','hold conflicts');
+  await check('null commit_message but missing commit_title',{pr:{auto_merge:{...renovateNull,commit_title:undefined}}},'disposition:stranded','merge-state-unavailable');
+  await check('null commit_message but empty login',{pr:{auto_merge:{...renovateNull,enabled_by:{login:''}}}},'disposition:stranded','merge-state-unavailable');
+  await check('null commit_message but bad merge_method',{pr:{auto_merge:{...renovateNull,merge_method:'bogus'}}},'disposition:stranded','merge-state-unavailable');
   await check('enabled empty commit strings valid',{pr:{auto_merge:{...enabled,commit_title:'',commit_message:''}}},'disposition:auto-merge');
   await check('qbit patch null',{files:['kubernetes/main/apps/downloads/qbittorrent/app/helmrelease.yaml'],pr:{labels:[{name:'type/patch'}]}},'disposition:stranded');
   await check('qbit patch enabled',{files:['kubernetes/main/apps/downloads/qbittorrent/app/helmrelease.yaml'],pr:{labels:[{name:'type/patch'}],auto_merge:enabled}},'disposition:auto-merge');
   await check('qbit minor manual',{files:['kubernetes/main/apps/downloads/qbittorrent/app/helmrelease.yaml']},'disposition:manual-only');
   await check('plex patch shepherd',{files:['kubernetes/main/apps/media/plex/app/helmrelease.yaml'],pr:{labels:[{name:'type/patch'}]}},'disposition:shepherd');
   await check('missing merge field',{missingMerge:true},'disposition:stranded','merge-state-unavailable');
-  for(const value of [false,true,[],{},'enabled',{enabled_by:{login:'renovate[bot]'},merge_method:'bogus'},{enabled_by:{login:'renovate[bot]'},merge_method:'squash'},{...enabled,commit_title:undefined},{...enabled,commit_message:null},{...enabled,commit_title:7}])await check('invalid merge '+JSON.stringify(value),{pr:{auto_merge:value}},'disposition:stranded','merge-state-unavailable');
+  for(const value of [false,true,[],{},'enabled',{enabled_by:{login:'renovate[bot]'},merge_method:'bogus'},{enabled_by:{login:'renovate[bot]'},merge_method:'squash'},{...enabled,commit_title:undefined},{...enabled,commit_message:7},{...enabled,commit_message:undefined},{...enabled,commit_title:null},{...enabled,commit_title:7}])await check('invalid merge '+JSON.stringify(value),{pr:{auto_merge:value}},'disposition:stranded','merge-state-unavailable');
   await check('current hold',{comments:[vet('HOLD')]},'disposition:stranded','current-head-hold');
   await check('enabled outranks hold',{pr:{auto_merge:enabled},comments:[vet('HOLD')]},'disposition:auto-merge','hold conflicts');
   await check('declined current head',{comments:[vet('OUT-OF-SCOPE')]},'disposition:manual-only');
