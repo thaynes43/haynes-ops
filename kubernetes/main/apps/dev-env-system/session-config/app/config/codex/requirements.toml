@@ -15,19 +15,27 @@
 # thread settings at thread/start (on-request / workspace-write / effort high) AND
 # writes them back into ~/.codex/config.toml (observed in v1 at 11:00:08, the second
 # Tom's thread started). Requirements are applied by the local runtime at
-# session init ("disallowed by requirements; falling back to required value"). The
-# fallback is NOT config.toml's default:
+# session init ("disallowed by requirements; falling back to required value"). Without
+# `default_permissions` the fallback is NOT config.toml's default:
 #   - a disallowed approval policy (on-request) falls back to "never";
 #   - a disallowed sandbox (workspace-write, from `-s workspace-write`,
-#     `--approve-for-me` or a client's thread/start `sandbox`) falls back to
+#     `--approve-for-me` or a client's thread/start `sandbox`) fell back to
 #     READ-ONLY, whatever the order of allowed_sandbox_modes. bwrap cannot run here,
-#     so that thread fails every shell command and MCP call.
-# Measured with `codex debug prompt-input` on 0.160.1 (both list orders) and 0.164.0
-# (OpenProject #482). In the 0.160.1 source, thread/start's `sandbox` sets the same
-# override as `-s`.
-# Start threads with no sandbox or approval flags, or with
-# --dangerously-bypass-approvals-and-sandbox. thaynes43/dev-env
-# images/agent/smoke-test.sh pins this behaviour.
+#     so that thread failed every shell command and MCP call (OpenProject #482).
+# `default_permissions = ":danger-full-access"` closes that trap (OpenProject #487):
+# a disallowed sandbox request now falls back to full access, and approval stays
+# "never". `[allowed_permission_profiles]` below lists the profiles a thread may use
+# (full access and read-only). Consequence, deliberate: an EXPLICIT read-only request
+# (`-s read-only`) also resolves to full access, because the pod is the sandbox and
+# bwrap cannot enforce a narrower one. Tom approved 2026-11-09, OpenProject #487.
+# Measured with `codex debug prompt-input` on Codex 0.160.1: `-s workspace-write`,
+# `--approve-for-me` and `-s read-only` all give danger-full-access + approval never,
+# and `codex app-server` / `codex remote-control` still load these requirements.
+# Reordering allowed_sandbox_modes alone did not help. In the 0.160.1 source,
+# thread/start's `sandbox` sets the same override as `-s`.
+# thaynes43/dev-env images/agent/smoke-test.sh pins all of this, from
+# images/agent/testdata/codex-policy/requirements.toml: keep the two identical.
+# Still best practice: start threads with no sandbox or approval flags.
 #
 # Validate on the codex hub's first phone thread (plan 04): in the newest
 # ~/.codex/sessions/**/rollout-*.jsonl the turn_context must show approval_policy
@@ -40,6 +48,16 @@ allowed_approval_policies = ["never"]
 # allowed set must include 'read-only' to allow any PermissionProfile") — which is why
 # `codex remote-control start` died at every boot on 2026-09-10 and the phone showed
 # nothing. Listing it does not weaken the floor: approval stays "never", and a thread
-# that requests no sandbox gets danger-full-access from config.toml. Read-only is also
-# where a disallowed sandbox request lands (above).
+# that requests no sandbox gets danger-full-access from config.toml. A disallowed
+# sandbox request no longer lands in read-only: default_permissions (below) sends it to
+# full access.
 allowed_sandbox_modes = ["read-only", "danger-full-access"]
+# Falls back to full access when a thread asks for a sandbox the set above refuses
+# (#487). It is a requirement too, not a config.toml default, so a client cannot
+# override it. Keep these two keys with allowed_sandbox_modes above; the TOML table
+# must come last.
+default_permissions = ":danger-full-access"
+
+[allowed_permission_profiles]
+":danger-full-access" = true
+":read-only" = true
