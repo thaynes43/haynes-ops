@@ -216,6 +216,55 @@
       matchFileNames: ['scripts/authentik-userinfo-redaction/Dockerfile'],
       enabled: false,
     },
+    // The four holds below constrain 4-part image tags (e.g. 4.0.20.3012) with a plain range, like the other docker holds here. Docker versioning has no ranges, so Renovate falls back to npm semver and coerces the tag (4.0.21.3030 -> 4.0.21) before comparing; checked against Renovate 44.224.2 filterVersions.
+    {
+      description: [
+        'HELD ghcr.io/home-operations/qbittorrent 5.3.0 and newer: the private tracker\'s approved-client list stops at the 5.2.x line. 5.2.x patches stay allowed.',
+        'Reason: MyAnonaMouse approves clients per minor line and says not to auto-update. Its public page https://www.myanonamouse.net/tor/allowed_clients.php read 2026-11-09T23:51Z says "qBittorrent latest 5.2.x recommended from 5.0.1 to latest 5.2.x line" and "do not auto update clients, as new versions not listed below are not automatically allowed". The 5.3.0 image also moves libtorrent from the 2.0 line to the 2.1 line.',
+        'Issue: Renovate PR https://github.com/thaynes43/haynes-ops/pull/4150 (5.3.0, to be closed by Renovate under this hold).',
+        'Resume: MANUAL — lift (widen to the newly listed line) when https://www.myanonamouse.net/tor/allowed_clients.php lists the 5.3.x line; an agent can read the page without a login. Then merge the bump by hand per the autoMerge.json5 qBittorrent carve-out.',
+        'Recorded: 2026-11-09 by claude under OpenProject story 513 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/513).',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['ghcr.io/home-operations/qbittorrent'],
+      allowedVersions: '<5.3.0',
+    },
+    {
+      description: [
+        'HELD ghcr.io/home-operations/sonarr 5.0.0 and newer: every upstream v5 release is a prerelease; hold until a stable v5. 4.x releases stay allowed.',
+        'Reason: every upstream v5.0.0.x release is marked prerelease (beta). The image publishes upstream\'s develop branch. v5 runs 23 new database migrations, and upstream states that downgrading to v4 is not possible without restoring a v4 backup. Owner ruling 2026-11-09: hold until stable.',
+        'Issue: Renovate PR https://github.com/thaynes43/haynes-ops/pull/3871 (5.0.0.2941, to be closed by Renovate under this hold).',
+        'Resume: MANUAL — lift when Sonarr/Sonarr publishes a non-prerelease v5 release (check with `gh api repos/Sonarr/Sonarr/releases`); then upgrade only after a nightly backup has completed.',
+        'Recorded: 2026-11-09 by claude under OpenProject story 513 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/513).',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['ghcr.io/home-operations/sonarr'],
+      allowedVersions: '<5.0.0',
+    },
+    {
+      description: [
+        'HELD ghcr.io/home-operations/radarr 7.0.0 and newer: v7 is prerelease upstream; hold until a stable v7. 6.x releases stay allowed.',
+        'Reason: v7.0.0 to v7.0.2 are all marked prerelease upstream. v7 adds one database migration and upstream makes no downgrade statement. Owner ruling 2026-11-09: hold until stable.',
+        'Issue: Renovate PR https://github.com/thaynes43/haynes-ops/pull/4304 (v7, to be closed by Renovate under this hold).',
+        'Resume: MANUAL — lift when Radarr/Radarr publishes a non-prerelease v7 release (check with `gh api repos/Radarr/Radarr/releases`); then upgrade after a nightly backup.',
+        'Recorded: 2026-11-09 by claude under OpenProject story 513 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/513).',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['ghcr.io/home-operations/radarr'],
+      allowedVersions: '<7.0.0',
+    },
+    {
+      description: [
+        'HELD ghcr.io/home-operations/prowlarr 3.0.0 and newer: v3 is prerelease upstream; hold until a stable v3. 2.x releases stay allowed.',
+        'Reason: v3.0.0 and v3.0.1 are marked prerelease upstream. 3.0.1 changes MyAnonamouse JSON handling, and MyAnonamouse is the indexer the governor job drives. Owner ruling 2026-11-09: hold until stable.',
+        'Issue: Renovate PR https://github.com/thaynes43/haynes-ops/pull/4609 (v3, to be closed by Renovate under this hold).',
+        'Resume: MANUAL — lift when Prowlarr/Prowlarr publishes a non-prerelease v3 release (check with `gh api repos/Prowlarr/Prowlarr/releases`); then upgrade after a nightly backup and re-check the MyAnonamouse indexer.',
+        'Recorded: 2026-11-09 by claude under OpenProject story 513 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/513).',
+      ],
+      matchDatasources: ['docker'],
+      matchPackageNames: ['ghcr.io/home-operations/prowlarr'],
+      allowedVersions: '<3.0.0',
+    },
     // LIFTED 2026-07-17: grafana/mcp-grafana 0.17.1/0.17.2 /healthz 403 hold removed.
     //   Root cause was NOT a probe-path regression but v0.17.1's new DNS-rebinding
     //   protection (Host/Origin validation on every route, 403 for non-loopback Host).
