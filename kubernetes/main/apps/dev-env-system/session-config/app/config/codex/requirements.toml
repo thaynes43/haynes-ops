@@ -15,8 +15,19 @@
 # thread settings at thread/start (on-request / workspace-write / effort high) AND
 # writes them back into ~/.codex/config.toml (observed in v1 at 11:00:08, the second
 # Tom's thread started). Requirements are applied by the local runtime at
-# session init ("disallowed by requirements; falling back to required value"), so a
-# phone thread that asks for on-request/workspace-write runs as never/full-access.
+# session init ("disallowed by requirements; falling back to required value"). The
+# fallback is NOT config.toml's default:
+#   - a disallowed approval policy (on-request) falls back to "never";
+#   - a disallowed sandbox (workspace-write, from `-s workspace-write`,
+#     `--approve-for-me` or a client's thread/start `sandbox`) falls back to
+#     READ-ONLY, whatever the order of allowed_sandbox_modes. bwrap cannot run here,
+#     so that thread fails every shell command and MCP call.
+# Measured with `codex debug prompt-input` on 0.160.1 (both list orders) and 0.164.0
+# (OpenProject #482). In the 0.160.1 source, thread/start's `sandbox` sets the same
+# override as `-s`.
+# Start threads with no sandbox or approval flags, or with
+# --dangerously-bypass-approvals-and-sandbox. thaynes43/dev-env
+# images/agent/smoke-test.sh pins this behaviour.
 #
 # Validate on the codex hub's first phone thread (plan 04): in the newest
 # ~/.codex/sessions/**/rollout-*.jsonl the turn_context must show approval_policy
@@ -27,6 +38,7 @@ allowed_approval_policies = ["never"]
 # ("invalid value for `allowed_sandbox_modes`: `[DangerFullAccess]` is not in the
 # allowed set must include 'read-only' to allow any PermissionProfile") — which is why
 # `codex remote-control start` died at every boot on 2026-09-10 and the phone showed
-# nothing. Listing it does not weaken the floor: approval stays "never" and every
-# thread still defaults to danger-full-access from config.toml.
+# nothing. Listing it does not weaken the floor: approval stays "never", and a thread
+# that requests no sandbox gets danger-full-access from config.toml. Read-only is also
+# where a disallowed sandbox request lands (above).
 allowed_sandbox_modes = ["read-only", "danger-full-access"]
