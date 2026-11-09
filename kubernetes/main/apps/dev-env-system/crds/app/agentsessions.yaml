@@ -2695,6 +2695,14 @@ spec:
                   message:
                     description: Message says what the rescue saved, or why it failed.
                     type: string
+                  nextRetryAt:
+                    description: |-
+                      NextRetryAt is when the operator runs a rescue that failed for a
+                      transient reason only again. Unset for any other verdict: a permanent
+                      failure keeps the volume for a human, and only a hold pod's fixed
+                      retry runs it again (D-55).
+                    format: date-time
+                    type: string
                   notificationKey:
                     description: |-
                       NotificationKey is a notification-only digest of a narrowly qualified
@@ -2802,6 +2810,17 @@ spec:
                       on the rescue does not cover what the volume holds, and a pod delete or
                       an archive needs a new one (D-10: an old bundle never counts).
                     type: boolean
+                  transientFailures:
+                    description: |-
+                      TransientFailures counts the rescues in a row, this one included, that
+                      failed for a transient reason only (FetchFailed: origin could not be
+                      fetched). The operator runs such a rescue again by itself at
+                      NextRetryAt, in a hold pod when the session has no pod (D-55), after a
+                      wait that doubles with each failure up to a cap (DESIGN-001 4.4,
+                      "Transient rescue retry"). Zero for any other verdict.
+                    format: int32
+                    minimum: 0
+                    type: integer
                   unpushedRefs:
                     description: |-
                       UnpushedRefs is D-10 step 4's list: the local refs origin lacked at the
