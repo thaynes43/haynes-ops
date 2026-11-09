@@ -4,9 +4,11 @@
 # run `make generate`, and copy the result. The prune-disabled annotation is added by
 # kustomization.yaml, so this file stays byte-identical to the generated one.
 #
-# Source: dev-env main 1fded9a (#586, D-88): adds spec.attested, the requesters of an
-# attested policy (an agent attestation, not verified human identity). Verified
-# byte for byte against tag v2.52.0 (fd89b72) below the header.
+# Source: dev-env main after PR #1009 (OP500), verified by the coordinator at merge:
+# SOURCE_SHA_TBD. Brings the copy up to date (OP503): spec.attested.allowSecretUse,
+# spec.delegated, spec.maintenance, spec.kube.deniedSecrets, the
+# dev-env-grant-namespace-operator role and their CEL rules, plus the cursor agent kind.
+# (Earlier: dev-env main 1fded9a, #586, D-88, spec.attested.)
 #
 # Keep it in step with the operator and the broker, as agentsessions.yaml says: copy a
 # changed file here before (or with) the pin that writes its new fields.
@@ -75,6 +77,7 @@ spec:
                   enum:
                   - claude
                   - codex
+                  - cursor
                   - opencode
                   type: string
                 maxItems: 3
@@ -99,11 +102,20 @@ spec:
                       enum:
                       - claude
                       - codex
+                      - cursor
                       - opencode
                       type: string
                     maxItems: 3
                     type: array
                     x-kubernetes-list-type: set
+                  allowSecretUse:
+                    description: |-
+                      AllowSecretUse lets this attested policy approve a
+                      dev-env-grant-namespace-operator grant on the requester's own
+                      attestation (mode (a), DESIGN-042 5.1). Without it, the policy approves
+                      that role only through a delegate decision (mode (b)). The requester then
+                      both names the Secrets and attests that someone approved them.
+                    type: boolean
                   profiles:
                     description: |-
                       Profiles are the requester profiles it matches. Profile ops never
@@ -146,6 +158,57 @@ spec:
                     x-kubernetes-list-type: set
                 required:
                 - names
+                type: object
+              delegated:
+                description: |-
+                  Delegated makes this a delegated policy (DESIGN-042 6.2): it approves a
+                  request only when an allowlisted delegate identity, authenticated by the
+                  operator and never the requester or one of its ancestors, recorded a
+                  decision bound to exactly this grant. A delegate decision is not a human
+                  decision. The requesters are named here, as under attested, and the
+                  top-level lists stay empty, so a broker that predates delegation matches
+                  nobody. A policy may carry attested, delegated or both. A delegated
+                  policy approves kube, egress or maintenance grants, never a credential or
+                  dev-env-grant-storage. A broker approves through it only for a delegate
+                  on its --grant-delegates.
+                properties:
+                  agents:
+                    description: Agents are the requester agent CLIs it matches; empty
+                      means any.
+                    items:
+                      description: AgentKind is the agent CLI a session runs.
+                      enum:
+                      - claude
+                      - codex
+                      - cursor
+                      - opencode
+                      type: string
+                    maxItems: 3
+                    type: array
+                    x-kubernetes-list-type: set
+                  profiles:
+                    description: |-
+                      Profiles are the requester profiles it matches. Profile ops never
+                      matches (D-18).
+                    items:
+                      maxLength: 63
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                      x-kubernetes-validations:
+                      - message: no policy matches profile ops (D-18)
+                        rule: self != 'ops'
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-type: set
+                  repos:
+                    description: Repos are the requester repos it matches.
+                    items:
+                      maxLength: 100
+                      pattern: ^[A-Za-z0-9_.-]+$
+                      type: string
+                    maxItems: 32
+                    type: array
+                    x-kubernetes-list-type: set
                 type: object
               description:
                 description: |-
@@ -266,6 +329,21 @@ spec:
               kube:
                 description: Kube is the roles and namespaces it approves.
                 properties:
+                  deniedSecrets:
+                    description: |-
+                      DeniedSecrets are Secrets no dev-env-grant-namespace-operator grant
+                      under this policy may name, in any of its namespaces: an exact name, or
+                      a prefix ending in "*" such as "sh.helm.release.*" (DESIGN-042 5.1). The
+                      policy does not list the Secrets it allows: each grant names its own,
+                      and its approver decides them. So within the policy's namespaces an
+                      approver may let an agent use any Secret not denied here.
+                    items:
+                      maxLength: 253
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*|[a-z0-9][-a-z0-9.]*\*)$
+                      type: string
+                    maxItems: 32
+                    type: array
+                    x-kubernetes-list-type: set
                   namespaces:
                     description: |-
                       Namespaces are named one by one: no wildcard, no pattern (DESIGN-001
@@ -292,6 +370,7 @@ spec:
                       - dev-env-grant-secrets-read
                       - dev-env-grant-nodes
                       - dev-env-grant-breakglass
+                      - dev-env-grant-namespace-operator
                       type: string
                       x-kubernetes-validations:
                       - message: 'no policy approves dev-env-grant-breakglass or dev-env-grant-secrets-read:
@@ -308,6 +387,133 @@ spec:
                 - message: name the namespaces, one by one, for a namespaced role
                   rule: self.roles.all(r, r == 'dev-env-grant-nodes') || (has(self.namespaces)
                     && size(self.namespaces) > 0)
+                - message: only a policy for dev-env-grant-namespace-operator takes
+                    deniedSecrets (DESIGN-042 5.1)
+                  rule: '!has(self.deniedSecrets) || size(self.deniedSecrets) == 0
+                    || self.roles.exists(r, r == ''dev-env-grant-namespace-operator'')'
+              maintenance:
+                description: |-
+                  Maintenance is the one bounded maintenance envelope it approves
+                  (ADR-013). Only an attested or delegated policy carries it: no standing
+                  policy approves maintenance. A broker approves through its attested block
+                  only with --enable-attested-grants and --enable-attested-maintenance,
+                  and through its delegated block only for a listed delegate (DESIGN-042).
+                properties:
+                  capabilities:
+                    description: |-
+                      Capabilities are the capabilities a grant may ask for: a grant's must be
+                      a subset.
+                    items:
+                      enum:
+                      - SYS_ADMIN
+                      - SYS_RAWIO
+                      type: string
+                    maxItems: 2
+                    type: array
+                    x-kubernetes-list-type: set
+                  devices:
+                    description: Devices are the exact device files a grant may name.
+                      Empty means none.
+                    items:
+                      maxLength: 253
+                      pattern: ^/dev/(nvidia[0-9]+|nvidiactl|nvidia-uvm|nvidia-uvm-tools|dri/renderD[0-9]+)$
+                      type: string
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-type: set
+                  image:
+                    description: Image is the exact digest-pinned executor image.
+                    maxLength: 512
+                    pattern: ^[a-zA-Z0-9./:_-]+@sha256:[a-f0-9]{64}$
+                    type: string
+                  maxCPUMillis:
+                    description: MaxCPUMillis caps the grant's cpuMillis.
+                    format: int64
+                    maximum: 2000
+                    minimum: 10
+                    type: integer
+                  maxMemoryMiB:
+                    description: MaxMemoryMiB caps the grant's memoryMiB.
+                    format: int64
+                    maximum: 4096
+                    minimum: 16
+                    type: integer
+                  node:
+                    description: Node is the exact target node name.
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                  nodeUID:
+                    description: 'NodeUID is the exact target node UID: a replaced
+                      node matches nothing.'
+                    maxLength: 64
+                    minLength: 1
+                    type: string
+                  readOnlyMounts:
+                    description: |-
+                      ReadOnlyMounts are the exact maintenance-inputs files a grant may name.
+                      Empty means none.
+                    items:
+                      maxLength: 253
+                      pattern: ^/var/lib/maintenance-inputs/[^/]
+                      type: string
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-type: set
+                  resource:
+                    description: Resource is the exact device or resource identity,
+                      such as a GPU UUID.
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                  runtimeProfile:
+                    description: |-
+                      RuntimeProfile is the grant's exact runtime profile; empty matches only
+                      a grant without one.
+                    enum:
+                    - nvidia-utility
+                    type: string
+                  workers:
+                    description: |-
+                      Workers are the delegated direct children a grant may name, each by
+                      name, session UID and pod UID. Empty means a grant may name none.
+                    items:
+                      description: MaintenanceIdentity pins an already authenticated
+                        session and original pod.
+                      properties:
+                        name:
+                          maxLength: 63
+                          minLength: 1
+                          type: string
+                        podUID:
+                          maxLength: 64
+                          minLength: 1
+                          type: string
+                        uid:
+                          maxLength: 64
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      - podUID
+                      - uid
+                      type: object
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-type: atomic
+                required:
+                - image
+                - maxCPUMillis
+                - maxMemoryMiB
+                - node
+                - nodeUID
+                - resource
+                type: object
+                x-kubernetes-validations:
+                - message: nvidia-utility requires an exact GPU UUID and no explicit
+                    devices
+                  rule: '!has(self.runtimeProfile) || (self.resource.matches(''^GPU-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$'')
+                    && (!has(self.devices) || size(self.devices) == 0))'
               maxTTL:
                 description: MaxTTL is the longest TTL it approves. A longer request
                   goes to Tom.
@@ -350,23 +556,50 @@ spec:
             - type
             type: object
             x-kubernetes-validations:
-            - message: 'no standing policy approves break-glass or maintenance: authenticated
-                human approval is required'
-              rule: self.type != 'breakglass' && self.type != 'maintenance'
+            - message: 'no policy approves break-glass: authenticated human approval
+                is required (D-27)'
+              rule: self.type != 'breakglass'
+            - message: 'no standing policy approves maintenance: only an attested
+                or delegated policy may name a maintenance scope (ADR-013, DESIGN-042)'
+              rule: self.type != 'maintenance' || has(self.attested) || has(self.delegated)
+            - message: 'no delegated policy approves a credential: credential execution
+                re-checks a policy approver (DESIGN-042 6.2)'
+              rule: '!has(self.delegated) || self.type != ''credential'''
+            - message: 'no delegated policy approves dev-env-grant-storage: destructive
+                storage stays Tom''s decision (DESIGN-042 RD4)'
+              rule: '!has(self.delegated) || !has(self.kube) || !self.kube.roles.exists(r,
+                r == ''dev-env-grant-storage'')'
+            - message: maintenance is set for type maintenance, and only there
+              rule: (self.type == 'maintenance') == has(self.maintenance)
+            - message: a maintenance grant lasts at most 1h
+              rule: self.type != 'maintenance' || duration(self.maxTTL) <= duration('1h')
             - message: kube is set for type kube, and only there
               rule: (self.type == 'kube') == has(self.kube)
+            - message: 'no standing policy approves dev-env-grant-namespace-operator:
+                only an attested or delegated policy may (DESIGN-042 5.1)'
+              rule: '!has(self.kube) || !self.kube.roles.exists(r, r == ''dev-env-grant-namespace-operator'')
+                || has(self.attested) || has(self.delegated)'
+            - message: attested.allowSecretUse is only for a policy that names dev-env-grant-namespace-operator
+                (DESIGN-042 5.1)
+              rule: '!has(self.attested) || !has(self.attested.allowSecretUse) ||
+                !self.attested.allowSecretUse || (has(self.kube) && self.kube.roles.exists(r,
+                r == ''dev-env-grant-namespace-operator''))'
             - message: egress is set for type egress, and only there
               rule: (self.type == 'egress') == has(self.egress)
             - message: credential is set for type credential, and only there
               rule: (self.type == 'credential') == has(self.credential)
             - message: 'name the requesters: profiles, repos or both; an attested
-                policy names them only under attested and leaves profiles, repos and
-                agents empty, so a broker that predates attestation matches nobody'
-              rule: 'has(self.attested) ? ((has(self.profiles) ? size(self.profiles)
-                : 0) + (has(self.repos) ? size(self.repos) : 0) == 0 && (has(self.agents)
-                ? size(self.agents) : 0) == 0 && (has(self.attested.profiles) ? size(self.attested.profiles)
-                : 0) + (has(self.attested.repos) ? size(self.attested.repos) : 0)
-                > 0) : ((has(self.profiles) ? size(self.profiles) : 0) + (has(self.repos)
+                or delegated policy names them only under attested or delegated, in
+                each block it carries, and leaves profiles, repos and agents empty,
+                so a broker that predates either block matches nobody'
+              rule: '(has(self.attested) || has(self.delegated)) ? ((has(self.profiles)
+                ? size(self.profiles) : 0) + (has(self.repos) ? size(self.repos) :
+                0) == 0 && (has(self.agents) ? size(self.agents) : 0) == 0 && (!has(self.attested)
+                || (has(self.attested.profiles) ? size(self.attested.profiles) : 0)
+                + (has(self.attested.repos) ? size(self.attested.repos) : 0) > 0)
+                && (!has(self.delegated) || (has(self.delegated.profiles) ? size(self.delegated.profiles)
+                : 0) + (has(self.delegated.repos) ? size(self.delegated.repos) : 0)
+                > 0)) : ((has(self.profiles) ? size(self.profiles) : 0) + (has(self.repos)
                 ? size(self.repos) : 0) > 0)'
             - message: maxTTL runs from 10m to 8h
               rule: duration(self.maxTTL) >= duration('10m') && duration(self.maxTTL)
