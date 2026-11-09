@@ -1124,7 +1124,10 @@ class ComponentRenderTest(unittest.TestCase):
                          PILOT_TARGET_FLAGS)
         self.assertIn("--session-namespace=dev-agents", operator["args"])
         self.assertEqual(sum(arg.startswith("--session-namespace") for arg in operator["args"]), 1)
-        self.assertFalse(any(arg.startswith("--enable-child-usage-capture") for arg in operator["args"]))
+        # Child usage capture (DESIGN-018, OpenProject #109): off until Tom approved it on 2026-11-09
+        # (haynes-ops #4723); now exactly once.
+        self.assertEqual([a for a in operator["args"] if a.startswith("--enable-child-usage-capture")],
+                         ["--enable-child-usage-capture"])
         # The measured-usage pilot (2026-10-28): one new key and the signed 2.52.0 agent image,
         # each flag once. The parent is the coordinator session; launch stays off.
         self.assertEqual([a for a in operator["args"] if a.startswith("--pilot-agent-image")], [
