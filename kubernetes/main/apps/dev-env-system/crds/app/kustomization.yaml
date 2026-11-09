@@ -9,6 +9,7 @@ resources:
   - ./activities.yaml
   - ./credentialjobs.yaml
   - ./reminders.yaml
+  - ./scheduledworks.yaml
   - ./coordination.dev-env.haynesops.com_taskclaims.yaml
   - ./taskclaims-operator.yaml
   - ./coordination.dev-env.haynesops.com_publishedcontexts.yaml
