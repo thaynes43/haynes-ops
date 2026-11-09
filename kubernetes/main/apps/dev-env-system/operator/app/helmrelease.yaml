@@ -196,7 +196,16 @@ spec:
               # (dev-env#991; controller and broker events). No new flag, no CRD or RBAC change, no template change.
               # Operator image only: every flag, the allowance configuration, templates, permissions and existing
               # Session pods stay unchanged. Previous pin sha-1db8599 (dev-env#975, haynes-ops#4703); rollback target.
-              tag: sha-5c84486@sha256:be854ba47afd6c41edd4fd70edb416e28b039f285a707796cdea1647cbec85df
+              # dev-env v2.94.0 (release c2f785bf, publish 42652418655 signed and verified this digest). Operator source
+              # delta since 5c84486 is one change: a rescue that failed for a transient reason only is retried with
+              # backoff (dev-env#1000; controller). It writes AgentSession status.rescue.transientFailures and
+              # nextRetryAt, which need the CRD copy from haynes-ops#4715 merged first, or the API server prunes them
+              # and the backoff falls back to a fixed 15 minutes. No new flag (nothing under cmd/dev-env-operator
+              # changed), no RBAC change (it adds only uncached Gets of a Pod and an AgentSession, which drain.go already
+              # does in v2.93.0, and writes status the controller already owns), no template change. Operator image only: every flag, the allowance configuration, templates,
+              # permissions and existing Session pods stay unchanged. Previous pin sha-5c84486 (dev-env v2.93.0,
+              # haynes-ops#4718); rollback target.
+              tag: sha-c2f785b@sha256:9a9a44e127e0d12f1c7fe69b8279e1dde8140ec0821597d4245bf63d41971567
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
