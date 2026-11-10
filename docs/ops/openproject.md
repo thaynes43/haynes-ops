@@ -266,7 +266,9 @@ opwork.py claim 97 --note "starting" [--assignee me]  # Execution owner = this s
 opwork.py comment 97 "progress"                  # attributed; `-` reads stdin
 opwork.py status 97 "In review" --note "PR #1"
 opwork.py complete 97 --evidence "tests ..."     # evidence + Accepted when the workflow allows
-opwork.py create --epic 95 --origin 97 --source-key followup:97:topic --subject "..."
+opwork.py create --epic 95 --origin 97 --source-key followup:97:topic --subject "..."   # a Story under Epic 95
+opwork.py create --type Epic --epic SAGA_ID --source-key K --subject "..."   # an Epic under a Saga
+opwork.py create --type Saga --source-key K --subject "..."                 # a Saga: no parent, no --epic
 opwork.py relate 130 97 --type relates
 opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local record, replay
 ```
@@ -277,7 +279,11 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   Never write as Tom. `OPWORK_PROJECT` overrides the project.
 - **Search first**: `create` reuses any item with the same `--source-key` (matched client-side,
   because the API offers no custom-field filter) and stops with exit 4 on a similar subject
-  under the Epic unless `--confirm-new`. New items are filed Ungroomed under the Epic, with a
+  under the same parent unless `--confirm-new` (for a Saga, which has no parent, among the other
+  Sagas). `--type` is Story (the default), Epic or Saga; `--epic` is the parent id (an Epic id
+  for a Story, a Saga id for an Epic) and is refused for a Saga, which takes no parent, and
+  required for the other two (exit 1, before any request; OP508, 2026-11-10).
+  New items are filed Ungroomed under the parent (a Saga under none), with a
   `relates` link to the originating Story and the creator in Decision provenance. A create is
   never retried: if the answer is lost, the source key is searched and the result reported.
   The new item is then read back by id and checked exactly, with no normalization tolerance:

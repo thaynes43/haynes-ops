@@ -176,6 +176,8 @@ class Fake:
                 rows = [w for w in rows if str(STATUSES[w["_links"]["status"]["title"]]) in spec["values"]]
             elif name == "parent":
                 rows = [w for w in rows if w["_links"]["parent"]["href"] and str(self.hrefid(w["_links"]["parent"]["href"])) in spec["values"]]
+            elif name == "type" and spec["operator"] == "=":
+                rows = [w for w in rows if str(TYPES[w["_links"]["type"]["title"]]) in spec["values"]]
             elif name == "subjectOrId":
                 rows = [w for w in rows if spec["values"][0].lower() in w["subject"].lower()]
         return rows
@@ -650,6 +652,89 @@ class CreateTests(Base):
         self.story()
         code, _, err = self.run_cli("create", "--epic", "6", "--source-key", "k", "--subject", "x")
         self.assertEqual((code, "goes under a Epic" in err), (1, True))
+
+    # OP508: a Saga is created with no parent; --epic is the parent id and only an Epic or a Story needs it.
+    def saga_args(self, *extra, key="saga:op508:test", subject="Brand new platform programme"):
+        return ("create", "--type", "Saga", "--source-key", key, "--subject", subject) + extra
+
+    def test_creates_saga_with_no_parent_ungroomed_with_provenance_and_read_back(self):
+        code, out, err = self.run_cli(*self.saga_args("--description", "Goal and boundaries", "--acceptance", "usable end state", "--constraints", "none", "--repos", "thaynes43/haynes-ops", "--origin", "6"))
+        self.assertEqual(code, 0, err)
+        self.assertIn("created (read back): #101 Saga [Ungroomed] lock=1", out)
+        (project, payload), = self.fake.created
+        self.assertEqual(project, "haynes-engineering")
+        self.assertNotIn("parent", payload["_links"])  # no parent link at all
+        self.assertEqual(self.fake.hrefid(payload["_links"]["type"]["href"]), TYPES["Saga"])
+        self.assertEqual(self.fake.hrefid(payload["_links"]["status"]["href"]), STATUSES["Ungroomed"])
+        self.assertEqual(payload[op.SOURCE_KEY], "saga:op508:test")
+        self.assertIn("codex-test | worktree w1 | branch agent/w1", payload[op.PROVENANCE]["raw"])
+        made = self.fake.wps[101]
+        self.assertEqual((made["_links"]["type"]["title"], made["_links"]["status"]["title"], made["_links"]["parent"]["href"]), ("Saga", "Ungroomed", None))
+        self.assertEqual(made[op.REPOS], "thaynes43/haynes-ops")
+        self.assertIn("related to #6", out)
+
+    def test_saga_rerun_with_the_same_source_key_reuses_it(self):
+        self.assertEqual(self.run_cli(*self.saga_args())[0], 0)
+        code, out, err = self.run_cli(*self.saga_args())
+        self.assertEqual(code, 0, err)
+        self.assertIn("REUSED, not created: #101 Saga ", out)
+        self.assertEqual(len(self.posts("/projects/")), 1)
+
+    def test_saga_reuse_refuses_a_key_held_by_another_subject_or_a_non_saga(self):
+        self.assertEqual(self.run_cli(*self.saga_args())[0], 0)
+        code, _, err = self.run_cli(*self.saga_args(subject="A different programme"))
+        self.assertEqual(code, 6, err)
+        self.assertIn("subject (changed)", err)
+        self.story(20, key="saga:op508:other")  # the key belongs to a Story under Epic 5
+        code, _, err = self.run_cli(*self.saga_args(key="saga:op508:other"))
+        self.assertEqual(code, 6, err)
+        self.assertIn("type (sent /api/v3/types/10, read back /api/v3/types/11)", err)
+        self.assertIn("parent (sent none, read back /api/v3/work_packages/5)", err)
+        self.assertEqual(len(self.posts("/projects/")), 1)
+
+    def test_saga_with_a_parent_is_refused_before_any_request(self):
+        code, _, err = self.run_cli(*self.saga_args("--epic", "6"))
+        self.assertEqual((code, "Grammar: a Saga has no parent" in err), (1, True))
+        self.assertEqual((self.fake.calls, self.fake.created), ([], []))
+
+    def test_epic_and_story_without_a_parent_are_refused_before_any_request(self):
+        for kind, text in (("Epic", "an Epic needs a Saga id"), ("Story", "a Story needs an Epic id")):
+            code, _, err = self.run_cli("create", "--type", kind, "--source-key", "k", "--subject", "x")
+            self.assertEqual((code, text in err), (1, True), err)
+        code, _, err = self.run_cli("create", "--source-key", "k", "--subject", "x")  # the default type is Story
+        self.assertEqual((code, "a Story needs an Epic id" in err), (1, True))
+        self.assertEqual((self.fake.calls, self.fake.created), ([], []))
+
+    def test_epic_under_a_saga_and_story_under_an_epic_still_work_and_an_epic_under_a_story_is_refused(self):
+        code, out, err = self.run_cli("create", "--type", "Epic", "--epic", "6", "--source-key", "epic:1", "--subject", "Delivery pipeline")
+        self.assertEqual(code, 0, err)
+        self.assertIn("created (read back): #101 Epic [Ungroomed] parent=#6", out)
+        code, out, err = self.run_cli("create", "--epic", "101", "--source-key", "story:1", "--subject", "Wire the thing")
+        self.assertEqual(code, 0, err)
+        self.assertIn("created (read back): #102 Story [Ungroomed] parent=#101", out)
+        code, _, err = self.run_cli("create", "--type", "Epic", "--epic", "102", "--source-key", "epic:2", "--subject", "Wrong place")
+        self.assertEqual((code, "a Epic goes under a Saga, but #102 is a Story" in err), (1, True), err)
+        self.assertEqual(len(self.posts("/projects/")), 2)  # nothing was created by the refusal
+
+    def test_similar_saga_subject_among_sagas_needs_a_decision(self):
+        self.fake.add(20, "Saga", "Brand new platform programme for agents", None)
+        self.fake.add(21, "Epic", "Brand new platform programme", 6)  # a similar Epic is not a Saga: not compared
+        code, _, err = self.run_cli(*self.saga_args())
+        self.assertEqual(code, 4)
+        self.assertIn("POSSIBLE DUPLICATE among existing Sagas", err)
+        self.assertIn("#20 Saga", err)
+        self.assertNotIn("#21", err)
+        self.assertEqual(self.posts("/projects/"), [])
+        self.assertEqual(self.run_cli(*self.saga_args(), "--confirm-new")[0], 0)
+        self.assertEqual(len(self.posts("/projects/")), 1)
+
+    def test_saga_whose_read_back_shows_a_parent_is_not_confirmed(self):
+        self.fake.after_create = lambda wp: wp["_links"].update(parent={"href": "/api/v3/work_packages/5"})
+        code, out, err = self.run_cli(*self.saga_args())
+        self.assertEqual(code, 6, err)
+        self.assertNotIn("created (read back)", out)
+        self.assertIn("parent (sent none, read back /api/v3/work_packages/5)", err)
+        self.assertEqual(len(self.posts("/projects/")), 1)
 
     def test_rerun_after_reuse_completes_a_lost_origin_relation(self):
         self.story()
