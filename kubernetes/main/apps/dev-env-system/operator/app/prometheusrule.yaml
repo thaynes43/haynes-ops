@@ -1,8 +1,14 @@
 ---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
 # dev-env v2's pages (thaynes43/dev-env DESIGN-001 D-10, D-56; DESIGN-024 section 7).
-# All are severity critical, the one severity Alertmanager sends to Tom's phone by
-# Pushover.
+# All but DevEnvReapedStopUnproven are severity critical, the one severity
+# Alertmanager sends to Tom's phone by Pushover. DevEnvReapedStopUnproven is a
+# warning: nothing routes it, so it shows only in Alertmanager and Grafana.
+#
+# DevEnvReapedStopUnproven (dev-env DESIGN-025 25.4; OP490, OP515): a reaped session
+# whose agent's stop is still not proven an hour after the reap. A stop normally lands
+# within a minute. Nothing is at risk while it fires (the HOME volume is kept), so it
+# does not page; the coordinator's daily sweep (OP498) reads it.
 #
 # DevEnvRescueFailed: a session's newest rescue failed (condition RescueFailed True).
 # D-10 keeps its volume and blocks archive until a human decides. The 20 minutes let
@@ -64,8 +70,6 @@ spec:
               DevEnvRescueFailed is blind. Check `kubectl get pods -n dev-env-system -l
               app.kubernetes.io/name=dev-env-operator` and their logs. Running
               sessions are not affected (D-01).
-        # OP490 / OP515 (dev-env DESIGN-025 25.4): a reaped session whose agent's stop is
-        # still not proven an hour after the reap. A stop normally lands within a minute.
         # Gauges come from each replica's cache, so max, never sum.
         - alert: DevEnvReapedStopUnproven
           expr: max(dev_env_reaped_sessions_oldest_seconds{reason=~"RetentionPending|PreservationUnknown"}) > 3600
@@ -82,7 +86,8 @@ spec:
               RetentionPending or PreservationUnknown says in that condition's message
               what the operator could not confirm. Nothing is at risk: its HOME volume is
               kept until the stop is proven. Never delete the session, its Pod or its
-              volume by hand. An automated responder reports this and changes nothing.
+              volume by hand. This is a warning: it pages nobody and shows only in
+              Alertmanager and Grafana; the dev-env coordinator's daily sweep reads it.
         - alert: DevEnvCoordinationRecordsNearLimit
           expr: |
             max by (kind, project) (dev_env_coordination_records)
