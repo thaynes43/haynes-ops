@@ -6,7 +6,9 @@
 # #521) a cluster-wide `get` on PersistentVolumes with no resourceNames: no cluster-wide
 # pod or PVC rights, no Secrets, no bind. The manager's cache is scoped to dev-agents
 # and the one templates ConfigMap (internal/controller/reconciler.go, CacheOptions), so
-# namespaced Roles cover every list and watch it makes.
+# namespaced Roles cover every cached list and watch it makes. The Node list for
+# DESIGN-061 section 1.1 is an uncached APIReader list (taskVolumeReleased), so it
+# needs list and not watch.
 #
 # Not the v1 ClusterRole `dev-env-operator`: that name is v1's OPERATOR tier for agents
 # (6.11, "Naming note"). These are Roles named dev-env-operator in their own namespaces.
