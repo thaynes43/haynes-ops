@@ -142,7 +142,11 @@ spec:
         containers:
           app:
             <<: *app
-            args: ["--run", "--operations-only", "--timings"]
+            # No --timings on v2.5.3: it aborts at startup with "'NoneType' object
+            # has no attribute 'info'" yet exits 0 (Kometa-Team/Kometa#3718, fixed in
+            # v2.5.4). Every operations run from 2026-10-23 to 2026-11-09 died that way.
+            # Restore --timings together with the v2.5.4 upgrade.
+            args: ["--run", "--operations-only"]
             env:
               TZ: America/New_York
               # Explicit rollback: upstream restores the unmodified service path.

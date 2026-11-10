@@ -58,7 +58,11 @@ For every proposed tag or digest:
    against Plex. Do not run the full nightly workload merely to test an image.
 5. Read advisory review and required checks, then merge and reconcile Flux.
    Verify the next operations run's source and lock messages plus
-   `/config/logs/timings-*-summary.log`. A separately authorized manual operations
+   `/config/logs/timings-*-summary.log` (when operations passes `--timings`).
+   Confirm the run reached `Finished Run`: Kometa exits 0 even when it aborts at
+   startup, so a Completed Job does not prove the run happened. The probe in step 4
+   never starts Kometa itself and missed exactly that on v2.5.3 (`--timings` crash,
+   Kometa-Team/Kometa#3718). A separately authorized manual operations
    verification may use the normal CronJob template, shared lock and a shortened
    10–15 minute Job deadline while all three jobs are idle. Declare it with
    `declare-activity start ... --scope media,kometa`, then end the declaration.
@@ -67,7 +71,8 @@ For every proposed tag or digest:
 
 To return to upstream per-title IMDb ratings, change only the operations
 `HNET_IMDB_RATINGS_SOURCE` to `upstream` in git and reconcile Flux. This retains
-the shared lock and `--timings`; expect the longer serial lookup cost to return.
+the shared lock (and `--timings`, when it is enabled); expect the longer serial
+lookup cost to return.
 Do not alter the alert threshold to conceal it. Restoring this route does not
 require touching the PVC-seeded config or persistent cache.
 

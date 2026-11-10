@@ -85,4 +85,6 @@ second category label on one collection.
    an unreviewed upstream change. Kometa image upgrades are manual: follow
    `.agents/runbooks/kometa-upgrades.md`, including the real-image probe. Reverting
    `HNET_IMDB_RATINGS_SOURCE` to `upstream` in git disables only that compatibility
-   patch while retaining serialization and timing diagnostics.
+   patch while retaining serialization. Operations' `--timings` is off on v2.5.3,
+   which crashes at startup with it (Kometa-Team/Kometa#3718), and comes back
+   with v2.5.4.
