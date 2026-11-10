@@ -156,8 +156,8 @@ The tick uses these exit codes:
 
 | Exit | When |
 |---|---|
-| 0 | The tick finished or was paused. Also when it failed but recorded the failure: it writes `data.error` (and `summary.error`) to `upgrade-lane-state`. |
-| 2 | The state write itself failed (the server-side apply was refused, or the state is over the 768 KiB budget). The log carries `ERROR upgrade-night: STATE WRITE FAILED`. The ConfigMap cannot record its own write failure, so a Failed pod is the only signal. |
+| 0 | The tick finished or was paused. Also when it failed but recorded the failure: it writes `data.error` (and `summary.error`) to `upgrade-lane-state`. This includes a state over the 768 KiB budget, which is caught before the write; the small error record still lands. |
+| 2 | The state write itself failed: the server-side apply was refused. The log carries `ERROR upgrade-night: STATE WRITE FAILED`. The ConfigMap cannot record its own write failure, so a Failed pod is the only signal. |
 | 1 | The tick failed and its error record could not be written either. |
 
 **How the gate and triage treat a Failed `upgrade-night` pod** (read from
@@ -185,6 +185,13 @@ Before the live step, a later change should decide how a Failed `upgrade-night` 
 classified. One option is a covering alert plus the failure-is-the-alert annotation;
 another is an explicit exclusion in `coordination-lib.sh`. That library is mounted in
 dev-env-ops, so merge such a change only when no work order is claimed.
+
+## Known limits
+
+- State evidence reads pods and CronJobs only, because the read-only role cannot read
+  PVCs, StatefulSets or Deployments. A stateful app that is scaled to zero and has no
+  ReplicationSource could therefore look stateless. The live step must close this gap
+  before it merges stateful targets.
 
 ## Tests
 
