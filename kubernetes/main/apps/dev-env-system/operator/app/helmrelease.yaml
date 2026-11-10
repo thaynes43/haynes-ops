@@ -273,7 +273,23 @@ spec:
               # paused (OP544).
               # Previous pin sha-6a8541b@sha256:0a2ace9740a0963efc3092595107d839901ee9a28a1d0e31a634d88aec18a9f7
               # (haynes-ops#4782); rollback target for the operator alone.
-              tag: sha-4118ac8@sha256:3f867cf2e45c140f2672168d4c001fde5f814d1706cccd18131f28713f81f198
+              # dev-env main e8a3ebaf (release 2.101.0; publish 42913389568's operator job signed and
+              # verified this digest). What changes in the running operator since sha-4118ac8:
+              # - Parent notes (DESIGN-062 slices 1 and 2, OP684, OP685): the stored message accepts
+              #   the new note kinds, peer inbox and archive routes hide parent notes, and the routes
+              #   POST and GET /v1/parent-notes exist; they are switched on by the flag further down.
+              # - The Asks store and the session ask route (dev-env#1041): a create whose outcome is
+              #   unknown is not retried as new, a session cannot open an Ask of the grant kind or use
+              #   the reserved request prefix, and the state label is written with preconditions.
+              #   These run for today's question cards too.
+              # - Not switched on by this pin: grant requests on the board. That code is in the
+              #   broker, behind --enable-grant-asks, which is set nowhere.
+              # No CRD or permission change here: both CRD copies it needs are already applied
+              # (haynes-ops#4794, #4796).
+              # Previous pin sha-4118ac8@sha256:3f867cf2e45c140f2672168d4c001fde5f814d1706cccd18131f28713f81f198
+              # (haynes-ops#4790); rollback target for the operator alone, after removing
+              # --enable-parent-notes, which that image does not know.
+              tag: sha-e8a3eba@sha256:838914471b46053af33a6c89cfec44f73362bd299643ce1b8cd5180834055f0f
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
@@ -482,6 +498,16 @@ spec:
               # Rollback: remove this line. Once any question or reply exists, keep the operator at 2.76 or later and never revert the
               # InboxMessage CRD below v2.76.0 (DESIGN-014).
               - '--enable-inbox-questions=true'
+              # OP685 (dev-env#1057, DESIGN-062 slice 2): a child session leaves a note (question,
+              # result or blocker) for the session that started it, and the two of them list and
+              # read it: agent-run parent tell, list and read. The recipient is the child's recorded
+              # parent, taken on the server. Only the saved sender and recipient can read a note; a
+              # note grants no access and is not an approval. Same projects and limits as the
+              # durable inbox above, which this flag requires. No new Role: get, create and list on
+              # inboxmessages are enough for this slice (the later wait route needs watch, which
+              # comes with its own change). Answers, waits, Meatball and the wake line are later
+              # slices. Rollback: remove this line; stored notes stay hidden from every other route.
+              - '--enable-parent-notes=true'
               # OP497: GET /v1/portal/question-audit, one page of question and reply metadata for
               # project dev-env and one live session. No question text. Requires the portal reader,
               # durable inbox and inbox questions above, and every project here must already be in
