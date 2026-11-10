@@ -1,0 +1,85 @@
+# The front door. dev-env-system-default-deny already selects every pod here:
+# its ingress allows nothing, and its egress allows DNS to kube-dns for any
+# name (matchPattern "*"). This policy adds the only ingress and the only
+# two connections. A DNS query is not a connection: there is no toFQDNs rule,
+# so a looked-up address is reachable only when a toEndpoints rule below
+# names that pod. Combined egress is DNS, the operator API, and OpenProject.
+#
+# Probes: the operator policy records that Cilium on this cluster admits
+# kubelet probes from the host, so the TCP probes have no fromEntities rule.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: dev-env-frontdoor
+  namespace: dev-env-system
+spec:
+  description: Meatball front door, internal gateway in, operator and OpenProject out
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-frontdoor
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: network
+            app.kubernetes.io/name: traefik
+            app.kubernetes.io/instance: traefik-internal-network
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: dev-env-operator.dev-env-system.svc.cluster.local
+              - matchName: openproject-web.frontend.svc.cluster.local
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-operator
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: frontend
+            app.kubernetes.io/instance: openproject
+            app.kubernetes.io/controller: web
+      toPorts:
+        - ports:
+            - port: "8082"
+              protocol: TCP
+---
+# OpenProject's own policy admits dev and dev-agents on 8082 and does not
+# admit this namespace. agent-api.py calls
+# http://openproject-web.frontend.svc.cluster.local:8082. The Service
+# openproject-web selects the web controller. No egress section, so this
+# object does not change the web pod's existing egress. The matching egress
+# is the policy above.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: openproject-frontdoor-api
+  namespace: frontend
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/instance: openproject
+      app.kubernetes.io/controller: web
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-frontdoor
+      toPorts:
+        - ports:
+            - port: "8082"
+              protocol: TCP

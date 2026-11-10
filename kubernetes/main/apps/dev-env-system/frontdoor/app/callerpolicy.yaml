@@ -1,0 +1,15 @@
+# Copied from DESIGN-060 section 7.1. The schema fixes the account, mode and
+# profile, and these bounds are the widest it allows. Do not add a field.
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: CallerPolicy
+metadata:
+  name: meatball
+  namespace: dev-env-system
+spec:
+  serviceAccount: dev-env-system/dev-env-meatball
+  mode: task
+  profile: dev
+  models: [claude-opus-5-5, gpt-6-astra, claude-fable-5-2]
+  maxConcurrent: 2
+  maxTimeout: 4h
+  maxWorkers: 4

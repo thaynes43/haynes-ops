@@ -1,0 +1,41 @@
+# LAN-only route for POST /mcp.
+#
+# Path shape: cigar-journal's MCP route
+# (apps/frontend/cigar-journal/app/ingressroute.yaml) is
+# Host(`cigars.haynesnetwork.com`) && PathPrefix(`/mcp`) on traefik-external.
+# This server accepts only the exact path /mcp (it answers 404 for anything
+# else, after the bearer). The rule is Path(`/mcp`), not a prefix, so /mcp/foo
+# is not forwarded. The host is not cigars.haynesnetwork.com.
+#
+# Gateway and name: the internal apps. traefik-internal's ingressClass is
+# traefik-internal (network/traefik/traefik-internal). traefik-external's is
+# traefik-external, so it does not load this route. external-dns target
+# internal.haynesops is the UniFi zone haynesops.com. Cloudflare external-dns
+# excludes haynesops.com and its domain filter is haynesnetwork.com, so this
+# name is not published on the internet. The internal Service is a private
+# LoadBalancer, 192.168.40.203.
+#
+# The route is in namespace dev because certificate-haynesops is reflected
+# there and not to dev-env-system (the portal route says why). traefik-internal
+# allows the cross-namespace Service.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: dev-env-frontdoor
+  namespace: dev
+  annotations:
+    external-dns.kubernetes.io/target: internal.haynesops
+    kubernetes.io/ingress.class: traefik-internal
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`dev-env-frontdoor.haynesops.com`) && Path(`/mcp`)
+      services:
+        - kind: Service
+          name: dev-env-frontdoor
+          namespace: dev-env-system
+          port: 8080
+  tls:
+    secretName: certificate-haynesops
