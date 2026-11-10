@@ -1,0 +1,1053 @@
+{
+  "schema": "haynes.upgrade-rules/v1",
+  "doc": ".agents/runbooks/upgrade-night-lane.md. Design: OP512 comment 6193 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/512). Read by lane-classify.mjs; scripts/upgrade-agent/lane-classify-selftest.mjs checks it against .github/workflows, .renovate and the pins.",
+  "renovate_pr_authors": [
+    "app/renovate",
+    "renovate",
+    "renovate[bot]"
+  ],
+  "renovate_commit_authors": [
+    "renovate[bot]"
+  ],
+  "trusted_vet_authors": [
+    "haynes-ops-bot[bot]"
+  ],
+  "check_max_age_days": 7,
+  "strictness": [
+    "EXCLUDED",
+    "LANE-B-OWNER",
+    "LANE-B-AGENT",
+    "BLOCKED",
+    "LANE-A"
+  ],
+  "path_classes": [
+    {
+      "id": "dev-env-v2",
+      "globs": [
+        "kubernetes/main/apps/dev-env-system/**"
+      ],
+      "lane": "EXCLUDED",
+      "class": "v2-coordinator",
+      "reason": "dev-env v2 area, owned by the v2 coordinator"
+    },
+    {
+      "id": "merger-own-paths",
+      "globs": [
+        "kubernetes/main/apps/upgrade-agent/**",
+        "scripts/upgrade-shepherd/**",
+        "scripts/upgrade-agent/**"
+      ],
+      "lane": "EXCLUDED",
+      "class": "merger-own-path",
+      "reason": "the merger's own code, image or pins"
+    },
+    {
+      "id": "workflow-files",
+      "globs": [
+        ".github/workflows/**"
+      ],
+      "lane": "EXCLUDED",
+      "class": "workflow-file",
+      "reason": "GitHub workflow file"
+    },
+    {
+      "id": "renovate-config",
+      "globs": [
+        ".renovate/**",
+        ".github/renovate.json5"
+      ],
+      "lane": "EXCLUDED",
+      "class": "renovate-config",
+      "reason": "Renovate configuration"
+    },
+    {
+      "id": "v1-restart",
+      "globs": [
+        "kubernetes/main/apps/dev/dev-env/**",
+        "kubernetes/main/apps/upgrade-agent/dev-env-ops/**"
+      ],
+      "lane": "LANE-B-OWNER",
+      "class": "v1-restart",
+      "reason": "restarts the v1 dev-env pod or dev-env-ops and their sessions; Tom picks the night"
+    }
+  ],
+  "check_map": {
+    "always": [
+      {
+        "workflow": "Diff Scope",
+        "check": "Diff Scope - Success",
+        "source": ".github/workflows/diff-scope.yml",
+        "required": true
+      },
+      {
+        "workflow": "Flux Local",
+        "check": "Flux Local - Success",
+        "source": ".github/workflows/flux-local.yaml",
+        "required": true
+      }
+    ],
+    "advisory": [
+      {
+        "workflow": "Claude Code Review",
+        "check": "Claude Review (advisory)",
+        "source": ".github/workflows/claude-code-review.yml"
+      }
+    ],
+    "entries": [
+      {
+        "id": "flux-local-kubernetes",
+        "source": ".github/workflows/flux-local.yaml",
+        "workflow": "Flux Local",
+        "filter": "job",
+        "paths": [
+          "kubernetes/**/*"
+        ],
+        "checks": [
+          "Flux Local - Test (main)",
+          "Flux Local - Diff (main/helmrelease)",
+          "Flux Local - Diff (main/kustomization)"
+        ],
+        "note": "job-level filter (bjw-s-labs/action-changed-files kubernetes/**/*). When nothing under kubernetes/ changes these legs report SKIPPED under the unexpanded name, so a kubernetes/** PR must show all three SUCCESS by their expanded names."
+      },
+      {
+        "id": "flux-local-portal-oidc",
+        "source": ".github/workflows/flux-local.yaml",
+        "workflow": "Flux Local",
+        "filter": "job",
+        "paths": [
+          "kubernetes/main/apps/network/authentik/**",
+          "scripts/tests/portal178-m5a/**",
+          ".agents/reports/portal178-m5a/pending/**",
+          ".github/workflows/flux-local.yaml"
+        ],
+        "checks": [
+          "Flux Local - Portal OIDC guard"
+        ]
+      },
+      {
+        "id": "audio-authoring-build",
+        "source": ".github/workflows/audio-authoring-build.yml",
+        "workflow": "Build and Push Audio Authoring Image",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/audio-authoring/**",
+          ".github/workflows/audio-authoring-build.yml"
+        ],
+        "checks": [
+          "build-and-push"
+        ]
+      },
+      {
+        "id": "authentik-userinfo-redaction-build",
+        "source": ".github/workflows/authentik-userinfo-redaction-build.yml",
+        "workflow": "Authentik UserInfo redaction",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/authentik-userinfo-redaction/**",
+          "scripts/tests/portal178-m5c/authentik/**",
+          ".agents/reports/portal178-m5c/pending/authentik-userinfo-log.patch",
+          ".github/workflows/authentik-userinfo-redaction-build.yml"
+        ],
+        "checks": [
+          "Authentik UserInfo redaction - Success"
+        ]
+      },
+      {
+        "id": "blender-authoring-build",
+        "source": ".github/workflows/blender-authoring-build.yml",
+        "workflow": "Build and Push Blender Authoring Image",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/blender-authoring/**",
+          ".github/workflows/blender-authoring-build.yml"
+        ],
+        "checks": [
+          "build-and-push"
+        ]
+      },
+      {
+        "id": "book-copy-window-test",
+        "source": ".github/workflows/book-copy-window-test.yml",
+        "workflow": "COPY window preparation tests",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/book-copy-writer/copy-window/**",
+          ".github/workflows/book-copy-window-test.yml"
+        ],
+        "checks": [
+          "COPY window source - Success"
+        ]
+      },
+      {
+        "id": "book-copy-writer-build",
+        "source": ".github/workflows/book-copy-writer-build.yml",
+        "workflow": "Book Copy Writer",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/book-copy-writer/**",
+          "scripts/ci-cache/**",
+          "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert/epub_copies.py",
+          "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert/epub_metadata.py",
+          "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert/test_epub_metadata.py",
+          ".github/workflows/book-copy-writer-build.yml"
+        ],
+        "checks": [
+          "Book Copy Writer - Success"
+        ]
+      },
+      {
+        "id": "book-native-scan-fixture-host",
+        "source": ".github/workflows/book-native-scan-fixture-host.yml",
+        "workflow": "Native Scanner Fixture Host",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/book-native-scan-fixture-host/**",
+          "scripts/book-native-scan-fixture/prepared-runtime.json",
+          ".github/workflows/book-native-scan-fixture-host.yml"
+        ],
+        "checks": [
+          "Native scanner host - Success"
+        ]
+      },
+      {
+        "id": "book-native-scan-fixture",
+        "source": ".github/workflows/book-native-scan-fixture.yml",
+        "workflow": "Native Scanner Fixture",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/book-native-scan-fixture/**",
+          "scripts/ci-cache/**",
+          ".github/workflows/book-native-scan-fixture.yml",
+          "kubernetes/main/apps/media/kavita/app/helmrelease.yaml",
+          ".github/renovate.json5"
+        ],
+        "checks": [
+          "Native scanner source - Success"
+        ]
+      },
+      {
+        "id": "book-reading-list-stage-test",
+        "source": ".github/workflows/book-reading-list-stage-test.yml",
+        "workflow": "Book Reading List Stage Test",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/book-reading-list-stage/**",
+          ".github/workflows/book-reading-list-stage-test.yml"
+        ],
+        "checks": [
+          "Book Reading List Stage Test - Success"
+        ]
+      },
+      {
+        "id": "build-actions-runner",
+        "source": ".github/workflows/build-actions-runner.yaml",
+        "workflow": "Build and Push Actions Runner Image",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/actions-runner/**",
+          ".github/workflows/build-actions-runner.yaml"
+        ],
+        "checks": [
+          "build-and-push"
+        ]
+      },
+      {
+        "id": "comfyui-build",
+        "source": ".github/workflows/comfyui-build.yml",
+        "workflow": "Build and Push ComfyUI Image",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/comfyui/**",
+          "kubernetes/main/apps/ai/stable-diffusion/comfyui/resources/workflows/**",
+          "kubernetes/main/apps/ai/stable-diffusion/comfyui/resources/api-workflows/**",
+          ".github/workflows/comfyui-build.yml"
+        ],
+        "checks": [
+          "build-and-push-comfyui"
+        ]
+      },
+      {
+        "id": "controlfoley-build",
+        "source": ".github/workflows/controlfoley-build.yml",
+        "workflow": "Build and Push ControlFoley Image",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/controlfoley/**",
+          ".github/workflows/controlfoley-build.yml"
+        ],
+        "checks": [
+          "validate"
+        ]
+      },
+      {
+        "id": "dev-env-archive-guard-test",
+        "source": ".github/workflows/dev-env-archive-guard-test.yml",
+        "workflow": "dev-env archive guard source tests",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "kubernetes/main/apps/kyverno/policies/app/dev-env-archive-guard.yaml",
+          "kubernetes/main/apps/kyverno/policies/app/maintenance-executor.yaml",
+          "kubernetes/main/apps/kyverno/policies/app/maintenance-exec.yaml",
+          "kubernetes/main/apps/dev-env-system/rbac/app/identity-guard.yaml",
+          "kubernetes/main/apps/dev-env-system/rbac/app/maintenance-annotations.yaml",
+          "kubernetes/main/apps/kyverno/policies/app/dev-env-exec-guard.yaml",
+          "scripts/tests/dev-env-archive-guard/**",
+          ".github/workflows/dev-env-archive-guard-test.yml"
+        ],
+        "checks": [
+          "Archive Guard Source - Success"
+        ]
+      },
+      {
+        "id": "dev-env-build",
+        "source": ".github/workflows/dev-env-build.yml",
+        "workflow": "Build and Push Dev Env Image",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/dev-env/**",
+          "scripts/github-app-token.sh",
+          ".github/workflows/dev-env-build.yml"
+        ],
+        "checks": [
+          "build-and-push"
+        ]
+      },
+      {
+        "id": "dev-env-cursor-test",
+        "source": ".github/workflows/dev-env-cursor-test.yml",
+        "workflow": "dev-env Cursor offline tests",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "kubernetes/main/apps/dev/dev-env/app/resources/cursor-*",
+          "kubernetes/main/apps/dev/dev-env/app/resources/post-ready.sh",
+          "kubernetes/main/apps/dev/dev-env/app/resources/config/claude/mcp.json",
+          "scripts/tests/dev-env-cursor/**",
+          ".github/workflows/dev-env-cursor-test.yml"
+        ],
+        "checks": [
+          "Cursor Offline Fixtures"
+        ]
+      },
+      {
+        "id": "dev-env-h7-reader-test",
+        "source": ".github/workflows/dev-env-h7-reader-test.yml",
+        "workflow": "dev-env H7 metadata reader tests",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "kubernetes/main/apps/dev-env-system/h7-metadata-reader/**",
+          "kubernetes/main/apps/dev-env-system/h7-metadata-audit/**",
+          "scripts/tests/dev-env-h7-reader/**",
+          ".github/workflows/dev-env-h7-reader-test.yml"
+        ],
+        "checks": [
+          "H7 Metadata Reader Fixtures"
+        ]
+      },
+      {
+        "id": "dev-env-rules-test",
+        "source": ".github/workflows/dev-env-rules-test.yml",
+        "workflow": "dev-env instruction contract tests",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "kubernetes/main/apps/dev-env-system/session-config/**",
+          "kubernetes/main/apps/dev/dev-env/app/resources/config/claude/CLAUDE.md",
+          "scripts/tests/dev-env-rules/**",
+          ".github/workflows/dev-env-rules-test.yml"
+        ],
+        "checks": [
+          "Instruction Contract Fixtures"
+        ]
+      },
+      {
+        "id": "dev-env-storage-workflow-test",
+        "source": ".github/workflows/dev-env-storage-workflow-test.yml",
+        "workflow": "dev-env storage workflow tests",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/dev-env/bounded_backend_workflow.py",
+          "scripts/dev-env/test_bounded_backend_workflow.py",
+          ".agents/runbooks/proxmox-access.md",
+          ".github/workflows/dev-env-storage-workflow-test.yml"
+        ],
+        "checks": [
+          "Storage Workflow Fixtures"
+        ]
+      },
+      {
+        "id": "diff-scope-test",
+        "source": ".github/workflows/diff-scope-test.yml",
+        "workflow": "Diff Scope Test",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/diff-scope.sh",
+          "scripts/diff-scope-test.sh",
+          ".github/workflows/diff-scope-test.yml"
+        ],
+        "checks": [
+          "Diff Scope Test - Success"
+        ]
+      },
+      {
+        "id": "gpu-cap-test",
+        "source": ".github/workflows/gpu-cap-test.yml",
+        "workflow": "Card B startup cap tests",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "kubernetes/main/apps/ai/llama-server/**",
+          "kubernetes/main/apps/kyverno/policies/app/exceptions/llama-card-b-power-cap.yaml",
+          "kubernetes/main/apps/kyverno/policies/app/pod-security-baseline.yaml",
+          "scripts/gpu-soak/render-job.sh",
+          "scripts/tests/gpu-cap/**",
+          ".github/workflows/gpu-cap-test.yml"
+        ],
+        "checks": [
+          "Card B Cap Fixtures"
+        ]
+      },
+      {
+        "id": "keeper-node-trust-test",
+        "source": ".github/workflows/keeper-node-trust-test.yml",
+        "workflow": "Keeper Node Trust Test",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/keeper-node-trust/**",
+          "kubernetes/main/apps/dev-env-system/node-trust-public/**",
+          ".github/workflows/keeper-node-trust-test.yml"
+        ],
+        "checks": [
+          "Keeper Node Trust Fixtures"
+        ]
+      },
+      {
+        "id": "kometa-runtime-policy",
+        "source": ".github/workflows/kometa-runtime-policy.yaml",
+        "workflow": "Kometa Runtime and Upgrade Policy",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "kubernetes/main/apps/media/kometa/app/config/serial-run.py",
+          "kubernetes/main/apps/media/kometa/app/helmrelease.yaml",
+          "scripts/kometa-serial-run-test.py",
+          "scripts/kometa-image-probe.py",
+          "scripts/pr-disposition-test.cjs",
+          ".renovate/autoMerge.json5",
+          ".github/workflows/pr-disposition.yml",
+          ".github/workflows/kometa-runtime-policy.yaml"
+        ],
+        "checks": [
+          "Kometa Runtime and Upgrade Policy"
+        ]
+      },
+      {
+        "id": "kometa-validate-managed",
+        "source": ".github/workflows/kometa-validate-managed.yaml",
+        "workflow": "Kometa Validate Managed Files",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "kubernetes/main/apps/media/kometa/app/config/hnet-managed-movies.yml",
+          "kubernetes/main/apps/media/kometa/app/config/hnet-managed-tv.yml",
+          "scripts/kometa-validate-managed.py",
+          ".github/workflows/kometa-validate-managed.yaml"
+        ],
+        "checks": [
+          "Kometa Validate Managed Files - Success"
+        ]
+      },
+      {
+        "id": "lazylibrarian-epub-convert",
+        "source": ".github/workflows/lazylibrarian-epub-convert.yaml",
+        "workflow": "LazyLibrarian EPUB Convert",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert/**",
+          "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert-cronjob.yaml",
+          ".github/workflows/lazylibrarian-epub-convert.yaml"
+        ],
+        "checks": [
+          "LazyLibrarian EPUB Convert - Success"
+        ]
+      },
+      {
+        "id": "lazylibrarian-overlays",
+        "source": ".github/workflows/lazylibrarian-overlays.yaml",
+        "workflow": "LazyLibrarian Overlays",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "kubernetes/main/apps/downloads/lazylibrarian/app/**",
+          ".github/workflows/lazylibrarian-overlays.yaml"
+        ],
+        "checks": [
+          "LazyLibrarian Overlays - Success"
+        ]
+      },
+      {
+        "id": "openproject-cli-test",
+        "source": ".github/workflows/openproject-cli-test.yml",
+        "workflow": "openproject CLI tests",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/openproject/**",
+          "scripts/tests/openproject/**",
+          ".github/workflows/openproject-cli-test.yml"
+        ],
+        "checks": [
+          "OpenProject CLI Fixtures"
+        ]
+      },
+      {
+        "id": "peloton-scraper-build",
+        "source": ".github/workflows/peloton-scraper-build.yml",
+        "workflow": "Build and Push Peloton Scraper Image",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/peloton-scrape/**",
+          ".github/workflows/peloton-scraper-build.yml"
+        ],
+        "checks": [
+          "Validate Peloton image"
+        ]
+      },
+      {
+        "id": "portal-infra-test",
+        "source": ".github/workflows/portal-infra-test.yml",
+        "workflow": "Portal infrastructure packet",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          ".agents/reports/portal178-m5c/pending/**",
+          ".agents/reports/portal178-m5d/**",
+          "scripts/tests/portal178-m5d/**",
+          "scripts/tests/portal178-m5c/**",
+          ".github/workflows/portal-infra-test.yml",
+          "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml",
+          "kubernetes/main/apps/dev-env-system/rbac/app/portal-serviceaccount.yaml",
+          "kubernetes/main/apps/dev-env-system/rbac/app/kustomization.yaml",
+          "kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml",
+          "kubernetes/main/apps/dev-env-system/portal/**",
+          "kubernetes/main/apps/dev-env-system/operator/app/helmrelease.yaml",
+          "kubernetes/main/apps/dev-env-system/kustomization.yaml"
+        ],
+        "checks": [
+          "Portal infrastructure SQL and HBA",
+          "Portal unregistered component render"
+        ]
+      },
+      {
+        "id": "pr-disposition-test",
+        "source": ".github/workflows/pr-disposition-test.yml",
+        "workflow": "PR disposition fixtures",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          ".github/workflows/pr-disposition.yml",
+          "scripts/pr-disposition-test.cjs",
+          ".github/workflows/pr-disposition-test.yml",
+          ".github/renovate.json5",
+          ".renovate/autoMerge.json5",
+          ".renovate/groups.json5",
+          ".renovate/holds.json5"
+        ],
+        "checks": [
+          "PR disposition truth table"
+        ]
+      },
+      {
+        "id": "upgrade-agent-build",
+        "source": ".github/workflows/upgrade-agent-build.yml",
+        "workflow": "Build and Push Upgrade Agent Image",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/upgrade-agent/deliver_reviewed_pr.py",
+          "scripts/upgrade-agent/test_deliver_reviewed_pr.py",
+          ".github/workflows/upgrade-agent-build.yml"
+        ],
+        "checks": [
+          "Deliver Reviewed PR"
+        ]
+      },
+      {
+        "id": "upgrade-shepherd-build",
+        "source": ".github/workflows/upgrade-shepherd-build.yml",
+        "workflow": "Build and Push Upgrade Shepherd Image",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/upgrade-shepherd/**",
+          "scripts/github-app-token.sh",
+          ".github/workflows/upgrade-shepherd-build.yml"
+        ],
+        "checks": [
+          "validate"
+        ]
+      },
+      {
+        "id": "wan-video-test",
+        "source": ".github/workflows/wan-video-test.yml",
+        "workflow": "Wan Video API",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/wan-video/**",
+          "kubernetes/main/apps/ai/wan-video/**",
+          "kubernetes/main/apps/ai/open-webui/app/wan_video.py",
+          ".github/workflows/wan-video-test.yml"
+        ],
+        "checks": [
+          "test"
+        ]
+      },
+      {
+        "id": "wyoming-whisper-gpu-build",
+        "source": ".github/workflows/wyoming-whisper-gpu-build.yml",
+        "workflow": "Build and Push Wyoming Whisper GPU Image",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/wyoming-whisper-gpu/**",
+          ".github/workflows/wyoming-whisper-gpu-build.yml"
+        ],
+        "checks": [
+          "build-and-push"
+        ]
+      }
+    ],
+    "no_pr_validation": {
+      "rule": "A changed path outside kubernetes/ that no entry above matches has no PR-triggered validation (Diff Scope and Flux Local - Success pass trivially for it). Such a PR is never lane A.",
+      "known_examples": [
+        "docs/requirements.txt (publishmkdocs runs only on push to main)",
+        "scripts/upgrade-agent/Dockerfile (upgrade-agent-build runs only on push)"
+      ]
+    },
+    "no_pr_trigger": [
+      ".github/workflows/claude.yml",
+      ".github/workflows/pr-disposition.yml",
+      ".github/workflows/publishmkdocs.yml",
+      ".github/workflows/repair-image-signatures.yml"
+    ]
+  },
+  "own_images": [
+    {
+      "id": "upgrade-shepherd",
+      "image": "ghcr.io/thaynes43/upgrade-shepherd",
+      "source_globs": [
+        "scripts/upgrade-shepherd/**"
+      ],
+      "build": ".github/workflows/upgrade-shepherd-build.yml",
+      "pin_follows": "digest",
+      "pin_automerge": true,
+      "cluster_effect": "delayed",
+      "pins": [
+        "kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml",
+        "kubernetes/main/apps/upgrade-agent/alert-responder/app/helmrelease.yaml"
+      ],
+      "note": "main build re-pushes 0.1.0; Renovate auto-merges the digest pin (seen 2026-11-09). Excluded from both lanes as a merger-own path."
+    },
+    {
+      "id": "upgrade-agent",
+      "image": "ghcr.io/thaynes43/upgrade-agent",
+      "source_globs": [
+        "scripts/upgrade-agent/Dockerfile"
+      ],
+      "build": ".github/workflows/upgrade-agent-build.yml",
+      "pin_follows": "digest",
+      "pin_automerge": true,
+      "cluster_effect": "delayed",
+      "pins": [
+        "kubernetes/main/apps/upgrade-agent/health-gate/app/helmrelease.yaml"
+      ],
+      "note": "the Dockerfile has no PR build. Excluded from both lanes as a merger-own path."
+    },
+    {
+      "id": "audio-authoring",
+      "image": "ghcr.io/thaynes43/audio-authoring",
+      "source_globs": [
+        "scripts/audio-authoring/**"
+      ],
+      "build": ".github/workflows/audio-authoring-build.yml",
+      "pin_follows": "digest",
+      "pin_automerge": true,
+      "cluster_effect": "delayed",
+      "pins": [
+        "kubernetes/main/apps/dev/audio-authoring/app/helmrelease.yaml",
+        "kubernetes/main/apps/dev/audio-authoring/app/provision.yaml"
+      ],
+      "note": "main build re-pushes 0.2.0; the digest pin auto-merges and the audio MCP restarts (precedent #3556)."
+    },
+    {
+      "id": "actions-runner",
+      "image": "ghcr.io/thaynes43/actions-runner",
+      "source_globs": [
+        "scripts/actions-runner/**"
+      ],
+      "build": ".github/workflows/build-actions-runner.yaml",
+      "pin_follows": "digest",
+      "pin_automerge": true,
+      "cluster_effect": "delayed",
+      "pins": [
+        "kubernetes/shared/components/arc/dind/helmrelease.yaml",
+        "kubernetes/main/apps/arc-runners/sigo-alumni/app/helmrelease.yaml"
+      ],
+      "note": "publishes only with a new scripts/actions-runner/VERSION; the version pin then auto-merges to every ARC pool (precedent #4205)."
+    },
+    {
+      "id": "blender-authoring",
+      "image": "ghcr.io/thaynes43/blender-authoring",
+      "source_globs": [
+        "scripts/blender-authoring/**"
+      ],
+      "build": ".github/workflows/blender-authoring-build.yml",
+      "pin_follows": "digest",
+      "pin_automerge": true,
+      "cluster_effect": "delayed",
+      "pins": [
+        "kubernetes/main/apps/dev/blender-authoring/app/helmrelease.yaml",
+        "kubernetes/main/apps/dev/blender-authoring-2/app/helmrelease.yaml"
+      ],
+      "note": "main build re-pushes 0.1.1; the digest pin auto-merges."
+    },
+    {
+      "id": "wyoming-whisper-gpu",
+      "image": "ghcr.io/thaynes43/wyoming-whisper-gpu",
+      "source_globs": [
+        "scripts/wyoming-whisper-gpu/**"
+      ],
+      "build": ".github/workflows/wyoming-whisper-gpu-build.yml",
+      "pin_follows": "tag-without-digest",
+      "pin_automerge": true,
+      "cluster_effect": "immediate",
+      "pins": [
+        "kubernetes/main/apps/ai/wyoming-protocol/whisper/helmrelease.yaml"
+      ],
+      "target": "kubernetes/main/apps/ai/wyoming-protocol",
+      "note": "the HelmRelease pins tag 3.8.1-3 with no digest and the main build re-pushes that tag, so the source merge changes what the cluster pulls at the next pod start."
+    },
+    {
+      "id": "comfyui",
+      "image": "ghcr.io/thaynes43/comfyui",
+      "source_globs": [
+        "scripts/comfyui/**"
+      ],
+      "build": ".github/workflows/comfyui-build.yml",
+      "pin_follows": "digest",
+      "pin_automerge": false,
+      "cluster_effect": "none",
+      "pins": [
+        "kubernetes/main/apps/ai/stable-diffusion/comfyui/helmrelease.yaml",
+        "kubernetes/main/apps/ai/wan-video/app/helmrelease.yaml"
+      ],
+      "note": "autoMerge.json5 sets automerge:false for comfyui; the pin moves only by a supervised PR."
+    },
+    {
+      "id": "dev-env-v1",
+      "image": "ghcr.io/thaynes43/dev-env",
+      "source_globs": [
+        "scripts/dev-env/**"
+      ],
+      "build": ".github/workflows/dev-env-build.yml",
+      "pin_follows": "digest",
+      "pin_automerge": false,
+      "cluster_effect": "none",
+      "pins": [
+        "kubernetes/main/apps/dev/dev-env/app/helmrelease.yaml",
+        "kubernetes/main/apps/upgrade-agent/dev-env-ops/app/helmrelease.yaml"
+      ],
+      "note": "autoMerge.json5 never auto-merges dev-env; the digest pin PR is a v1-restart (lane B owner)."
+    },
+    {
+      "id": "controlfoley",
+      "image": "ghcr.io/thaynes43/audio-authoring",
+      "source_globs": [
+        "scripts/controlfoley/**"
+      ],
+      "build": ".github/workflows/controlfoley-build.yml",
+      "pin_follows": "immutable-tag",
+      "pin_automerge": true,
+      "cluster_effect": "none",
+      "pins": [
+        "kubernetes/main/apps/ai/wan-video/app/helmrelease.yaml"
+      ],
+      "note": "publishes audio-authoring:controlfoley-0.1.0-<sha>-<run>-<attempt>; the pin names one such tag and moves only by hand."
+    },
+    {
+      "id": "source-only-sha-tags",
+      "image": null,
+      "source_globs": [
+        "scripts/book-copy-writer/**",
+        "scripts/book-native-scan-fixture/**",
+        "scripts/book-native-scan-fixture-host/**",
+        "scripts/ci-cache/**",
+        "scripts/authentik-userinfo-redaction/**",
+        "scripts/peloton-scrape/**"
+      ],
+      "pin_follows": "immutable-tag",
+      "pin_automerge": null,
+      "cluster_effect": "none",
+      "pins": [],
+      "note": "these builds publish sha- tags that consumers pin by digest by hand (pipeline_pins.py, reviewed-digests.json); a source merge changes no running pod."
+    }
+  ],
+  "package_rules": [
+    {
+      "id": "qbittorrent-allowed-client",
+      "match": {
+        "packages": [
+          "/home-operations/qbittorrent$/"
+        ],
+        "update_types": [
+          "minor",
+          "major",
+          "digest"
+        ]
+      },
+      "needs": "deterministic",
+      "condition": {
+        "type": "allowed-client-list",
+        "url": "https://www.myanonamouse.net/tor/allowed_clients.php",
+        "compare": "the new version is inside the page's \"Allowed Clients: qBittorrent\" line"
+      },
+      "step1": "recorded only; the Job does not fetch the page (egress for that host comes with the live step)",
+      "source": "OP513 comment 6179; autoMerge.json5 qbittorrent carve-out"
+    },
+    {
+      "id": "arr-major-stable",
+      "match": {
+        "packages": [
+          "/home-operations/(sonarr|radarr|prowlarr|lidarr)$/"
+        ],
+        "update_types": [
+          "major"
+        ]
+      },
+      "needs": "deterministic",
+      "condition": {
+        "type": "upstream-stable-release",
+        "repos": {
+          "sonarr": "Sonarr/Sonarr",
+          "radarr": "Radarr/Radarr",
+          "prowlarr": "Prowlarr/Prowlarr",
+          "lidarr": "Lidarr/Lidarr"
+        },
+        "compare": "a GitHub release with prerelease=false exists in the new major"
+      },
+      "preapproval": "Tom's ruling Q-03 (OP513 comment 6181): upgrade the first night after the maker marks the major stable, after the backup",
+      "step1": "recorded only; the major and the hold in holds.json5 keep it lane B owner until the hold is lifted",
+      "source": "OP513 comments 6179 and 6181"
+    },
+    {
+      "id": "calibre-epub-convert",
+      "match": {
+        "packages": [
+          "/linuxserver/calibre$/"
+        ]
+      },
+      "needs": "deterministic",
+      "condition": {
+        "type": "check-success",
+        "workflow": "LazyLibrarian EPUB Convert",
+        "check": "LazyLibrarian EPUB Convert - Success"
+      },
+      "source": "autoMerge.json5 calibre carve-out"
+    },
+    {
+      "id": "lazylibrarian-patched-files",
+      "match": {
+        "packages": [
+          "/linuxserver/lazylibrarian$/"
+        ]
+      },
+      "needs": "agent",
+      "reason": "re-derive the patched upstream files before merging",
+      "source": "autoMerge.json5 lazylibrarian carve-out"
+    },
+    {
+      "id": "kometa-probe",
+      "match": {
+        "packages": [
+          "/kometateam/kometa$/"
+        ]
+      },
+      "needs": "agent",
+      "reason": "exact-image probe of the guarded IMDb path, an idle window, and a run that logs \"Finished Run\" (Kometa exits 0 after a startup abort)",
+      "source": "autoMerge.json5 kometa carve-out; OP513 comment 6182"
+    },
+    {
+      "id": "comfyui-render",
+      "match": {
+        "packages": [
+          "/thaynes43/comfyui$/"
+        ]
+      },
+      "needs": "agent",
+      "reason": "a render check on the exact image; a restart is a cold model load",
+      "source": "autoMerge.json5 comfyui carve-out"
+    },
+    {
+      "id": "comfyui-image-tag",
+      "match": {
+        "paths": [
+          "scripts/comfyui/Dockerfile"
+        ],
+        "packages": [
+          "/comfy/i"
+        ]
+      },
+      "needs": "agent",
+      "reason": "a ComfyUI version change needs IMAGE_TAG moved in comfyui-build.yml in the same change, or the merge overwrites the old tag",
+      "source": "OP513 comment 6182 (#4349)"
+    },
+    {
+      "id": "actions-runner-version",
+      "match": {
+        "paths": [
+          "scripts/actions-runner/Dockerfile"
+        ],
+        "unless_paths": [
+          "scripts/actions-runner/VERSION"
+        ]
+      },
+      "needs": "agent",
+      "reason": "a runner Dockerfile change needs a new scripts/actions-runner/VERSION (the build refuses without it)",
+      "source": "build-actions-runner.yaml; OP513 comment 6182 (#4189)"
+    },
+    {
+      "id": "plex-kometa-idle",
+      "match": {
+        "packages": [
+          "/home-operations/plex$/"
+        ]
+      },
+      "needs": "deterministic",
+      "condition": {
+        "type": "kometa-idle",
+        "compare": "no Kometa pod or Job running and no Kometa run due within 30 minutes"
+      },
+      "step1": "recorded only; not evaluated by the dry-run tick",
+      "source": "autoMerge.json5 plex carve-out; shepherd prompt PLEX clause"
+    },
+    {
+      "id": "home-assistant-group",
+      "match": {
+        "paths": [
+          "kubernetes/main/apps/home-automation/home-assistant/**",
+          "kubernetes/main/apps/home-automation/ha-mcp/**"
+        ]
+      },
+      "needs": "agent",
+      "reason": "Tier 3 HA pod group: one dashboard-approved group PR, babysat restart",
+      "source": "groups.json5 home-assistant group"
+    },
+    {
+      "id": "zigbee2mqtt",
+      "match": {
+        "paths": [
+          "kubernetes/main/apps/home-automation/zigbee2mqtt/**"
+        ]
+      },
+      "needs": "agent",
+      "reason": "babysat update: after the roll, verify Zigbee entities are available and restart HA if not",
+      "source": "groups.json5 Zigbee2MQTT rule"
+    },
+    {
+      "id": "rook-ceph-embedded",
+      "match": {
+        "paths": [
+          "kubernetes/main/apps/storage/rook-ceph/**"
+        ]
+      },
+      "needs": "agent",
+      "reason": "confirm from the chart whether the bundled Ceph default moves (any move is a work order), and move operator, csi-drivers, cluster as one unit",
+      "source": "shepherd prompt class 3; 2026-08-20 incident"
+    },
+    {
+      "id": "cilium-minor",
+      "match": {
+        "paths": [
+          "kubernetes/main/apps/kube-system/cilium/**"
+        ],
+        "update_types": [
+          "minor",
+          "major"
+        ]
+      },
+      "needs": "owner",
+      "reason": "one-way: cilium minor or major changes the eBPF map layout",
+      "source": "design OP512 comment 6193; shepherd prompt ONE-WAY"
+    },
+    {
+      "id": "authentik-yyyy-m",
+      "match": {
+        "paths": [
+          "kubernetes/main/apps/network/authentik/**"
+        ],
+        "update_types": [
+          "minor",
+          "major"
+        ]
+      },
+      "needs": "owner",
+      "reason": "one-way: authentik YYYY.M runs forward-only database migrations",
+      "source": "design OP512 comment 6193; shepherd prompt ONE-WAY"
+    },
+    {
+      "id": "dragonfly-licence",
+      "match": {
+        "packages": [
+          "/dragonflydb\\/dragonfly/"
+        ],
+        "min_version": "2.1.0"
+      },
+      "needs": "owner",
+      "reason": "from v2.1 Dragonfly moves from BSL 1.1 to the DSAL licence; Tom decides",
+      "source": "OP513 comment 6182 (#4658)"
+    }
+  ],
+  "update_type_rules": {
+    "owner_update_types": [
+      "major"
+    ],
+    "prerelease_pattern": "(^|[.+_-])(alpha|beta|rc|pre|preview|dev|nightly|canary|snapshot)([.+_-]?\\d*)"
+  },
+  "cnpg_clients": [
+    {
+      "cluster": "database/postgres16",
+      "paths": [
+        "kubernetes/main/apps/database/cloudnative-pg/**",
+        "kubernetes/main/apps/frontend/cigar-journal/**",
+        "kubernetes/main/apps/frontend/haynes-quest/**",
+        "kubernetes/main/apps/frontend/haynesnetwork/**",
+        "kubernetes/main/apps/frontend/outline/**",
+        "kubernetes/main/apps/frontend/todos-for-dues/**",
+        "kubernetes/main/apps/network/authentik/**",
+        "kubernetes/main/apps/observability/grafana/**",
+        "kubernetes/main/apps/office/paperless-ngx/**",
+        "kubernetes/main/apps/photos/immich/**"
+      ]
+    },
+    {
+      "cluster": "database/postgres16-pgvecto",
+      "paths": [
+        "kubernetes/main/apps/database/cloudnative-pg/**",
+        "kubernetes/main/apps/photos/immich/**"
+      ]
+    },
+    {
+      "cluster": "frontend/openproject-db",
+      "paths": [
+        "kubernetes/main/apps/frontend/openproject/**"
+      ]
+    },
+    {
+      "cluster": "downloads/ytdrivarr-postgres16",
+      "paths": [
+        "kubernetes/main/apps/downloads/ytdrivarr/**"
+      ]
+    }
+  ],
+  "night": {
+    "timezone": "America/New_York",
+    "backup_cutoff_local": "23:00",
+    "merge_window_local": {
+      "first": "01:30",
+      "last": "04:45"
+    },
+    "verify_only_until_local": "06:00",
+    "change_lock_configmap": "upgrade-change-lock",
+    "work_orders_configmap": "upgrade-work-orders",
+    "state_configmap": "upgrade-lane-state",
+    "namespace": "upgrade-agent"
+  }
+}

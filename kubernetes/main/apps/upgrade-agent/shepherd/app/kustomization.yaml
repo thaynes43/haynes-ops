@@ -16,6 +16,10 @@ configMapGenerator:
       - resources/triage.sh
       - resources/silence.sh
       - resources/work-order.sh
+      # upgrade-night (OP512 step 1, dry-run): classifier, rules registry, tick.
+      - resources/lane-classify.mjs
+      - resources/upgrade-rules.json
+      - resources/run-night.mjs
 generatorOptions:
   disableNameSuffixHash: true
   labels:
