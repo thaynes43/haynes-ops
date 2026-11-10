@@ -146,15 +146,24 @@ if [ "$recent" -ge "$LOOP_MAX" ]; then
 fi
 log "circuit breaker clear ($recent launch(es) in the last 30m, limit $LOOP_MAX) — $LAUNCH_LOG"
 
-# Cursor's optional installer and supervisor run detached AFTER readiness, sharing
-# the existing boot-loop gate. No login, model run or MCP discovery is automatic.
+# Cursor My Machines supervisors (tmux cursor-worker-v1 and cursor-worker-dev-env).
+# OP538, 2026-11-10: v1 must not start them. The switch these scripts already
+# have is the persistent marker $STATE/disabled. `up` returns before creating a
+# tmux session while it is present; `run` exits on it too. Re-assert both
+# markers on every boot so a restart cannot bring the sessions back. To start
+# one by hand, remove its marker and run `cursor-worker.sh up` (haynes-ops) or
+# `cursor-worker.sh up dev-env`. Codex remote-control, the Claude standby and
+# wt-sweep below are unchanged. No login, model run or MCP discovery is automatic.
+mkdir -p "$HOME/.local/state/dev-env-cursor" "$HOME/.local/state/cursor-worker-dev-env"
+touch "$HOME/.local/state/dev-env-cursor/disabled" \
+      "$HOME/.local/state/cursor-worker-dev-env/disabled"
 if bash /opt/dev-env/scripts/cursor-worker.sh up; then
-  cursor_state="supervisor requested (tmux cursor-worker-v1; inspect PVC log)"
+  cursor_state="not started (disabled marker; tmux cursor-worker-v1)"
 else
   cursor_state="launch failed; existing harnesses continue"
 fi
 if bash /opt/dev-env/scripts/cursor-worker.sh up dev-env; then
-  cursor_state="$cursor_state; dev-env supervisor requested (tmux cursor-worker-dev-env)"
+  cursor_state="$cursor_state; dev-env not started (disabled marker; tmux cursor-worker-dev-env)"
 else
   cursor_state="$cursor_state; dev-env launch failed; existing harnesses continue"
 fi

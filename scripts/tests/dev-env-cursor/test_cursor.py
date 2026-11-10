@@ -73,6 +73,27 @@ class LifecycleTests(unittest.TestCase):
             subprocess.run(['bash', str(SCRIPTS / 'cursor-worker.sh'), 'up'], env=env, check=True, capture_output=True)
             self.assertEqual((home / 'calls').read_text(), 'has-session -t =cursor-worker-v1\n')
 
+    def test_up_disabled_marker_does_not_start_a_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home, commands, env = self.prepare(Path(directory))
+            tmux = commands / 'tmux'
+            tmux.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$HOME/calls"\nexit 0\n')
+            tmux.chmod(0o755)
+            for profile, session, state_name in (
+                (None, 'cursor-worker-v1', 'dev-env-cursor'),
+                ('dev-env', 'cursor-worker-dev-env', 'cursor-worker-dev-env'),
+            ):
+                state = home / '.local/state' / state_name
+                state.mkdir(parents=True, exist_ok=True)
+                (state / 'disabled').write_text('')
+                cmd = ['bash', str(SCRIPTS / 'cursor-worker.sh'), 'up']
+                if profile:
+                    cmd.append(profile)
+                result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('not starting ' + session, result.stdout)
+            self.assertFalse((home / 'calls').exists())
+
     @unittest.skipUnless(sys.platform.startswith('linux'), 'real Linux flock fixture runs in CI')
     def test_install_refuses_held_supervisor_lock(self):
         import fcntl

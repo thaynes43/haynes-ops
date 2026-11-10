@@ -98,6 +98,13 @@ authenticated() {
 
 case "${1:-status}" in
   up)
+    # The same persistent marker `run` exits on. Checked first so a disabled
+    # profile never gets a tmux session (a session that exits immediately still
+    # counts as started, and the next boot would keep it as "already exists").
+    if [ -f "$STATE/disabled" ]; then
+      log "disabled by persistent operator marker; not starting $SESSION"
+      exit 0
+    fi
     if tmux has-session -t "=$SESSION" 2>/dev/null; then
       log "session already exists: $SESSION (inspect status; never replace a live pilot)"
       exit 0

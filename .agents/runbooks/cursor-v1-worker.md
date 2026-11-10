@@ -8,9 +8,18 @@ for the existing browser login.
 
 ## Startup and persistence
 
-`post-ready.sh` requests both worker profiles only after code-server readiness,
-settle and the existing boot-loop circuit breaker. Installation and recovery run
-in detached tmux session `cursor-worker-v1`, never in the synchronous boot path.
+`post-ready.sh` reaches the Cursor block only after code-server readiness,
+settle and the existing boot-loop circuit breaker. As of OP538 (2026-11-10)
+that block does not start the workers. On every boot it writes the persistent
+disabled markers `~/.local/state/dev-env-cursor/disabled` and
+`~/.local/state/cursor-worker-dev-env/disabled`, and `cursor-worker.sh up`
+returns before creating a tmux session while a marker is present. The two My
+Machines sessions (`cursor-worker-v1`, `cursor-worker-dev-env`) therefore do
+not come back after a restart. Codex remote-control, the Claude standby and
+`wt-sweep` are unchanged. To start one by hand, delete its marker and then run
+`up` (or `up dev-env`). Installation and recovery still run in the detached
+tmux session, never in the synchronous boot path.
+
 The installer pins the official Linux x64 archive to `2026.10.14-0f9edde` and
 SHA-256 `74fac931fe3578980d070701872b7dab54eb87a9abf9b6e2e6be19beeb9167a7`.
 It verifies the archive and executable version before replacing the two official
@@ -64,9 +73,12 @@ model task, MCP discovery, fleet, desktop share, or new credential is started.
 bash /opt/dev-env/scripts/cursor-worker.sh status
 bash /opt/dev-env/scripts/cursor-worker.sh status dev-env
 tail -n 50 ~/.local/state/dev-env-cursor/worker.log
-# After diagnosing a stopped supervisor:
-bash /opt/dev-env/scripts/cursor-worker.sh up
-bash /opt/dev-env/scripts/cursor-worker.sh up dev-env
+# `up` does nothing while the disabled marker exists. Delete that marker first
+# if a human has decided this profile should run again:
+#   rm ~/.local/state/dev-env-cursor/disabled
+#   bash /opt/dev-env/scripts/cursor-worker.sh up
+#   rm ~/.local/state/cursor-worker-dev-env/disabled
+#   bash /opt/dev-env/scripts/cursor-worker.sh up dev-env
 ```
 
 An existing tmux session is left alone; inspect and stop it deliberately before
@@ -163,10 +175,11 @@ Acceptance after the GitOps rollout:
    separately authorized MCP activation, compare normalized tool names/input
    schemas and approved harmless reads in both terminal and worker paths.
 
-Rollback: stop the worker only after releasing any active claim; place the
-persistent disabled marker; revert the GitOps startup change and reconcile from
-the Mac. Retain auth, identity, logs and worktrees for recovery. Never delete or
-recreate the PVC to repair worker startup.
+Rollback of the OP538 autostart stop: delete the two disabled markers above
+and revert the `post-ready.sh` change that rewrites them on boot. `up` then
+creates the tmux session again. Stop a worker that is already running only
+after releasing any active claim. Retain auth, identity, logs and worktrees.
+Never delete or recreate the PVC to repair worker startup.
 
 Sources: [My Machines](https://cursor.com/docs/cloud-agent/self-hosted/my-machines),
 [mobile](https://cursor.com/docs/cloud-agent/mobile),
