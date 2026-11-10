@@ -4,8 +4,10 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main at the merge of PR #1009 (OP500), verified byte for byte by the coordinator:
-# 2b2ec45539b9103d8d8871661b5f24406927acfb. Adds the cursor agent kind to the requester agent enum.
+# Source: dev-env main at the merge of PR #1041 (OP525), verified byte for byte by the coordinator:
+# 7980695c3605b876f249837ce5b97c891b9fa4ed. Adds status.ask and status.askUnreadAt (ADR-022: a grant's route to
+# its Ask on the board) and the rule that a stored route cannot be removed or changed. Nothing writes them while
+# the broker runs without --enable-grant-asks, and that flag needs both fields here first.
 #
 # Keep it in step with the operator: copy a changed file here before (or with) the pin
 # that writes its new fields.
@@ -669,6 +671,25 @@ spec:
                   ApprovedTTL is the TTL it was approved for: spec.ttl, or less when Tom
                   chose "approve for less time".
                 type: string
+              ask:
+                description: |-
+                  Ask is the object name of the Ask the broker will open for this grant.
+                  The broker sets it once, with this grant's resourceVersion as the
+                  precondition, before it creates the Ask, and never clears it (ADR-022).
+                maxLength: 20
+                pattern: ^ask-[0-9a-f]{16}$
+                type: string
+              askUnreadAt:
+                description: |-
+                  AskUnreadAt is when the current unread episode started: the first time
+                  the broker could not read this grant's Ask, on the outer read or on a
+                  read inside Decide. It is the start, not the deadline, so the two-minute
+                  bound stays the one constant in the broker and a restarted broker applies
+                  that same bound to this instant. It is set once per episode. A later
+                  write may keep it or clear it, which ends the episode; it may not move
+                  the instant later. A failed deny does not clear it (ADR-022).
+                format: date-time
+                type: string
               delegateReach:
                 description: DelegateReach records the reviewed policy and identity
                   binding (DESIGN-042 6.6).
@@ -945,6 +966,12 @@ spec:
         - message: 'metadata.name is grant-<id>, a DNS label: it names the grant''s
             ServiceAccount, and the audit log shows it'
           rule: self.metadata.name.matches('^grant-[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+        - message: the grant ask route is set once
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.ask) || (has(self.status)
+            && has(self.status.ask) && self.status.ask == oldSelf.status.ask)'
+        - message: the grant ask unread time is set once per episode
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.askUnreadAt) || (has(self.status)
+            && (!has(self.status.askUnreadAt) || self.status.askUnreadAt == oldSelf.status.askUnreadAt))'
     served: true
     storage: true
     subresources:
