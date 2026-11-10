@@ -270,14 +270,15 @@
       matchPackageNames: ['/linuxserver/calibre$/'],
       automerge: false,
     },
-    // Kometa (2026-10-09) — operations restores the daily official IMDb ratings
-    // dataset with a narrowly guarded get_rating compatibility patch. Revalidate
-    // the new image's source, CLI, fork/signal behavior and dataset probe before
-    // approving a bump; manifest validation alone cannot exercise that contract.
+    // Kometa (2026-10-09; reasons updated 2026-11-10, when the IMDb dataset patch
+    // was retired). Kometa exits 0 even when it aborts at startup (v2.5.3 with
+    // --timings), and an upgrade can reset caches (v2.5.4 dropped the MDBList cache
+    // table). Read the changes, run the real-image probe and verify the first run's
+    // "Finished Run" before approving a bump; manifest validation alone cannot.
     // This name rule follows and overrides the media/** automerge rule above.
     // Runbook: .agents/runbooks/kometa-upgrades.md.
     {
-      description: 'kometa image — manual merge only (revalidate the guarded daily IMDb dataset path first)',
+      description: 'kometa image — manual merge only (run the real-image probe and verify the first run first)',
       matchDatasources: ['docker'],
       matchPackageNames: ['/kometateam/kometa$/'],
       automerge: false,

@@ -1,4 +1,9 @@
-"""Serialize Kometa jobs and restore daily bulk IMDb ratings on operations only."""
+"""Serialize Kometa jobs behind one shared lock.
+
+Since 2026-11-10 every job runs upstream Kometa unmodified (HNET_IMDB_RATINGS_SOURCE
+unset or "upstream"). The operations-only IMDb dataset patch below is retired and
+unused; see the note at APPROVED_IMDB_SHA256.
+"""
 
 import fcntl
 import hashlib
@@ -14,7 +19,14 @@ import time
 LOCK_PATH = Path("/config/.run.lock")
 KOMETA_PATH = Path("/kometa.py")
 IMDB_PATH = Path("/modules/imdb.py")
-# Reviewed v2.5.2 source. An image upgrade must revalidate the compatibility patch.
+# RETIRED 2026-11-10 (owner ruling: follow upstream; story OP513). Nothing in git sets
+# HNET_IMDB_RATINGS_SOURCE=dataset now, so this patch is dead code. The hash is the
+# reviewed v2.5.2 modules/imdb.py, byte-identical in v2.5.3. v2.5.4 rewrote get_rating
+# (batched, cached ratings) and the anchor below no longer exists, so the patch cannot
+# be re-approved for v2.5.4 or later. Setting "dataset" on such an image fails closed
+# here, before the lock, any Kometa import or any Plex write, and the Job fails. Do
+# not update this hash. Restore the patch only by reverting the retirement PR together
+# with its v2.5.3 image. Remove this dead path once v2.5.4 runs are verified.
 APPROVED_IMDB_SHA256 = "f7061af37477953e5edc24836018d715e5cf038cf83319b7e61ab23726e179fe"
 UPSTREAM_GET_RATING = '''    def get_rating(self, imdb_id):
         if not imdb_id:
@@ -36,7 +48,8 @@ DATASET_GET_RATING = '''    def get_rating(self, imdb_id):
 
 def patched_imdb_source(source):
     if hashlib.sha256(source).hexdigest() != APPROVED_IMDB_SHA256:
-        raise RuntimeError("Unsupported Kometa IMDb source: revalidate the v2.5.2 ratings patch before upgrading")
+        raise RuntimeError("Unsupported Kometa IMDb source: the retired dataset patch fits only the reviewed "
+                           "v2.5.2/v2.5.3 imdb.py; leave HNET_IMDB_RATINGS_SOURCE unset or upstream")
     text = source.decode("utf-8")
     if text.count(UPSTREAM_GET_RATING) != 1:
         raise RuntimeError("Kometa IMDb get_rating anchor does not match the reviewed implementation")

@@ -108,8 +108,8 @@ jobs:
               // LazyLibrarian + calibre — source overlays/converter checks must be
               // reviewed before merging either image (both live in this app path).
               { re: /^kubernetes\/[^/]+\/apps\/downloads\/lazylibrarian\//, dispo: 'disposition:manual-only' },
-              // Kometa — revalidate the guarded daily IMDb dataset compatibility
-              // path against the proposed image before merging.
+              // Kometa — run the real-image probe and verify the first run before
+              // merging (.agents/runbooks/kometa-upgrades.md).
               { re: /^kubernetes\/[^/]+\/apps\/media\/kometa\//, dispo: 'disposition:manual-only' },
             ];
             const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded', 'disposition:manual-only'];

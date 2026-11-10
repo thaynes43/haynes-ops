@@ -1,12 +1,17 @@
-"""Render a bounded, secret-free worker Job to check the guarded Kometa image.
+"""Render a bounded, secret-free worker Job to check a proposed Kometa image.
 
 Run locally with --image and --node; apply the JSON output as an ephemeral Job.
-The embedded probe never loads config.yml or contacts Plex. It only downloads the
-official ratings dataset into emptyDir and exercises a blocking stub worker.
+The embedded probe never loads config.yml, starts Kometa or contacts Plex or any
+provider. On the exact image it checks that the retired IMDb dataset patch still
+fails closed, that the image's own CLI parser accepts each production job's
+arguments, and that a forked worker holds the shared lock until tini's group
+termination releases it. It cannot prove that Kometa itself starts: the first
+real run's "Finished Run" line does that.
 """
 
 import argparse
 import ast
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,14 +20,22 @@ import signal
 import subprocess
 import sys
 import tempfile
-import time
 
 
 def probe():
     namespace = {"__name__": "hnet_probe_launcher", "__file__": "/tmp/serial-run.py"}
     exec(LAUNCHER_SOURCE, namespace)
-    namespace["patched_imdb_source"](Path("/modules/imdb.py").read_bytes())
-    print("image_source_guard: PASS", flush=True)
+    source = Path("/modules/imdb.py").read_bytes()
+    print("image_imdb_sha256", hashlib.sha256(source).hexdigest(), flush=True)
+    # Retired 2026-11-10: nothing sets HNET_IMDB_RATINGS_SOURCE=dataset. If it were
+    # set by accident, the launcher's hash guard must refuse an upgraded image.
+    try:
+        namespace["patched_imdb_source"](source)
+    except RuntimeError as error:
+        assert "Unsupported Kometa IMDb source" in str(error), error
+    else:
+        raise AssertionError("the retired dataset patch accepts this image: it is the reviewed v2.5.2/v2.5.3 imdb.py, not an upgrade")
+    print("retired_dataset_patch_fails_closed: PASS", flush=True)
 
     # Exercise the actual image's parser without importing/running the application.
     actual = ast.parse(Path("/kometa.py").read_text())
@@ -38,67 +51,27 @@ def probe():
             func = node.iter.func
             if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == "arguments":
                 parser_nodes.append(node)
-    cli = {"argparse": argparse}
-    sys.argv = ["/kometa.py", "--run", "--operations-only", "--timings"]
-    exec(compile(ast.Module(body=parser_nodes, type_ignores=[]), "/kometa.py", "exec"), cli)
-    assert cli["args"].run and cli["args"].operations_only and cli["args"].timings
-    assert not cli["unknown"]
-    print("actual_image_cli_flags: PASS", flush=True)
+    parser_code = compile(ast.Module(body=parser_nodes, type_ignores=[]), "/kometa.py", "exec")
+    for job_args in JOB_ARGS:
+        cli = {"argparse": argparse}
+        sys.argv = ["/kometa.py", *job_args]
+        exec(parser_code, cli)
+        assert not cli["unknown"], job_args
+        for flag in job_args:
+            assert getattr(cli["args"], flag.removeprefix("--").replace("-", "_")) is True, flag
+    print("actual_image_cli_flags", json.dumps(JOB_ARGS), "PASS", flush=True)
 
-    namespace["sys"].meta_path.insert(0, namespace["DatasetIMDbFinder"]())
-    from modules import util
-
-    class QuietLogger:
-        def __getattr__(self, name):
-            return lambda *args, **kwargs: None
-
-    util.logger = QuietLogger()
-    from modules.imdb import IMDb
-    from modules.request import Requests
-
-    client = Requests("probe", "", "master", None)
-    original_stream = client.get_stream
-    downloads = []
-
-    def stream(url, path, info="Item"):
-        assert url == "https://datasets.imdbws.com/title.ratings.tsv.gz", "unexpected network endpoint"
-        downloads.append(url)
-        return original_stream(url, path, info)
-
-    def unexpected(*args, **kwargs):
-        raise AssertionError("per-title service call")
-
-    client.get_stream = stream
-    client.get = unexpected
-    with tempfile.TemporaryDirectory(dir="/tmp") as directory:
-        imdb = IMDb(client, None, directory)
-        started = time.monotonic()
-        assert imdb.get_rating(None) is None and not downloads
-        movie = float(imdb.get_rating("tt0111161"))
-        show = float(imdb.get_rating("tt0944947"))
-        assert 0 <= movie <= 10 and 0 <= show <= 10
-        assert imdb.get_rating("tt999999999999") is None and len(downloads) == 1
-        assert not list(Path(directory).iterdir())
-        print("daily_dataset_probe", json.dumps({"seconds": round(time.monotonic() - started, 3),
-              "downloads": len(downloads), "rows": len(imdb._ratings), "movie": movie, "show": show,
-              "missing_id": True, "temp_cleanup": True}), flush=True)
-
+    operations_args = next(job_args for job_args in JOB_ARGS if "--operations-only" in job_args)
     pool_context = next(n for n in actual.body if isinstance(n, ast.FunctionDef) and n.name == "_process_pool_context")
     with tempfile.TemporaryDirectory(dir="/tmp") as directory:
         root = Path(directory)
         stub = root / "kometa.py"
         stub.write_text("import multiprocessing,os,sys\nfrom pathlib import Path\nfrom concurrent.futures import ProcessPoolExecutor\n"
-                        "from modules.imdb import IMDb\n" + ast.unparse(pool_context) + '''
-imdb = IMDb(None, None, "/tmp")
-imdb._ratings = {"movie": "8.1", "show": "7.3"}
-def unexpected(*args):
-    raise AssertionError("per-title service call")
-imdb._service_title = unexpected
+                        + ast.unparse(pool_context) + f'''
 def worker():
-    assert sys.argv[1:] == ["--run", "--operations-only", "--timings"]
+    assert sys.argv[1:] == {operations_args!r}
     assert any(os.readlink(fd).endswith("run.lock") for fd in Path("/proc/self/fd").iterdir() if fd.exists())
-    assert imdb.get_rating("movie") == "8.1" and imdb.get_rating("show") == "7.3"
-    print("WORKER_PATCH_READY", flush=True)
+    print("WORKER_READY", flush=True)
     multiprocessing.Event().wait()
 if __name__ == "__main__":
     with ProcessPoolExecutor(max_workers=1, mp_context=_process_pool_context()) as pool:
@@ -107,20 +80,21 @@ if __name__ == "__main__":
         launcher = root / "serial-run.py"
         launcher.write_text(LAUNCHER_SOURCE)
         runner = root / "runner.py"
-        runner.write_text("import runpy,sys\nsys.path.insert(0,'/')\n"
+        runner.write_text("import runpy\n"
                           f"m=runpy.run_path({str(launcher)!r})\n"
                           f"m['main'].__globals__['KOMETA_PATH']=m['Path']({str(stub)!r})\n"
                           f"m['main'].__globals__['LOCK_PATH']=m['Path']({str(root / 'run.lock')!r})\n"
                           "m['main']()\n")
-        env = {**os.environ, "HNET_IMDB_RATINGS_SOURCE": "dataset"}
-        proc = subprocess.Popen([*TINI_COMMAND[:-1], str(runner), "--run", "--operations-only", "--timings"],
+        # Production mode: the launcher takes the lock, then execs unmodified Kometa.
+        env = {**os.environ, "HNET_IMDB_RATINGS_SOURCE": "upstream"}
+        proc = subprocess.Popen([*TINI_COMMAND[:-1], str(runner), *operations_args],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, bufsize=0, start_new_session=True)
         try:
             ready = False
             for _ in range(6):
                 assert select.select([proc.stdout], [], [], 5)[0], "worker startup timeout"
                 line = proc.stdout.readline()
-                if b"WORKER_PATCH_READY" in line:
+                if b"WORKER_READY" in line:
                     ready = True
                     break
                 if not line:
@@ -133,7 +107,6 @@ if __name__ == "__main__":
             proc.wait(timeout=8)
             check = subprocess.run([sys.executable, "-c", acquire, str(root / "run.lock")], capture_output=True, timeout=5)
             assert check.returncode == 0, "orphan worker retained lock after tini termination"
-            print("actual_image_runpy_worker_pickling_and_patch: PASS", flush=True)
             print("actual_image_worker_lock_and_tini_group_termination: PASS", flush=True)
         finally:
             if proc.poll() is None:
@@ -141,6 +114,7 @@ if __name__ == "__main__":
             proc.wait(timeout=5)
             proc.stdout.close()
             proc.stderr.close()
+    print("kometa_image_probe: PASS", flush=True)
 
 
 def render_job():
@@ -151,9 +125,13 @@ def render_job():
     args = parser.parse_args()
     launcher = Path(__file__).resolve().parents[1] / "kubernetes/main/apps/media/kometa/app/config/serial-run.py"
     release = launcher.parents[1] / "helmrelease.yaml"
-    command_line = next(line.strip() for line in release.read_text().splitlines() if line.strip().startswith("command: ["))
+    lines = [line.strip() for line in release.read_text().splitlines()]
+    command_line = next(line for line in lines if line.startswith("command: ["))
     tini_command = json.loads(command_line.removeprefix("command: "))
-    code = f"LAUNCHER_SOURCE={launcher.read_text()!r}\nTINI_COMMAND={tini_command!r}\n" + Path(__file__).read_text() + "\nprobe()\n"
+    job_args = [json.loads(line.removeprefix("args: ")) for line in lines if line.startswith("args: [")]
+    assert len(job_args) == 3 and sum("--operations-only" in a for a in job_args) == 1, job_args
+    code = (f"LAUNCHER_SOURCE={launcher.read_text()!r}\nTINI_COMMAND={tini_command!r}\nJOB_ARGS={job_args!r}\n"
+            + Path(__file__).read_text() + "\nprobe()\n")
     print(json.dumps({"apiVersion": "batch/v1", "kind": "Job", "metadata": {"name": args.name, "namespace": "media"},
           "spec": {"backoffLimit": 0, "activeDeadlineSeconds": 180, "ttlSecondsAfterFinished": 300,
           "template": {"spec": {"restartPolicy": "Never", "automountServiceAccountToken": False,
