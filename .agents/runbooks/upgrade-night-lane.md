@@ -20,10 +20,7 @@ CronJob `upgrade-shepherd-upgrade-night` in namespace `upgrade-agent`. Its contr
   checks, all read).
 - `run-night.mjs` refuses any `UPGRADE_NIGHT_MODE` except `dryrun` and exits 3 before
   reading anything.
-- A tick that fails, for example because GitHub is unreachable, writes `data.error` to
-  `upgrade-lane-state` and still exits 0. A Failed pod in `upgrade-agent` is what the
-  health gate and triage read as a regression. The Job exits 1 only when it cannot write
-  even that error record.
+- When a tick fails, see [When a tick fails](#when-a-tick-fails) below.
 
 The code is in the same `resources/` directory as the shepherd and is mounted from the
 `upgrade-shepherd-scripts` ConfigMap:
@@ -63,21 +60,56 @@ The selftest fails when a workflow's filter and the check map drift apart.
   blender-authoring, a source merge reaches the cluster later. The cluster changes when
   Renovate auto-merges the digest pin. These are `delayed-cluster-change`.
 - The whisper pin follows a tag with no digest, so its source merge is an
-  `immediate-cluster-change`.
+  `immediate-cluster-change`. The live step must not merge this class until its verify
+  step can observe the change. The pod only picks it up at its next start.
 - ComfyUI, dev-env v1 and the sha-tag builds have no cluster effect.
 
 ## Gates the tick evaluates (lane-A candidates only)
 
-- Expected checks: if any check is older than 7 days, the tick asks for a Renovate retry
-  first.
-- Backup: for each stateful target, either its VolSync ReplicationSource `<APP>-aws` or
-  its CNPG cluster's newest Backup must be newer than 23:00 New York on the night of the
-  tick.
-- Baseline: no Flux Kustomization NotReady, Ceph not in `HEALTH_ERR`, and no critical
-  alert firing in the target namespace.
-- The change lock (`upgrade-change-lock`) is not held.
-- No work order is `claimed`.
-- The merge window, 01:30 to 04:45 New York, is open.
+Every gate **fails closed**. If a read errors or returns nothing parseable, that gate is a
+blocker named `unreadable: <what>` and never a pass. This covers the ConfigMaps in
+`upgrade-agent`, Kustomizations, HelmReleases, ReplicationSources, CNPG Backups and
+ScheduledBackups, the target namespace's pods and CronJobs, CephClusters, the critical
+alerts from Prometheus and each work order.
+
+- **Checks:** if any expected check is older than 7 days, the tick asks for a Renovate
+  retry first.
+- **Target mapping:** each changed app directory must be applied by a Kustomization
+  (matched by `spec.path`). Otherwise the blocker is `target-unmapped`.
+- **Durable state:** a target counts as stateless only on positive evidence. It has state
+  when any of these holds:
+  - its Kustomization applied a ReplicationSource (matched by the
+    `kustomize.toolkit.fluxcd.io/name` and `/namespace` labels, not by name);
+  - that Kustomization substitutes `VOLSYNC_*`, includes a volsync component, or depends
+    on `volsync`;
+  - a pod or CronJob of the app in the target namespace mounts a PVC or an ephemeral claim;
+  - the target is a CNPG client listed under `cnpg_clients`.
+
+  A target with state and no ReplicationSource of its own gets the blocker
+  `backup-unmatched`.
+- **Backup freshness, per source:** the newest successful sync or backup must be at or
+  after that source's most recent scheduled run, and no older than 24 hours at merge time.
+  - VolSync: the source's most recent run is `status.nextSyncTime` if that time has
+    already passed, else `nextSyncTime` minus the period of `spec.trigger.schedule`. The
+    cluster evaluates `0 0 * * *` as 05:00Z.
+  - CNPG: the most recent run is the ScheduledBackup's `status.lastScheduleTime`, checked
+    against the newest Backup with `phase=completed`, timed by its `creationTimestamp`.
+    `startedAt` and `stoppedAt` are not used: postgres16 and ytdrivarr stamp local time
+    with `Z`, so a 05:00Z run reads as 00:00Z.
+  - Weekly sources (`plex-aws`, `plexops-aws`) therefore pass only on their own night.
+- **Baseline, scoped to the target.** These block:
+  - a NotReady Kustomization that applies the target, sits in its `dependsOn` chain, or
+    targets its namespace;
+  - a NotReady HelmRelease in its namespace;
+  - a critical alert firing in its namespace;
+  - Ceph in `HEALTH_ERR` or unknown.
+
+  Every other NotReady Flux object is listed under `summary.baseline.flux_warnings`.
+- **Work orders:** none may be `claimed`.
+- **Merge window:** 01:30 to 04:45 New York.
+- **Change lock (`upgrade-change-lock`): not implemented until the live step.** Nothing
+  takes this lock yet, so it is not a protection. The tick reports it as
+  `change_lock: not-implemented`.
 
 Of the PRs that pass every gate, the tick picks one. It prefers no cluster effect, then
 delayed, then stateless, then stateful, then the lowest PR number. In this step it only
@@ -106,8 +138,53 @@ node kubernetes/main/apps/upgrade-agent/shepherd/app/resources/run-night.mjs    
 
 ## Kill switch
 
-Set `suspend: true` on the `upgrade-night` controller in git and let Flux reconcile it.
-A `kubectl` suspend lasts only until the next reconcile.
+- Set `suspend: true` on the `upgrade-night` controller in git and let Flux reconcile it.
+  A `kubectl` suspend lasts only until the next reconcile.
+- The runtime **pause** takes effect immediately and needs no git change:
+
+  ```bash
+  kubectl -n upgrade-agent patch cm upgrade-lane-state --type merge -p '{"data":{"pause":"<who> <why>"}}'
+  ```
+
+  While `data.pause` is non-empty, each tick logs that it is paused and does nothing else.
+  It reads nothing from GitHub and writes nothing. To resume, remove the key. The
+  server-side apply never removes a key that another field manager set.
+
+## When a tick fails
+
+The tick uses these exit codes:
+
+| Exit | When |
+|---|---|
+| 0 | The tick finished or was paused. Also when it failed but recorded the failure: it writes `data.error` (and `summary.error`) to `upgrade-lane-state`. |
+| 2 | The state write itself failed (the server-side apply was refused, or the state is over the 768 KiB budget). The log carries `ERROR upgrade-night: STATE WRITE FAILED`. The ConfigMap cannot record its own write failure, so a Failed pod is the only signal. |
+| 1 | The tick failed and its error record could not be written either. |
+
+**How the gate and triage treat a Failed `upgrade-night` pod** (read from
+`health-gate/app/resources/coordination-lib.sh`, which this PR does not change):
+
+- `collect_regressions` takes Failed pods in every namespace from
+  `kube_pod_status_phase`, once they have persisted for 10 minutes.
+- `pod_is_stale_corpse` drops a Failed pod in three cases:
+  - rule A0: its own Job later succeeded (`backoffLimit` is 0 here, so this never applies);
+  - rule A: a newer Job of the same CronJob succeeded, so one failed tick followed by a
+    good one 15 minutes later is filtered;
+  - rule B: it is older than 24 hours.
+- `pod_failure_is_the_alert` drops pods annotated
+  `upgrade-agent.haynesnetwork.com/failure-is-the-alert`. These pods are not annotated:
+  the contract for that annotation is that a critical alert already pages for the
+  failure, and none does for this Job.
+
+As a result, a write failure on the last tick of the night (05:45), or on every tick,
+stays in the set. The gate then counts it as a regression and pages, and triage's path
+attribution can call it an upgrade regression whenever a merge touched the app's path
+in its 3-hour lookback (the library's own description of that behavior). That
+is acceptable for a write failure, which needs a person.
+
+Before the live step, a later change should decide how a Failed `upgrade-night` pod is
+classified. One option is a covering alert plus the failure-is-the-alert annotation;
+another is an explicit exclusion in `coordination-lib.sh`. That library is mounted in
+dev-env-ops, so merge such a change only when no work order is claimed.
 
 ## Tests
 
@@ -128,5 +205,5 @@ No CI workflow runs these yet. Rollout step 2 adds one.
    morning digest and the orphan page.
 5. The first live merge: one class, one merge a night, a stateless leaf. Then stateful
    targets and our own images. That step adds a live mode, a write-capable token, the
-   verify-and-revert loop and the runtime `pause` key.
+   verify-and-revert loop and the change lock.
 6. Lane B: work orders, an ask phase and a scheduled phase.

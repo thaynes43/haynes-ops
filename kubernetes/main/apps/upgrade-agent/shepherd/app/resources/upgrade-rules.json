@@ -1039,15 +1039,25 @@
   ],
   "night": {
     "timezone": "America/New_York",
-    "backup_cutoff_local": "23:00",
     "merge_window_local": {
       "first": "01:30",
       "last": "04:45"
     },
     "verify_only_until_local": "06:00",
-    "change_lock_configmap": "upgrade-change-lock",
     "work_orders_configmap": "upgrade-work-orders",
     "state_configmap": "upgrade-lane-state",
-    "namespace": "upgrade-agent"
+    "namespace": "upgrade-agent",
+    "backup_rule": {
+      "max_age_hours": 24,
+      "text": "Per source: the newest successful VolSync sync (status.lastSyncTime, latestMoverStatus.result=Successful) or completed CNPG Backup (metadata.creationTimestamp, phase=completed) must be at or after that source's most recent scheduled run and no older than 24 hours at merge time. VolSync: the most recent run is status.nextSyncTime when that is already past, else nextSyncTime minus the schedule's period (spec.trigger.schedule). CNPG: ScheduledBackup status.lastScheduleTime. CNPG startedAt/stoppedAt are not used: some instances stamp local time with Z.",
+      "stateful_evidence": "A target is stateless only when every read succeeded and none of these holds: a ReplicationSource applied by its Kustomization; VOLSYNC_* substitutions, a volsync component or dependsOn volsync on that Kustomization; a pod or CronJob of the app mounting a PVC (or an ephemeral claim) in the target namespace; a CNPG client entry. State with no matching ReplicationSource is backup-unmatched (a blocker)."
+    },
+    "change_lock": {
+      "configmap": "upgrade-change-lock",
+      "status": "not-implemented-until-live-step",
+      "note": "Planned gate: nothing takes this lock yet, so the dry-run reports it as not-implemented and does not count it as a protection."
+    },
+    "baseline_rule": "Blockers: a NotReady Kustomization that applies the target, is in its dependsOn chain, or targets its namespace; a NotReady HelmRelease in its namespace; a firing critical alert in its namespace; Ceph HEALTH_ERR or unknown. Every other NotReady Flux object is reported as a warning.",
+    "pause": "A non-empty data.pause on ConfigMap upgrade-lane-state stops every tick before any GitHub read; the tick only logs that it is paused."
   }
 }

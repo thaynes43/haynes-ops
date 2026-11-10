@@ -1,0 +1,259 @@
+{"captured":"2026-11-10T00:55Z","source":"kubectl get (read-only) replicationsources, scheduledbackups and backups; trimmed to the fields the freshness rule reads",
+"replicationsources":
+[
+  {
+    "metadata": {
+      "name": "mosquitto-aws",
+      "namespace": "database",
+      "labels": {
+        "kustomize.toolkit.fluxcd.io/name": "mosquitto",
+        "kustomize.toolkit.fluxcd.io/namespace": "database"
+      }
+    },
+    "spec": {
+      "trigger": {
+        "schedule": "0 0 * * *"
+      }
+    },
+    "status": {
+      "lastSyncTime": "2026-11-09T05:00:52Z",
+      "nextSyncTime": "2026-11-10T05:00:00Z",
+      "latestMoverStatus": {
+        "result": "Successful"
+      }
+    }
+  },
+  {
+    "metadata": {
+      "name": "openproject-assets-aws",
+      "namespace": "frontend",
+      "labels": {
+        "kustomize.toolkit.fluxcd.io/name": "openproject",
+        "kustomize.toolkit.fluxcd.io/namespace": "frontend"
+      }
+    },
+    "spec": {
+      "trigger": {
+        "schedule": "30 2 * * *"
+      }
+    },
+    "status": {
+      "lastSyncTime": "2026-11-09T07:30:13Z",
+      "nextSyncTime": "2026-11-10T07:30:00Z",
+      "latestMoverStatus": {
+        "result": "Successful"
+      }
+    }
+  },
+  {
+    "metadata": {
+      "name": "home-assistant-aws",
+      "namespace": "home-automation",
+      "labels": {
+        "kustomize.toolkit.fluxcd.io/name": "home-assistant",
+        "kustomize.toolkit.fluxcd.io/namespace": "home-automation"
+      }
+    },
+    "spec": {
+      "trigger": {
+        "schedule": "0 0 * * *"
+      }
+    },
+    "status": {
+      "lastSyncTime": "2026-11-09T05:05:02Z",
+      "nextSyncTime": "2026-11-10T05:00:00Z",
+      "latestMoverStatus": {
+        "result": "Successful"
+      }
+    }
+  },
+  {
+    "metadata": {
+      "name": "plex-aws",
+      "namespace": "media",
+      "labels": {
+        "kustomize.toolkit.fluxcd.io/name": "plex",
+        "kustomize.toolkit.fluxcd.io/namespace": "media"
+      }
+    },
+    "spec": {
+      "trigger": {
+        "schedule": "0 0 * * 0"
+      }
+    },
+    "status": {
+      "lastSyncTime": "2026-11-08T05:06:36Z",
+      "nextSyncTime": "2026-11-15T05:00:00Z",
+      "latestMoverStatus": {
+        "result": "Successful"
+      }
+    }
+  },
+  {
+    "metadata": {
+      "name": "plexops-aws",
+      "namespace": "media",
+      "labels": {
+        "kustomize.toolkit.fluxcd.io/name": "plexops",
+        "kustomize.toolkit.fluxcd.io/namespace": "media"
+      }
+    },
+    "spec": {
+      "trigger": {
+        "schedule": "0 0 * * 0"
+      }
+    },
+    "status": {
+      "lastSyncTime": "2026-11-08T05:08:17Z",
+      "nextSyncTime": "2026-11-15T05:00:00Z",
+      "latestMoverStatus": {
+        "result": "Successful"
+      }
+    }
+  }
+]
+,
+"scheduledbackups":
+[
+  {
+    "metadata": {
+      "name": "postgres",
+      "namespace": "database"
+    },
+    "spec": {
+      "cluster": {
+        "name": "postgres16"
+      },
+      "schedule": "@daily",
+      "suspend": null
+    },
+    "status": {
+      "lastScheduleTime": "2026-11-09T05:00:00Z",
+      "nextScheduleTime": "2026-11-10T05:00:00Z"
+    }
+  },
+  {
+    "metadata": {
+      "name": "postgres-pgvecto",
+      "namespace": "database"
+    },
+    "spec": {
+      "cluster": {
+        "name": "postgres16-pgvecto"
+      },
+      "schedule": "@daily",
+      "suspend": null
+    },
+    "status": {
+      "lastScheduleTime": "2026-11-09T05:00:00Z",
+      "nextScheduleTime": "2026-11-10T05:00:00Z"
+    }
+  },
+  {
+    "metadata": {
+      "name": "ytdrivarr-postgres16",
+      "namespace": "downloads"
+    },
+    "spec": {
+      "cluster": {
+        "name": "ytdrivarr-postgres16"
+      },
+      "schedule": "@daily",
+      "suspend": null
+    },
+    "status": {
+      "lastScheduleTime": "2026-11-09T05:00:00Z",
+      "nextScheduleTime": "2026-11-10T05:00:00Z"
+    }
+  },
+  {
+    "metadata": {
+      "name": "openproject-db",
+      "namespace": "frontend"
+    },
+    "spec": {
+      "cluster": {
+        "name": "openproject-db"
+      },
+      "schedule": "0 0 2 * * *",
+      "suspend": null
+    },
+    "status": {
+      "lastScheduleTime": "2026-11-09T07:00:00Z",
+      "nextScheduleTime": "2026-11-10T07:00:00Z"
+    }
+  }
+]
+,
+"backups":
+[
+  {
+    "metadata": {
+      "name": "postgres-20261109000000",
+      "namespace": "database",
+      "creationTimestamp": "2026-11-09T05:00:00Z"
+    },
+    "spec": {
+      "cluster": {
+        "name": "postgres16"
+      }
+    },
+    "status": {
+      "phase": "completed",
+      "startedAt": "2026-11-09T00:00:01Z",
+      "stoppedAt": "2026-11-09T00:01:24Z"
+    }
+  },
+  {
+    "metadata": {
+      "name": "postgres-pgvecto-20261109000000",
+      "namespace": "database",
+      "creationTimestamp": "2026-11-09T05:00:00Z"
+    },
+    "spec": {
+      "cluster": {
+        "name": "postgres16-pgvecto"
+      }
+    },
+    "status": {
+      "phase": "completed",
+      "startedAt": "2026-11-09T05:00:00Z",
+      "stoppedAt": "2026-11-09T05:02:29Z"
+    }
+  },
+  {
+    "metadata": {
+      "name": "ytdrivarr-postgres16-20261109000000",
+      "namespace": "downloads",
+      "creationTimestamp": "2026-11-09T05:00:00Z"
+    },
+    "spec": {
+      "cluster": {
+        "name": "ytdrivarr-postgres16"
+      }
+    },
+    "status": {
+      "phase": "completed",
+      "startedAt": "2026-11-09T00:00:00Z",
+      "stoppedAt": "2026-11-09T00:00:03Z"
+    }
+  },
+  {
+    "metadata": {
+      "name": "openproject-db-20261109020000",
+      "namespace": "frontend",
+      "creationTimestamp": "2026-11-09T07:00:00Z"
+    },
+    "spec": {
+      "cluster": {
+        "name": "openproject-db"
+      }
+    },
+    "status": {
+      "phase": "completed",
+      "startedAt": "2026-11-09T07:00:00Z",
+      "stoppedAt": "2026-11-09T07:00:20Z"
+    }
+  }
+]
+}
