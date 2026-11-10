@@ -107,7 +107,7 @@ For every proposed tag:
    - `kometa_image_probe: PASS`.
 
    The probe never starts Kometa, loads config or contacts Plex or any provider,
-   so it cannot catch a startup abort like #3718. Only a real run proves that.
+   so it cannot catch a startup abort like Kometa-Team/Kometa#3718. Only a real run proves that.
 4. Read the required checks and any advisory review, then merge and reconcile
    Flux (`flux reconcile kustomization kometa -n media --with-source`).
 5. Verify the first run of each job, as described below. A separately authorized

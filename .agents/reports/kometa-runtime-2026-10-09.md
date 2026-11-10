@@ -275,8 +275,8 @@ tag `v2.5.4`; the image itself was not probed for this addendum.
 - HTTP calls use a 30-second socket timeout and up to 6 attempts. After the first
   failure, the service counts as unavailable for the rest of the run.
 - v2.5.3's `modules/timings.py` copied `util.logger` into a module global at
-  import time, while it was still `None`; that was the cause of #3718. v2.5.4
-  reads `util.logger` when it is called (upstream PR #3719), and `kometa.py` sets
+  import time, while it was still `None`; that was the cause of Kometa-Team/Kometa#3718. v2.5.4
+  reads `util.logger` when it is called (Kometa-Team/Kometa#3719), and `kometa.py` sets
   the logger before the timings banner.
 - v2.5.4 drops the v2.5.3 MDBList cache table `mdb_data5` and creates
   `mdb_data6`, so the first v2.5.4 run also refetches MDBList data for the whole
