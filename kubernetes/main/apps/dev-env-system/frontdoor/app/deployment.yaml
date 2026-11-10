@@ -1,0 +1,211 @@
+# Meatball's front door (thaynes43/dev-env DESIGN-060, OpenProject #528).
+# One process in dev-env-system. It serves streamable HTTP at POST /mcp and
+# speaks JSON-RPC. It runs as ServiceAccount dev-env-meatball, which has no
+# Kubernetes RBAC: the process never calls the Kubernetes API. It presents one
+# projected token, audience dev-env-operator, to the operator API.
+#
+# Two credentials, both vault HaynesKube, mounted read-only:
+# - item dev-env, field FRONTDOOR_MCP_TOKEN: the bearer. Tom adds this field.
+#   The process reads the file on every request.
+# - item openproject, field API_TOKEN: the tracker credential opwork already
+#   uses (the same field as dev/openproject-agent). Not a new item.
+#
+# Turn it off: set spec.suspend: true on Flux Kustomization dev-env-frontdoor
+# in dev-env-system and delete Deployment dev-env-frontdoor. Suspend alone
+# leaves the pod, and the next reconcile while unsuspended recreates it.
+# Removing this Kustomization from git, with prune, removes the Deployment,
+# Service, route, Secrets, CallerPolicy, this pod's network policy and the
+# OpenProject ingress allow (openproject-frontdoor-api, in this app). The
+# operator Role and the operator's ingress peer live in the rbac and network
+# apps and stay until those files are reverted. They do not keep this pod up.
+#
+# After it is live, from inside the home network:
+# 1. The pod is Ready.
+# 2. POST https://dev-env-frontdoor.haynesops.com/mcp with no bearer returns 401.
+# 3. tools/list with the bearer lists ten tools.
+#
+# The operator that reads CallerPolicy must already be image sha-a1d40ea or a
+# later commit. Flux Ready on dev-env-operator does not prove that. Check the
+# running image, then in a dev-env checkout confirm a1d40ea is an ancestor of
+# that commit. This file does not change the operator Deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dev-env-frontdoor
+  namespace: dev-env-system
+  labels:
+    app.kubernetes.io/name: dev-env-frontdoor
+  annotations:
+    # The CA is read once, at process start (agentrun.OpenOperator). A re-pin
+    # of dev-env-api-ca has to restart this pod. The bearer and the tracker
+    # token are read from their files per request and per opwork process.
+    configmap.reloader.stakater.com/reload: dev-env-api-ca
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dev-env-frontdoor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dev-env-frontdoor
+      annotations:
+        k8tz.io/inject: "false"
+    spec:
+      serviceAccountName: dev-env-meatball
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # The names below are FQDNs. ndots 1 looks them up as written. The
+      # namespace DNS rule would also allow a search-expanded query, and then
+      # refuse nothing at DNS, but the connection rules are by endpoint.
+      dnsPolicy: ClusterFirst
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: frontdoor
+          # dev-env 8b23ee1 (PR #1038). Publish run 42796657729, job Publish
+          # (frontdoor), step Verify the signature: this digest, keyless, by
+          # publish.yml on main.
+          image: ghcr.io/thaynes43/dev-env-frontdoor:sha-8b23ee1@sha256:2a3fd74996926349cd8ca32a60620148474b0bbb2c598719365c04f025993701
+          imagePullPolicy: IfNotPresent
+          args:
+            - --listen=:8080
+            - --token-file=/etc/dev-env-frontdoor/mcp/token
+            - --tracker-token-file=/etc/dev-env-frontdoor/tracker/token
+            - --operator-token-file=/var/run/secrets/dev-env/token
+            - --api-url=https://dev-env-operator.dev-env-system.svc.cluster.local:8443
+            - --ca-file=/etc/dev-env-frontdoor/ca/operator-ca.crt
+            - --project=haynes-engineering
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          # One Go process plus at most four short python3 opwork children
+          # (docs/frontdoor.md: four tool calls at once, each with a 90s
+          # deadline, mostly waiting on HTTP). A child holds one OpenProject
+          # page (about 1.2 MiB of JSON on 2026-11-10) under an 8 MiB body
+          # cap. 128Mi is the idle server plus room to start a child. 512Mi
+          # covers four interpreters, four bodies, and the memory emptyDirs
+          # below without letting a scan OOM the pod. 50m is idle. The 1 CPU
+          # limit is for four short JSON parses, not four busy cores, and it
+          # keeps this pod off the unbounded share that starved a node on
+          # 2026-10-05.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          # An unauthenticated request is 401 on every path, including
+          # OPTIONS, with an empty body (docs/frontdoor.md). A kubelet HTTP
+          # probe treats a status at or above 400 as failure, so an HTTP
+          # probe would never go Ready. There is no health route. TCP only
+          # checks that the listener is up.
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: mcp-token
+              mountPath: /etc/dev-env-frontdoor/mcp
+              readOnly: true
+            - name: tracker-token
+              mountPath: /etc/dev-env-frontdoor/tracker
+              readOnly: true
+            - name: operator-token
+              mountPath: /var/run/secrets/dev-env
+              readOnly: true
+            - name: operator-ca
+              mountPath: /etc/dev-env-frontdoor/ca
+              readOnly: true
+            # os.MkdirTemp("", "frontdoor-") in internal/frontdoor/tools.go
+            # writes the groom field files under os.TempDir(), which is /tmp.
+            # The process removes that directory when the call returns.
+            - name: tmp
+              mountPath: /tmp
+            # opwork's pending store is $HOME/.local/state/opwork/pending
+            # (opwork.py state_dir) unless OPWORK_STATE_DIR is set. HOME in
+            # the image is /home/nonroot. The atomic write lands a temp file
+            # in the parent directory, .local/state/opwork. The root
+            # filesystem is read-only, so this mount is the writable tree.
+            - name: opwork-state
+              mountPath: /home/nonroot/.local
+      volumes:
+        - name: mcp-token
+          secret:
+            secretName: dev-env-frontdoor-token
+            defaultMode: 0440
+            items:
+              - key: token
+                path: token
+        - name: tracker-token
+          secret:
+            secretName: dev-env-frontdoor-openproject
+            defaultMode: 0440
+            items:
+              - key: token
+                path: token
+        # Same audience and expiry the portal uses for the operator API
+        # (portal/app/deployment.yaml, the serviceAccountToken source of the
+        # secrets volume: audience dev-env-operator, expirationSeconds 3600).
+        # The keeper's projected token is the Kubernetes API token and sets
+        # no audience.
+        - name: operator-token
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: dev-env-operator
+                  expirationSeconds: 3600
+        # Same key and path the portal uses (portal/app/deployment.yaml, the
+        # ca volume's dev-env-api-ca source: key ca.crt, path operator-ca.crt).
+        # That ConfigMap is in dev-agents. This pod mounts the copy pki
+        # publishes in this namespace from the same pinned file.
+        - name: operator-ca
+          configMap:
+            name: dev-env-api-ca
+            defaultMode: 0444
+            items:
+              - key: ca.crt
+                path: operator-ca.crt
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
+        - name: opwork-state
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi

@@ -1,0 +1,62 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# Meatball's front door (DESIGN-060, OpenProject #528). One Deployment, its
+# ServiceAccount, the internal /mcp route, two ExternalSecrets, CallerPolicy
+# meatball, and the network allows that are not already in another app.
+#
+# dependsOn, and why each one:
+# - dev-env-crds: the CallerPolicy CRD has to exist before this object.
+# - dev-env-pki: the pod mounts ConfigMap dev-env-system/dev-env-api-ca, the
+#   pinned operator CA published there.
+# - dev-env-rbac: Role dev-env-operator-caller-policy, so the operator can Get
+#   the policy when this pod starts calling.
+# - dev-env-network: the operator's ingress allow for this pod, and the
+#   namespace default-deny this pod sits under.
+# - external-secrets-stores: both ExternalSecrets use ClusterSecretStore
+#   onepassword-connect.
+# - certificates: the IngressRoute lives in namespace dev, where the reflected
+#   wildcard certificate-haynesops is. That Kustomization has wait: false, so
+#   this only orders the apply on a fresh cluster.
+#
+# Not a dependsOn: the operator Deployment. Flux Ready does not prove the
+# operator image is sha-a1d40ea or later, which is what can read CallerPolicy.
+# The coordinator checks the running image before this is reconciled. See the
+# Deployment header.
+#
+# No targetNamespace: the IngressRoute is in dev (the wildcard certificate is
+# reflected there, not here) and the OpenProject allow is in frontend.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env-frontdoor
+  namespace: dev-env-system
+spec:
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: dev-env-crds
+    - name: dev-env-pki
+    - name: dev-env-rbac
+    - name: dev-env-network
+    - name: external-secrets-stores
+      namespace: external-secrets
+    - name: certificates
+      namespace: cert-manager
+  path: ./kubernetes/main/apps/dev-env-system/frontdoor/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  # ExternalSecrets do not set the conditions kstatus reads. Without this, a
+  # missing 1Password field would still leave the Kustomization Ready while the
+  # pod waited on the Secret. Do not reconcile this until both items resolve.
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: status.conditions.exists(e, e.type == 'Ready' && e.status == 'True')
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m

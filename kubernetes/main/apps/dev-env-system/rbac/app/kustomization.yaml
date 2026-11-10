@@ -13,6 +13,7 @@ resources:
   - ./workbench-admin.yaml
   - ./workbench-admin-guard.yaml
   - ./operator.yaml
+  - ./operator-caller-policy.yaml
   - ./operator-standby.yaml
   - ./operator-keeper-login.yaml
   - ./operator-exec-guard.yaml

@@ -2,7 +2,9 @@
 # The operator (DESIGN-001 6.10). Pods carry app.kubernetes.io/name: dev-env-operator
 # (the operator HelmRelease, 8.9, must keep that label).
 #
-# Ingress: 8443 from session pods, and from the v1 pod (dev/dev-env) until cutover: it is
+# Ingress: 8443 from session pods, from the front door (dev-env-system/dev-env-frontdoor,
+# DESIGN-060: it calls the operator API and nothing else here), and from the v1 pod
+# (dev/dev-env) until cutover: it is
 # a trusted client (--client-service-accounts, D-46) and runs the v2 agent-run (D-50;
 # its own policy carries the egress half, KICKOFF 8.9). The summoning callers in
 # upgrade-agent (3.7) are admitted when plan 10 moves summoning into the operator, and
@@ -27,6 +29,9 @@ spec:
         - matchLabels:
             io.kubernetes.pod.namespace: dev
             app.kubernetes.io/name: dev-env
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-frontdoor
       toPorts:
         - ports:
             - port: "8443"

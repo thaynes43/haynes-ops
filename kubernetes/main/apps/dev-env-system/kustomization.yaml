@@ -34,5 +34,8 @@ resources:
   - ./owned-luna-prep/ks.yaml
   - ./portal/policy/ks.yaml
   - ./portal/ks.yaml
+  # Meatball's front door (DESIGN-060, OpenProject #528). Its own Kustomization
+  # states the dependsOn. Nothing else waits on it.
+  - ./frontdoor/ks.yaml
   # The owner's Fable 5.2 coordinator session (OpenProject #501). Nothing depends on it.
   - ./coordinator-session/ks.yaml

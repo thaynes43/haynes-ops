@@ -12,6 +12,9 @@ configMapGenerator:
   # Who reads it:
   #   - session pods: dev-env-templates mounts it at /opt/dev-env/api-ca, and
   #     AGENTD_API_CA_FILE names ca.crt (agentd's heartbeat and agent-run);
+  #   - the front door (dev-env-system/dev-env-frontdoor) mounts the same bytes
+  #     from the second generator below, because a pod cannot mount a ConfigMap
+  #     in another namespace. One file feeds both generators;
   #   - the v1 pod's v2 agent-run, without a mount (a mount would restart that pod):
   #       kubectl get configmap dev-env-api-ca -n dev-agents \
   #         -o jsonpath='{.data.ca\.crt}' > ~/.cache/dev-env-api-ca.crt
@@ -38,6 +41,12 @@ configMapGenerator:
   # 5D:B4:0D:B2:45:3D:31:97:0A:0D:8D:81:BC:D2:7E:2D:DE:43:6C:06:84:99:3E:6D:11:3A:A8:E4:11:F5:C3:59
   - name: dev-env-api-ca
     namespace: dev-agents
+    files:
+      - ca.crt
+  # Same pinned certificate, for the front door. A pod in dev-env-system cannot
+  # mount the dev-agents ConfigMap. Re-pinning ca.crt updates both.
+  - name: dev-env-api-ca
+    namespace: dev-env-system
     files:
       - ca.crt
 generatorOptions:

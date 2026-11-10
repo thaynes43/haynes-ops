@@ -1,0 +1,15 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Every object names its namespace. The IngressRoute is in dev, where
+# certificate-haynesops is reflected. The OpenProject allow is in frontend.
+resources:
+  - ./serviceaccount.yaml
+  - ./externalsecret-token.yaml
+  - ./externalsecret-openproject.yaml
+  - ./callerpolicy.yaml
+  - ./deployment.yaml
+  - ./service.yaml
+  - ./ingressroute.yaml
+  - ./networkpolicy.yaml

@@ -1,0 +1,29 @@
+# DESIGN-060 section 7.1 (OpenProject #528). The operator reads CallerPolicy
+# dev-env-system/meatball with one live Get and no cache
+# (dev-env internal/apiserver/callerpolicy.go, readCallerPolicy). That is the
+# only verb: it does not list, watch, or write the object. A missing object
+# enrolls nobody. This Role does not change the operator Deployment.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-operator-caller-policy
+  namespace: dev-env-system
+rules:
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [callerpolicies]
+    resourceNames: [meatball]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-operator-caller-policy
+  namespace: dev-env-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dev-env-operator-caller-policy
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
