@@ -11,7 +11,9 @@ scope, the routine lifecycle writes are yours. Run `opwork.py --help` for the co
   opwork.py comment 97 "progress..."            # attributed, read back
   opwork.py status 97 "In review" --note "PR #1"
   opwork.py complete 97 --evidence "tests ..."  # evidence comment + Accepted
-  opwork.py create --epic 95 --origin 97 --source-key followup:97:x --subject "..."
+  opwork.py create --epic 95 --origin 97 --source-key followup:97:x --subject "..."   # a Story under Epic 95
+  opwork.py create --type Epic --epic SAGA_ID --source-key K --subject "..."          # an Epic under a Saga
+  opwork.py create --type Saga --source-key K --subject "..."                         # a Saga: no parent, no --epic
   opwork.py checkpoint 97 "state..."            # explicit local record, no tracker needed
   opwork.py checkins [--owner OWNER] [--status S] -o json
   opwork.py checkpoint-update 97 --next-action TEXT --check-after UTC --evidence TEXT
@@ -90,7 +92,8 @@ FIELD_NAMES = {DESCRIPTION: "description", ACCEPT: "acceptance", CONSTRAINTS: "c
 HOLDS = ("Needs answer", "Needs approval", "Paused")  # an explicit hold or pause stays one without --force
 RELATIONS = ("relates", "follows", "precedes", "blocks", "blocked")
 REVERSE = {"follows": "precedes", "precedes": "follows", "blocks": "blocked", "blocked": "blocks", "relates": "relates"}
-PARENT_OF = {"Epic": "Saga", "Story": "Epic"}
+PARENT_OF = {"Saga": None, "Epic": "Saga", "Story": "Epic"}  # the work-model grammar: a Saga has no parent
+PARENT_NEEDED = {"Epic": "an Epic needs a Saga id (--epic SAGA_ID)", "Story": "a Story needs an Epic id (--epic EPIC_ID)"}
 
 
 class Fail(Exception):
@@ -654,7 +657,7 @@ def read_back_problems(t, wp_id, key, want, state):
         return link.get("href") if isinstance(link, dict) else None
     for name in ("type", "parent", "status"):
         if name in want and href(name) != want[name]:
-            problems.append("%s (sent %s, read back %s)" % (name, want[name], href(name) or "none"))
+            problems.append("%s (sent %s, read back %s)" % (name, want[name] or "none", href(name) or "none"))
     if href("project") not in ("/api/v3/projects/%s" % project.get("id"), "/api/v3/projects/%s" % t.project):
         problems.append("project (sent %s, read back %s)" % (t.project, href("project") or "none"))
     return now, problems
@@ -673,6 +676,13 @@ def not_confirmed(now, key, state, problems, label):
 
 
 def cmd_create(t, a, session):
+    # --epic is the parent id. Only the grammar's own shape is checked here, before any tracker request:
+    # a Saga takes no parent; an Epic needs a Saga id and a Story an Epic id.
+    if a.type == "Saga" and a.epic is not None:
+        raise Fail("Grammar: a Saga has no parent; drop --epic (got #%d)" % a.epic)
+    if a.type != "Saga" and a.epic is None:
+        raise Fail("Grammar: %s" % PARENT_NEEDED[a.type])
+    parent_href = "/api/v3/work_packages/%d" % a.epic if a.epic is not None else None
     existing = t.by_source_key(a.source_key)  # search first: the stable key is the identity
     if len(existing) == 1:  # reuse only an item whose read back shows what this run asks for
         found = positive_id(existing[0].get("id")) if isinstance(existing[0], dict) else None
@@ -680,7 +690,7 @@ def cmd_create(t, a, session):
             raise unknown_locator(a.source_key, "already exists")  # before any by-id read or relation
         want = {"subject": a.subject, "markdown": {k: v for k, v in ((DESCRIPTION, a.description), (ACCEPT, a.acceptance), (CONSTRAINTS, a.constraints)) if v},
                 "present": [PROVENANCE],  # it names the creating session, so a re-run checks it is there, not equal
-                "type": "/api/v3/types/%d" % t.resolve("types", a.type), "parent": "/api/v3/work_packages/%d" % a.epic}  # no status: it may have moved on
+                "type": "/api/v3/types/%d" % t.resolve("types", a.type), "parent": parent_href}  # no status: it may have moved on; a Saga's parent is none
         now, problems = read_back_problems(t, found, a.source_key, want, "already exists")
         if problems:
             raise not_confirmed(now, a.source_key, "already exists", problems, "REUSE refused, NOT confirmed: ")
@@ -693,18 +703,24 @@ def cmd_create(t, a, session):
         return "\n".join(out)
     if existing:  # several items carry the key: listed, nothing written
         return "REUSED, not created: " + "; ".join(line(w) for w in existing)
-    epic = t.wp(a.epic)
     kind = a.type
-    if epic["_links"]["type"]["title"] != PARENT_OF[kind]:
-        raise Fail("Grammar: a %s goes under a %s, but #%d is a %s" % (kind, PARENT_OF[kind], a.epic, epic["_links"]["type"]["title"]))
+    if a.epic is not None:
+        parent = t.wp(a.epic)
+        if parent["_links"]["type"]["title"] != PARENT_OF[kind]:
+            raise Fail("Grammar: a %s goes under a %s, but #%d is a %s" % (kind, PARENT_OF[kind], a.epic, parent["_links"]["type"]["title"]))
     words = [x for x in a.subject.lower().split() if len(x) > 3]
-    similar = [w for w in t.scan([{"parent": {"operator": "=", "values": [str(a.epic)]}}, {"status": {"operator": "*", "values": []}}]) if words and sum(x in w["subject"].lower() for x in words) * 2 >= len(words)]
+    if a.epic is not None:  # compare with the parent's other children
+        siblings, where = t.scan([{"parent": {"operator": "=", "values": [str(a.epic)]}}, {"status": {"operator": "*", "values": []}}]), "under #%d" % a.epic
+    else:  # a Saga has no parent whose children to compare with: compare with the other Sagas
+        siblings, where = t.scan([{"type": {"operator": "=", "values": [str(t.resolve("types", kind))]}}, {"status": {"operator": "*", "values": []}}]), "among existing Sagas"
+    similar = [w for w in siblings if words and sum(x in w["subject"].lower() for x in words) * 2 >= len(words)]
     if similar and not a.confirm_new:
-        raise Fail("POSSIBLE DUPLICATE under #%d:\n  %s\nReuse one, or repeat with --confirm-new if this is genuinely separate work." % (a.epic, "\n  ".join(line(w) for w in similar)), 4)
+        raise Fail("POSSIBLE DUPLICATE %s:\n  %s\nReuse one, or repeat with --confirm-new if this is genuinely separate work." % (where, "\n  ".join(line(w) for w in similar)), 4)
     payload = {"subject": a.subject, "description": {"raw": a.description or ""}, SOURCE_KEY: a.source_key,
                PROVENANCE: {"raw": "Created by <%s>%s as a follow-up. Not groomed or approved for execution." % (session, " from #%d" % a.origin if a.origin else "")},
-               "_links": {"type": {"href": "/api/v3/types/%d" % t.resolve("types", kind)}, "status": {"href": "/api/v3/statuses/%d" % t.resolve("statuses", "Ungroomed")},
-                          "parent": {"href": "/api/v3/work_packages/%d" % a.epic}}}
+               "_links": {"type": {"href": "/api/v3/types/%d" % t.resolve("types", kind)}, "status": {"href": "/api/v3/statuses/%d" % t.resolve("statuses", "Ungroomed")}}}
+    if parent_href:  # a Saga is created with no parent link at all
+        payload["_links"]["parent"] = {"href": parent_href}
     for field, value in ((REPOS, a.repos), (ACCEPT, a.acceptance), (CONSTRAINTS, a.constraints)):
         if value:
             payload[field] = {"raw": value} if field in MARKDOWN else value
@@ -744,7 +760,7 @@ def cmd_create(t, a, session):
     # as sent, and the parent, type, starting status, project and source key; only then is it
     # confirmed and related. A mismatch keeps this invocation's known id and writes nothing more.
     want = {"subject": a.subject, "markdown": {k: payload[k]["raw"] for k in MARKDOWN if k in payload and payload[k]["raw"]}, "present": [],
-            "type": payload["_links"]["type"]["href"], "parent": payload["_links"]["parent"]["href"], "status": payload["_links"]["status"]["href"]}
+            "type": payload["_links"]["type"]["href"], "parent": parent_href, "status": payload["_links"]["status"]["href"]}
     now, problems = read_back_problems(t, locator, a.source_key, want, "was created")
     if problems:
         raise not_confirmed(now, a.source_key, "was created", problems, "created, NOT confirmed: ")
@@ -992,9 +1008,9 @@ def build_parser():
     add("status", cmd_status, wp, (("state",), {}), (("--note",), {}), lock, force, help="explicit status change")
     add("complete", cmd_complete, wp, (("--evidence",), {"required": True}), lock, force, help="evidence comment, then Accepted")
     add("relate", cmd_relate, (("src",), {"type": int}), (("dst",), {"type": int}), (("--type",), {"default": "relates", "choices": RELATIONS}), help="link two items")
-    add("create", cmd_create, (("--epic",), {"type": int, "required": True}), (("--subject",), {"required": True}), (("--source-key",), {"required": True, "help": "stable key, e.g. followup:97:topic"}),
+    add("create", cmd_create, (("--epic",), {"type": int, "help": "the parent id: a Saga id for an Epic, an Epic id for a Story; not allowed for a Saga"}), (("--subject",), {"required": True}), (("--source-key",), {"required": True, "help": "stable key, e.g. followup:97:topic"}),
         (("--origin",), {"type": int, "help": "originating Story (relates link)"}), (("--type",), {"default": "Story", "choices": list(PARENT_OF)}), (("--description",), {}), (("--repos",), {}),
-        (("--acceptance",), {}), (("--constraints",), {}), (("--confirm-new",), {"action": "store_true"}), help="search-first follow-up, filed Ungroomed")
+        (("--acceptance",), {}), (("--constraints",), {}), (("--confirm-new",), {"action": "store_true"}), help="search-first Saga, Epic or Story (default Story), filed Ungroomed")
     add("checkpoint", cmd_checkpoint, wp, (("text",), {}), help="save a note locally (works offline)")
     add("pending", cmd_pending, help="list locally saved records")
     add("flush", cmd_flush, help="post saved notes to the tracker, with dedupe and read back")
