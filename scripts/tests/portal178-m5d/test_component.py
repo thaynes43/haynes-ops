@@ -126,10 +126,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# dev-env main 25b77247 (dev-env#1019, #1018); publish42740968309 signed and verified this digest.
+# dev-env main a1d40ea6 (v2.99.0, release #1026); publish 42791460531 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-25b7724"
-    "@sha256:7e1664b487f784262b4e336a49bd8a2df17d4440ee34e7de5ca025720c5270b5"
+    "sha-a1d40ea"
+    "@sha256:787079aed7298b08faebfb74d63fb2e58921aff3391eb473f653b691bccb14c4"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"

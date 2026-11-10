@@ -243,7 +243,15 @@ spec:
               # RBAC or template change; the templates revision and every existing Session pod stay as they are.
               # Previous pin sha-69662d4@sha256:352285df97f944773306b8800ed166ae476937af5f9f5e2250130ef09c52dd0d
               # (haynes-ops#4732); rollback target for the operator alone.
-              tag: sha-25b7724@sha256:7e1664b487f784262b4e336a49bd8a2df17d4440ee34e7de5ca025720c5270b5
+              # dev-env main a1d40ea6 (v2.99.0, release #1026; publish 42791460531's operator job signed and
+              # verified this digest). Live without a flag: Meatball's caller class exists but admits nobody
+              # while no CallerPolicy object exists; a bounded-worker cap for human and client callers; the
+              # grant Ask kind is refused for sessions; the three retired archive flags now refuse startup.
+              # Behind flags that this pin does not set: the task clean-up; grant Asks. No argument change.
+              # The templates image, permissions and every existing Session pod stay as they are.
+              # Previous pin sha-25b7724@sha256:7e1664b487f784262b4e336a49bd8a2df17d4440ee34e7de5ca025720c5270b5
+              # (haynes-ops#4746); rollback target for the operator alone.
+              tag: sha-a1d40ea@sha256:787079aed7298b08faebfb74d63fb2e58921aff3391eb473f653b691bccb14c4
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
