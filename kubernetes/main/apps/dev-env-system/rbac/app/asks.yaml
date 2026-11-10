@@ -6,9 +6,11 @@
 # withdraws its own Ask, and the portal reads and answers, only through the operator's /v1 API.
 #
 # The operator (--enable-asks): create a new Ask; get and list it with uncached reads (no
-# watch); patch its state label (the leader-only expiry sweeper's label repair, an
-# optimistic-lock merge patch that never rewrites the immutable spec); update its status
-# (the set-once answer, withdraw and expiry, each a resourceVersion compare-and-set).
+# watch); patch its state label, a merge patch that never rewrites the immutable spec (on
+# any replica after a withdraw or an answer and when recounting open Asks, and in the
+# leader-only expiry sweeper's optimistic-lock label repair); update its status (the
+# initial open state, the set-once answer, withdraw and expiry, each a resourceVersion
+# compare-and-set).
 # No delete, no watch, no spec update: retention (DESIGN-024 F4) is not built.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

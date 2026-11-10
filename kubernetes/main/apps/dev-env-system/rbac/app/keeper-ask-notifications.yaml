@@ -8,10 +8,11 @@
 # Metadata-only precreation, like ./allowance-slot.yaml and the login-notice ConfigMap
 # (secrets/app/keeper-notices.yaml), which --ask-notify-state-configmap must differ from.
 # The keeper never creates it: while it is missing, the keeper sends no Ask push, and it
-# never resets its dedupe. `ssa: IfNotPresent` makes Flux create it once and never touch it again, so a
-# reconcile cannot blank what the keeper wrote; `prune: disabled` keeps it, and with it the
-# dedupe that stops a repeat push, if this file is removed. Keep it across upgrades and
-# flag changes.
+# never resets its dedupe. `ssa: IfNotPresent` makes Flux create it once and never touch it
+# again, so a reconcile cannot blank what the keeper wrote; `prune: disabled` keeps it, and
+# with it the dedupe that stops a repeat push, if this file is removed. Keep it across
+# upgrades and flag changes. Never delete it: Flux would recreate it empty, which the keeper
+# reads as a fresh ledger, so every still-open Ask could be pushed again (within the caps).
 apiVersion: v1
 kind: ConfigMap
 metadata:

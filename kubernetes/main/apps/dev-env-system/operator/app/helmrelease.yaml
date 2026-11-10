@@ -435,8 +435,8 @@ spec:
               # Asks and approvals board (dev-env DESIGN-034, docs/asks.md; Epic #254, activation story #264).
               # Tom, 2026-11-10: "there needs to be a way I can handle approvals for risky access" and
               # "The UI should be my failsafe at missed requests" (OpenProject #264, journal 6225).
-              # Serves POST/GET /v1/asks and POST /v1/asks/{id}/withdraw to sessions (their own Asks
-              # only) and GET /v1/portal/asks, GET /v1/portal/asks/{id} and POST
+              # Serves POST/GET /v1/asks, GET /v1/asks/{id} and POST /v1/asks/{id}/withdraw to sessions
+              # (their own Asks only) and GET /v1/portal/asks, GET /v1/portal/asks/{id} and POST
               # /v1/portal/asks/{id}/answer to the portal reader (--enable-portal-reader, above), and
               # runs the leader-only expiry sweeper. It requires the API, leader election (default on)
               # and --session-namespace=dev-agents (above), the Ask CRD (dev-env-crds) and Role
