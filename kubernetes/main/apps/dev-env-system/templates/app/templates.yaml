@@ -48,17 +48,26 @@
 # wording for a private session (OP490, dev-env#1011).
 # Rollback image:2.95.0@sha256:6e5cf70f33fb11cb5d6047ba6e671dcb7d0bc309d8885e4d06b52b96ffa5dc3c
 # (and remove the `cursor` stanza, which the 2.95.0 agentd does not use but an older operator rejects).
-image: ghcr.io/thaynes43/dev-env:2.97.0@sha256:343a77002dafda36805c6dfcc6f4377579700896873c4eadd5ab0e15da110428
+# v2.98.0 source 88b4ae68 (release #1020). publish-agent.yml run 42743410267 built, smoke-tested,
+# signed and verified this digest. Carries agentd's passive allowance readings (OP509, dev-env#1018,
+# DESIGN-059): a Codex session reads the rate-limit record its own CLI wrote to its rollout, and a
+# remote or local Claude session that follows the keeper's login gets a `statusLine` in
+# ~/.claude/settings.json that runs /usr/local/bin/claude-statusline-usage (an existing display
+# command is kept and wrapped, never replaced). The reading rides the heartbeat; the operator has
+# stored and served it since haynes-ops#4748. No provider request, login or new credential, and
+# no new env, mount or template field. Sessions on an older image simply send no reading.
+# Rollback image:2.97.0@sha256:343a77002dafda36805c6dfcc6f4377579700896873c4eadd5ab0e15da110428.
+image: ghcr.io/thaynes43/dev-env:2.98.0@sha256:bbe42186c27f94ec79dcb68301d6de93049ae094462f35ebfc937ac414e991d6
 
 # New-sessions-only rollout for THIS image (DESIGN-001 5.2, dev-env#925; Q-03 option B, a
 # per-rollout deviation recorded in the PR that sets it). While this equals `image`, the
-# operator marks no session Draining: new sessions and resumes use the 2.97.0 revision and
+# operator marks no session Draining: new sessions and resumes use the 2.98.0 revision and
 # running sessions keep their pods until their own suspend and resume. It is not part of the
 # revision. It MUST equal `image` exactly: the Renovate rule bumps only the `image:` line, so
 # the next image bump PR must update this line to the new image or delete it (deleting it
 # resumes idle drain), otherwise the templates are invalid and new sessions wait.
 rollout:
-  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.97.0@sha256:343a77002dafda36805c6dfcc6f4377579700896873c4eadd5ab0e15da110428
+  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.98.0@sha256:bbe42186c27f94ec79dcb68301d6de93049ae094462f35ebfc937ac414e991d6
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
