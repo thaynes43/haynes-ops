@@ -20,6 +20,15 @@
 #                             or a bump the shepherd ruled OUT-OF-SCOPE.
 #                             (2026-07-17, split out of stranded so the two are separable).
 #
+# Night-lane verdicts (OP512 step 2). The upgrade lane writes the same bot comment with a
+# second marker, `<!-- upgrade-lane v1 -->`, on its own line right after the VERDICT
+# line. Only a current-head comment by the bot in that shape is read for these tokens:
+# OWNER-WINDOW -> stranded (the list that needs Tom), BLOCKED and AGENT-SESSION ->
+# manual-only, both ranked like a HOLD (before the carve-outs); NIGHTLY and SCHEDULED ->
+# shepherd, ranked like the shepherd's AUTO-MERGE (a manual carve-out still wins).
+# MERGED, REVERTED, EXCLUDED and any comment without the marker keep the handling below,
+# so no comment that exists today changes its label.
+#
 # Read-only classification; only manipulates its own four labels. Runs on a schedule
 # (catches Renovate enabling auto-merge after it re-evaluates) + on demand.
 name: PR Disposition
@@ -115,6 +124,15 @@ jobs:
             const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded', 'disposition:manual-only'];
             const isRenovate = login => login === 'renovate[bot]';
             const VET_AUTHOR = 'haynes-ops-bot[bot]';
+            // OP512 step 2: lane verdicts, read only from a comment that carries the lane marker.
+            const LANE_SHAPE = /^<!-- shepherd-vet sha=[0-9a-f]{40} -->\s*\n+\s*VERDICT:[^\n]*\n<!-- upgrade-lane v1 -->[ \t]*(\n|$)/;
+            const LANE_DISPOSITION = {
+              NIGHTLY: ['disposition:shepherd', 'NightLane'],
+              SCHEDULED: ['disposition:shepherd', 'NightLane'],
+              'OWNER-WINDOW': ['disposition:stranded', 'Owner'],
+              BLOCKED: ['disposition:manual-only', 'Manual'],
+              'AGENT-SESSION': ['disposition:manual-only', 'AgentSession'],
+            };
             const isShepherd = pr => pr.user?.login === VET_AUTHOR && pr.head?.ref?.startsWith('shepherd/');
             const tier2Path = p => {
               const m = p.match(/^kubernetes\/[^/]+\/apps\/([^/]+)\/(.+)$/);
@@ -165,6 +183,7 @@ jobs:
                 if (m && m[1] === pr.head.sha) {
                   verdict = m[2].toUpperCase();
                   vet = { commentId: Number.isSafeInteger(c.id) ? c.id : null, sha: m[1], verdict };
+                  if (LANE_SHAPE.test(c.body)) vet.lane = 'v1';
                 }
               }
               const provenance = {
@@ -192,6 +211,8 @@ jobs:
                 carve = c.dispo;
                 if (carve === 'disposition:manual-only') break;
               }
+              const lane = vet?.lane && Object.hasOwn(LANE_DISPOSITION, verdict) ? LANE_DISPOSITION[verdict] : null;
+              const laneToShepherd = lane?.[0] === 'disposition:shepherd';
               const actual = mergeState(pr);
               let want, reason, predictedOwner = 'Unknown';
               if (actual === 'Unknown') {
@@ -199,12 +220,16 @@ jobs:
               } else if (actual === 'enabled') {
                 want = 'disposition:auto-merge'; reason = 'merge-request-enabled'; predictedOwner = 'GitHub';
                 if (verdict === 'HOLD') core.warning(`#${pr.number} current-head hold conflicts with enabled auto-merge; no merge state changed`);
+              } else if (lane && !laneToShepherd) {
+                [want, predictedOwner] = lane; reason = 'current-head-lane-verdict';
               } else if (verdict === 'HOLD') {
                 want = 'disposition:stranded'; reason = 'current-head-hold'; predictedOwner = 'Shepherd';
-              } else if (verdict && verdict !== 'AUTO-MERGE') {
+              } else if (verdict && verdict !== 'AUTO-MERGE' && !laneToShepherd) {
                 want = 'disposition:manual-only'; reason = 'current-head-declined'; predictedOwner = 'Manual';
               } else if (carve) {
                 want = carve; reason = 'known-policy-carve-out'; predictedOwner = carve === 'disposition:shepherd' ? 'Shepherd' : 'Manual';
+              } else if (laneToShepherd) {
+                [want, predictedOwner] = lane; reason = 'current-head-lane-verdict';
               } else if (verdict === 'AUTO-MERGE' || (isMajor && paths.some(p => p.startsWith(IMMICH)))) {
                 want = 'disposition:shepherd'; reason = 'shepherd-owned'; predictedOwner = 'Shepherd';
               } else if ((ghActions && !isDigest) || (!isMajor && (allTier2 || ownImage))) {

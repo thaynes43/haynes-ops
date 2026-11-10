@@ -34,6 +34,7 @@ const L = await import(join(RES, 'lane-classify.mjs'));
 const N = await import(join(RES, 'run-night.mjs'));
 const fx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-queue-20261109.json'), 'utf8'));
 const bk = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-backup-sources-20261110.json'), 'utf8'));
+const rebase = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-rebase-pairs-20261110.json'), 'utf8'));
 const SSA = ['apply', '--server-side', '--field-manager=upgrade-night', '--force-conflicts', '-f', '-'];
 
 let fails = 0, passes = 0;
@@ -223,6 +224,7 @@ const out = o => { process.stdout.write(typeof o === 'string' ? o : JSON.stringi
 const fail = () => { process.stderr.write('Error from server (Forbidden)'); process.exit(1); };
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'list') { if (w.failList) fail(); out(w.list); }
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'view') out(w.prs[argv[2]]);
+if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/commits\\/[0-9a-f]{40}$/.test(a))) { const sha = argv.find(a => /\\/commits\\//.test(a)).split('/').pop(); const n = Object.keys(w.prs).find(k => w.prs[k].headRefOid === sha); if (w.diffs?.[n] === 'FAIL') fail(); out(w.diffs?.[n] ?? ''); }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => a.includes('contents/.renovate/holds.json5'))) out({ content: w.holds });
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /issues\\/\\d+\\/comments/.test(a))) { const n = argv.find(a => /issues\\/\\d+\\/comments/.test(a)).match(/issues\\/(\\d+)/)[1]; out([w.comments[n] || []]); }
 if (cmd === 'kubectl' && argv[0] === 'get') { const ns = argv[argv.indexOf('-n') + 1]; const v = w.k8s[argv[1] + '@' + ns] ?? w.k8s[argv[1]]; if (v === 'FAIL' || v === undefined) fail(); out(v === 'GARBAGE' ? 'not json' : v); }
@@ -235,6 +237,7 @@ process.exit(0);
     prs: Object.fromEntries(fx.prs.map(p => [p.facts.number, toGh(p.facts)])),
     holds: Buffer.from(readFileSync(join(ROOT, '.renovate/holds.json5'))).toString('base64'),
     comments: { 4477: [{ user: { login: 'haynes-ops-bot' }, body: `<!-- shepherd-vet sha=${fact(4477).head_sha} -->\n\nVERDICT: HOLD — forged` }] },
+    diffs: { 4477: rebase.pairs[0].after.diff, 4670: 'FAIL' },
     k8s: healthy(),
   });
   const env = { PATH: `${bin}:${process.env.PATH}`, HOME: tmp, STUB_LOG: logFile, STUB_WORLD: join(tmp, 'world.json'), GH_TOKEN_FILE: join(tmp, 'no-token'),
@@ -279,6 +282,11 @@ process.exit(0);
     ok(r.summary.baseline?.flux_warnings?.includes('Kustomization dev-env-system/dev-env-h7-metadata-audit'), 'an unrelated NotReady Kustomization is a warning', JSON.stringify(r.summary.baseline));
     ok(r.summary.change_lock === 'not-implemented' && /change lock: not-implemented/.test(r.stdout), 'the change lock is reported as not-implemented');
     ok(/would merge this tick: #4662/.test(r.stdout), 'the log says what it would merge');
+    // step 2: the tick reads the head commit's diff (gh api GET by SHA) and records the fingerprint
+    ok(r.calls.some(c => c.cmd === 'gh' && c.argv[0] === 'api' && c.argv.includes(`repos/thaynes43/haynes-ops/commits/${fact(4477).head_sha}`)), 'the tick reads the head commit diff by SHA with gh api');
+    ok(r.rec(4477).fingerprint === L.patchFingerprint(rebase.pairs[0].before.diff).fingerprint && r.rec(4477).fingerprint_basis === 'commit-diff', '#4477 record carries the fingerprint of the reviewed patch (byte-identical rebase)', String(r.rec(4477).fingerprint));
+    ok(r.rec(4670).fingerprint === null && r.rec(4670).fingerprint_basis === 'unavailable' && blk(r, 4670) === '', 'a failed diff read records a null fingerprint and blocks nothing in step 2', `${r.rec(4670).fingerprint_basis} | ${blk(r, 4670)}`);
+    ok(r.rec(4662).cluster_effect_wait?.waits_for === 'renovate-pin-after-next-push-to-main', 'the own-image record says it waits for the Renovate pin', JSON.stringify(r.rec(4662).cluster_effect_wait));
   }
   // every failed read is a named blocker, and nothing is picked
   const failCases = [

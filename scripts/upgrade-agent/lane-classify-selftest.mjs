@@ -200,6 +200,109 @@ const expectLane = (name, facts, lane, klass) => {
   ok(vm.length === 1 && vm[0].verdict === 'LEFT', 'vet marker parse');
 }
 
+// ── 3b. step 2: version operators, patch fingerprint, own-image pin wait ─────────
+{
+  // pip tables print `==0.36.2`; every night tick on 2026-11-10 recorded #4757 as held
+  // ("cannot compare ==0.36.2 with <2.0.0") although 0.36.2 is inside the hold.
+  ok(L.bareVersion('==0.36.2') === '0.36.2' && L.bareVersion('===0.36.2') === '0.36.2' && L.bareVersion('=1.2.3') === '1.2.3' && L.bareVersion('v1.37.2') === '1.37.2', 'bareVersion strips an exact-pin operator and a leading v');
+  for (const r of ['>=1.9.0', '^1.9.0', '~1.9.0', '~=1.9', '<3', '!=2.0.0']) ok(L.bareVersion(r) === r, `bareVersion leaves the range ${r} as written`);
+  for (const r of ['>=1.9.0', '^1.9.0', '~=1.9']) ok(L.versionAllowed('<2.0.0', r) === null, `a range target ${r} cannot be compared with <2.0.0 (counts as held)`);
+  ok(L.versionAllowed('/^1\\./', '^1.2.3') === false, 'a range target does not match a version regex hold');
+  const rg = fact(4662); rg.packages = [{ name: 'huggingface-hub', update: null, from: '==0.36.1', to: '>=1.9.0' }];
+  expectLane('a range target inside a held package stays held (fail closed)', rg, 'LANE-B-OWNER', 'hold');
+  ok(L.bareVersion('latest') === 'latest' && L.bareVersion('vendor-1') === 'vendor-1', 'bareVersion leaves non-versions as written');
+  ok(L.versionAllowed('<2.0.0', '==0.36.2') === true && L.versionAllowed('<2.0.0', '==2.0.1') === false, 'allowedVersions compares a pip pin by its version');
+  ok(L.versionAllowed('/^3\\.12(?:\\.\\d+)?$/', '==3.12.4') === true, 'allowedVersions regex sees the bare pip version');
+  ok(L.versionAllowed('<2.0.0', '==latest') === null, 'a pip pin with no version still cannot be compared (counts as held)');
+  const hf = fact(4662);
+  hf.packages = [{ name: 'huggingface-hub', update: null, from: '==0.36.1', to: '==0.36.2' }];
+  const hfr = cls(hf);
+  ok(!hfr.findings.some(f => /hold/.test(f)), 'huggingface-hub ==0.36.2 is not reported as held (<2.0.0)', hfr.findings.join(' | '));
+  hf.packages[0].to = '==2.0.1';
+  expectLane('huggingface-hub ==2.0.1 is held (<2.0.0)', hf, 'LANE-B-OWNER', 'hold');
+  const cmp = fact(4662);
+  cmp.packages = [{ name: 'some-lib', update: 'minor', from: '==1.2.0', to: '==1.3.0' }];
+  ok(L.updateTypes(cmp).includes('minor') && L.compareVersions('==1.3.0', '1.2.9') === 1, 'compareVersions reads pip pins');
+  ok(L.compareVersions('^1.3.0', '1.2.9') === -1, 'compareVersions finds no version in a range (as on main)');
+
+  // patch fingerprint against the night's real rebases (fixtures/lane-rebase-pairs-20261110.json)
+  const rp = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-rebase-pairs-20261110.json'), 'utf8'));
+  for (const p of rp.pairs) {
+    const a = L.patchFingerprint(p.before.diff), b = L.patchFingerprint(p.after.diff);
+    ok(a.basis === 'commit-diff' && /^sha256:[0-9a-f]{64}$/.test(a.fingerprint || ''), `fingerprint of #${p.pr} ${p.before.sha.slice(0, 8)} is a sha256`, JSON.stringify(a));
+    ok((a.fingerprint === b.fingerprint) === p.same_change, `#${p.pr} ${p.before.sha.slice(0, 8)} -> ${p.after.sha.slice(0, 8)}: fingerprint ${p.same_change ? 'equal (byte-identical rebase)' : 'differs (Renovate changed a line)'}`, `${a.fingerprint} ${b.fingerprint}`);
+  }
+  const base = rp.pairs[0].before.diff;
+  const fp0 = L.patchFingerprint(base).fingerprint;
+  ok(L.patchFingerprint(base.replace(/^@@ -(\d+)/gm, (m, n) => `@@ -${Number(n) + 40}`)).fingerprint === fp0, 'fingerprint ignores hunk line numbers (a base that moved)');
+  ok(L.patchFingerprint(base.replace(/^index [0-9a-f]+\.\.[0-9a-f]+/gm, 'index 0000000..1111111')).fingerprint === fp0, 'fingerprint ignores index (blob id) lines');
+  ok(L.patchFingerprint(base.replace(/^ (.*)$/m, ' changed context $1')).fingerprint === fp0, 'fingerprint ignores context lines');
+  ok(L.patchFingerprint(base.replace(/\n/g, '\r\n')).fingerprint === fp0, 'fingerprint is the same with CRLF line ends');
+  ok(L.patchFingerprint(base.replace(/^\+(.*)1\.37\.2/m, '+$11.37.3')).fingerprint !== fp0, 'an edited added line changes the fingerprint');
+  ok(L.patchFingerprint(base.replace(/^-(?!--)(.*)$/m, '-$1 ')).fingerprint !== fp0, 'trailing whitespace on a removed line changes the fingerprint (no whitespace folding)');
+  ok(L.patchFingerprint(base.replace(/^(diff --git .*\n)/m, '$1old mode 100644\nnew mode 100755\n')).fingerprint !== fp0, 'a file mode change changes the fingerprint');
+  ok(L.patchFingerprint(base.replace(/^(diff --git .*\n)/m, '$1new file mode 100644\n')).fingerprint !== fp0, 'a new file differs from a modified one');
+  const asBody = base.replace(/^--- (a\/\S+)$/m, '--- $1').replace(/^(diff --git .*\n(?:.*\n)*?)--- (a\/\S+)\n\+\+\+ (b\/\S+)\n/m, '$1');
+  ok(L.patchFingerprint(asBody).fingerprint !== fp0, 'the ---/+++ header lines are hashed as headers, so dropping them changes the value');
+  ok(L.patchFingerprint(base.replace(/^(diff --git .*\n)/m, '$1similarity index 97%\n')).fingerprint === fp0, 'a similarity score line is ignored like the index line');
+  const secs = base.split(/(?=^diff --git )/m).filter(Boolean);
+  ok(secs.length >= 2 && L.patchFingerprint(secs.slice().reverse().join('')).fingerprint === fp0, 'file order does not matter', `${secs.length} sections`);
+  ok(L.patchFingerprint(secs[0]).fingerprint !== fp0, 'dropping a file changes the fingerprint');
+  ok(L.patchFingerprint('').fingerprint === null && L.patchFingerprint('').basis === 'unavailable' && L.patchFingerprint(null).basis === 'unavailable', 'an empty or missing diff has no fingerprint');
+  ok(L.patchFingerprint('not a diff\n').basis === 'unavailable', 'text with no diff section has no fingerprint');
+  const bin = 'diff --git a/x.png b/x.png\nindex 1..2 100644\nBinary files a/x.png and b/x.png differ\n';
+  ok(L.patchFingerprint(bin).fingerprint === null && L.patchFingerprint(bin).basis === 'binary' && L.patchFingerprint(base + bin).basis === 'binary', 'a binary section makes the fingerprint null (basis binary)');
+
+  // the record carries it; gatherFacts reads `gh pr diff`; a failed diff read is null
+  const withFp = fact(4477); withFp.patch_fingerprint = fp0; withFp.patch_basis = 'commit-diff';
+  const rf = cls(withFp);
+  ok(rf.fingerprint === fp0 && rf.fingerprint_basis === 'commit-diff' && rf.commit_count === 1 && /^[0-9a-f]{16}$/.test(rf.change_key), 'the record carries fingerprint, basis, commit count and change_key', JSON.stringify({ f: rf.fingerprint, b: rf.fingerprint_basis, c: rf.commit_count, k: rf.change_key }));
+  ok(rf.lane === cls(fact(4477)).lane, 'the fingerprint does not change the lane in step 2');
+  const noFp = cls(fact(4477));
+  ok(noFp.fingerprint === null && noFp.fingerprint_basis === 'unavailable', 'facts without a diff record a null fingerprint');
+  const f77 = fact(4477);
+  const stubView = { number: 4477, headRefOid: f77.head_sha, headRefName: f77.branch, title: f77.title, author: { login: f77.author }, isDraft: false, labels: [], files: f77.files.map(path => ({ path })), changedFiles: f77.files.length, commits: [{ oid: f77.head_sha, authors: [{ login: 'renovate[bot]' }] }], statusCheckRollup: [], body: '' };
+  let diffCalls = [];
+  const stubRun = (diffOut, view = stubView) => (cmd, argv) => {
+    if (!L.isReadOnlyCommand(cmd, argv)) throw new Error('stub refused a non-read');
+    if (argv[0] === 'pr' && argv[1] === 'view') return JSON.stringify(view);
+    if (argv[0] === 'api' && argv.some(a => /\/commits\//.test(a))) { diffCalls.push(argv); if (diffOut instanceof Error) throw diffOut; return diffOut; }
+    if (argv[0] === 'api') return '[[]]';
+    throw new Error(`unexpected ${argv.join(' ')}`);
+  };
+  const g1 = L.gatherFacts('x/y', 4477, stubRun(rp.pairs[0].after.diff));
+  ok(g1.patch_fingerprint === fp0 && g1.patch_basis === 'commit-diff', 'gatherFacts fingerprints the head commit\'s diff (the rebased #4477 equals the reviewed one)');
+  ok(diffCalls.length === 1 && diffCalls[0].includes(`repos/x/y/commits/${f77.head_sha}`) && diffCalls[0].includes('Accept: application/vnd.github.diff'), 'the diff is fetched by the head SHA read in the same pass (no race with a push)', JSON.stringify(diffCalls));
+  diffCalls = [];
+  const two = { ...stubView, commits: [{ oid: 'c'.repeat(40), authors: [] }, { oid: f77.head_sha, authors: [] }] };
+  const g4 = L.gatherFacts('x/y', 4477, stubRun(rp.pairs[0].after.diff, two));
+  ok(g4.patch_fingerprint === null && g4.patch_basis === 'multi-commit' && diffCalls.length === 0, 'more than one commit: no fingerprint and no diff read');
+  const moved = { ...stubView, commits: [{ oid: 'd'.repeat(40), authors: [] }] };
+  ok(L.gatherFacts('x/y', 4477, stubRun(rp.pairs[0].after.diff, moved)).patch_fingerprint === null, 'a commit list that does not end at the head gives no fingerprint');
+  const g2 = L.gatherFacts('x/y', 4477, stubRun(null));
+  ok(g2.patch_fingerprint === null && g2.patch_basis === 'unavailable', 'a failed diff read (allowFail null) leaves the fingerprint null');
+  const g3 = L.gatherFacts('x/y', 4477, stubRun(new Error('boom')));
+  ok(g3.patch_fingerprint === null && g3.patch_basis === 'unavailable', 'a throwing diff read leaves the fingerprint null');
+
+  // own images whose digest pin Renovate auto-merges wait for Renovate's next run
+  const aw = cls(fact(4662));
+  ok(aw.cluster_effect === 'delayed' && aw.cluster_effect_wait?.waits_for === 'renovate-pin-after-next-push-to-main' && aw.cluster_effect_wait.images.includes('audio-authoring'), 'audio-authoring source PR records the wait for the Renovate pin', JSON.stringify(aw.cluster_effect_wait));
+  ok(/pin PR .* has merged/.test(aw.cluster_effect_wait?.verified_when || ''), 'the wait says when the unit counts as verified');
+  const sw = cls(fact(4336));
+  ok(sw.lane === 'EXCLUDED' && ['upgrade-shepherd', 'upgrade-agent'].every(i => sw.cluster_effect_wait?.images.includes(i)), 'the shepherd toolchain PR records the wait for both images', JSON.stringify(sw.cluster_effect_wait));
+  ok(cls(fact(4372)).cluster_effect_wait === null, 'comfyui source (pin moves by hand) records no wait');
+  ok(cls(fact(4335)).cluster_effect_wait === null, 'dev-env v1 source (pin never auto-merges) records no wait');
+  ok(cls(fact(4477)).cluster_effect_wait === null, 'a kubernetes/** change records no wait');
+  const wh = fact(4662);
+  wh.files = ['scripts/wyoming-whisper-gpu/requirements.txt'];
+  wh.checks = wh.checks.filter(c => !c.workflow.startsWith('Build and Push Audio'))
+    .concat([{ workflow: 'Build and Push Wyoming Whisper GPU Image', name: 'build-and-push', status: 'COMPLETED', conclusion: 'SUCCESS', completed_at: fx.now }]);
+  const whr = cls(wh);
+  ok(whr.cluster_effect === 'immediate' && whr.cluster_effect_wait === null, 'the digest-less whisper pin (immediate) records no wait', JSON.stringify(whr.cluster_effect_wait));
+  const pw = rules.own_image_pin_wait;
+  ok(pw && rules.own_images.filter(o => o.cluster_effect === 'delayed' && o.pin_automerge === true).length >= 4 && Array.isArray(pw.observed_20261110) && pw.observed_20261110.length === 3, 'upgrade-rules.json documents the pin wait with the night\'s evidence');
+}
+
 // ── 4. drift: every PR path filter in .github/workflows is in the check map ──────
 // A small reader for the `on:` block (the workflows use plain block YAML there).
 function prTrigger(text) {

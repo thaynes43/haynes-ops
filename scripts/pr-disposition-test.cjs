@@ -38,7 +38,7 @@ async function classify(options={}, runner=run) {
     throw Error('Unexpected GitHub request');
   }};
   await runner(github,{repo:{owner:'test',repo:'test'}},{info(s){logs.push(String(s));},warning(s){logs.push(String(s));},error(s){logs.push(String(s));}});
-  if(baseline && runner===run) {
+  if(baseline && runner===run && !options.skipParity) {
     const before=await classify(options,baseline);
     assert.equal(JSON.stringify(labelCalls),JSON.stringify(before.labelCalls),'byte-identical label API calls');
     const listedAsShepherd=listedItem.user?.login==='haynes-ops-bot[bot]' && listedItem.head?.ref?.startsWith('shepherd/');
@@ -62,6 +62,22 @@ async function check(name,options,label,reason) {
   return result;
 }
 const vet=(verdict,sha=SHA,login='haynes-ops-bot[bot]')=>({id:6540904846,body:`<!-- shepherd-vet sha=${sha} -->\nVERDICT: ${verdict}`,user:{login}});
+// OP512 step 2: the night lane's comment = the vet marker, the verdict, the lane marker and a JSON record.
+const laneVet=(verdict,sha=SHA,login='haynes-ops-bot[bot]')=>({id:6540904900,user:{login},
+  body:`<!-- shepherd-vet sha=${sha} -->\nVERDICT: ${verdict} — fixture reason\n<!-- upgrade-lane v1 -->\n\`\`\`json\n${JSON.stringify({schema:'haynes.upgrade-lane/v1',pr:3707,head:sha,lane:verdict})}\n\`\`\`\n`});
+// A lane case either CHANGES the label against pinned main (a new mapping) or must
+// leave main's label calls byte-identical (today's behaviour kept).
+async function laneCheck(name,options,label,reason,changesOutcome) {
+  const result=await classify({...options,skipParity:true});cases++;
+  assert.equal(result.label,label,name);
+  if(reason)assert(result.logs.some(s=>s.includes(reason)),name+': missing reason '+reason);
+  if(baseline) {
+    const before=await classify({...options,skipParity:true},baseline);
+    if(changesOutcome){assert.notEqual(before.label,label,name+': must differ from pinned main');negativeCases++;}
+    else{assert.equal(JSON.stringify(result.labelCalls),JSON.stringify(before.labelCalls),name+': must match pinned main');parityCases++;}
+  }
+  return result;
+}
 (async()=>{
   // Keep the existing carve-out policy checks; these tests do not change policy.
   for(const [image,file] of [['kometateam/kometa','media/kometa/app/helmrelease.yaml'],['linuxserver/lazylibrarian','downloads/lazylibrarian/app/helmrelease.yaml'],['linuxserver/calibre','downloads/lazylibrarian/app/epub-convert-cronjob.yaml']]) {
@@ -93,6 +109,43 @@ const vet=(verdict,sha=SHA,login='haynes-ops-bot[bot]')=>({id:6540904846,body:`<
   await check('trusted auto-merge vet owns followup',{comments:[vet('AUTO-MERGE')]},'disposition:shepherd');
   await check('stale hold ignored',{comments:[vet('HOLD',OTHER)]},'disposition:stranded','eligible-without-merge-request');
   await check('untrusted verdict ignored',{comments:[vet('OUT-OF-SCOPE',SHA,'someone-else')]},'disposition:stranded','eligible-without-merge-request');
+  // OP512 step 2: lane verdict tokens from the bot's lane comment at the current head.
+  await laneCheck('lane NIGHTLY -> shepherd',{comments:[laneVet('NIGHTLY')]},'disposition:shepherd','current-head-lane-verdict',true);
+  await laneCheck('lane SCHEDULED -> shepherd',{comments:[laneVet('SCHEDULED')]},'disposition:shepherd','current-head-lane-verdict',true);
+  await laneCheck('lane OWNER-WINDOW -> stranded',{comments:[laneVet('OWNER-WINDOW')],files:['kubernetes/main/apps/kube-system/cilium/app/helmrelease.yaml']},'disposition:stranded','current-head-lane-verdict',true);
+  await laneCheck('lane BLOCKED -> manual-only',{comments:[laneVet('BLOCKED')]},'disposition:manual-only','current-head-lane-verdict',false);
+  await laneCheck('lane AGENT-SESSION -> manual-only',{comments:[laneVet('AGENT-SESSION')]},'disposition:manual-only','current-head-lane-verdict',false);
+  for(const token of ['MERGED','REVERTED','EXCLUDED'])
+    await laneCheck('lane '+token+' keeps today\'s handling',{comments:[laneVet(token)]},'disposition:manual-only','current-head-declined',false);
+  await laneCheck('lane HOLD keeps today\'s handling',{comments:[laneVet('HOLD')]},'disposition:stranded','current-head-hold',false);
+  for(const token of ['NIGHTLY','SCHEDULED','OWNER-WINDOW','AGENT-SESSION'])
+    await laneCheck('plain vet '+token+' without the lane marker keeps today\'s handling',{comments:[vet(token)]},'disposition:manual-only','current-head-declined',false);
+  for(const login of ['someone-else','haynes-ops-bot','renovate[bot]'])
+    await laneCheck('lane NIGHTLY by '+login+' is ignored',{comments:[laneVet('NIGHTLY',SHA,login)]},'disposition:stranded','eligible-without-merge-request',false);
+  await laneCheck('lane NIGHTLY for an older head is ignored',{comments:[laneVet('NIGHTLY',OTHER)]},'disposition:stranded','eligible-without-merge-request',false);
+  await laneCheck('lane OWNER-WINDOW for an older head is ignored (manual carve-out stays)',{comments:[laneVet('OWNER-WINDOW',OTHER)],files:['kubernetes/main/apps/media/kometa/app/helmrelease.yaml']},'disposition:manual-only','known-policy-carve-out',false);
+  await laneCheck('enabled auto-merge outranks a lane verdict',{pr:{auto_merge:enabled},comments:[laneVet('OWNER-WINDOW')]},'disposition:auto-merge','merge-request-enabled',false);
+  await laneCheck('unknown merge state outranks a lane verdict',{missingMerge:true,comments:[laneVet('NIGHTLY')]},'disposition:stranded','merge-state-unavailable',false);
+  // Toward automation ranks like AUTO-MERGE (after the carve-outs); toward people ranks like HOLD.
+  for(const token of ['NIGHTLY','SCHEDULED'])
+    await laneCheck('a manual carve-out outranks lane '+token,{comments:[laneVet(token)],files:['kubernetes/main/apps/media/kometa/app/helmrelease.yaml']},'disposition:manual-only','known-policy-carve-out',false);
+  await laneCheck('lane NIGHTLY on a shepherd carve-out stays shepherd',{comments:[laneVet('NIGHTLY')],files:['kubernetes/main/apps/media/plex/app/helmrelease.yaml'],pr:{labels:[{name:'type/patch'}]}},'disposition:shepherd','known-policy-carve-out',true);
+  await laneCheck('lane OWNER-WINDOW outranks a manual carve-out',{comments:[laneVet('OWNER-WINDOW')],files:['kubernetes/main/apps/media/kometa/app/helmrelease.yaml']},'disposition:stranded','current-head-lane-verdict',true);
+  await laneCheck('lane AGENT-SESSION outranks a shepherd ramp path',{comments:[laneVet('AGENT-SESSION')],files:['kubernetes/main/apps/network/traefik/app/helmrelease.yaml']},'disposition:manual-only','current-head-lane-verdict',false);
+  // The lane marker counts only on its own line right after VERDICT (not inside free text).
+  const freeText=(verdict)=>({id:6540904902,user:{login:'haynes-ops-bot[bot]'},body:`<!-- shepherd-vet sha=${SHA} -->\nVERDICT: ${verdict}\nnotes quoting <!-- upgrade-lane v1 --> from somewhere\n`});
+  const trailing=(verdict)=>({id:6540904903,user:{login:'haynes-ops-bot[bot]'},body:`<!-- shepherd-vet sha=${SHA} -->\nVERDICT: ${verdict}\nfree text\n<!-- upgrade-lane v1 -->\n`});
+  for(const [name,c] of [['inside a line',freeText('NIGHTLY')],['on a later line',trailing('NIGHTLY')],['owner token on a later line',trailing('OWNER-WINDOW')]])
+    await laneCheck('a lane marker '+name+' is not a lane comment',{comments:[c]},'disposition:manual-only','current-head-declined',false);
+  await laneCheck('a later lane verdict replaces an earlier shepherd HOLD',{comments:[vet('HOLD'),laneVet('NIGHTLY')]},'disposition:shepherd','current-head-lane-verdict',true);
+  await laneCheck('a later shepherd vet without the marker replaces an earlier lane verdict',{comments:[laneVet('NIGHTLY'),{...vet('HOLD'),id:6540904901}]},'disposition:stranded','current-head-hold',false);
+  await laneCheck('a lowercase lane token is read like the shepherd tokens',{comments:[laneVet('owner-window')]},'disposition:stranded','current-head-lane-verdict',true);
+  {
+    const r=await laneCheck('lane verdict provenance',{comments:[laneVet('AGENT-SESSION')]},'disposition:manual-only','current-head-lane-verdict',false);
+    const row=r.logs.filter(s=>s.startsWith('{')).map(s=>JSON.parse(s))[0];
+    assert.deepEqual(row.attempt.vet,{commentId:6540904900,sha:SHA,verdict:'AGENT-SESSION',lane:'v1'});
+    assert.equal(row.predictedOwner,'AgentSession');
+  }
   for(const [group,path] of [['home-assistant','home-assistant'],['home-assistant','ha-mcp'],[null,'zigbee2mqtt']]) {
     const glob=`kubernetes/main/apps/home-automation/${path}/**`;
     assert(groups.some(r=>(r.matchFileNames||[]).includes(glob)&&r.automerge===false&&(!group||r.groupName===group)),path+': group manual policy changed');

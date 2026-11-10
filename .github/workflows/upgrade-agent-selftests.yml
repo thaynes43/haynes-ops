@@ -1,0 +1,114 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# Upgrade Agent Selftests (OP512 rollout step 2).
+#
+# Runs every selftest under scripts/upgrade-agent/ that needs no cluster, network or
+# LLM: the night lane's classifier (with the check-map drift test, which reads every
+# file in .github/workflows and .renovate) and its dry-run tick, the five shell
+# selftests of the shepherd, triage, gate and responder helpers, and the delivery
+# helper's offline suite. Before this workflow nothing ran them in CI.
+#
+# Paths: the lane's own code and the sources the selftests execute, scripts/upgrade-agent,
+# every workflow file (the drift test compares them with upgrade-rules.json) and the
+# Renovate config (the classifier reads holds.json5 and autoMerge.json5). This workflow's
+# own entry in upgrade-rules.json is what keeps the drift test green.
+#
+# Advisory: "Upgrade Agent Selftests - Success" is NOT a required check. Branch
+# protection is the owner's; making it required is his call. Read-only token, no
+# secrets, nice -n 19 and one suite at a time.
+name: Upgrade Agent Selftests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/upgrade-agent/shepherd/app/**
+      - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/coordination-lib.sh
+      - kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
+      - scripts/upgrade-agent/**
+      - .github/workflows/**
+      - .renovate/**
+  push:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/upgrade-agent/shepherd/app/**
+      - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/coordination-lib.sh
+      - kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
+      - scripts/upgrade-agent/**
+      - .github/workflows/**
+      - .renovate/**
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lane:
+    name: Upgrade Agent Selftests - Night lane
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use the Node major of the upgrade-shepherd image (node:24-slim)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.22.2'
+      - name: Syntax of the shipped lane files
+        run: |
+          node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/lane-classify.mjs
+          node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/run-night.mjs
+          jq -e . kubernetes/main/apps/upgrade-agent/shepherd/app/resources/upgrade-rules.json > /dev/null
+      - name: Classifier, rules and check-map drift
+        run: nice -n 19 node scripts/upgrade-agent/lane-classify-selftest.mjs
+      - name: Dry-run tick against stubs
+        run: nice -n 19 node scripts/upgrade-agent/lane-night-dryrun-selftest.mjs
+
+  shell:
+    name: Upgrade Agent Selftests - Shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Shell selftests, one at a time
+        run: |
+          set -euo pipefail
+          for t in coordination-sig held-audit shepherd-verdict stale-corpse triage-claim; do
+            echo "::group::${t}-selftest.sh"
+            nice -n 19 bash "scripts/upgrade-agent/${t}-selftest.sh"
+            echo "::endgroup::"
+          done
+
+  deliver:
+    name: Upgrade Agent Selftests - Delivery helper
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Offline deliver-reviewed-pr suite
+        run: nice -n 19 python3 -I -B scripts/upgrade-agent/test_deliver_reviewed_pr.py -v
+
+  success:
+    if: ${{ always() }}
+    needs:
+      - lane
+      - shell
+      - deliver
+    name: Upgrade Agent Selftests - Success
+    runs-on: ubuntu-latest
+    steps:
+      - name: Any job failed or cancelled?
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: exit 1
+
+      - name: All jobs passed or skipped?
+        if: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+        run: echo "All jobs passed or skipped" && echo "${{ toJSON(needs.*.result) }}"
