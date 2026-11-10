@@ -256,6 +256,16 @@ spec:
               # the request body cannot set it. No new RBAC or CRD field: the live AgentSession CRD already has
               # capturedUsage, and the operator already owns Session status. Tom approved it on 2026-11-09.
               - --enable-child-usage-capture
+              # Passive allowance readings (dev-env DESIGN-059, dev-env#1018; OpenProject #509). The operator
+              # takes the weekly percent and reset that a running session's own CLI already received, checks
+              # it, keeps the newest two per provider in the precreated ConfigMap dev-env-session-allowances
+              # (haynes-ops#4743: get and update on that one name, nothing created) and serves it on
+              # GET /v1/provider-allowances as a last-reported value that is never current. No provider
+              # request, login, approval window or private config is involved, so it keeps working when the
+              # OP192 collector below is stopped or expired. Needs the portal of haynes-ops#4745 or later,
+              # which is live. Readings come only from sessions on agent image 2.98.0 or later. To turn it
+              # off, remove this argument; the ConfigMap keeps its last readings and is no longer read.
+              - --enable-session-allowances
               # OP192 precise recurring activation; independently approved private selection.
               - --enable-aggregate-allowance-reports
               - --aggregate-allowance-config-file=/etc/dev-env-operator/allowances/selection.json
