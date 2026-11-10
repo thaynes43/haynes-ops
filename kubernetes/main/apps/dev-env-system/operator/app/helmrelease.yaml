@@ -230,8 +230,20 @@ spec:
               # flag, RBAC or template change; no lifecycle or retention change; the templates revision and every
               # existing Session pod stay as they are.
               # Previous pin sha-0864805@sha256:dbcd86aedd5db5f92450478f6ab1a23d22d20e70691e4796b694cee0c966c164
-              # (haynes-ops#4728); rollback target.
-              tag: sha-69662d4@sha256:352285df97f944773306b8800ed166ae476937af5f9f5e2250130ef09c52dd0d
+              # (haynes-ops#4728).
+              #
+              # dev-env main 25b77247 (v2.97.0 plus #1019 and #1018; publish 42740968309's operator job signed and
+              # verified this digest). Live without a flag: #1019 (OP515) lets the private terminal record, and only
+              # it, take a container the kubelet reports as ContainerStatusUnknown (exit 137, no start or finish
+              # time), so the one reaped session with no stop record (dev-env-1029-222313) can say ExecutorEnded;
+              # its CRD copy is already live (haynes-ops#4744), and that copy must not be rolled back once such a
+              # record exists. Behind a flag that this pin does not set: #1018 (OP509), passive allowance readings
+              # from session heartbeats (--enable-session-allowances, default off; the heartbeat field is ignored
+              # and GET /v1/provider-allowances answers as before). #1015 and #1016 are tests and docs. No new flag,
+              # RBAC or template change; the templates revision and every existing Session pod stay as they are.
+              # Previous pin sha-69662d4@sha256:352285df97f944773306b8800ed166ae476937af5f9f5e2250130ef09c52dd0d
+              # (haynes-ops#4732); rollback target for the operator alone.
+              tag: sha-25b7724@sha256:7e1664b487f784262b4e336a49bd8a2df17d4440ee34e7de5ca025720c5270b5
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
