@@ -242,3 +242,85 @@ was removed. The activity declaration ended promptly. Scheduled Jobs, normal
 configuration and cache settings were preserved; no overlays or collections
 run was triggered. The restored daily path recovered from the overnight
 77-minute run to this 91-second Job without weakening its alert threshold.
+
+## Addendum — 2026-11-10: the dataset patch is retired with v2.5.4
+
+This section is added after the fact. The text above records the Oct 9 decision
+as it was made and is left unchanged.
+
+**Owner ruling (Tom, 2026-11-10): "Do what Kometa recommends."** The question
+put to him: Kometa 2.5.4 fetches IMDb ratings quickly on its own but keeps each
+score for up to 60 days. Should we drop the custom patch, so upgrades stay
+simple, or rebuild it so scores refresh daily and re-check it on every upgrade?
+He chose to drop it. Story:
+[OP513](https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/513).
+Operations now runs upstream code like overlays and collections, and gets
+`--timings` back. The image is v2.5.4 pinned to index digest
+`sha256:e3f509c3044ac011e1938dae2f7e80ea3cfe9663720a9f98683d1ea28c127e64`.
+
+Why the patch could not carry over. These facts come from the upstream source at
+tag `v2.5.4`; the image itself was not probed for this addendum.
+
+- v2.5.4's `modules/imdb.py` hashes to `cec342a1...` against the reviewed
+  `f7061af3...`, which v2.5.3 shares byte for byte. `get_rating` was rewritten,
+  so the method the patch replaced no longer exists.
+- When a library loads, `map_guids` calls `cache_imdb_ratings` and
+  `cache_imdb_genres` in every job. Missing or expired IDs go in batches of up to
+  1,000 to `POST https://utilities.kometa.wiki/imdb-service/ratings` and
+  `/genre`. The results are stored in new `imdb_ratings`/`imdb_genres` cache
+  tables for `cache_expiration` days (60 in the git seed). New rows get random
+  ages inside that window, so later refreshes spread out to about 1/60 of the
+  library a night. If the service fails, Kometa uses the official TSV datasets
+  for whatever is unresolved.
+- HTTP calls use a 30-second socket timeout and up to 6 attempts. After the first
+  failure, the service counts as unavailable for the rest of the run.
+- v2.5.3's `modules/timings.py` copied `util.logger` into a module global at
+  import time, while it was still `None`; that was the cause of #3718. v2.5.4
+  reads `util.logger` when it is called (upstream PR #3719), and `kometa.py` sets
+  the logger before the timings banner.
+- v2.5.4 drops the v2.5.3 MDBList cache table `mdb_data5` and creates
+  `mdb_data6`, so the first v2.5.4 run also refetches MDBList data for the whole
+  library.
+
+What this gives up, and what leaves the cluster:
+
+- **Freshness.** A daily IMDb score from the official dataset becomes a cached
+  score that can be up to 60 days old.
+- **Egress.** The library's IMDb IDs now go to Kometa-Team's utilities host: the
+  whole library once (about 6,200 IDs, to both endpoints), then about 100 a
+  night. None of the Kometa pods are selected by a NetworkPolicy, so egress is
+  open. The patch had downloaded the public dataset and sent no IDs.
+
+Expected cost of the first v2.5.4 run. This is an estimate, not a measurement.
+The library is 5,257 movies and 986 shows (overlays log, 2026-11-09). On Oct 9
+the persistent cache had no IMDb ratings table (evidence above).
+
+- IMDb: the cache starts cold. That means 6 + 1 ratings requests and 6 + 1 genre
+  requests, 14 POSTs in all, in whichever v2.5.4 job runs first (normally
+  operations at 03:00). The service's time for a 1,000-ID batch is unknown. If
+  the service stalls, one request can take about 3.5 minutes (6 attempts × 30 s
+  plus backoff) before Kometa falls back to the TSV files. The genre fallback,
+  `title.basics`, is a much larger download than the ratings file.
+- MDBList: the cache also starts cold. That means about 53 + 10 batch requests
+  of 100 IDs each, with at least 1 second between requests (no supporter key),
+  so 1 to 3 minutes. The quota was not measured for batch requests. On
+  2026-10-18, though, overlays reported only 15 requests used after an operations
+  run that refreshed about 50 expired items. That suggests a batch counts as one
+  request against the 1,000-a-day quota (inference). If the quota were reached,
+  Kometa stops asking MDBList for the rest of the run. Existing Plex RT scores
+  stay, and the remainder fills in on later nights.
+- Baseline: the last good operations run took 1:33 (2026-10-22, v2.5.2, warm
+  caches).
+- Estimate: the first operations run takes about 5 to 10 minutes, and roughly 20
+  to 25 if the utilities service stalls and both fallbacks run. Later runs take
+  about 2 minutes. `KometaOperationsRunTooLong` pages only for an operations Job
+  still active after 1 hour (for 5 minutes), so the first run should stay well
+  under it. If the merge lands after 03:00 and before 06:30 America/New_York,
+  overlays or collections is the first v2.5.4 job and pays the cold cost instead,
+  against its 2-hour threshold; overlays took 35:36 on 2026-11-09.
+
+The launcher keeps the retired patch code, unused, so this upgrade does not
+change how the live launcher behaves. Setting `HNET_IMDB_RATINGS_SOURCE=dataset`
+on v2.5.4 fails closed before the lock and before any Kometa import, and the Job
+fails. The image probe now asserts that refusal on the exact image instead of
+running the dataset path. Remove the dead code after v2.5.4 runs are verified.

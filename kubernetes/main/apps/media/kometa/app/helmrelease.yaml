@@ -72,7 +72,8 @@ spec:
           app: &app
             image:
               repository: docker.io/kometateam/kometa
-              tag: v2.5.3
+              # One image for all three jobs (the &app anchor); they move together.
+              tag: v2.5.4@sha256:e3f509c3044ac011e1938dae2f7e80ea3cfe9663720a9f98683d1ea28c127e64
             command: ["/tini", "-g", "-s", "--", "/.venv/bin/python3", "/config/git/serial-run.py"]
             args: ["--run", "--collections-only"]
             env:
@@ -121,11 +122,14 @@ spec:
           # 04:00 nightly overlays (whose ratings badges redraw off scores this run just
           # refreshed) and the 06:30 collections (which consume the ratings). ~2h during
           # the initial catch-up week, then minutes once the cache is warm. v2.5.0
-          # changed IMDb to one uncached HTTP lookup per title (77m on 2026-10-09).
-          # The operations-only launcher restores the current image's original
-          # daily official ratings dataset path; RT still uses the MDBList cache.
-          # Its source guard must be revalidated on a Kometa image upgrade. The plex
-          # upgrade preflight (shepherd) holds a Plex merge while this runs.
+          # changed IMDb to one uncached HTTP lookup per title (77m on 2026-10-09);
+          # a guarded daily-dataset patch covered v2.5.2-v2.5.3. v2.5.4 batches
+          # IMDb ratings (1,000 IDs per POST to utilities.kometa.wiki) and caches
+          # each score for settings.cache_expiration (60 days), so every job now
+          # runs upstream Kometa unmodified (owner ruling 2026-11-10: "Do what
+          # Kometa recommends"); an IMDb score can be up to 60 days old. RT still
+          # uses the MDBList cache. The plex upgrade preflight (shepherd) holds a
+          # Plex merge while this runs.
           schedule: "0 3 * * *"
           timeZone: America/New_York
           # Keep Replace as a second defense if a prior day's Job survives its deadline.
@@ -142,15 +146,18 @@ spec:
         containers:
           app:
             <<: *app
-            # No --timings on v2.5.3: it aborts at startup with "'NoneType' object
-            # has no attribute 'info'" yet exits 0 (Kometa-Team/Kometa#3718, fixed in
-            # v2.5.4). Every operations run from 2026-10-23 to 2026-11-09 died that way.
-            # Restore --timings together with the v2.5.4 upgrade.
-            args: ["--run", "--operations-only"]
+            # --timings writes /config/logs/timings-*.json, .csv and -summary.log,
+            # the per-source call counts used to verify a run. v2.5.3 aborted at
+            # startup with it yet exited 0 (Kometa-Team/Kometa#3718: every operations
+            # run from 2026-10-23 to 2026-11-09). v2.5.4 reads the logger at call time
+            # (upstream PR #3719). Kometa exits 0 after any startup abort: a Completed
+            # Job proves nothing, "Finished Run" in the log does.
+            args: ["--run", "--operations-only", "--timings"]
             env:
               TZ: America/New_York
-              # Explicit rollback: upstream restores the unmodified service path.
-              HNET_IMDB_RATINGS_SOURCE: dataset
+              # The dataset patch is retired (2026-11-10). Never set "dataset" here:
+              # serial-run.py's hash guard refuses v2.5.4 and fails the Job.
+              HNET_IMDB_RATINGS_SOURCE: upstream
     defaultPodOptions:
       securityContext:
         runAsNonRoot: true

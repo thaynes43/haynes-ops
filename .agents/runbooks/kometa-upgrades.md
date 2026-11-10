@@ -1,87 +1,152 @@
-# Kometa image upgrades and daily IMDb compatibility
+# Kometa image upgrades
 
-Operations uses `HNET_IMDB_RATINGS_SOURCE: dataset` in its HelmRelease. The shared
-launcher changes only `IMDb.get_rating` to select the image's existing official
-ratings dataset route. All other IMDb methods, Rotten Tomatoes providers and
-cron schedules retain their normal behavior. See the incident evidence in
-[the Oct 9 report](../reports/kometa-runtime-2026-10-09.md).
+## Current state (since 2026-11-10)
+
+All three jobs (operations, overlays, collections) run upstream Kometa unmodified
+through `config/serial-run.py`, which only serializes them behind the shared lock.
+Operations sets `HNET_IMDB_RATINGS_SOURCE: upstream` and passes `--timings`.
+
+**Owner ruling (Tom, 2026-11-10): "Do what Kometa recommends."** The custom daily
+IMDb dataset patch that operations used on v2.5.2 and v2.5.3 is retired, so
+upgrades stay simple. Story:
+[OP513](https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/513).
+History and evidence: [the Oct 9 report](../reports/kometa-runtime-2026-10-09.md)
+and its 2026-11-10 addendum.
+
+How IMDb ratings work from v2.5.4 on:
+
+- Each job, when it loads a library, sends every IMDb ID with no cached score, or
+  a score older than `settings.cache_expiration`, to
+  `POST https://utilities.kometa.wiki/imdb-service/ratings`, up to 1,000 IDs per
+  request. It does the same for genres (`/imdb-service/genre`). Results go into
+  `config.cache` on the PVC.
+- `cache_expiration` is 60 days in the git seed of `config.yml`. The live copy is
+  PVC-seeded and was not re-read for this change. **An IMDb score in Plex can be
+  up to 60 days old.** New cache rows get random ages within the window, so
+  refreshes spread out: roughly 1/60 of the library (about 100 titles) per night.
+- If the service fails, Kometa falls back to IMDb's official TSV datasets for the
+  titles still unresolved. For ratings that is a small download. For genres it is
+  `title.basics`, a much larger one.
+- **What leaves the cluster:** the library's IMDb IDs go to Kometa-Team's
+  utilities host. The first v2.5.4 run sends the whole library (about 6,200 IDs)
+  to both endpoints, and later nights send only the expired ones. MDBList already
+  received the library's IDs before this change.
+
+The dataset-patch code is still in `serial-run.py` but nothing uses it (see the
+note at `APPROVED_IMDB_SHA256`). Only `HNET_IMDB_RATINGS_SOURCE=dataset` on
+operations can reach it. On v2.5.4 or any later image, the hash guard refuses the
+image before the lock, any Kometa import or any Plex write: the pod exits 1, the
+Job fails and `MediaAutomationJobFailed` pages. The patch's anchor does not exist
+in v2.5.4, so never update that hash. Remove the dead path in a follow-up once
+v2.5.4 runs are verified.
 
 ## Upgrade gate
 
-Renovate opens Kometa bump PRs but does not auto-merge them. The launcher checks
-the full `/modules/imdb.py` SHA-256 and exact `get_rating` anchor before any
-Kometa imports or Plex writes. An incompatible image fails explicitly; it never
-silently returns to thousands of external title lookups. Kometa is outside the
-upgrade-shepherd ramp. The disposition labeler mirrors this manual-only policy.
+Renovate opens Kometa bump PRs. They stay manual-only (`.renovate/autoMerge.json5`
+and the PR disposition labeler), outside the upgrade-shepherd ramp, for two
+reasons:
 
-For every proposed tag or digest:
+- Kometa exits 0 even when it aborts at startup. On v2.5.3, `--timings` crashed
+  every operations run from 2026-10-23 to 2026-11-09 while the Jobs showed
+  Completed (Kometa-Team/Kometa#3718).
+- An upgrade can reset caches. v2.5.4 renamed the MDBList cache table
+  (`mdb_data5` to `mdb_data6`) and drops the old one at startup, so its first run
+  refetches MDBList for the whole library.
 
-1. Read that version's upstream `modules/imdb.py` and `kometa.py`. Compare
-   `get_rating`, `ratings`, `_interface`, the HTTP downloader, CLI parser and
-   `_process_pool_context` to the reviewed v2.5.2 implementation. Review the
-   image entrypoint paths as well. If these contracts changed, adapt or remove
-   the compatibility patch; do not update the hash without reviewing the code.
-2. Set `APPROVED_IMDB_SHA256` to the reviewed image file's actual SHA-256 and
-   update the method anchor/version descriptions when needed in the same PR.
-   Obtain source/hash from a bounded Job in the proposed image, or verify that
-   a fetched upstream file is byte-identical to the image file in that Job.
-3. Run the local regressions and render check:
+For every proposed tag:
+
+1. Read the release notes and the upstream changes to `kometa.py` (CLI parser,
+   `_process_pool_context`), `modules/request.py` (timeouts, retries),
+   `modules/cache.py` (the dropped-table list: a renamed table means a cold cache
+   on the first run) and the Dockerfile entrypoint. Pin the tag with its index
+   digest (`tag: vX.Y.Z@sha256:...`) so the probed image is the deployed one.
+2. Run the local regressions and render check:
 
    ```bash
    nice -n 19 python3 scripts/kometa-serial-run-test.py
    nice -n 19 node scripts/pr-disposition-test.cjs
+   python3 -c 'import ast,pathlib; ast.parse(pathlib.Path("scripts/kometa-image-probe.py").read_text())'
    kubectl kustomize kubernetes/main/apps/media/kometa/app > /tmp/kometa-rendered.yaml
    git diff --check
    ```
 
-4. Verify operations, overlays and collections are idle with
-   `kubectl get cronjob -n media kometa-operations kometa-overlays kometa-collections`.
-   Render the secret-free image probe with the proposed image and an idle worker
-   (example node below; verify it is a worker before using it):
+3. Probe the exact image. This creates a Job, so it is a cluster write that needs
+   authorization. Run it from the PR branch in an idle window: more than 30
+   minutes away from the 03:00, 04:00 and 06:30 America/New_York starts, with
+   no Kometa Job active.
 
    ```bash
-   python3 scripts/kometa-image-probe.py --image docker.io/kometateam/kometa:v2.5.2 \
-     --node talosw01 > /tmp/kometa-image-probe.json
+   IMAGE='docker.io/kometateam/kometa:vX.Y.Z@sha256:<index digest>'
+   NODE=talosw02   # pick from the worker list below: TAINTS <none>, READY True
+   TZ=America/New_York date
+   kubectl get cronjob -n media kometa-operations kometa-overlays kometa-collections
+   kubectl get jobs -n media | grep kometa
+   kubectl get pods -n media --no-headers | grep -i kometa | grep -vE 'Completed|Error'   # expect nothing
+   kubectl get nodes -l '!node-role.kubernetes.io/control-plane' -o 'custom-columns=NAME:.metadata.name,TAINTS:.spec.taints[*].key,READY:.status.conditions[?(@.type=="Ready")].status'
+   kubectl get job -n media kometa-image-probe   # expect NotFound
+   python3 scripts/kometa-image-probe.py --image "$IMAGE" --node "$NODE" > /tmp/kometa-image-probe.json
    kubectl create -f /tmp/kometa-image-probe.json
-   kubectl wait -n media --for=condition=complete job/kometa-image-probe --timeout=60s
+   kubectl wait -n media --for=condition=complete job/kometa-image-probe --timeout=200s
    kubectl logs -n media job/kometa-image-probe
    kubectl delete job -n media kometa-image-probe --wait=true
    ```
 
-   The Job has a 180-second deadline, 500m CPU/1Gi memory limits, no application
-   PVC or credentials, and only temporary emptyDir writes. A wait timeout is not
-   a pass: inspect status/logs, then clean up the Job. Avoid parallel probe runs.
-   Require source guard, real-image CLI flags, one official dataset download,
-   shared movie/show lookups, null/unknown ID handling, temporary file cleanup,
-   runpy worker pickling/patch inheritance, worker-held lock, and tini group
-   termination/lock release to pass. The probe deliberately never runs Kometa
-   against Plex. Do not run the full nightly workload merely to test an image.
-5. Read advisory review and required checks, then merge and reconcile Flux.
-   Verify the next operations run's source and lock messages plus
-   `/config/logs/timings-*-summary.log` (when operations passes `--timings`).
-   Confirm the run reached `Finished Run`: Kometa exits 0 even when it aborts at
-   startup, so a Completed Job does not prove the run happened. The probe in step 4
-   never starts Kometa itself and missed exactly that on v2.5.3 (`--timings` crash,
-   Kometa-Team/Kometa#3718). A separately authorized manual operations
-   verification may use the normal CronJob template, shared lock and a shortened
-   10–15 minute Job deadline while all three jobs are idle. Declare it with
-   `declare-activity start ... --scope media,kometa`, then end the declaration.
+   The Job has a 180-second deadline (including image pull), 500m CPU and 1Gi
+   memory limits, no application PVC or credentials, and only temporary emptyDir
+   writes. A wait timeout is not a pass. Read
+   `kubectl describe job -n media kometa-image-probe` and the logs, then delete
+   the Job anyway. Do not run probes in parallel. A pass prints:
+
+   - `image_imdb_sha256 <hash>`: record it in the PR.
+   - `retired_dataset_patch_fails_closed: PASS`: a stray `dataset` setting still
+     refuses this image.
+   - `actual_image_cli_flags [...] PASS`: the image's own parser accepts all
+     three production argument sets, read from the HelmRelease.
+   - `actual_image_worker_lock_and_tini_group_termination: PASS`: a forked
+     worker holds the shared lock until tini's group SIGTERM releases it.
+   - `kometa_image_probe: PASS`.
+
+   The probe never starts Kometa, loads config or contacts Plex or any provider,
+   so it cannot catch a startup abort like #3718. Only a real run proves that.
+4. Read the required checks and any advisory review, then merge and reconcile
+   Flux (`flux reconcile kustomization kometa -n media --with-source`).
+5. Verify the first run of each job, as described below. A separately authorized
+   manual operations run may use the normal CronJob template, shared lock and a
+   shortened 10 to 15 minute deadline while all three jobs are idle. Declare it
+   with `declare-activity start ... --scope media,kometa`, then end the
+   declaration.
+
+## Verify a run
+
+- **`Finished Run`** in the job's log, followed by its `Start Time / Finished /
+  Run Time` line. A Completed Job without it means Kometa aborted:
+  `{namespace="media", pod=~"kometa-.*"} |~ "Finished Run|Run Time: |Version:"`.
+- **Runtime.** On v2.5.2, operations took 1:41 on 2026-10-18. v2.5.4 with a warm
+  cache is expected to take about as long; the addendum to the Oct 9 report
+  estimates the first, cold-cache run. `KometaOperationsRunTooLong` pages when an
+  operations Job is still active after 1 hour (for 5 minutes). Overlays and
+  collections page after 2 hours.
+- **IMDb.** `Caching N IMDb ratings` lines show each batch request: N is close to
+  the library size on a cold cache and about 100 a night afterwards.
+  `IMDb Service unavailable, falling back to TSV dataset` means the service
+  failed and that run used the official datasets.
+- **Timings export** (operations, `--timings`):
+  `/config/logs/timings-*-summary.log`, `.json` and `.csv` on the PVC. These are
+  files, not Loki lines, so reading them needs a separately authorized read-only
+  PVC Job. `other:utilities.kometa.wiki` should show a handful of calls (one per
+  batch), not thousands.
+- **MDBList.** The next job's banner prints `API Requests Used Today`; compare it
+  with the 1,000 a day free quota.
 
 ## Revert and operating limits
 
-To return to upstream per-title IMDb ratings, change only the operations
-`HNET_IMDB_RATINGS_SOURCE` to `upstream` in git and reconcile Flux. This retains
-the shared lock (and `--timings`, when it is enabled); expect the longer serial
-lookup cost to return.
-Do not alter the alert threshold to conceal it. Restoring this route does not
-require touching the PVC-seeded config or persistent cache.
-
-The official IMDb dataset is refreshed daily and is available for personal,
-noncommercial use under [IMDb's terms](https://data.imdb.com/non-commercial-datasets/).
-The existing image downloads/parses it once per process and removes temporary
-files. It is an in-memory snapshot reused by both libraries, not a persistent
-120-day cache. A dataset outage can fail operations; preserve existing ratings
-and investigate egress/source errors before choosing an explicit rollback.
+To roll back, revert the upgrade PR in git and reconcile Flux. Reverting the
+v2.5.4 PR returns v2.5.3, the dataset patch on operations and operations without
+`--timings`, which v2.5.3 cannot run. v2.5.3 does not use v2.5.4's `mdb_data6`
+table and recreates `mdb_data5` empty, so a rollback also starts with a cold
+MDBList cache. Do not change only `HNET_IMDB_RATINGS_SOURCE`: on v2.5.4,
+`dataset` fails the Job. Do not raise an alert threshold to hide a slow run.
+Neither direction needs the PVC-seeded config or cache to be touched.
 
 All three production launchers mount the same RWO Ceph block PVC at `/config` and
 hold `/config/.run.lock`. Waiting and acquisition are logged separately. If an

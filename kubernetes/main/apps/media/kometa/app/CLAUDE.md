@@ -80,11 +80,14 @@ second category label on one collection.
    non-native order snuck back in or a list order cascaded.
 8. **All three jobs use `config/serial-run.py` and the shared `/config/.run.lock`.**
    Keep the launcher, PVC mount and tini process-group forwarding on operations,
-   overlays and collections. Operations additionally selects the current image's
-   daily official IMDb ratings dataset path; its source hash deliberately refuses
-   an unreviewed upstream change. Kometa image upgrades are manual: follow
-   `.agents/runbooks/kometa-upgrades.md`, including the real-image probe. Reverting
-   `HNET_IMDB_RATINGS_SOURCE` to `upstream` in git disables only that compatibility
-   patch while retaining serialization. Operations' `--timings` is off on v2.5.3,
-   which crashes at startup with it (Kometa-Team/Kometa#3718), and comes back
-   with v2.5.4.
+   overlays and collections. Since 2026-11-10 all three run upstream Kometa
+   unmodified (owner ruling: "Do what Kometa recommends"). The operations-only
+   IMDb dataset patch is retired: its code is still in the launcher but unused, and
+   setting `HNET_IMDB_RATINGS_SOURCE: dataset` on v2.5.4 fails the Job. From
+   v2.5.4, Kometa sends the library's IMDb IDs in batches to
+   `utilities.kometa.wiki` and caches each score for `cache_expiration` (60 days),
+   so an IMDb score can be up to 60 days old. Operations passes `--timings`
+   (v2.5.3 crashed with it, Kometa-Team/Kometa#3718; fixed in v2.5.4). Kometa
+   exits 0 after a startup abort, so prove a run by `Finished Run` in its log,
+   not by a Completed Job. Kometa image upgrades are manual: follow
+   `.agents/runbooks/kometa-upgrades.md`, including the real-image probe.
