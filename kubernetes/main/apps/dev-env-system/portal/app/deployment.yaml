@@ -76,11 +76,11 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # Source dev-env#1018 25b77247cdacb77a631d701b8bfab3364eea9355 (OP509); publish run 42740968309 signed and verified this exact digest.
-          # Adds the built-in display rule for session allowance readings (DESIGN-059); it shows nothing new until the operator serves them.
-          # Rollback target: sha-8daf137@sha256:b09c06a1100c24a7b07311db7f0abe066ea843b2ba0e406a232b8c6e9188e4f2.
-          # Claims and question audit are mounted from the config volume (OP497). current-source.json stays absent. No new Secret or Role.
-          image: ghcr.io/thaynes43/dev-env-portal:sha-25b7724@sha256:18ed5a921b41737a3dd821d998b2e8a6ed3fde83bc69f4b8433b5dc8836d05b4
+          # Source dev-env#1039 413c01c6 (OP523, OP534, OP532); publish run 42778126782 signed and verified this exact digest.
+          # The Usage page leads a session reading with the week's percent, its reset and its age, greys it past
+          # 30 minutes, drops the percent after its reset, and gives Cursor a plain tile with a link. Display only.
+          # Rollback target: sha-25b7724@sha256:18ed5a921b41737a3dd821d998b2e8a6ed3fde83bc69f4b8433b5dc8836d05b4.
+          image: ghcr.io/thaynes43/dev-env-portal:sha-413c01c@sha256:c076eb132abacb326c3917de071ffb22a9e5ecf58cbf810879edbbde59a493ac
           imagePullPolicy: IfNotPresent
           ports:
             - name: https
