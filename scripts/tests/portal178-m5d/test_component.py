@@ -1154,6 +1154,15 @@ class ComponentRenderTest(unittest.TestCase):
         # OP509: passive session allowance readings, exactly once and with no value.
         self.assertEqual([a for a in operator["args"] if a.startswith("--enable-session-allowances")],
                          ["--enable-session-allowances"])
+        # OP521 H4: task clean-up for the six probes only. Grace and the shared-volume floor stay unset.
+        self.assertEqual([a for a in operator["args"] if a.startswith("--enable-task-session-cleanup")],
+                         ["--enable-task-session-cleanup=true"])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-max-active")],
+                         ["--task-cleanup-max-active=1"])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-sessions")],
+                         ["--task-cleanup-sessions=dev-env-1109-234800,haynes-studio-1110-000448,haynes-studio-1110-001254,haynes-studio-1110-001254-2,haynes-studio-1110-001255,PROBE6"])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-grace")], [])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-min-shared-free")], [])
         # The measured-usage pilot (2026-10-28): one new key and the signed 2.52.0 agent image,
         # each flag once. The parent is the coordinator session; launch stays off.
         self.assertEqual([a for a in operator["args"] if a.startswith("--pilot-agent-image")], [
