@@ -49,9 +49,15 @@ two changes. Nothing else of substance in his dated rules changed.
 - **2026-11-09, blanket pause.** A "wait for Meatball" instruction was read as a
   pause on all work and stalled the session indefinitely (OpenProject #481). The
   rule now says "wait for X" pauses only the work that depends on X.
-- **2026-11-09, long socket paths.** A `TMPDIR` set to a long path broke tests that
-  create Unix sockets, whose path length is limited. Keep `TMPDIR` at its default or
-  another short path.
+- **2026-11-09, long socket paths.** Tests that bind a Unix socket (path limit 108
+  bytes) failed in every session pod. First read: a long `TMPDIR`. Measured the same
+  day (OpenProject #506): the agent image sets `GOTMPDIR=/home/dev/.cache/go-tmp`, and
+  in the image's Go (1.27.3) `t.TempDir()` is made under `GOTMPDIR` when it is set,
+  whatever `TMPDIR` says (`src/testing/testing.go`: `os.MkdirTemp(os.Getenv("GOTMPDIR"),
+  pattern)`; older Go versions used `TMPDIR` only). With `GOTMPDIR` set, `t.TempDir()` was `/home/dev/.cache/go-tmp/<Test>.../001`
+  while `os.TempDir()` was `/tmp`; with it unset, `/tmp/<Test>.../001`. The image keeps
+  the setting, which holds compiler scratch off the capped `/tmp`; a test that binds a
+  socket makes its own short directory (dev-env `internal/testsock`, dev-env#1015).
 
 ## Detail cut from the rules
 
@@ -92,8 +98,9 @@ two changes. Nothing else of substance in his dated rules changed.
   job. `dev-env-storage-run` (plan and run, explicit sources, budget, reserve and
   timeout) and `dev-env-test-run` are cooperative helpers, not permission
   boundaries; neither was in the 2.95.0 image.
-- Use short owned paths under `~` for `TMPDIR`, `GOTMPDIR`, `GOCACHE` and
-  `GOMODCACHE`. `GOTMPDIR` routes compiler work directories only.
+- Keep `GOCACHE` and `GOMODCACHE` under `~`, and leave `TMPDIR` at its default. The
+  image sets `GOTMPDIR` under `~` for compiler work directories; on the image's Go it
+  also decides where `t.TempDir()` lands (see 2026-11-09 above).
 - Clones are partial (`--filter=blob:none`), so `git log -p` or `git blame` over old
   history fetches over the network. Clone other repos under `~/repos` so rescue
   finds them.
