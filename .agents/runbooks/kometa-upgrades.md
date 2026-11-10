@@ -56,7 +56,8 @@ reasons:
 For every proposed tag:
 
 1. Read the release notes and the upstream changes to `kometa.py` (CLI parser,
-   `_process_pool_context`), `modules/request.py` (timeouts, retries),
+   `_process_pool_context` and how `process()` uses it: the probe copies only the
+   helper), `modules/request.py` (timeouts, retries),
    `modules/cache.py` (the dropped-table list: a renamed table means a cold cache
    on the first run) and the Dockerfile entrypoint. Pin the tag with its index
    digest (`tag: vX.Y.Z@sha256:...`) so the probed image is the deployed one.
@@ -126,8 +127,9 @@ For every proposed tag:
   estimates the first, cold-cache run. `KometaOperationsRunTooLong` pages when an
   operations Job is still active after 1 hour (for 5 minutes). Overlays and
   collections page after 2 hours.
-- **IMDb.** `Caching N IMDb ratings` lines show each batch request: N is close to
-  the library size on a cold cache and about 100 a night afterwards.
+- **IMDb.** One `Caching N IMDb ratings` line per library load gives the IDs
+  sent; Kometa then splits them into requests of up to 1,000. N is close to the
+  library size on a cold cache and about 100 a night afterwards.
   `IMDb Service unavailable, falling back to TSV dataset` means the service
   failed and that run used the official datasets.
 - **Timings export** (operations, `--timings`):
@@ -142,7 +144,7 @@ For every proposed tag:
 
 To roll back, revert the upgrade PR in git and reconcile Flux. Reverting the
 v2.5.4 PR returns v2.5.3, the dataset patch on operations and operations without
-`--timings`, which v2.5.3 cannot run. v2.5.3 does not use v2.5.4's `mdb_data6`
+`--timings` (v2.5.3 crashes at startup with that flag). v2.5.3 does not use v2.5.4's `mdb_data6`
 table and recreates `mdb_data5` empty, so a rollback also starts with a cold
 MDBList cache. Do not change only `HNET_IMDB_RATINGS_SOURCE`: on v2.5.4,
 `dataset` fails the Job. Do not raise an alert threshold to hide a slow run.

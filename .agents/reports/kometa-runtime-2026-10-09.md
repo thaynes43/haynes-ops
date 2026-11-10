@@ -272,8 +272,10 @@ tag `v2.5.4`; the image itself was not probed for this addendum.
   ages inside that window, so later refreshes spread out to about 1/60 of the
   library a night. If the service fails, Kometa uses the official TSV datasets
   for whatever is unresolved.
-- HTTP calls use a 30-second socket timeout and up to 6 attempts. After the first
-  failure, the service counts as unavailable for the rest of the run.
+- HTTP calls use a 30-second socket timeout. Timeouts, connection errors and
+  429s are retried up to 6 attempts in all; another error status (a 5xx) fails on
+  the first response. After the first failure, the service counts as unavailable
+  for the rest of the run.
 - v2.5.3's `modules/timings.py` copied `util.logger` into a module global at
   import time, while it was still `None`; that was the cause of Kometa-Team/Kometa#3718. v2.5.4
   reads `util.logger` when it is called (Kometa-Team/Kometa#3719), and `kometa.py` sets
