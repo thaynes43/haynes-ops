@@ -5,7 +5,7 @@
 # projected token, audience dev-env-operator, to the operator API.
 #
 # Two credentials, both vault HaynesKube, mounted read-only:
-# - item dev-env-frontdoor, field MCP_TOKEN: the bearer. Tom creates this.
+# - item dev-env, field FRONTDOOR_MCP_TOKEN: the bearer. Tom adds this field.
 #   The process reads the file on every request.
 # - item openproject, field API_TOKEN: the tracker credential opwork already
 #   uses (the same field as dev/openproject-agent). Not a new item.
