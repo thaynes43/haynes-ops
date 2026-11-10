@@ -563,6 +563,24 @@
         ]
       },
       {
+        "id": "upgrade-agent-selftests",
+        "source": ".github/workflows/upgrade-agent-selftests.yml",
+        "workflow": "Upgrade Agent Selftests",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "kubernetes/main/apps/upgrade-agent/shepherd/app/**",
+          "kubernetes/main/apps/upgrade-agent/health-gate/app/resources/coordination-lib.sh",
+          "kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh",
+          "scripts/upgrade-agent/**",
+          ".github/workflows/**",
+          ".renovate/**"
+        ],
+        "checks": [
+          "Upgrade Agent Selftests - Success"
+        ],
+        "note": "OP512 step 2: the night lane's selftests, the shell selftests, the delivery helper's offline suite and this check-map drift test. Not a required check (branch protection is the owner's)."
+      },
+      {
         "id": "upgrade-shepherd-build",
         "source": ".github/workflows/upgrade-shepherd-build.yml",
         "workflow": "Build and Push Upgrade Shepherd Image",
