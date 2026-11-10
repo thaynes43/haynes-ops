@@ -4,12 +4,14 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main ffa306704d1a329ded58fbf5b2fd098cf356ed9b, verified byte for byte
-# (SHA-256 f8f27f6323eb2ed1441e3457958dd1de6d581a92df19bfee80043ce42185f891 below this header).
-# The file has not changed since it was added by dev-env 03c8345e (PR #668, Asks lane A,
-# OpenProject #256). Asks and approvals board (DESIGN-034, Epic #254; activation story #264):
-# immutable spec, a set-once status answer, and its name is its id. Asks live in dev-agents.
-# Only the operator writes them (rbac/app/asks.yaml); the keeper only reads them.
+# Source: dev-env main 83428207d7662a079ddcdcfe3a3484442040d115 (merge of PR #1036),
+# verified byte for byte (SHA-256 29aa07e25fb83f93b9f5709aeb06cef094d868360c5e16afff43890b27494e80
+# below this header). The body last changed in d0927fc2353a (PR #1037, ADR-021, OpenProject #525).
+# Adds the grant Ask kind and answer.answeredBy.username, and makes expiresAt optional with
+# rules that keep it required for info and approval Asks. Asks and approvals board
+# (DESIGN-034, Epic #254; activation story #264): immutable spec, a set-once status answer,
+# and its name is its id. Asks live in dev-agents. Only the operator writes them
+# (rbac/app/asks.yaml); the keeper only reads them.
 #
 # Keep it in step with the operator: copy a changed file here before (or with) the pin
 # that writes its new fields.
@@ -33,11 +35,12 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Ask is one agent question or approval request (OpenProject Epic #254). The
-          spec is immutable. The status carries the lifecycle, and its answer is set
-          once. v1 stores no inbox delivery: the requester reads the answer from the ask.
-          A root rule stops a status write from dropping a stored answer. The status
-          type's own rule does not run once status itself is gone.
+          Ask is one agent question, approval request, or grant that needs a person
+          (OpenProject Epic #254, ADR-021). The spec is immutable. The status carries
+          the lifecycle, and its answer is set once. v1 stores no inbox delivery: the
+          requester reads the answer from the ask. A root rule stops a status write
+          from dropping a stored answer. The status type's own rule does not run once
+          status itself is gone.
         properties:
           apiVersion:
             description: |-
@@ -57,7 +60,12 @@ spec:
           metadata:
             type: object
           spec:
-            description: AskSpec is the ask as it was created. Nothing in it changes.
+            description: |-
+              AskSpec is the ask as it was created. Nothing in it changes.
+              A grant ask carries grant and omits expiresAt and the approval scope.
+              An info or approval ask omits grant and keeps expiresAt. Stored info and
+              approval asks already have expiresAt and no grant, so these rules do not
+              make them invalid.
             properties:
               allowFreeText:
                 type: boolean
@@ -93,8 +101,65 @@ spec:
                 format: date-time
                 type: string
               expiresAt:
+                description: |-
+                  ExpiresAt is the answer deadline of an info or approval ask. A grant ask
+                  omits it. The field stays optional so a grant can leave it unset; every
+                  stored info or approval ask already sets it.
                 format: date-time
                 type: string
+              grant:
+                description: Grant is the typed scope of a grant ask. Info and approval
+                  asks omit it.
+                properties:
+                  detail:
+                    description: Detail is optional display, 0 to 200 runes. It is
+                      not part of the binding.
+                    maxLength: 800
+                    type: string
+                  scopeDigest:
+                    description: 'ScopeDigest is grantattest.ScopeDigest of that object:
+                      43 base64url characters.'
+                    maxLength: 43
+                    minLength: 43
+                    pattern: ^[A-Za-z0-9_-]{43}$
+                    type: string
+                  target:
+                    description: Target is one token, 1 to 200 runes. The byte ceiling
+                      is four bytes per rune.
+                    maxLength: 800
+                    minLength: 1
+                    type: string
+                  ttl:
+                    description: |-
+                      TTL is the duration the grant asked, stored as a duration string of at
+                      most 16 characters. The broker checks the 10m to 8h bounds.
+                    maxLength: 16
+                    minLength: 2
+                    pattern: ^([0-9]+(h|m|s))+$
+                    type: string
+                  type:
+                    description: Type is the grant's type.
+                    enum:
+                    - kube
+                    - egress
+                    - credential
+                    - breakglass
+                    - maintenance
+                    maxLength: 11
+                    type: string
+                  uid:
+                    description: UID is the AccessGrant object's metadata.uid.
+                    maxLength: 64
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9]([A-Za-z0-9._:-]*[A-Za-z0-9])?$
+                    type: string
+                required:
+                - scopeDigest
+                - target
+                - ttl
+                - type
+                - uid
+                type: object
               id:
                 maxLength: 20
                 minLength: 20
@@ -145,8 +210,9 @@ spec:
                 pattern: ^[A-Za-z0-9-]{8,64}$
                 type: string
               scope:
-                description: AskScope is the single action an approval ask names.
-                  Info asks omit it.
+                description: |-
+                  AskScope is the single action an approval ask names. Info asks omit it.
+                  A grant ask omits it too; the grant object is that ask's scope.
                 properties:
                   action:
                     maxLength: 800
@@ -165,15 +231,17 @@ spec:
                 - target
                 type: object
               type:
+                description: Type is info, approval or grant.
                 enum:
                 - info
                 - approval
+                - grant
+                maxLength: 8
                 type: string
             required:
             - allowFreeText
             - context
             - createdAt
-            - expiresAt
             - id
             - question
             - requestDigest
@@ -183,6 +251,16 @@ spec:
             x-kubernetes-validations:
             - message: ask spec is immutable
               rule: self == oldSelf
+            - message: an info or approval ask has no grant
+              rule: self.type == 'grant' || !has(self.grant)
+            - message: a grant ask has a typed scope
+              rule: self.type != 'grant' || has(self.grant)
+            - message: a grant ask has no approval scope
+              rule: self.type != 'grant' || !has(self.scope)
+            - message: a grant ask has no expiry
+              rule: self.type != 'grant' || !has(self.expiresAt)
+            - message: an info or approval ask has an expiry
+              rule: self.type == 'grant' || has(self.expiresAt)
           status:
             description: |-
               AskStatus is the lifecycle. An answer is written once and never replaced
@@ -211,6 +289,14 @@ spec:
                         type: string
                       subject:
                         maxLength: 800
+                        type: string
+                      username:
+                        description: |-
+                          Username is the portal preferred_username. A grant answer requires it.
+                          An info or approval answer omits it. Session responses omit it.
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[A-Za-z0-9][A-Za-z0-9._@+-]{0,62}$
                         type: string
                     type: object
                   approved:
@@ -255,6 +341,12 @@ spec:
         - message: an ask answer cannot be dropped with status
           rule: '!has(oldSelf.status) || !has(oldSelf.status.answer) || (has(self.status)
             && has(self.status.answer))'
+        - message: a grant answer has a username
+          rule: '!has(self.status) || !has(self.status.answer) || self.spec.type !=
+            ''grant'' || has(self.status.answer.answeredBy.username)'
+        - message: an info or approval answer has no username
+          rule: '!has(self.status) || !has(self.status.answer) || self.spec.type ==
+            ''grant'' || !has(self.status.answer.answeredBy.username)'
     served: true
     storage: true
     subresources:
