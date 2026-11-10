@@ -4,8 +4,9 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main at the merge of PR #1009 (OP500), verified byte for byte by the coordinator:
-# 2b2ec45539b9103d8d8871661b5f24406927acfb. Adds the cursor provider kind to the configured-provider enum.
+# Source: dev-env main at the merge of PR #1055 (OP684), verified byte for byte by the coordinator:
+# 8b5419e967156ef9f53e6e60d02b12df313ab3ec. Adds the parent-note fields of DESIGN-062 and ADR-023: callerSender,
+# callerRecipient, the result and blocker kinds, and the policy actor kind. Nothing writes them yet.
 #
 # Keep it in step with the operator: copy a changed file here before (or with) the pin
 # that writes its new fields.
@@ -50,13 +51,21 @@ spec:
           metadata:
             type: object
           spec:
+            description: |-
+              Existing objects keep a session sender and a session recipient. A new object
+              uses exactly one sender form and exactly one recipient form (DESIGN-062, ADR-023).
             properties:
               actor:
                 properties:
                   kind:
+                    description: |-
+                      policy is the Meatball caller on an InboxMessage. TaskClaim and
+                      PublishedContext refuse it. MaxLength bounds the string a rule reads.
                     enum:
                     - session
                     - coordinator
+                    - policy
+                    maxLength: 11
                     type: string
                   podName:
                     maxLength: 253
@@ -79,10 +88,48 @@ spec:
                 - podUID
                 - serviceAccount
                 type: object
+              callerRecipient:
+                description: |-
+                  CallerRecipient is set when the parent is the Meatball account. Exactly
+                  one of recipient and callerRecipient is set.
+                properties:
+                  policyUID:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                  serviceAccount:
+                    enum:
+                    - dev-env-system/dev-env-meatball
+                    maxLength: 317
+                    type: string
+                required:
+                - policyUID
+                - serviceAccount
+                type: object
+              callerSender:
+                description: |-
+                  CallerSender is set when the Meatball account writes. Exactly one of
+                  sender and callerSender is set.
+                properties:
+                  policyUID:
+                    maxLength: 128
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9-]+$
+                    type: string
+                  serviceAccount:
+                    enum:
+                    - dev-env-system/dev-env-meatball
+                    maxLength: 317
+                    type: string
+                required:
+                - policyUID
+                - serviceAccount
+                type: object
               inReplyTo:
                 description: |-
-                  InReplyTo is the question a reply answers. The API binds it from the
-                  live question, whose sender is the reply's recipient.
+                  InReplyTo is the note a reply answers. The API binds it from the live
+                  note, whose sender is the reply's recipient.
                 properties:
                   name:
                     maxLength: 80
@@ -103,11 +150,14 @@ spec:
                 type: string
               kind:
                 description: |-
-                  Kind marks a routine question or its reply (DESIGN-014, 2026-10-31).
-                  Absent is a plain message, as before. A reply is not an approval.
+                  Kind marks a child note or its reply (DESIGN-014, DESIGN-062). Absent is
+                  a plain message. A reply is not an approval, and neither is a note.
                 enum:
                 - question
+                - result
+                - blocker
                 - reply
+                maxLength: 8
                 type: string
               project:
                 maxLength: 63
@@ -168,6 +218,9 @@ spec:
                 - opencode
                 type: string
               recipient:
+                description: |-
+                  Recipient is the session the message is for. Absent when callerRecipient
+                  is set.
                 properties:
                   name:
                     maxLength: 253
@@ -198,6 +251,9 @@ spec:
                 minLength: 1
                 type: string
               sender:
+                description: |-
+                  Sender is the session that wrote the message. Absent when callerSender
+                  is set.
                 properties:
                   name:
                     maxLength: 253
@@ -234,19 +290,26 @@ spec:
             - project
             - provenance
             - provider
-            - recipient
             - repository
             - requestedModel
-            - sender
             - text
             type: object
             x-kubernetes-validations:
             - message: message intent and original attribution are immutable
               rule: self == oldSelf
-            - message: only original Session senders publish
-              rule: self.actor.kind == 'session'
+            - message: actor kind is session for a session sender and policy for a
+                caller sender
+              rule: (has(self.sender) && self.actor.kind == 'session') || (has(self.callerSender)
+                && self.actor.kind == 'policy')
+            - message: exactly one of sender and callerSender
+              rule: has(self.sender) != has(self.callerSender)
+            - message: exactly one of recipient and callerRecipient
+              rule: has(self.recipient) != has(self.callerRecipient)
             - message: every reply, and only a reply, names the question it answers
               rule: has(self.inReplyTo) == (has(self.kind) && self.kind == 'reply')
+            - message: a plain message from the Meatball account has a session recipient
+              rule: '!has(self.kind) && has(self.callerSender) ? has(self.recipient)
+                : true'
         required:
         - spec
         type: object

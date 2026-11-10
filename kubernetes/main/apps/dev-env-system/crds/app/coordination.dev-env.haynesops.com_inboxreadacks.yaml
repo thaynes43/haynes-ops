@@ -42,9 +42,14 @@ spec:
               actor:
                 properties:
                   kind:
+                    description: |-
+                      policy is the Meatball caller on an InboxMessage. TaskClaim and
+                      PublishedContext refuse it. MaxLength bounds the string a rule reads.
                     enum:
                     - session
                     - coordinator
+                    - policy
+                    maxLength: 11
                     type: string
                   podName:
                     maxLength: 253
