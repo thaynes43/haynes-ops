@@ -419,6 +419,13 @@ spec:
               - '--enable-session-directory=false'
               - '--enable-task-claims=true'
               - '--task-claims-read-projects=dev-env'
+              # OP497: GET /v1/portal/task-claims, one page of existing TaskClaims for the portal
+              # reader (DESIGN-045). Requires the portal reader and task claims above, and every
+              # project here must already be in --task-claims-read-projects
+              # (cmd/dev-env-operator/portal_taskclaims_config.go). It grants nothing and adds no
+              # Role: Role dev-env-task-claims already lists taskclaims. Rollback: remove these two.
+              - '--enable-portal-task-claims=true'
+              - '--portal-task-claims-projects=dev-env'
               - '--enable-published-contexts=true'
               # sigo-alumni: the Sigo canary (Q-30, rerun Q-32) published its managed output here; the
               # canary route is now off (T16), so this scope only keeps its retained result readable.
@@ -432,6 +439,14 @@ spec:
               # Rollback: remove this line. Once any question or reply exists, keep the operator at 2.76 or later and never revert the
               # InboxMessage CRD below v2.76.0 (DESIGN-014).
               - '--enable-inbox-questions=true'
+              # OP497: GET /v1/portal/question-audit, one page of question and reply metadata for
+              # project dev-env and one live session. No question text. Requires the portal reader,
+              # durable inbox and inbox questions above, and every project here must already be in
+              # --inbox-projects (cmd/dev-env-operator/main.go). No new Role: Role dev-env-durable-inbox
+              # already gets and lists inboxmessages and inboxreadacks, and the operator Role already
+              # gets agentsessions. Rollback: remove these two.
+              - '--enable-portal-question-audit=true'
+              - '--portal-question-projects=dev-env'
               # Asks and approvals board (dev-env DESIGN-034, docs/asks.md; Epic #254, activation story #264).
               # Tom, 2026-11-10: "there needs to be a way I can handle approvals for risky access" and
               # "The UI should be my failsafe at missed requests" (OpenProject #264, journal 6225).
