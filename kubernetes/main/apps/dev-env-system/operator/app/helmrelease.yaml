@@ -424,18 +424,19 @@ spec:
               # grace and guarded delete; HOME, PVC and history stay. All current targets act about 10m after this rolls out.
               # No new legacy executors appear (templates pin 2.71.0), so retire this flag once they clear. Off: set it false.
               - '--enable-legacy-terminal-task-reclaim=true'
-              # DESIGN-061 H4 (OP521): task clean-up for six named probes only. Needs the terminal
-              # record and the executor stop above, and leader election (default on, not set here).
-              # --task-cleanup-grace stays 168h and --task-cleanup-min-shared-free stays 2Gi; neither
-              # is set. The first six probes (2026-11-10, haynes-ops#4779) are cleaned. These six are the
-              # second set, for OP535: five trivial purged tasks and dev-env-1110-115642, which holds one
-              # local commit and one untracked file. All six must be cleaned on the first pass.
-              # Every other Session's record parks while this list is set. Stop: set
-              # --enable-task-session-cleanup=false. Pause: set --task-cleanup-max-active=0. Roll back
-              # with these flags, not with an older operator.
+              # DESIGN-061 H5 (OP521): the task clean-up, for every finished or purged task Session.
+              # A purged task goes as soon as its stop is proven; a finished one 168 hours after it
+              # ended. Before a HOME is deleted its unpushed work is saved as a bundle on the shared
+              # volume and verified, kept 30 days. Sessions that are not tasks are never in scope.
+              # Needs the terminal record and the executor stop above, and leader election (default on,
+              # not set here). --task-cleanup-grace stays 168h and --task-cleanup-min-shared-free stays
+              # 2Gi; neither is set. No --task-cleanup-sessions: twelve probes were cleaned under that
+              # allowlist on 2026-11-10 (haynes-ops#4779, #4782) and the last six passed on the first
+              # try. Two run at once. Pause: set --task-cleanup-max-active=0 (running ones finish).
+              # Stop: set --enable-task-session-cleanup=false. Roll back with these flags, not with an
+              # operator older than sha-a1d40ea.
               - '--enable-task-session-cleanup=true'
-              - '--task-cleanup-max-active=1'
-              - '--task-cleanup-sessions=dev-env-1110-115101,dev-env-1110-115115,dev-env-1110-115351,dev-env-1110-115358,dev-env-1110-115634,dev-env-1110-115642'
+              - '--task-cleanup-max-active=2'
               # Off with the canary route (main.go:252). Ordinary project tasks get no retained common rules.
               - '--enable-retained-common-rules=false'
               # Off: main.go:259 refuses canaries together with general private admission. The
