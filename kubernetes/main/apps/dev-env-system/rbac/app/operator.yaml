@@ -115,6 +115,13 @@ rules:
     resources: [configmaps]
     resourceNames: [dev-env-provider-allowances]
     verbs: [get, update]
+  # OP509 (dev-env DESIGN-059): the passive session readings' store, the exact
+  # precreated object only; no create/patch/delete. Unused until the operator
+  # runs with --enable-session-allowances.
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-session-allowances]
+    verbs: [get, update]
   # Exact public inputs for the single approved owned root; no list/watch/write.
   - apiGroups: [""]
     resources: [configmaps]

@@ -1,0 +1,14 @@
+---
+# OP509 (dev-env DESIGN-059 step 9): metadata-only precreation. The operator
+# stores each provider's newest passive allowance reading here (keys claude.json
+# and codex.json: percent used, reset time, the reporting session's name). No
+# account, credential or private config is stored. The operator never creates or
+# deletes it. Preserve operator-owned data through reconciliation and rollback.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-session-allowances
+  namespace: dev-env-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled
