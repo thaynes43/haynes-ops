@@ -186,6 +186,8 @@ spec:
                       path: pages-alertmanager.json
                     - key: session-actions.json
                       path: session-actions.json
+                    - key: asks.json
+                      path: asks.json
               - secret:
                   name: dev-env-v2-portal-allowance-trust
                   items:

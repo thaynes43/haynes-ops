@@ -1,0 +1,54 @@
+---
+# Asks and approvals board (dev-env DESIGN-034 sections 4 and 9, docs/asks.md "Operator RBAC";
+# Epic #254, activation story #264). Asks live in dev-agents only
+# (asks.coordination.dev-env.haynesops.com; CRD crds/app/coordination.dev-env.haynesops.com_asks.yaml).
+# No session, portal or workbench identity gets any Ask right: an agent creates, reads and
+# withdraws its own Ask, and the portal reads and answers, only through the operator's /v1 API.
+#
+# The operator (--enable-asks): create a new Ask; get and list it with uncached reads (no
+# watch); patch its state label (the leader-only expiry sweeper's label repair, an
+# optimistic-lock merge patch that never rewrites the immutable spec); update its status
+# (the set-once answer, withdraw and expiry, each a resourceVersion compare-and-set).
+# No delete, no watch, no spec update: retention (DESIGN-024 F4) is not built.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-operator-asks
+  namespace: dev-agents
+rules:
+  - apiGroups: [coordination.dev-env.haynesops.com]
+    resources: [asks]
+    verbs: [get, list, create, patch]
+  - apiGroups: [coordination.dev-env.haynesops.com]
+    resources: [asks/status]
+    verbs: [update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-operator-asks
+  namespace: dev-agents
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-operator-asks}
+subjects: [{kind: ServiceAccount, name: dev-env-operator, namespace: dev-env-system}]
+---
+# The keeper (--enable-ask-notifications): every 30 seconds a bounded uncached list of the
+# Asks, then a get of the one it would announce. Read only: no watch, no write, no status,
+# no answer. Its push carries no Ask text, only a link to the portal board. Its dedupe and
+# rate ledger is the ConfigMap in ./keeper-ask-notifications.yaml.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-keeper-asks
+  namespace: dev-agents
+rules:
+  - apiGroups: [coordination.dev-env.haynesops.com]
+    resources: [asks]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-keeper-asks
+  namespace: dev-agents
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-keeper-asks}
+subjects: [{kind: ServiceAccount, name: dev-env-keeper, namespace: dev-env-system}]

@@ -432,6 +432,21 @@ spec:
               # Rollback: remove this line. Once any question or reply exists, keep the operator at 2.76 or later and never revert the
               # InboxMessage CRD below v2.76.0 (DESIGN-014).
               - '--enable-inbox-questions=true'
+              # Asks and approvals board (dev-env DESIGN-034, docs/asks.md; Epic #254, activation story #264).
+              # Tom, 2026-11-10: "there needs to be a way I can handle approvals for risky access" and
+              # "The UI should be my failsafe at missed requests" (OpenProject #264, journal 6225).
+              # Serves POST/GET /v1/asks and POST /v1/asks/{id}/withdraw to sessions (their own Asks
+              # only) and GET /v1/portal/asks, GET /v1/portal/asks/{id} and POST
+              # /v1/portal/asks/{id}/answer to the portal reader (--enable-portal-reader, above), and
+              # runs the leader-only expiry sweeper. It requires the API, leader election (default on)
+              # and --session-namespace=dev-agents (above), the Ask CRD (dev-env-crds) and Role
+              # dev-env-operator-asks (rbac/app/asks.yaml), all of which this Kustomization's
+              # dependsOn applies first. Every source commit is in this pin (dev-env 03c8345e #668,
+              # a60b031c #674, 8e30c74a #687). An approval answer is a record only: nothing here
+              # executes, grants or consumes it, and v1 writes no inbox message.
+              # Rollback: remove this line (no route, no sweeper, no Ask I/O); keep the CRD and the
+              # Asks, which stay readable once the flag returns.
+              - '--enable-asks=true'
               - '--project-catalog=dev-env-system/dev-env-project-catalog'
               - '--project-clone-owner=thaynes43'
               - '--coordinator-hosts=[{"serviceAccount":"dev-agents/dev-env-owned-native-fixture","podName":"dev-env-owned-luna-1019-9","hostID":"owned-luna-1019-9"}]'

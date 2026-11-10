@@ -101,6 +101,31 @@ spec:
               # egress. Calendar targets are recorded as skipped (no adapter). Role
               # dev-env-keeper-reminders (rbac/app/reminders.yaml), CRD crds/app/reminders.yaml.
               - --enable-reminders=true
+              # Asks board pushes (dev-env DESIGN-034 section 9, docs/asks.md "Keeper notifications";
+              # Epic #254, activation story #264; source dev-env 8e30c74a #687, which this pin
+              # contains). Every 30 seconds the leader lists the Asks in dev-agents (uncached, Role
+              # dev-env-keeper-asks, get and list only) and sends one push for a requester's pending
+              # open Asks: title and body "An agent needs your answer", priority 0, a link to
+              # https://dev-env-v2.haynesops.com/portal/projects/dev-env/environments/internal/asks?ask=<id>,
+              # and no question, person, token or approval. Caps: one push per requester per five
+              # minutes, six per hour. Same Pushover files and endpoint as the login notices and
+              # reminders above (dev-env-keeper-pushover); no new credential, egress or Secret.
+              # Dedupe, rate and content-free page records go in the precreated ConfigMap
+              # dev-env-keeper-ask-notifications (rbac/app/keeper-ask-notifications.yaml, get and
+              # update by name only), never in dev-env-keeper-notices.
+              # Window: Tom, 2026-11-10, Q-255-02 (OpenProject #264, journal 6225): "7AM to midnight
+              # is fine". Start inclusive, end exclusive, America/New_York with its DST: pushes go
+              # from 07:00 to 23:59; one that comes due outside waits for 07:00, and the Ask stays
+              # open on the board meanwhile. Agents cannot override it. Login notices keep their
+              # own window. A bad value here logs one fixed line and turns off only Ask pushes; the
+              # credential keeper keeps minting.
+              # Rollback: remove these five lines (or set the first false); keep the ConfigMap, whose
+              # dedupe stops a repeat push if they return.
+              - --enable-ask-notifications=true
+              - --ask-notify-portal-origin=https://dev-env-v2.haynesops.com
+              - --ask-notify-window=07:00-00:00
+              - --ask-notify-timezone=America/New_York
+              - --ask-notify-state-configmap=dev-env-keeper-ask-notifications
             # Other flags retain the defaults: plan 01's names (--secret-namespace dev-agents,
             # --gh-token-secret dev-env-gh-token, --github-app-dir
             # /etc/dev-env-keeper/github-dev-bot, the Lease in POD_NAMESPACE, v1's
