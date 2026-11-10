@@ -23,7 +23,7 @@
 FROM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS runtime
 
 # renovate: datasource=github-releases depName=Comfy-Org/ComfyUI
-ARG COMFYUI_VERSION=v0.42.1
+ARG COMFYUI_VERSION=v0.44.0
 # Renovate rewrites EVERY occurrence of the old version inside the block it
 # matched, comments included — so never put a version number in a comment
 # BETWEEN the annotation and its ARG. See scripts/dev-env/Dockerfile.
