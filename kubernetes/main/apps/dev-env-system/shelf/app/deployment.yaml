@@ -47,10 +47,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: shelf
-          # v2.9.1 source b6c0f3c (release dev-env#123; fresh-start fix #124).
-          # publish-agent.yml run 37944933337 signed/verified keyless on refs/tags/v2.9.1,
-          # matching dev-env-templates.
-          image: ghcr.io/thaynes43/dev-env:2.9.1@sha256:a975de7dbc40c6f33048a38a327a2db2b9698a7615f5b2b9897abbb1d04df0cf
+          # v2.99.0 source a1d40ea6 (release #1026). publish-agent.yml run 42791485940 built,
+          # smoke-tested, signed and verified this digest. Same shelf command as before:
+          # args shelf, HOME /home/dev, mount /home/dev/.shared, no probes. The image also
+          # has agentd ctl rescue-verify for the operator to exec. Previous image
+          # 2.9.1@sha256:a975de7dbc40c6f33048a38a327a2db2b9698a7615f5b2b9897abbb1d04df0cf
+          # (120 releases between, v2.10.0 through v2.98.0).
+          image: ghcr.io/thaynes43/dev-env:2.99.0@sha256:f3ba7f1ce570591a95ee1f08bf515a368f34e04549c3e607d3bb65b8a349ab2d
           args: ["shelf"]
           env:
             - name: HOME

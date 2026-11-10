@@ -91,7 +91,7 @@ spec:
               RetentionPending or PreservationUnknown says in that condition's message
               what the operator could not confirm. Nothing is at risk: its HOME volume is
               kept until the stop is proven. Never delete the session, its Pod or its
-              volume by hand. This is a warning: it               pages nobody and shows only in
+              volume by hand. This is a warning: it pages nobody and shows only in
               Alertmanager and Grafana; the dev-env coordinator's daily sweep reads it.
         # DESIGN-061 section 6. Gauges come from each replica's cache, so max, never sum.
         # held and protected stay out: owner holds, canaries and pilots.

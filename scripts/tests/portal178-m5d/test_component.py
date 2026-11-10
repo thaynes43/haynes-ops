@@ -1160,7 +1160,7 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-max-active")],
                          ["--task-cleanup-max-active=1"])
         self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-sessions")],
-                         ["--task-cleanup-sessions=dev-env-1109-234800,haynes-studio-1110-000448,haynes-studio-1110-001254,haynes-studio-1110-001254-2,haynes-studio-1110-001255,PROBE6"])
+                         ["--task-cleanup-sessions=dev-env-1109-234800,haynes-studio-1110-000448,haynes-studio-1110-001254,haynes-studio-1110-001254-2,haynes-studio-1110-001255,dev-env-1110-102659"])
         self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-grace")], [])
         self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-min-shared-free")], [])
         # The measured-usage pilot (2026-10-28): one new key and the signed 2.52.0 agent image,
