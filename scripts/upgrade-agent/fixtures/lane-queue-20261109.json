@@ -1,0 +1,3412 @@
+{
+ "captured": "2026-11-09T23:37Z",
+ "source": "gh pr view of the open Renovate queue for OP513 (read-only); reviewer verdicts from the two read-only opus reviews recorded in OP513 comment 6182",
+ "now": "2026-11-09T23:40:00Z",
+ "prs": [
+  {
+   "facts": {
+    "number": 3915,
+    "head_sha": "2ca786e6e472602b6ec7ecff7b20f07e005cfe1f",
+    "title": "fix(deps): update kubernetes monorepo to v0.37.2",
+    "branch": "renovate/kubernetes-monorepo",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "type/minor",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "scripts/tests/dev-env-archive-guard/go.mod",
+     "scripts/tests/dev-env-archive-guard/go.sum"
+    ],
+    "commits": [
+     {
+      "sha": "2ca786e6e472602b6ec7ecff7b20f07e005cfe1f",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "k8s.io/api",
+      "update": null,
+      "from": "v0.36.3",
+      "to": "v0.37.2"
+     },
+     {
+      "name": "k8s.io/apimachinery",
+      "update": null,
+      "from": "v0.36.3",
+      "to": "v0.37.2"
+     },
+     {
+      "name": "k8s.io/apiserver",
+      "update": null,
+      "from": "v0.36.3",
+      "to": "v0.37.2"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "dev-env archive guard source tests",
+      "name": "Archive Guard Source - Success",
+      "status": "COMPLETED",
+      "conclusion": "FAILURE",
+      "completed_at": "2026-11-05T17:01:23Z"
+     },
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T17:00:30Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T17:00:38Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T17:00:38Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T17:00:37Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T17:00:38Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T17:00:38Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T17:00:38Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T17:00:43Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "2ca786e6e472602b6ec7ecff7b20f07e005cfe1f",
+    "verdict": "HOLD",
+    "reason": "k8s.io 0.36.3 -> 0.37.2 breaks kyverno v1.19.2 compile (mutate.go:346 LazyObject); latest stable and deployed Kyverno is v1.19.2 (k8s 0.36.3); only v1.20.0-rc.x uses k8s 0.37.1; no vendor patch/stub per earlier record"
+   }
+  },
+  {
+   "facts": {
+    "number": 4189,
+    "head_sha": "785c53066c053fdf1c321dfeb431a2ae7c081ab9",
+    "title": "fix(container): update image ghcr.io/actions/actions-runner to v2.338.2",
+    "branch": "renovate/ghcr.io-actions-actions-runner-2.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/patch",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "scripts/actions-runner/Dockerfile"
+    ],
+    "commits": [
+     {
+      "sha": "785c53066c053fdf1c321dfeb431a2ae7c081ab9",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "ghcr.io/actions/actions-runner",
+      "update": "patch",
+      "from": "2.338.1",
+      "to": "2.338.2"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Build and Push Actions Runner Image",
+      "name": "build-and-push",
+      "status": "COMPLETED",
+      "conclusion": "FAILURE",
+      "completed_at": "2026-10-27T05:09:21Z"
+     },
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-27T05:09:09Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-27T05:09:16Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-27T05:09:15Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-27T05:09:18Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-27T05:09:15Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-27T05:09:15Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-27T05:09:15Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-27T05:09:23Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "785c53066c053fdf1c321dfeb431a2ae7c081ab9",
+    "verdict": "NEEDS-EDIT",
+    "reason": "runner 2.338.1 -> 2.338.2 (Docker CLI 29.8.0 matches DinD 29.8.2) needs scripts/actions-runner/VERSION 0.1.1 -> 0.1.2; image never built on PR (guard fails first); replacement agent PR per #4201 precedent; then 0.1.2 pin auto-merges to all "
+   }
+  },
+  {
+   "facts": {
+    "number": 4333,
+    "head_sha": "0d22b1a4bc6ebc984a18d7ecd9e5399a6e585006",
+    "title": "chore(container): update image docker.io/library/python to a0f2e26",
+    "branch": "renovate/docker.io-library-python-3.15-alpine",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "disposition:stranded",
+     "type/digest"
+    ],
+    "files": [
+     "kubernetes/main/apps/dev/openproject-agent/app/openproject-agent-credentials.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "0d22b1a4bc6ebc984a18d7ecd9e5399a6e585006",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "docker.io/library/python",
+      "update": "digest",
+      "from": "d44b125",
+      "to": "a0f2e26"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T15:10:50Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T15:10:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T15:10:57Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T15:10:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T15:13:37Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T15:11:50Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T15:11:41Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T15:10:57Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T15:13:43Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch2",
+    "head": "0d22b1a4bc6ebc984a18d7ecd9e5399a6e585006",
+    "verdict": "MERGE",
+    "reason": "python:3.15-alpine digest d44b125->a0f2e26 = PYTHON_VERSION 3.15.1->3.15.2 plus the 2026-11-05 Alpine security rebuild (official-images#22682); the helper only runs sh/sleep and the consumer runs cat, so it has no Python dependency"
+   }
+  },
+  {
+   "facts": {
+    "number": 4334,
+    "head_sha": "81c84f1b836b4e713e4e6bce534116b4bb674523",
+    "title": "chore(container): update image python to 9aaa474",
+    "branch": "renovate/python-3.14-slim",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "disposition:manual-only",
+     "type/digest"
+    ],
+    "files": [
+     "scripts/book-copy-writer/Dockerfile",
+     "scripts/comfyui/Dockerfile"
+    ],
+    "commits": [
+     {
+      "sha": "81c84f1b836b4e713e4e6bce534116b4bb674523",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "python",
+      "update": "digest",
+      "from": "35caba8",
+      "to": "9aaa474"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-08T04:27:51Z"
+     },
+     {
+      "workflow": "Book Copy Writer",
+      "name": "Book Copy Writer - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-08T04:28:55Z"
+     },
+     {
+      "workflow": "Build and Push ComfyUI Image",
+      "name": "build-and-push-comfyui",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-08T04:34:33Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-08T04:27:59Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-08T04:27:58Z"
+     },
+     {
+      "workflow": "Book Copy Writer",
+      "name": "Publish validated copy writer",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-08T04:28:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-08T04:27:57Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-08T04:27:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-08T04:27:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-08T04:27:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-08T04:28:02Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "81c84f1b836b4e713e4e6bce534116b4bb674523",
+    "verdict": "MERGE",
+    "reason": "python:3.14-slim 3.14.9 -> 3.14.10 (expedited security release); Book Copy Writer and ComfyUI builds green on head; consumers pinned by digest (pipeline_pins.py, comfyui 0.39.0-2@digest); within holds.json5 3.14 window"
+   }
+  },
+  {
+   "facts": {
+    "number": 4335,
+    "head_sha": "707c537cef156af1174bbe87164bc0bcb7580905",
+    "title": "feat(deps): update dev-env image toolchain group",
+    "branch": "renovate/dev-env-image-toolchain",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "type/patch",
+     "type/minor",
+     "renovate/github-release",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "scripts/dev-env/Dockerfile"
+    ],
+    "commits": [
+     {
+      "sha": "707c537cef156af1174bbe87164bc0bcb7580905",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "@anthropic-ai/claude-code",
+      "update": "patch",
+      "from": "2.1.310",
+      "to": "2.1.321"
+     },
+     {
+      "name": "@openai/codex",
+      "update": "minor",
+      "from": "0.164.0",
+      "to": "0.167.0"
+     },
+     {
+      "name": "@playwright/mcp",
+      "update": "patch",
+      "from": "0.0.83",
+      "to": "0.0.85"
+     },
+     {
+      "name": "astral-sh/uv",
+      "update": "patch",
+      "from": "0.13.5",
+      "to": "0.13.7"
+     },
+     {
+      "name": "cli/cli",
+      "update": "patch",
+      "from": "2.103.2",
+      "to": "2.103.3"
+     },
+     {
+      "name": "coder/code-server",
+      "update": "minor",
+      "from": "4.143.1",
+      "to": "4.145.2"
+     },
+     {
+      "name": "fluxcd/flux2",
+      "update": "minor",
+      "from": "2.9.6",
+      "to": "2.10.0"
+     },
+     {
+      "name": "kubernetes/kubernetes",
+      "update": "patch",
+      "from": "v1.37.1",
+      "to": "v1.37.2"
+     },
+     {
+      "name": "mikefarah/yq",
+      "update": "patch",
+      "from": "4.54.1",
+      "to": "4.54.3"
+     },
+     {
+      "name": "opentofu/opentofu",
+      "update": "patch",
+      "from": "1.13.2",
+      "to": "1.13.9"
+     },
+     {
+      "name": "pnpm",
+      "update": "minor",
+      "from": "12.15.0",
+      "to": "12.18.0"
+     },
+     {
+      "name": "siderolabs/omni",
+      "update": "minor",
+      "from": "v1.12.4",
+      "to": "v1.13.3"
+     },
+     {
+      "name": "siderolabs/talos",
+      "update": "patch",
+      "from": "v1.14.4",
+      "to": "v1.14.5"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T22:06:11Z"
+     },
+     {
+      "workflow": "Build and Push Dev Env Image",
+      "name": "build-and-push",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T22:13:18Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T22:06:26Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T22:06:37Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T22:06:33Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T22:06:37Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T22:06:37Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T22:06:37Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T22:06:42Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "707c537cef156af1174bbe87164bc0bcb7580905",
+    "verdict": "MERGE",
+    "reason": "dev-env v1 toolchain patch/minor (flux CLI 2.10.0 matches cluster 2.10.0); build+smoke green on today's head; push re-tags dev-env:0.6.8+latest but all pins are 0.6.8@sha256:6d606d39 and the digest PR is manual-only (#4218 open since 10-23)"
+   }
+  },
+  {
+   "facts": {
+    "number": 4336,
+    "head_sha": "c90af518850c6a187e836ee41c26918429c3ac06",
+    "title": "feat(deps): update upgrade-agent image toolchains group",
+    "branch": "renovate/upgrade-agent-image-toolchains",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "type/patch",
+     "type/minor",
+     "renovate/github-release",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "scripts/upgrade-agent/Dockerfile",
+     "scripts/upgrade-shepherd/Dockerfile"
+    ],
+    "commits": [
+     {
+      "sha": "c90af518850c6a187e836ee41c26918429c3ac06",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "@anthropic-ai/claude-code",
+      "update": "patch",
+      "from": "2.1.310",
+      "to": "2.1.321"
+     },
+     {
+      "name": "cli/cli",
+      "update": "patch",
+      "from": "2.103.2",
+      "to": "2.103.3"
+     },
+     {
+      "name": "fluxcd/flux2",
+      "update": "minor",
+      "from": "2.9.6",
+      "to": "2.10.0"
+     },
+     {
+      "name": "kubernetes/kubernetes",
+      "update": "patch",
+      "from": "v1.37.1",
+      "to": "v1.37.2"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T20:18:42Z"
+     },
+     {
+      "workflow": "Build and Push Upgrade Shepherd Image",
+      "name": "validate",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T20:19:57Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T20:18:50Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T20:18:48Z"
+     },
+     {
+      "workflow": "Build and Push Upgrade Shepherd Image",
+      "name": "build-and-push",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T20:18:42Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T20:18:49Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T20:18:48Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T20:18:48Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T20:18:48Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T20:18:54Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "c90af518850c6a187e836ee41c26918429c3ac06",
+    "verdict": "MERGE",
+    "reason": "shepherd/agent toolchain patch+minor (claude 2.1.321, flux CLI 2.10.0 = cluster); shepherd build+smoke green on head; upgrade-agent Dockerfile has NO PR build; merge leads to UNATTENDED new images on alert-responder/triage/shepherd/health-g"
+   }
+  },
+  {
+   "facts": {
+    "number": 4340,
+    "head_sha": "a26be54269526fc6763b81eef6550822a2262593",
+    "title": "feat(container): update image ghcr.io/linuxserver/calibre to v9.18.0-ls431",
+    "branch": "renovate/ghcr.io-linuxserver-calibre-9.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/patch",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "kubernetes/main/apps/downloads/lazylibrarian/app/epub-convert-cronjob.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "a26be54269526fc6763b81eef6550822a2262593",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "ghcr.io/linuxserver/calibre",
+      "update": "minor",
+      "from": "v9.17.0-ls429",
+      "to": "v9.18.0-ls431"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-06T09:04:54Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T09:05:01Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T09:05:02Z"
+     },
+     {
+      "workflow": "LazyLibrarian EPUB Convert",
+      "name": "LazyLibrarian EPUB Convert - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T09:06:28Z"
+     },
+     {
+      "workflow": "LazyLibrarian Overlays",
+      "name": "LazyLibrarian Overlays - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T09:05:22Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T09:05:00Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T09:06:49Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T09:06:27Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T09:06:06Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-06T09:05:02Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T09:06:53Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch2",
+    "head": "a26be54269526fc6763b81eef6550822a2262593",
+    "verdict": "MERGE",
+    "reason": "calibre v9.17.0-ls429->v9.18.0-ls431; the carve-out evidence is present on the current head: LazyLibrarian EPUB Convert ran inside exact digest 5b5c0cba (census run, 65+30+22 tests OK), Overlays is green, and the registry tag equals the dig"
+   }
+  },
+  {
+   "facts": {
+    "number": 4349,
+    "head_sha": "45ca7275f28cea24b784f4fbed29ebbed06822b9",
+    "title": "feat(github-release): update comfy-org/comfyui to v0.44.0",
+    "branch": "renovate/comfy-org-comfyui-0.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "type/minor",
+     "renovate/github-release",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "scripts/comfyui/Dockerfile"
+    ],
+    "commits": [
+     {
+      "sha": "45ca7275f28cea24b784f4fbed29ebbed06822b9",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "Comfy-Org/ComfyUI",
+      "update": "minor",
+      "from": "v0.42.1",
+      "to": "v0.44.0"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-04T01:29:24Z"
+     },
+     {
+      "workflow": "Build and Push ComfyUI Image",
+      "name": "build-and-push-comfyui",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T01:34:58Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T01:29:31Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T01:29:32Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T01:29:32Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-04T01:29:32Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-04T01:29:32Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-04T01:29:32Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T01:29:36Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "45ca7275f28cea24b784f4fbed29ebbed06822b9",
+    "verdict": "NEEDS-EDIT",
+    "reason": "ComfyUI v0.42.1 -> v0.44.0 builds green, but .github/workflows/comfyui-build.yml IMAGE_TAG stays 0.42.1-1, so merge overwrites tag 0.42.1-1 with 0.44.0 content; needs IMAGE_TAG 0.44.0-1 in the same change (replacement PR); deploy pin still "
+   }
+  },
+  {
+   "facts": {
+    "number": 4372,
+    "head_sha": "8f3e8715458cf571a963738488b9fd149030af85",
+    "title": "chore(deps): update pytest to 9.2.0",
+    "branch": "renovate/pytest-9.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "type/minor",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "scripts/comfyui/Dockerfile"
+    ],
+    "commits": [
+     {
+      "sha": "8f3e8715458cf571a963738488b9fd149030af85",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "pytest",
+      "update": null,
+      "from": "9.1.1",
+      "to": "9.2.0"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-28T02:04:12Z"
+     },
+     {
+      "workflow": "Build and Push ComfyUI Image",
+      "name": "build-and-push-comfyui",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-28T02:10:36Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-28T02:04:22Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-28T02:04:20Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-28T02:04:20Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-28T02:04:20Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-28T02:04:20Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-28T02:04:20Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-28T02:04:25Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "8f3e8715458cf571a963738488b9fd149030af85",
+    "verdict": "MERGE",
+    "reason": "pytest 9.1.1 -> 9.2.0 in comfyui TEST stage only; suite green on head (no scripts/comfyui drift since); push re-publishes mutable comfyui:0.42.1-1 (nothing pins it; cluster on 0.39.0-2@digest)"
+   }
+  },
+  {
+   "facts": {
+    "number": 4376,
+    "head_sha": "9001597e92788d01094011b1abc2bced61f55cda",
+    "title": "feat(container)!: Update image node to v26",
+    "branch": "renovate/major-dev-env-image-toolchain",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/major",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "scripts/dev-env/Dockerfile"
+    ],
+    "commits": [
+     {
+      "sha": "9001597e92788d01094011b1abc2bced61f55cda",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "node",
+      "update": "major",
+      "from": "24-slim",
+      "to": "26-slim"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-29T01:00:49Z"
+     },
+     {
+      "workflow": "Build and Push Dev Env Image",
+      "name": "build-and-push",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-29T01:06:04Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-29T01:00:59Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-29T01:00:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-29T01:00:56Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-29T01:00:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-29T01:00:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-29T01:00:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-29T01:01:00Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "9001597e92788d01094011b1abc2bced61f55cda",
+    "verdict": "HOLD",
+    "reason": "node:24-slim (bookworm) -> node:26-slim (trixie): Node major plus hidden Debian 12->13 (python3 3.11->3.13); check is only --version smoke and predates #4595; v1 image near cutover; owner decision, move the 3 node images together"
+   }
+  },
+  {
+   "facts": {
+    "number": 4377,
+    "head_sha": "4681e8882d75e1c42312d52e562ad7e0c259a3b9",
+    "title": "feat(container)!: Update image node to v26",
+    "branch": "renovate/major-upgrade-agent-image-toolchains",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/major",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "scripts/upgrade-shepherd/Dockerfile"
+    ],
+    "commits": [
+     {
+      "sha": "4681e8882d75e1c42312d52e562ad7e0c259a3b9",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "node",
+      "update": "major",
+      "from": "24-slim",
+      "to": "26-slim"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-29T01:00:55Z"
+     },
+     {
+      "workflow": "Build and Push Upgrade Shepherd Image",
+      "name": "validate",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-29T01:01:54Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-29T01:01:02Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-29T01:01:00Z"
+     },
+     {
+      "workflow": "Build and Push Upgrade Shepherd Image",
+      "name": "build-and-push",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-29T01:00:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-29T01:01:03Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-29T01:01:01Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-29T01:01:01Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-29T01:01:01Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-29T01:01:08Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "4681e8882d75e1c42312d52e562ad7e0c259a3b9",
+    "verdict": "HOLD",
+    "reason": "same node 26 + Debian 13 change on the upgrade automation, and merge auto-rolls it unattended to alert-responder/triage/shepherd via Tier-2 digest auto-merge"
+   }
+  },
+  {
+   "facts": {
+    "number": 4378,
+    "head_sha": "df20583b3f17c6913b2f261d141a9a90d516a495",
+    "title": "feat(github-action)!: Update node to v26.13.0",
+    "branch": "renovate/node-26.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/major",
+     "renovate/github-release",
+     "renovate/github-action",
+     "disposition:manual-only"
+    ],
+    "files": [
+     ".github/workflows/book-reading-list-stage-test.yml",
+     "scripts/blender-authoring/Dockerfile"
+    ],
+    "commits": [
+     {
+      "sha": "df20583b3f17c6913b2f261d141a9a90d516a495",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "node",
+      "update": "major",
+      "from": "24.22.2",
+      "to": "26.13.0"
+     },
+     {
+      "name": "node",
+      "update": "major",
+      "from": "24-slim",
+      "to": "26-slim"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T17:00:46Z"
+     },
+     {
+      "workflow": "Book Reading List Stage Test",
+      "name": "Book Reading List Stage Test - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T17:01:07Z"
+     },
+     {
+      "workflow": "Build and Push Blender Authoring Image",
+      "name": "build-and-push",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T17:04:06Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T17:00:56Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T17:00:56Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T17:00:54Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T17:00:56Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T17:00:56Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T17:00:56Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T17:01:03Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "df20583b3f17c6913b2f261d141a9a90d516a495",
+    "verdict": "HOLD",
+    "reason": "workflow half moves 'Use deployed Node major' to 26.13.0 but deployed Libretto runs Node 22.23.3 (already drifted to 24 via auto-merged #3706); blender half rides the node 26 decision and would restart both Blender MCP instances (unsaved sc"
+   }
+  },
+  {
+   "facts": {
+    "number": 4384,
+    "head_sha": "31e5e9bbef801cd373cf6289dcd8472508b2224f",
+    "title": "chore(container): update image postgres to ff87138",
+    "branch": "renovate/postgres-17",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "renovate/github-action",
+     "disposition:stranded",
+     "type/digest"
+    ],
+    "files": [
+     ".github/workflows/portal-infra-test.yml"
+    ],
+    "commits": [
+     {
+      "sha": "31e5e9bbef801cd373cf6289dcd8472508b2224f",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "postgres",
+      "update": "digest",
+      "from": "b8faeff",
+      "to": "ff87138"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-07T00:27:13Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T00:27:20Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T00:27:22Z"
+     },
+     {
+      "workflow": "Portal infrastructure packet",
+      "name": "Portal infrastructure SQL and HBA",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T00:28:13Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T00:27:20Z"
+     },
+     {
+      "workflow": "Portal infrastructure packet",
+      "name": "Portal unregistered component render",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T00:27:29Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-07T00:27:23Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-07T00:27:23Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-07T00:27:23Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T00:27:29Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "31e5e9bbef801cd373cf6289dcd8472508b2224f",
+    "verdict": "MERGE",
+    "reason": "CI-only postgres:17 rebuild; PG_VERSION 17.11-1.pgdg13+2 identical old/new; new digest = current postgres:17; Portal SQL/HBA job green on head; no image, no consumer"
+   }
+  },
+  {
+   "facts": {
+    "number": 4477,
+    "head_sha": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+    "title": "fix(container): update image docker.io/alpine/kubectl to v1.37.2",
+    "branch": "renovate/docker.io-alpine-kubectl-1.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/patch",
+     "disposition:stranded"
+    ],
+    "files": [
+     "kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml",
+     "kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "docker.io/alpine/kubectl",
+      "update": "patch",
+      "from": "1.37.1",
+      "to": "1.37.2"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-31T03:28:20Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-31T03:28:30Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-31T03:28:27Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-31T03:28:26Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-31T03:30:08Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-31T03:29:21Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-31T03:29:31Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-31T03:28:28Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-31T03:30:13Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch2",
+    "head": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+    "verdict": "MERGE",
+    "reason": "alpine/kubectl 1.37.1->1.37.2 for two CronJobs; k8s v1.37.2 changelog has only Go 1.26.9/1.26.10 rebuilds and server fixes, no kubectl changes; headlamp already runs alpine/kubectl:1.37.2 since #4476 (2026-10-31)"
+   }
+  },
+  {
+   "facts": {
+    "number": 4521,
+    "head_sha": "4092f95c491af64a3eafc440f2b91e71e5a60811",
+    "title": "fix(container): update image docker.io/kometateam/kometa to v2.5.4",
+    "branch": "renovate/docker.io-kometateam-kometa-2.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/patch",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "kubernetes/main/apps/media/kometa/app/helmrelease.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "4092f95c491af64a3eafc440f2b91e71e5a60811",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "docker.io/kometateam/kometa",
+      "update": "patch",
+      "from": "v2.5.3",
+      "to": "v2.5.4"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-02T15:50:11Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T15:50:27Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T15:50:27Z"
+     },
+     {
+      "workflow": "Kometa Runtime and Upgrade Policy",
+      "name": "Kometa Runtime and Upgrade Policy",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T15:50:49Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T15:50:21Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T15:52:57Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T15:51:40Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T15:51:19Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-02T15:50:27Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T15:53:05Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch2",
+    "head": "4092f95c491af64a3eafc440f2b91e71e5a60811",
+    "verdict": "NEEDS-EDIT",
+    "reason": "upstream modules/imdb.py at v2.5.4 has sha256 cec342a1... (approved f7061af3..., the same for v2.5.2 and v2.5.3) and get_rating was rewritten, so serial-run.py will refuse to start operations; the policy check runs only local tests. Separat"
+   }
+  },
+  {
+   "facts": {
+    "number": 4607,
+    "head_sha": "d91793d3e1be1dd719a04b0061a4bbe83d8d1965",
+    "title": "fix(helm): update chart ceph-csi-rbd to 3.18.2",
+    "branch": "renovate/ceph-csi-rbd-3.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "type/patch",
+     "renovate/helm",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "kubernetes/main/apps/storage/ceph-csi/gasha01-rbd/app/helmrelease.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "d91793d3e1be1dd719a04b0061a4bbe83d8d1965",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "ceph-csi-rbd",
+      "update": "patch",
+      "from": "3.18.1",
+      "to": "3.18.2"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-03T04:01:09Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-03T04:01:17Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-03T04:01:15Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-03T04:01:16Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-03T04:02:59Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-03T04:02:11Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-03T04:02:22Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-03T04:01:15Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-03T04:03:04Z"
+     }
+    ],
+    "vet_markers": [
+     {
+      "author": "haynes-ops-bot[bot]",
+      "sha": "d91793d3e1be1dd719a04b0061a4bbe83d8d1965",
+      "verdict": "LEFT"
+     }
+    ]
+   },
+   "review": {
+    "batch": "batch2",
+    "head": "d91793d3e1be1dd719a04b0061a4bbe83d8d1965",
+    "verdict": "MERGE-WITH-PRECONDITION",
+    "reason": "ceph-csi v3.18.2 is a small patch (journal fix, logrotate, snapshot RBAC +watch/update as rendered), but gasha01-rbd backs 494 PVs: 492 dev-env session HOMEs (10 running), the 2Ti Prometheus TSDB and Loki; all use krbd, so a nodeplugin rest"
+   }
+  },
+  {
+   "facts": {
+    "number": 4610,
+    "head_sha": "86f7edfa0dbc5e97ea0ee5b125c44805f8a85fb5",
+    "title": "feat(container)!: Update image nvidia/cuda to v13",
+    "branch": "renovate/nvidia-cuda-13.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/major",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "scripts/wyoming-whisper-gpu/Dockerfile"
+    ],
+    "commits": [
+     {
+      "sha": "86f7edfa0dbc5e97ea0ee5b125c44805f8a85fb5",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "nvidia/cuda",
+      "update": "major",
+      "from": "12.9.2-cudnn-runtime-ubuntu24.04",
+      "to": "13.5.0-cudnn-runtime-ubuntu24.04"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-06T03:31:12Z"
+     },
+     {
+      "workflow": "Build and Push Wyoming Whisper GPU Image",
+      "name": "build-and-push",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T03:33:55Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T03:31:37Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T03:31:43Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T03:31:40Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-06T03:31:43Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-06T03:31:43Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-06T03:31:43Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T03:31:49Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "86f7edfa0dbc5e97ea0ee5b125c44805f8a85fb5",
+    "verdict": "HOLD",
+    "reason": "CUDA 13 base but onnxruntime-gpu pinned <1.27 (CUDA 12; upstream wyoming-faster-whisper 3.8.1 still bounds it) -> silent CPU fallback (#3127); CI provider check does not load CUDA libs; MUTABLE TAG: whisper pins tag 3.8.1-3 with no digest a"
+   }
+  },
+  {
+   "facts": {
+    "number": 4636,
+    "head_sha": "b8c60e7f5cff9f60dc55f1da61540d44779855f3",
+    "title": "chore(container): update image docker.io/moby/buildkit to c5f8862",
+    "branch": "renovate/docker.io-moby-buildkit-buildx-stable-1",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "disposition:manual-only",
+     "type/digest"
+    ],
+    "files": [
+     "scripts/ci-cache/buildkit/Dockerfile"
+    ],
+    "commits": [
+     {
+      "sha": "b8c60e7f5cff9f60dc55f1da61540d44779855f3",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "docker.io/moby/buildkit",
+      "update": "digest",
+      "from": "cec9f13",
+      "to": "c5f8862"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-04T04:12:06Z"
+     },
+     {
+      "workflow": "Book Copy Writer",
+      "name": "Book Copy Writer - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:13:26Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:12:14Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:12:13Z"
+     },
+     {
+      "workflow": "Native Scanner Fixture",
+      "name": "Native scanner source - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:13:24Z"
+     },
+     {
+      "workflow": "Book Copy Writer",
+      "name": "Publish validated copy writer",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-04T04:13:26Z"
+     },
+     {
+      "workflow": "Native Scanner Fixture",
+      "name": "Publish tested generic scanner fixture",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-04T04:13:24Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:12:14Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-04T04:12:13Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-04T04:12:13Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-04T04:12:13Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:12:39Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "b8c60e7f5cff9f60dc55f1da61540d44779855f3",
+    "verdict": "MERGE",
+    "reason": "buildx-stable-1 digest = BuildKit v0.33.1 -> v0.34.2 (security fixes); both cache-verifier profiles (copy-writer, native-scanner) green on head using it; publishes only sha- images pinned elsewhere by digest; scripts/ci-cache/README.md dige"
+   }
+  },
+  {
+   "facts": {
+    "number": 4642,
+    "head_sha": "a267f4be3e9f3c2bc73f8f22df49fd6e97af4865",
+    "title": "feat(container): update image docker.io/library/python to v3.15",
+    "branch": "renovate/docker.io-library-python-3.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/minor",
+     "disposition:stranded"
+    ],
+    "files": [
+     "kubernetes/main/apps/ai/studio-render/app/helmrelease.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "a267f4be3e9f3c2bc73f8f22df49fd6e97af4865",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "docker.io/library/python",
+      "update": "minor",
+      "from": "3.12-slim-bookworm",
+      "to": "3.15-slim-bookworm"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-06T03:38:48Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T03:39:00Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T03:38:54Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T03:38:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T03:40:45Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T03:39:49Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T03:39:43Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-06T03:38:54Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T03:40:50Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch2",
+    "head": "a267f4be3e9f3c2bc73f8f22df49fd6e97af4865",
+    "verdict": "HOLD",
+    "reason": "python 3.12->3.15 (not 3.14->3.15): pinned numpy==2.2.6 and scipy==1.16.3 have no cp315 manylinux x86_64 wheels, so pip falls back to sdist builds the slim image cannot do and the pod crashloops; the start script deletes the working py312 v"
+   }
+  },
+  {
+   "facts": {
+    "number": 4644,
+    "head_sha": "61c0b293da10b969a03c95a93981e1c3a9ec689d",
+    "title": "chore(deps): update opencv-python-headless to 5.0.0.93",
+    "branch": "renovate/opencv-python-headless-5.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "type/major",
+     "disposition:stranded"
+    ],
+    "files": [
+     "kubernetes/main/apps/ai/studio-render/app/requirements.txt"
+    ],
+    "commits": [
+     {
+      "sha": "61c0b293da10b969a03c95a93981e1c3a9ec689d",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "opencv-python-headless",
+      "update": null,
+      "from": "==4.14.0.94",
+      "to": "==5.0.0.93"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-04T04:20:51Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:21:02Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:20:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:20:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:23:05Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:21:40Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:21:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-04T04:20:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-04T04:23:11Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch2",
+    "head": "61c0b293da10b969a03c95a93981e1c3a9ec689d",
+    "verdict": "NEEDS-OWNER",
+    "reason": "OpenCV 5: abi3 wheels exist and numpy>=2 is satisfied, but warp/remap bilinear/bicubic and nearest resize output change, putText draws a different font, and some modules move to contrib; the pins are 'the versions the E0 PoC was rendered wi"
+   }
+  },
+  {
+   "facts": {
+    "number": 4658,
+    "head_sha": "88c893472ce163540dbaaf8e35d75d0aceff19e2",
+    "title": "feat(container): update image ghcr.io/dragonflydb/dragonfly to v2.1.0",
+    "branch": "renovate/ghcr.io-dragonflydb-dragonfly-2.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/minor",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "kubernetes/main/apps/database/dragonfly/cluster/cluster.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "88c893472ce163540dbaaf8e35d75d0aceff19e2",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "ghcr.io/dragonflydb/dragonfly",
+      "update": "minor",
+      "from": "v2.0.2",
+      "to": "v2.1.0"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T03:32:01Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T03:32:09Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T03:32:07Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T03:32:08Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T03:34:29Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T03:32:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T03:33:06Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T03:32:07Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T03:34:34Z"
+     }
+    ],
+    "vet_markers": [
+     {
+      "author": "haynes-ops-bot[bot]",
+      "sha": "88c893472ce163540dbaaf8e35d75d0aceff19e2",
+      "verdict": "LEFT"
+     }
+    ]
+   },
+   "review": {
+    "batch": "batch2",
+    "head": "88c893472ce163540dbaaf8e35d75d0aceff19e2",
+    "verdict": "NEEDS-OWNER",
+    "reason": "the v2.1 notes are published under tag 'v2.1' (2026-11-04), which is why 'v2.1.0' was not found; starting with v2.1 Dragonfly moves from BSL 1.1 to the new DSAL licence (free production use up to 100 vCPU; vendor may run usage-monitoring to"
+   }
+  },
+  {
+   "facts": {
+    "number": 4660,
+    "head_sha": "b8a28d76b2abc0802d5e5b01d1fd046b5fd3a37b",
+    "title": "feat(container)!: Update image ghcr.io/prometheus-community/charts/prometheus-operator-crds to v33",
+    "branch": "renovate/ghcr.io-prometheus-community-charts-prometheus-operator-crds-33.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/major",
+     "disposition:stranded"
+    ],
+    "files": [
+     "kubernetes/main/apps/observability/prometheus-operator-crds/app/ocirepository.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "b8a28d76b2abc0802d5e5b01d1fd046b5fd3a37b",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "ghcr.io/prometheus-community/charts/prometheus-operator-crds",
+      "update": "major",
+      "from": "32.0.2",
+      "to": "33.0.1"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T19:43:48Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T19:43:56Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T19:43:54Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T19:43:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T19:45:53Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T19:44:56Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T19:44:57Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T19:43:54Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T19:46:04Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch2",
+    "head": "b8a28d76b2abc0802d5e5b01d1fd046b5fd3a37b",
+    "verdict": "MERGE-WITH-PRECONDITION",
+    "reason": "CRDs for operator v0.95.1: additive fields plus tighter validation; no AlertmanagerConfig CRs exist; flux-local does not render CRD bodies (helmrelease diff empty), so the PR shows only the tag; the v0.94.2 operator tolerates the new CRDs"
+   }
+  },
+  {
+   "facts": {
+    "number": 4662,
+    "head_sha": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+    "title": "chore(deps): update sentencepiece to 0.2.3",
+    "branch": "renovate/sentencepiece-0.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "type/patch",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "scripts/audio-authoring/requirements.txt"
+    ],
+    "commits": [
+     {
+      "sha": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "sentencepiece",
+      "update": null,
+      "from": "==0.2.2",
+      "to": "==0.2.3"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T05:44:51Z"
+     },
+     {
+      "workflow": "Build and Push Audio Authoring Image",
+      "name": "build-and-push",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T05:46:52Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T05:44:59Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T05:45:43Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T05:45:16Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T05:45:44Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T05:45:44Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-05T05:45:44Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-05T05:45:48Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+    "verdict": "MERGE",
+    "reason": "sentencepiece 0.2.3 has cp314 x86_64 wheel; image build + model-less smoke green on head (tokenization not exercised); merge leads to UNATTENDED audio MCP rollout via auto-merged audio-authoring:0.2.0 digest PR (precedent #3556)"
+   }
+  },
+  {
+   "facts": {
+    "number": 4670,
+    "head_sha": "5917aa1d48550bd7c7a7f4c71c6b612a09f2638b",
+    "title": "chore(container): update image docker.io/library/eclipse-mosquitto to 75d6662",
+    "branch": "renovate/docker.io-library-eclipse-mosquitto-2.1.2-alpine",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "disposition:stranded",
+     "type/digest"
+    ],
+    "files": [
+     "kubernetes/main/apps/database/mosquitto/app/helmrelease.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "5917aa1d48550bd7c7a7f4c71c6b612a09f2638b",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "docker.io/library/eclipse-mosquitto",
+      "update": "digest",
+      "from": "860aeb5",
+      "to": "75d6662"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-06T22:55:50Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T22:55:57Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T22:55:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T22:55:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T22:58:13Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T22:56:56Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T22:57:01Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-06T22:55:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-06T22:58:17Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch2",
+    "head": "5917aa1d48550bd7c7a7f4c71c6b612a09f2638b",
+    "verdict": "MERGE-WITH-PRECONDITION",
+    "reason": "mosquitto 2.1.2-alpine digest rebuild: the same VERSION and source tarball sha in both images, rebuilt 2026-11-05 after the Alpine security bump; but any change restarts mosquitto-0 and costs Home Assistant about 3 minutes of pegged loop"
+   }
+  },
+  {
+   "facts": {
+    "number": 4693,
+    "head_sha": "dcc5c39fd678ad9fbda59874461f9280419bbf05",
+    "title": "fix(container): update image ghcr.io/haraldkoch/rsync to v3.5.2",
+    "branch": "renovate/ghcr.io-haraldkoch-rsync-3.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/patch",
+     "disposition:stranded"
+    ],
+    "files": [
+     "kubernetes/main/apps/storage/storage-util/rsync-music/app/helmrelease.yaml",
+     "kubernetes/main/apps/storage/storage-util/rsync-photos/app/helmrelease.yaml",
+     "kubernetes/main/apps/storage/storage-util/rsync-scans/app/helmrelease.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "dcc5c39fd678ad9fbda59874461f9280419bbf05",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "ghcr.io/haraldkoch/rsync",
+      "update": "patch",
+      "from": "3.5.0",
+      "to": "3.5.2"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-07T18:14:47Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T18:14:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T18:14:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T18:14:54Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T18:16:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T18:15:52Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T18:16:00Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-07T18:14:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-07T18:16:59Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch2",
+    "head": "dcc5c39fd678ad9fbda59874461f9280419bbf05",
+    "verdict": "MERGE",
+    "reason": "rsync 3.5.0->3.5.2 for rsync-music, rsync-photos and rsync-scans (three CronJobs, not one); NEWS 3.5.1/3.5.2 are bug fixes (3.5.0 path regressions, CVE-2026-119741), protocol 33 and a cosmetic -h output change; nothing touches local -avh --"
+   }
+  },
+  {
+   "facts": {
+    "number": 4708,
+    "head_sha": "a8c1f325701becb75b78745e0ecedc609d8467b9",
+    "title": "chore(deps): update mkdocs-material to 9.8.1",
+    "branch": "renovate/mkdocs-material-9.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "type/patch",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "docs/requirements.txt"
+    ],
+    "commits": [
+     {
+      "sha": "a8c1f325701becb75b78745e0ecedc609d8467b9",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "mkdocs-material",
+      "update": null,
+      "from": "==9.8.0",
+      "to": "==9.8.1"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-08T04:27:56Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-08T04:28:04Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-08T04:28:04Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-08T04:28:02Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (${{ matrix.cluster }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-08T04:28:04Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-08T04:28:04Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-08T04:28:04Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-08T04:28:10Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch1",
+    "head": "a8c1f325701becb75b78745e0ecedc609d8467b9",
+    "verdict": "MERGE",
+    "reason": "mkdocs-material 9.8.1 = Docker base/Node build-dep fixes only; NO PR check exercises docs; publishmkdocs runs on every main push; failure only breaks docs deploy"
+   }
+  },
+  {
+   "facts": {
+    "number": 4710,
+    "head_sha": "99d299ddeb934f05bc82fd5eda05068ec5fe4ac5",
+    "title": "feat(container)!: Update image ghcr.io/prometheus-community/charts/kube-prometheus-stack to v93",
+    "branch": "renovate/ghcr.io-prometheus-community-charts-kube-prometheus-stack-93.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/major",
+     "disposition:stranded"
+    ],
+    "files": [
+     "kubernetes/main/apps/observability/kube-prometheus-stack/app/ocirepository.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "99d299ddeb934f05bc82fd5eda05068ec5fe4ac5",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "ghcr.io/prometheus-community/charts/kube-prometheus-stack",
+      "update": "major",
+      "from": "92.22.0",
+      "to": "93.1.1"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T14:47:44Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T14:47:55Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T14:47:52Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T14:47:51Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T14:50:20Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T14:49:02Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T14:48:49Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T14:47:52Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T14:50:25Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": {
+    "batch": "batch2",
+    "head": "99d299ddeb934f05bc82fd5eda05068ec5fe4ac5",
+    "verdict": "MERGE-WITH-PRECONDITION",
+    "reason": "kps 93 = operator v0.95.1; the rendered diff is only the operator image/reloader and ClusterRole (+alertmanagerconfigs/status, -pods delete), matching UPGRADE.md; the #4280 gate (finalizer patch, admission-Secret delete, certgen TLS convers"
+   }
+  },
+  {
+   "facts": {
+    "number": 3710,
+    "head_sha": "0000000000000000000000000000000000000000",
+    "title": "feat(container): update image ghcr.io/thaynes43/dev-env to v2.96.0",
+    "branch": "renovate/ghcr.io-thaynes43-dev-env-2.x",
+    "author": "app/renovate",
+    "is_draft": false,
+    "labels": [
+     "renovate/container",
+     "type/minor",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "kubernetes/main/apps/dev-env-system/h7-metadata-audit/app/job.yaml",
+     "kubernetes/main/apps/dev-env-system/keeper/app/helmrelease.yaml",
+     "kubernetes/main/apps/dev-env-system/shelf/app/deployment.yaml",
+     "kubernetes/main/apps/dev-env-system/templates/app/templates.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "commit-0",
+      "authors": [
+       "renovate[bot]"
+      ],
+      "note": "commit list not captured; single Renovate commit assumed"
+     }
+    ],
+    "packages": [
+     {
+      "name": "ghcr.io/thaynes43/dev-env",
+      "update": "minor",
+      "from": "2.95.0",
+      "to": "2.96.0"
+     },
+     {
+      "name": "ghcr.io/thaynes43/dev-env",
+      "update": "minor",
+      "from": "2.9.1",
+      "to": "2.96.0"
+     },
+     {
+      "name": "ghcr.io/thaynes43/dev-env",
+      "update": "minor",
+      "from": "2.15.1",
+      "to": "2.96.0"
+     },
+     {
+      "name": "ghcr.io/thaynes43/dev-env",
+      "update": "minor",
+      "from": "2.39.1",
+      "to": "2.96.0"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "dev-env H7 metadata reader tests",
+      "name": "H7 Metadata Reader Fixtures",
+      "status": "COMPLETED",
+      "conclusion": "FAILURE",
+      "completed_at": "2026-11-09T22:33:26Z"
+     },
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T22:33:19Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T22:33:28Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T22:33:26Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T22:33:29Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T22:35:09Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T22:34:22Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T22:34:21Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-09T22:33:26Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-09T22:35:15Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": null
+  },
+  {
+   "facts": {
+    "number": 4065,
+    "head_sha": "0000000000000000000000000000000000000000",
+    "title": "chore(deps): update starlette to 1.10.0",
+    "branch": "renovate/starlette-1.x",
+    "author": "app/renovate",
+    "is_draft": true,
+    "labels": [
+     "type/minor",
+     "disposition:manual-only"
+    ],
+    "files": [
+     "kubernetes/main/apps/dev/dev-env/app/resources/cursor-mcp-requirements.txt"
+    ],
+    "commits": [
+     {
+      "sha": "commit-0",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "starlette",
+      "update": null,
+      "from": "==1.9.0",
+      "to": "==1.10.0"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-26T17:13:49Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-26T17:13:58Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-26T17:13:56Z"
+     },
+     {
+      "workflow": "dev-env Cursor offline tests",
+      "name": "Cursor Offline Fixtures",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-26T17:14:06Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-26T17:13:57Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-26T17:16:14Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-26T17:14:47Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-26T17:14:59Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-10-26T17:13:57Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-10-26T17:16:20Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": null
+  },
+  {
+   "facts": {
+    "number": 4218,
+    "head_sha": "0000000000000000000000000000000000000000",
+    "title": "chore(container): update image ghcr.io/thaynes43/dev-env to 9269651",
+    "branch": "renovate/ghcr.io-thaynes43-dev-env-0.6.8",
+    "author": "app/renovate",
+    "is_draft": true,
+    "labels": [
+     "renovate/container",
+     "disposition:manual-only",
+     "type/digest"
+    ],
+    "files": [
+     "kubernetes/main/apps/dev/dev-env/app/helmrelease.yaml",
+     "kubernetes/main/apps/upgrade-agent/dev-env-ops/app/helmrelease.yaml"
+    ],
+    "commits": [
+     {
+      "sha": "commit-0",
+      "authors": [
+       "renovate[bot]"
+      ]
+     }
+    ],
+    "packages": [
+     {
+      "name": "ghcr.io/thaynes43/dev-env",
+      "update": "digest",
+      "from": "6d606d3",
+      "to": "9269651"
+     }
+    ],
+    "checks": [
+     {
+      "workflow": "Claude Code Review",
+      "name": "Claude Review (advisory)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-02T22:22:23Z"
+     },
+     {
+      "workflow": "Diff Scope",
+      "name": "Diff Scope - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T22:22:34Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Filter",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T22:22:32Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - external-dns annotation prefix",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T22:22:33Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Test (main)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T22:24:57Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/helmrelease)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T22:23:17Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Diff (main/kustomization)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T22:23:44Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Portal OIDC guard",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED",
+      "completed_at": "2026-11-02T22:22:32Z"
+     },
+     {
+      "workflow": "Flux Local",
+      "name": "Flux Local - Success",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS",
+      "completed_at": "2026-11-02T22:25:34Z"
+     }
+    ],
+    "vet_markers": []
+   },
+   "review": null
+  }
+ ]
+}
