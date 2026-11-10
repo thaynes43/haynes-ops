@@ -22,7 +22,9 @@
 # After it is live, from inside the home network:
 # 1. The pod is Ready.
 # 2. POST https://dev-env-frontdoor.haynesops.com/mcp with no bearer returns 401.
-# 3. tools/list with the bearer lists ten tools.
+# 3. tools/list with the bearer lists eleven tools. standing_authority
+#    returns the text of ConfigMap dev-env-frontdoor-authority, or one fixed
+#    sentence while that ConfigMap does not exist.
 #
 # The operator that reads CallerPolicy must already be image sha-a1d40ea or a
 # later commit. Flux Ready on dev-env-operator does not prove that. Check the
@@ -79,10 +81,11 @@ spec:
           type: RuntimeDefault
       containers:
         - name: frontdoor
-          # dev-env 8b23ee1 (PR #1038). Publish run 42796657729, job Publish
-          # (frontdoor), step Verify the signature: this digest, keyless, by
-          # publish.yml on main.
-          image: ghcr.io/thaynes43/dev-env-frontdoor:sha-8b23ee1@sha256:2a3fd74996926349cd8ca32a60620148474b0bbb2c598719365c04f025993701
+          # dev-env 362ad2d (PR #1051: tool annotations, initialize
+          # instructions, the standing_authority tool). Publish run
+          # 42862967533, job Publish (frontdoor), step Verify the signature:
+          # this digest, keyless, by publish.yml on main.
+          image: ghcr.io/thaynes43/dev-env-frontdoor:sha-362ad2d@sha256:25d589192c657b5744e52ffb32943d4f878a1c26c6f9061e0fc7319df29146e2
           imagePullPolicy: IfNotPresent
           args:
             - --listen=:8080
@@ -92,6 +95,10 @@ spec:
             - --api-url=https://dev-env-operator.dev-env-system.svc.cluster.local:8443
             - --ca-file=/etc/dev-env-frontdoor/ca/operator-ca.crt
             - --project=haynes-engineering
+            # The standing_authority tool returns this file's text. A missing
+            # or empty file returns a fixed sentence and does not stop the
+            # process.
+            - --authority-file=/etc/dev-env-frontdoor/authority/authority.txt
           ports:
             - name: http
               containerPort: 8080
@@ -150,6 +157,11 @@ spec:
             - name: operator-ca
               mountPath: /etc/dev-env-frontdoor/ca
               readOnly: true
+            # The whole directory, not a subPath: a subPath mount never sees
+            # a later change to the ConfigMap.
+            - name: authority
+              mountPath: /etc/dev-env-frontdoor/authority
+              readOnly: true
             # os.MkdirTemp("", "frontdoor-") in internal/frontdoor/tools.go
             # writes the groom field files under os.TempDir(), which is /tmp.
             # The process removes that directory when the call returns.
@@ -201,6 +213,18 @@ spec:
             items:
               - key: ca.crt
                 path: operator-ca.crt
+        # Tom's standing instruction for this caller. The ConfigMap is added
+        # by its own pull request, which Tom approves; this file only mounts
+        # it. optional: the pod starts while the ConfigMap is absent, and the
+        # tool then says no authority is installed.
+        - name: authority
+          configMap:
+            name: dev-env-frontdoor-authority
+            optional: true
+            defaultMode: 0444
+            items:
+              - key: authority.txt
+                path: authority.txt
         - name: tmp
           emptyDir:
             medium: Memory
