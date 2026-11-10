@@ -1,11 +1,12 @@
 ---
 # The operator, dev-env-system/dev-env-operator (DESIGN-001 6.11, the operator row; D-44,
 # D-45, D-46). Namespaced Roles only, plus TokenReview and, for DESIGN-025 H2 (at the
-# end), `get` on Nodes and on Leases in kube-node-lease, and, for OP252 (last), `get` on
-# one named PersistentVolume: no cluster-wide pod or PVC rights, no other PV rights, no
-# Secrets, no bind. The manager's cache is scoped to dev-agents and the one
-# templates ConfigMap (internal/controller/reconciler.go, CacheOptions), so namespaced
-# Roles cover every list and watch it makes.
+# end), `get` and `list` on Nodes and `get` on Leases in kube-node-lease, for OP252 a
+# `get` on one named PersistentVolume, and for DESIGN-061 section 1.1 (OpenProject
+# #521) a cluster-wide `get` on PersistentVolumes with no resourceNames: no cluster-wide
+# pod or PVC rights, no Secrets, no bind. The manager's cache is scoped to dev-agents
+# and the one templates ConfigMap (internal/controller/reconciler.go, CacheOptions), so
+# namespaced Roles cover every list and watch it makes.
 #
 # Not the v1 ClusterRole `dev-env-operator`: that name is v1's OPERATOR tier for agents
 # (6.11, "Naming note"). These are Roles named dev-env-operator in their own namespaces.
@@ -212,14 +213,19 @@ subjects:
 # DESIGN-025 H2 (thaynes43/dev-env #236, 3.2 and 3.5): before the operator records a
 # private executor's terminal state, it reads that Pod's Node (exists, not deleting,
 # Ready) and the Node's Lease in kube-node-lease (held and owned by that Node, renewed in
-# the last 40 seconds), so a live kubelet wrote the terminal status. Both are uncached
-# `get`s by name (internal/controller/workspace_stop.go, executorNodeLive). No list, no
-# watch, no write. Without these the check fails closed: nothing is recorded, and nothing
+# the last 40 seconds), so a live kubelet wrote the terminal status. Those DESIGN-025
+# reads are uncached `get`s by name (internal/controller/workspace_stop.go,
+# executorNodeLive). No watch and no write. Without these the check fails closed:
+# nothing is recorded, and nothing
 # ever expires. The same reads also unblock two older paths that have always refused in
 # production for lack of them: the shared-workspace stop check
 # (workspace_lifecycle.go, verifyWorkspaceStop) and the task-budget evidence check for
 # failure and worker-stop events (taskbudget.go). Both apply only to Sessions with
 # spec.workspace; none existed when this was granted (2026-10-12).
+# DESIGN-061 section 1.1 (OpenProject #521): the clean-up's volume-release check lists
+# every Node, then gets each Node. `list` is added on the same rule. Still no watch
+# and no write. Each Node's lease stays a `get` by name on
+# dev-env-operator-node-lease-read, which already has no resourceNames.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -227,7 +233,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: [nodes]
-    verbs: [get]
+    verbs: [get, list]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -290,6 +296,32 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: dev-env-operator-original-home-pv-read
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
+---
+# DESIGN-061 section 1.1 (OpenProject #521): the clean-up's volume-release check gets
+# the HOME PersistentVolume by the claim's volume name (bound claim UID and the CSI
+# volume handle). Cluster-wide get, no resourceNames, no list, no watch, no write.
+# The named get in dev-env-operator-original-home-pv-read stays for OP252.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-operator-volume-release-pv-read
+rules:
+  - apiGroups: [""]
+    resources: [persistentvolumes]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-operator-volume-release-pv-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-operator-volume-release-pv-read
 subjects:
   - kind: ServiceAccount
     name: dev-env-operator

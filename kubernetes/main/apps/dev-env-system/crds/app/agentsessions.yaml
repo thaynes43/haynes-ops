@@ -4,10 +4,15 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main at the merge of PR #1019 (OP515), verified byte for byte by the coordinator:
-# b179e354bcfa3ec688e30097fda18bc283d37c15. Makes status.privateHistory.executorTerminal.containers[].finishedAt
+# Source: dev-env main 83428207d7662a079ddcdcfe3a3484442040d115 (merge of PR #1036),
+# verified byte for byte (SHA-256 d7a9a6f3ff8dfeae0f749f974dba289a8bbea390688e61eb50f832d5c1c8db3d
+# below this header). Adds status.privateHistory.expiry.bundle and its rules (the clean-up's
+# kept-work record, DESIGN-061; dev-env 376cd9bd21e8, PR #1022, OpenProject #519) and
+# spec.limits.maxWorkers (a bounded coordinator's worker cap; dev-env 2958e1a06384, PR #1027,
+# OpenProject #526). Makes status.privateHistory.executorTerminal.containers[].finishedAt
 # optional, allowed absent only when reason is ContainerStatusUnknown (CEL). Once a record of that shape
 # exists, do not roll this file back: an older schema could refuse later status writes of that Session.
+# Once a bundle record exists, do not roll this file back either.
 #
 # Keep it in step with the operator: copy a changed file here before (or with) the pin
 # that writes its new fields.
@@ -263,6 +268,14 @@ spec:
                     description: MaxTurns caps the agent's turns. 0 means no cap.
                     format: int32
                     minimum: 0
+                    type: integer
+                  maxWorkers:
+                    description: |-
+                      MaxWorkers caps unfinished direct children across agent kinds for a
+                      CallerPolicy-created coordinator. Absence keeps the existing child rules.
+                    format: int32
+                    maximum: 4
+                    minimum: 1
                     type: integer
                   timeout:
                     description: Timeout is the wall-clock limit, for example 3h.
@@ -2255,9 +2268,9 @@ spec:
                       Expiry is the HOME expiry record (DESIGN-025 5.1). It exists only while
                       the Session is eligible and triggered: Reaping, or Suspended past its
                       archive deadline, with a terminal record. It rests on executorTerminal
-                      and names the bound HOME. Its phase moves only forward, its archive
-                      never changes once set, and it can be removed (a cancel) only before
-                      Deleting.
+                      and names the bound HOME. Its phase moves only forward, its archive or
+                      a task Session's bundle (DESIGN-061) never changes once set, and it can
+                      be removed (a cancel) only before Deleting.
                     properties:
                       archive:
                         description: Archive is the verified history archive entry.
@@ -2299,6 +2312,77 @@ spec:
                         - files
                         - gitFiles
                         type: object
+                      bundle:
+                        description: |-
+                          Bundle is what a task Session's clean-up keeps in place of an archive
+                          (ADR-020, DESIGN-061 section 3): the rescue's verdict and, for a
+                          Verified one, its manifest as the shelf re-hashed it. It is set once,
+                          at Archived, and never changes. A record holds an archive or a bundle,
+                          never both.
+                        properties:
+                          bundles:
+                            description: Bundles is how many bundle files the manifest
+                              names.
+                            format: int32
+                            minimum: 0
+                            type: integer
+                          bytes:
+                            description: Bytes is the bundles' total size.
+                            format: int64
+                            minimum: 0
+                            type: integer
+                          manifest:
+                            description: |-
+                              Manifest is the rescue's manifest on the shared volume, for example
+                              rescue/dev-env-1110-021204/20261110-0213/manifest.json. Only a
+                              Verified bundle has one.
+                            maxLength: 160
+                            pattern: ^rescue/[a-z0-9]([-a-z0-9]*[a-z0-9])?/[0-9]{8}-[0-9]{4}(-[0-9]+)?/manifest\.json$
+                            type: string
+                          manifestSHA256:
+                            description: |-
+                              ManifestSHA256 is the SHA-256 of the manifest's bytes, as the shelf
+                              read them when it re-hashed every bundle the manifest names.
+                            maxLength: 64
+                            pattern: ^[0-9a-f]{64}$
+                            type: string
+                          result:
+                            description: Result is the rescue's verdict.
+                            enum:
+                            - Verified
+                            - CleanAndPushed
+                            maxLength: 16
+                            type: string
+                          stamp:
+                            description: |-
+                              Stamp is the rescue's stamp (status.rescue.stamp), equal to the
+                              record's rescueStamp.
+                            maxLength: 64
+                            minLength: 1
+                            type: string
+                          verifiedAt:
+                            description: |-
+                              VerifiedAt is when the operator accepted the verdict: for Verified,
+                              the shelf's re-hash.
+                            format: date-time
+                            type: string
+                        required:
+                        - bundles
+                        - bytes
+                        - result
+                        - stamp
+                        - verifiedAt
+                        type: object
+                        x-kubernetes-validations:
+                        - message: a Verified bundle names its manifest, digest and
+                            bundles; a CleanAndPushed one names none
+                          rule: 'self.result == ''Verified'' ? (has(self.manifest)
+                            && has(self.manifestSHA256) && self.bundles > 0) : (!has(self.manifest)
+                            && !has(self.manifestSHA256) && self.bundles == 0 && self.bytes
+                            == 0)'
+                        - message: a bundle's manifest lies in its rescue's directory
+                          rule: '!has(self.manifest) || self.manifest.contains(''/''
+                            + self.stamp)'
                       deletingAt:
                         format: date-time
                         type: string
@@ -2404,9 +2488,26 @@ spec:
                     - message: a HOME expiry record past Rescuing names its rescue
                       rule: '!(self.phase in [''Exporting'', ''Archived'', ''Deleting'',
                         ''Expired'']) || size(self.rescueStamp) > 0'
-                    - message: an Archived HOME expiry record holds its archive
+                    - message: an Archived HOME expiry record holds its archive or
+                        its bundle
                       rule: '!(self.phase in [''Archived'', ''Deleting'', ''Expired''])
-                        || has(self.archive)'
+                        || has(self.archive) || has(self.bundle)'
+                    - message: a HOME expiry record holds an archive or a bundle,
+                        never both
+                      rule: '!(has(self.archive) && has(self.bundle))'
+                    - message: a HOME expiry record's bundle never changes once set
+                      rule: '!has(oldSelf.bundle) || (has(self.bundle) && self.bundle
+                        == oldSelf.bundle)'
+                    - message: a HOME expiry record holds a bundle only from Archived
+                        on
+                      rule: '!has(self.bundle) || self.phase in [''Archived'', ''Deleting'',
+                        ''Expired'']'
+                    - message: a HOME expiry record that exported history keeps to
+                        its archive, never a bundle
+                      rule: '!has(self.bundle) || oldSelf.phase != ''Exporting'''
+                    - message: a HOME expiry record's bundle is the rescue it names
+                      rule: '!has(self.bundle) || (has(self.rescueStamp) && self.bundle.stamp
+                        == self.rescueStamp)'
                     - message: a Deleting HOME expiry record has deletingAt
                       rule: '!(self.phase in [''Deleting'', ''Expired'']) || has(self.deletingAt)'
                     - message: an Expired HOME expiry record has homeDeletedAt
