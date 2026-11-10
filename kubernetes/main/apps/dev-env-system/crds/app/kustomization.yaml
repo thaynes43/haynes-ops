@@ -19,6 +19,9 @@ resources:
   - ./inbox-operator.yaml
   - ./coordination.dev-env.haynesops.com_sessiondirectories.yaml
   - ./sessiondirectories-operator.yaml
+  # Asks (DESIGN-034, Epic #254, activation #264): schema only here. Its Roles are in
+  # dev-env-rbac (rbac/app/asks.yaml), where pruning is on, so removing them is a clean rollback.
+  - ./coordination.dev-env.haynesops.com_asks.yaml
 patches:
   # A CRD is never pruned (DESIGN-001 D-03): deleting it deletes every session.
   - target:

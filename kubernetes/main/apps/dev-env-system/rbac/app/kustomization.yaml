@@ -23,6 +23,10 @@ resources:
   - ./keeper-claude-auth.yaml
   - ./keeper-notices.yaml
   - ./reminders.yaml
+  # Asks (DESIGN-034, Epic #254, activation #264): operator writes, keeper reads, and the
+  # keeper's precreated ledger ConfigMap with its by-name Role.
+  - ./asks.yaml
+  - ./keeper-ask-notifications.yaml
   - ./broker.yaml
   - ./broker-credentials.yaml
   - ./broker-guard.yaml

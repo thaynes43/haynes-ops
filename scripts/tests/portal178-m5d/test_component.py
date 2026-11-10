@@ -39,7 +39,7 @@ PRODUCTION_FILES = {
        for key in ("origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
                    "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
                    "absolute-ttl", "fresh-for", "clock-skew", "pages-alertmanager.json",
-                   "session-actions.json")},
+                   "session-actions.json", "asks.json")},
     "config/provider-allowances.json": ("Secret", "dev-env-v2-portal-allowance-trust", "provider-allowances.json"),
     "secrets/OIDC_CLIENT_ID": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_ID"),
     "secrets/OIDC_CLIENT_SECRET": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_SECRET"),
@@ -65,6 +65,7 @@ PRODUCTION_CONFIG_FILES = {
     "origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
     "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
     "absolute-ttl", "fresh-for", "clock-skew", "pages-alertmanager.json", "session-actions.json",
+    "asks.json",
 }
 PAGES_CONFIG = '{"source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts"}'
 # 2026-10-29 (OpenProject #244, Tom): send and history for the group that admits portal login,
@@ -78,6 +79,9 @@ PILOT_TARGET_FLAGS = [
 ACTIONS_CONFIG = json.dumps(
     {"send": {"targets": [PILOT_TARGET]}, "history": {"targets": [PILOT_TARGET]}},
     separators=(",", ":"))
+# Asks board (DESIGN-034, Epic #254, activation OpenProject #264): the portal accepts exactly
+# {"enabled": bool} (dev-env web/portal/session/asks.go, optionalAsksSource).
+ASKS_CONFIG = '{"enabled":true}'
 ADMISSION_CONFIG_FILES = {"admission-api-url", "admission-uid", "admission-token-file"}
 # The witness's API rate limits, in the reviewed packet and no longer registered.
 WITNESS_CONFIG_FILES = {"witness-gets-per-second", "witness-get-burst"}
@@ -1768,6 +1772,7 @@ class RegisteredInputsTest(unittest.TestCase):
         expected = {k: v for k, v in packet["data"].items() if k not in dropped}
         expected["pages-alertmanager.json"] = PAGES_CONFIG
         expected["session-actions.json"] = ACTIONS_CONFIG
+        expected["asks.json"] = ASKS_CONFIG
         self.assertEqual(config["data"], expected)
         self.assertEqual(set(config["data"]), PRODUCTION_CONFIG_FILES)
         self.assertTrue(dropped.isdisjoint(config["data"]))
@@ -2040,6 +2045,9 @@ class RegisteredInputsTest(unittest.TestCase):
                     PORTAL_ROUTE.resolve(), PORTAL_DEPLOYMENT.resolve(), (PORTAL_INPUTS / "config.yaml").resolve(),
                     (PORTAL_INPUTS / "certificates.yaml").resolve(),
                     (ROOT / "kubernetes/main/apps/network/authentik/app/blueprints/97-dev-env-v2-portal-oidc.yaml").resolve(),
+                    # The keeper's Ask push (--ask-notify-portal-origin, OpenProject #264) links to the
+                    # board on this origin; a link in a push, not a route, tunnel or public name.
+                    (ROOT / "kubernetes/main/apps/dev-env-system/keeper/app/helmrelease.yaml").resolve(),
                 }, str(path))
             if "cloudflare-tunnel" in str(path):
                 self.assertNotIn("dev-env-v2", text, str(path))

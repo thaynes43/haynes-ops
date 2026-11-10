@@ -1,0 +1,45 @@
+---
+# The keeper's Ask notification ledger (dev-env DESIGN-034 section 9, docs/asks.md "Keeper
+# notifications"; Epic #254, activation story #264). Key state.json holds only Ask and group
+# ids, SHA-256 requester ids, UTC attempt times and a schema version; key pages.json holds
+# content-free DESIGN-031 page records (Ask id and event kind ask-new; no title, body, URL,
+# Ask text or person). No secret.
+#
+# Metadata-only precreation, like ./allowance-slot.yaml and the login-notice ConfigMap
+# (secrets/app/keeper-notices.yaml), which --ask-notify-state-configmap must differ from.
+# The keeper never creates it: while it is missing, the keeper sends no Ask push, and it
+# never resets its dedupe. `ssa: IfNotPresent` makes Flux create it once and never touch it
+# again, so a reconcile cannot blank what the keeper wrote; `prune: disabled` keeps it, and
+# with it the dedupe that stops a repeat push, if this file is removed. Keep it across
+# upgrades and flag changes. Never delete it: Flux would recreate it empty, which the keeper
+# reads as a fresh ledger, so every still-open Ask could be pushed again (within the caps).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-keeper-ask-notifications
+  namespace: dev-env-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled
+---
+# By name only: get, then update with the resourceVersion as one compare-and-set before any
+# send. No create, list, watch, patch or delete, and no other ConfigMap. No other principal
+# is bound.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-keeper-ask-notifications
+  namespace: dev-env-system
+rules:
+  - apiGroups: ['']
+    resources: [configmaps]
+    resourceNames: [dev-env-keeper-ask-notifications]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-keeper-ask-notifications
+  namespace: dev-env-system
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-keeper-ask-notifications}
+subjects: [{kind: ServiceAccount, name: dev-env-keeper, namespace: dev-env-system}]
