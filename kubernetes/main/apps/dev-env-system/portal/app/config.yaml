@@ -23,6 +23,19 @@
 #   404 and the board says "Asks are not connected" rather than showing an empty list. Any
 #   user the portal admits may answer; the answer records that user's issuer and subject.
 #   Kill switch: remove this key and its item in deployment.yaml.
+# - claims.json: the Claims page (dev-env DESIGN-045, OpenProject #497). The portal accepts
+#   exactly {"enabled":true,"project":"dev-env"} (web/portal/session/claims.go). It lists
+#   existing TaskClaims through operator-api-url with the projected OPERATOR_TOKEN and the
+#   operator CA it already has. No new host, Secret or person. The operator's
+#   --enable-portal-task-claims and --portal-task-claims-projects serve the route; while
+#   those are off, the page says the operator does not serve claims. Kill switch: remove
+#   this key and its item in deployment.yaml.
+# - question-audit: one catalog project name, dev-env, with no JSON and no trailing
+#   space (web/portal/session/production.go loadQuestionAuditProject). It adds a Question
+#   audit panel to the selected session: question and reply metadata, no message text.
+#   An absent file leaves the panel off and does not enable the operator route. The
+#   operator's --enable-portal-question-audit and --portal-question-projects serve the
+#   route. Kill switch: remove this key and its item in deployment.yaml.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -46,3 +59,5 @@ data:
   pages-alertmanager.json: '{"source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts"}'
   session-actions.json: '{"send":{"targets":[{"name":"dev-env-1028-031951","uid":"5da21936-7781-4760-82ce-2a0689b891f7"}]},"history":{"targets":[{"name":"dev-env-1028-031951","uid":"5da21936-7781-4760-82ce-2a0689b891f7"}]}}'
   asks.json: '{"enabled":true}'
+  claims.json: '{"enabled":true,"project":"dev-env"}'
+  question-audit: dev-env

@@ -39,7 +39,7 @@ PRODUCTION_FILES = {
        for key in ("origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
                    "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
                    "absolute-ttl", "fresh-for", "clock-skew", "pages-alertmanager.json",
-                   "session-actions.json", "asks.json")},
+                   "session-actions.json", "asks.json", "claims.json", "question-audit")},
     "config/provider-allowances.json": ("Secret", "dev-env-v2-portal-allowance-trust", "provider-allowances.json"),
     "secrets/OIDC_CLIENT_ID": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_ID"),
     "secrets/OIDC_CLIENT_SECRET": ("Secret", "dev-env-v2-portal-oidc", "OIDC_CLIENT_SECRET"),
@@ -65,7 +65,7 @@ PRODUCTION_CONFIG_FILES = {
     "origin", "issuer", "authorization-url", "token-url", "userinfo-url", "jwks-url",
     "openproject-base-url", "operator-api-url", "auth-style", "login-ttl", "idle-ttl",
     "absolute-ttl", "fresh-for", "clock-skew", "pages-alertmanager.json", "session-actions.json",
-    "asks.json",
+    "asks.json", "claims.json", "question-audit",
 }
 PAGES_CONFIG = '{"source_url":"http://alertmanager-operated.observability.svc.cluster.local:9093/api/v2/alerts"}'
 # 2026-10-29 (OpenProject #244, Tom): send and history for the group that admits portal login,
@@ -82,6 +82,12 @@ ACTIONS_CONFIG = json.dumps(
 # Asks board (DESIGN-034, Epic #254, activation OpenProject #264): the portal accepts exactly
 # {"enabled": bool} (dev-env web/portal/session/asks.go, optionalAsksSource).
 ASKS_CONFIG = '{"enabled":true}'
+# Claims page (DESIGN-045, OpenProject #497): the portal accepts exactly this object
+# (dev-env web/portal/session/claims.go, optionalClaimsSource).
+CLAIMS_CONFIG = '{"enabled":true,"project":"dev-env"}'
+# Question audit (OpenProject #497): one catalog project name, not JSON
+# (dev-env web/portal/session/production.go, loadQuestionAuditProject).
+QUESTION_AUDIT_PROJECT = "dev-env"
 ADMISSION_CONFIG_FILES = {"admission-api-url", "admission-uid", "admission-token-file"}
 # The witness's API rate limits, in the reviewed packet and no longer registered.
 WITNESS_CONFIG_FILES = {"witness-gets-per-second", "witness-get-burst"}
@@ -653,6 +659,10 @@ def registered_input_violations(docs):
                 violations.append("pages-config")
             if data.get("session-actions.json") != ACTIONS_CONFIG:
                 violations.append("actions-config")
+            if data.get("claims.json") != CLAIMS_CONFIG:
+                violations.append("claims-config")
+            if data.get("question-audit") != QUESTION_AUDIT_PROJECT:
+                violations.append("question-audit-config")
         if doc.get("kind") == "ServersTransport" and "rootCAs" in doc.get("spec", {}):
             violations.append("rootCAs-pruned-by-installed-crd")
         if (doc.get("kind") == "ExternalSecret" and approved_portal_runtime_violations(PORTAL_RUNTIME, doc)
@@ -1119,6 +1129,15 @@ class ComponentRenderTest(unittest.TestCase):
                          ["--aggregate-allowance-supplemental-reader={\"namespace\":\"dev-agents\",\"name\":\"dev-env-1104-010332\",\"sessionUID\":\"9323443a-4a8f-404f-8b41-b583e3bcc1a9\",\"serviceAccount\":\"dev-env-workbench\",\"serviceAccountUID\":\"55cc1f98-5b17-46e7-8770-c8bf9de85437\"}"])
         # Story178 S3: the reader is on, with the namespace it requires stated.
         self.assertIn("--enable-portal-reader", operator["args"])
+        # OP497: the portal claims page and the question-audit panel, each once, project dev-env.
+        self.assertEqual([a for a in operator["args"] if a.startswith("--enable-portal-task-claims")],
+                         ["--enable-portal-task-claims=true"])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--portal-task-claims-projects")],
+                         ["--portal-task-claims-projects=dev-env"])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--enable-portal-question-audit")],
+                         ["--enable-portal-question-audit=true"])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--portal-question-projects")],
+                         ["--portal-question-projects=dev-env"])
         # Measured conversation usage (2026-10-28): reported to the portal reader's activity view,
         # once, with the reader on; it enables no portal action by itself (the pilot target flags below do).
         self.assertEqual([a for a in operator["args"] if a.startswith("--portal-conversation-usage")],
@@ -1773,6 +1792,8 @@ class RegisteredInputsTest(unittest.TestCase):
         expected["pages-alertmanager.json"] = PAGES_CONFIG
         expected["session-actions.json"] = ACTIONS_CONFIG
         expected["asks.json"] = ASKS_CONFIG
+        expected["claims.json"] = CLAIMS_CONFIG
+        expected["question-audit"] = QUESTION_AUDIT_PROJECT
         self.assertEqual(config["data"], expected)
         self.assertEqual(set(config["data"]), PRODUCTION_CONFIG_FILES)
         self.assertTrue(dropped.isdisjoint(config["data"]))

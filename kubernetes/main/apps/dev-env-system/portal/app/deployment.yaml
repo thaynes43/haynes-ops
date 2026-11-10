@@ -7,6 +7,8 @@
 # The binary takes no flags and reads everything from /etc/dev-env-portal
 # (dev-env web/portal/session/production.go, LoadProduction, after dev-env#560):
 #   config/<key>        ConfigMap dev-env-v2-portal-config, one file per key
+#   config/claims.json  Claims page, exactly {"enabled":true,"project":"dev-env"}
+#   config/question-audit  the single project name dev-env (not JSON)
 #   secrets/OIDC_*      Secret dev-env-v2-portal-oidc (dev-env-secrets owns its ExternalSecret)
 #   secrets/DB_*, SESSION_*   Secret dev-env-v2-portal-runtime
 #   secrets/OPENPROJECT_TOKEN optional: absent means Tasks shows "not connected"
@@ -77,7 +79,7 @@ spec:
           # Source dev-env#1018 25b77247cdacb77a631d701b8bfab3364eea9355 (OP509); publish run 42740968309 signed and verified this exact digest.
           # Adds the built-in display rule for session allowance readings (DESIGN-059); it shows nothing new until the operator serves them.
           # Rollback target: sha-8daf137@sha256:b09c06a1100c24a7b07311db7f0abe066ea843b2ba0e406a232b8c6e9188e4f2.
-          # Optional selected-source and question readers stay unconfigured; no config, route flags or access change.
+          # Claims and question audit are mounted from the config volume (OP497). current-source.json stays absent. No new Secret or Role.
           image: ghcr.io/thaynes43/dev-env-portal:sha-25b7724@sha256:18ed5a921b41737a3dd821d998b2e8a6ed3fde83bc69f4b8433b5dc8836d05b4
           imagePullPolicy: IfNotPresent
           ports:
@@ -188,6 +190,10 @@ spec:
                       path: session-actions.json
                     - key: asks.json
                       path: asks.json
+                    - key: claims.json
+                      path: claims.json
+                    - key: question-audit
+                      path: question-audit
               - secret:
                   name: dev-env-v2-portal-allowance-trust
                   items:
