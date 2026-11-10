@@ -4,8 +4,10 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main at the merge of PR #1009 (OP500), verified byte for byte by the coordinator:
-# 2b2ec45539b9103d8d8871661b5f24406927acfb. Adds the cursor agent kind (spec.agent, usage observation providers), the cursor-only CEL rules on spec and on usage observations.
+# Source: dev-env main at the merge of PR #1019 (OP515), verified byte for byte by the coordinator:
+# b179e354bcfa3ec688e30097fda18bc283d37c15. Makes status.privateHistory.executorTerminal.containers[].finishedAt
+# optional, allowed absent only when reason is ContainerStatusUnknown (CEL). Once a record of that shape
+# exists, do not roll this file back: an older schema could refuse later status writes of that Session.
 #
 # Keep it in step with the operator: copy a changed file here before (or with) the pin
 # that writes its new fields.
@@ -2166,6 +2168,11 @@ spec:
                               format: int32
                               type: integer
                             finishedAt:
+                              description: |-
+                                FinishedAt is the container's finish time as the kubelet reported it.
+                                It is absent only when the kubelet reported the container terminated
+                                with reason ContainerStatusUnknown, which carries no finish time
+                                (DESIGN-025 25.6); the operator never invents one.
                               format: date-time
                               type: string
                             name:
@@ -2177,9 +2184,13 @@ spec:
                               type: string
                           required:
                           - exitCode
-                          - finishedAt
                           - name
                           type: object
+                          x-kubernetes-validations:
+                          - message: only a container the kubelet reported as ContainerStatusUnknown
+                              may have no finish time
+                            rule: has(self.finishedAt) || (has(self.reason) && self.reason
+                              == 'ContainerStatusUnknown')
                         maxItems: 16
                         minItems: 1
                         type: array
