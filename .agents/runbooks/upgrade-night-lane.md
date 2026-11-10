@@ -20,6 +20,10 @@ CronJob `upgrade-shepherd-upgrade-night` in namespace `upgrade-agent`. Its contr
   checks, all read).
 - `run-night.mjs` refuses any `UPGRADE_NIGHT_MODE` except `dryrun` and exits 3 before
   reading anything.
+- A tick that fails, for example because GitHub is unreachable, writes `data.error` to
+  `upgrade-lane-state` and still exits 0. A Failed pod in `upgrade-agent` is what the
+  health gate and triage read as a regression. The Job exits 1 only when it cannot write
+  even that error record.
 
 The code is in the same `resources/` directory as the shepherd and is mounted from the
 `upgrade-shepherd-scripts` ConfigMap:

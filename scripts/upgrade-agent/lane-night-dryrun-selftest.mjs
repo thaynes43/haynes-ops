@@ -111,7 +111,7 @@ let stdin = ''; try { if (cmd === 'kubectl' && argv[0] === 'apply') stdin = fs.r
 fs.appendFileSync(process.env.STUB_LOG, JSON.stringify({ cmd, argv, stdin }) + '\\n');
 const w = JSON.parse(fs.readFileSync(process.env.STUB_WORLD, 'utf8'));
 const out = o => { process.stdout.write(JSON.stringify(o)); process.exit(0); };
-if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'list') out(w.list);
+if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'list') { if (process.env.STUB_FAIL_LIST) { process.stderr.write('HTTP 502'); process.exit(1); } out(w.list); }
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'view') out(w.prs[argv[2]]);
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => a.includes('contents/.renovate/holds.json5'))) out({ content: w.holds });
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /issues\\/\\d+\\/comments/.test(a))) { const n = argv.find(a => /issues\\/\\d+\\/comments/.test(a)).match(/issues\\/(\\d+)/)[1]; out([w.comments[n] || []]); }
@@ -148,6 +148,16 @@ process.exit(0);
   ok(s.would_merge === null, 'with Prometheus and Flux unreadable nothing is eligible', JSON.stringify(s.would_merge));
   ok(recs.find(x => x.pr === 4477)?.lane === 'LANE-A', 'a forged vet marker (login without [bot]) does not move #4477');
   ok(/would merge this tick: none/.test(r.stdout), 'the log says what it would merge');
+
+  // a tick that cannot read GitHub records the error and exits 0 (no Failed pod for
+  // the gate or triage to read as a regression); still only reads plus that one write
+  rmSync(logFile, { force: true });
+  writeFileSync(join(tmp, 'world.json'), JSON.stringify({ ...world, list: null }));
+  const bad = spawnSync(process.execPath, [join(RES, 'run-night.mjs'), '--write-state'], { env: { ...env, UPGRADE_NIGHT_MODE: 'dryrun', STUB_FAIL_LIST: '1' }, encoding: 'utf8', timeout: 60000 });
+  const bw = calls().filter(c => !L.isReadOnlyCommand(c.cmd, c.argv));
+  let bm = {}; try { bm = JSON.parse(bw[0]?.stdin || '{}'); } catch {}
+  ok(bad.status === 0 && bw.length === 1 && bm.metadata?.name === 'upgrade-lane-state' && /failed|unexpected|JSON/i.test(bm.data?.error || ''), 'a failed read is recorded in upgrade-lane-state and exits 0', `exit ${bad.status}, writes ${bw.length}, error=${bm.data?.error}`);
+  writeFileSync(join(tmp, 'world.json'), JSON.stringify(world));
 
   rmSync(logFile, { force: true });
   const loc = spawnSync(process.execPath, [join(RES, 'run-night.mjs')], { env: { ...env, UPGRADE_NIGHT_MODE: 'dryrun' }, encoding: 'utf8', timeout: 60000 });

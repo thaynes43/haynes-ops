@@ -231,10 +231,25 @@ function writeLaneState(manifest) {
   const body = JSON.stringify(manifest);
   if (Buffer.byteLength(body) > 900 * 1024) throw new Error('writeLaneState: state too large for a ConfigMap');
   const r = spawnSync('kubectl', ['apply', '-f', '-'], { input: body, encoding: 'utf8', env: childEnv });
-  if (r.status !== 0) log(`WARN could not write upgrade-lane-state (exit ${r.status}): ${String(r.stderr).slice(0, 200)}`);
-  else log('wrote ConfigMap upgrade-agent/upgrade-lane-state');
+  if (r.status !== 0) { log(`WARN could not write upgrade-lane-state (exit ${r.status}): ${String(r.stderr).slice(0, 200)}`); return false; }
+  log('wrote ConfigMap upgrade-agent/upgrade-lane-state');
+  return true;
 }
 
+// A failed tick (GitHub or the API unreachable, a bad rules file) is recorded in the
+// state and the Job still exits 0 when that record lands: a Failed pod in
+// upgrade-agent is what the health gate and triage read as a regression, and a
+// dry-run that cannot read must not start a remediation. It exits 1 only when even
+// the error record cannot be written.
 if (L.isMain(import.meta.url)) {
-  tick().catch(e => { log(`upgrade-night: FAILED: ${e.message}`); process.exit(1); });
+  tick().catch(e => {
+    const at = new Date().toISOString();
+    log(`upgrade-night: FAILED: ${e.message}`);
+    const written = WRITE_STATE && writeLaneState({
+      apiVersion: 'v1', kind: 'ConfigMap',
+      metadata: { name: 'upgrade-lane-state', namespace: 'upgrade-agent', labels: { 'app.kubernetes.io/name': 'upgrade-shepherd', 'app.kubernetes.io/component': 'upgrade-night' } },
+      data: { mode: MODE, updated: at, error: String(e.message).slice(0, 2000), summary: JSON.stringify({ mode: MODE, at, error: String(e.message).slice(0, 500), would_merge: null }) },
+    });
+    process.exit(written ? 0 : 1);
+  });
 }
