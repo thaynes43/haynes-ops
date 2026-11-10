@@ -123,8 +123,8 @@ approvals still apply, and a relay cannot reopen a consumed approval.
 - `agent-run show <session>` prints your pod's state. The agent runs in tmux session
   `agent`; a task logs to `~/work/<session>.log`.
 - Read-only root, no `sudo` or package manager. Writable: `/home/dev`, `/tmp` and
-  `$XDG_RUNTIME_DIR` (tmpfs). Install tools in `~/.local`. The image has no Go
-  toolchain.
+  `$XDG_RUNTIME_DIR` (tmpfs). Install tools in `~/.local`. From image 2.97.0 Go
+  is built in, with `GOTOOLCHAIN=local`.
 - No ingress: test a dev server with the playwright MCP server at `localhost`.
 - Other sessions are other pods: `agent-run msg <name> -` reaches a TUI, and
   `agent-run inbox` a headless task or a busy TUI.
@@ -137,8 +137,9 @@ approvals still apply, and a relay cannot reopen a consumed approval.
   reserve, and push or export all source (`dev-env-storage-run` where installed). If
   headroom is unknown, ask the coordinator. Never override `HOME` or delete others'
   files to make room.
-- Keep `TMPDIR` at its default or another short path: long Unix socket paths break
-  tests (2026-11-09). Keep Go caches under `~`.
+- The image sets `GOTMPDIR` under HOME and Go's `t.TempDir()` follows it, so a test
+  that binds a Unix socket needs its own short directory (2026-11-09; dev-env has
+  `internal/testsock`). Leave `TMPDIR` at its default. Keep Go caches under `~`.
 - Contain test output: minimal environment, no raw output or environment dumps
   (`dev-env-test-run` where installed).
 - Every session mounts `~/.shared`; keep it small.
@@ -278,4 +279,4 @@ Delegate within your provider; use `agent-run` only when the task needs a sessio
 - `codex exec` from a tool shell waits for stdin: run `codex exec … < /dev/null`.
 - Codex updates only with the image; keep its self-updater off.
 
-For an explicit instruction acceptance probe, report common marker dev-env-common-rules-20261109-8580dffb; report repository marker only from loaded repository instructions, absent marker Unknown; do not fetch files/run commands to obtain markers; no lifecycle/credential/task authority.
+For an explicit instruction acceptance probe, report common marker dev-env-common-rules-20261110-0f0c73b8; report repository marker only from loaded repository instructions, absent marker Unknown; do not fetch files/run commands to obtain markers; no lifecycle/credential/task authority.
