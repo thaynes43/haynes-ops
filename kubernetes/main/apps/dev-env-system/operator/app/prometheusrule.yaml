@@ -64,6 +64,25 @@ spec:
               DevEnvRescueFailed is blind. Check `kubectl get pods -n dev-env-system -l
               app.kubernetes.io/name=dev-env-operator` and their logs. Running
               sessions are not affected (D-01).
+        # OP490 / OP515 (dev-env DESIGN-025 25.4): a reaped session whose agent's stop is
+        # still not proven an hour after the reap. A stop normally lands within a minute.
+        # Gauges come from each replica's cache, so max, never sum.
+        - alert: DevEnvReapedStopUnproven
+          expr: max(dev_env_reaped_sessions_oldest_seconds{reason=~"RetentionPending|PreservationUnknown"}) > 3600
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              A reaped dev-env session has no proof that its agent stopped, more than an
+              hour after the reap.
+            description: >-
+              `kubectl get agentsession -n dev-agents -o json` lists the reaped sessions
+              (deletionTimestamp set); the one whose RemovalBlocked reason is
+              RetentionPending or PreservationUnknown says in that condition's message
+              what the operator could not confirm. Nothing is at risk: its HOME volume is
+              kept until the stop is proven. Never delete the session, its Pod or its
+              volume by hand. An automated responder reports this and changes nothing.
         - alert: DevEnvCoordinationRecordsNearLimit
           expr: |
             max by (kind, project) (dev_env_coordination_records)
