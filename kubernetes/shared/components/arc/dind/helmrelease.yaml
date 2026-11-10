@@ -96,7 +96,7 @@ spec:
             type: RuntimeDefault
         initContainers:
           - name: init-dind-externals
-            image: ghcr.io/thaynes43/actions-runner:0.1.1@sha256:eb4646350a74bf8c12e0d3f5273429feb654559bee40acbce8dc380afe509e4c
+            image: ghcr.io/thaynes43/actions-runner:0.1.2@sha256:4785e0ce2fe601f29d48c3a2f2adc2052f265b32cb725ab23bd2378d314ef683
             command: ["cp", "-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
             securityContext:
               allowPrivilegeEscalation: false
@@ -156,7 +156,7 @@ spec:
                 mountPath: /var/lib/docker
         containers:
           - name: runner
-            image: ghcr.io/thaynes43/actions-runner:0.1.1@sha256:eb4646350a74bf8c12e0d3f5273429feb654559bee40acbce8dc380afe509e4c
+            image: ghcr.io/thaynes43/actions-runner:0.1.2@sha256:4785e0ce2fe601f29d48c3a2f2adc2052f265b32cb725ab23bd2378d314ef683
             command: ["/home/runner/run.sh"]
             env:
               - name: DOCKER_HOST
