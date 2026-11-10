@@ -126,10 +126,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# dev-env main a1d40ea6 (v2.99.0, release #1026); publish 42791460531 signed and verified this digest.
+# dev-env main 6a8541b2 (dev-env#1046, #1040); publish 42814341103 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-a1d40ea"
-    "@sha256:787079aed7298b08faebfb74d63fb2e58921aff3391eb473f653b691bccb14c4"
+    "sha-6a8541b"
+    "@sha256:0a2ace9740a0963efc3092595107d839901ee9a28a1d0e31a634d88aec18a9f7"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
@@ -1160,7 +1160,7 @@ class ComponentRenderTest(unittest.TestCase):
         self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-max-active")],
                          ["--task-cleanup-max-active=1"])
         self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-sessions")],
-                         ["--task-cleanup-sessions=dev-env-1109-234800,haynes-studio-1110-000448,haynes-studio-1110-001254,haynes-studio-1110-001254-2,haynes-studio-1110-001255,dev-env-1110-102659"])
+                         ["--task-cleanup-sessions=dev-env-1110-115101,dev-env-1110-115115,dev-env-1110-115351,dev-env-1110-115358,dev-env-1110-115634,dev-env-1110-115642"])
         self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-grace")], [])
         self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-min-shared-free")], [])
         # The measured-usage pilot (2026-10-28): one new key and the signed 2.52.0 agent image,

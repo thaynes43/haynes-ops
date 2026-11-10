@@ -251,8 +251,20 @@ spec:
               # flags this change does not set. Grace and the shared-volume floor stay at their
               # defaults. The templates image, permissions and every existing Session pod stay as they are.
               # Previous pin sha-25b7724@sha256:7e1664b487f784262b4e336a49bd8a2df17d4440ee34e7de5ca025720c5270b5
-              # (haynes-ops#4746); rollback target for the operator alone.
-              tag: sha-a1d40ea@sha256:787079aed7298b08faebfb74d63fb2e58921aff3391eb473f653b691bccb14c4
+              # (haynes-ops#4746).
+              # dev-env main 6a8541b2 (dev-env#1046, #1040; publish 42814341103's operator job signed and verified
+              # this digest). Two changes to the operator, no flag, CRD or permission change:
+              # - the task clean-up's delete step waits up to 5 minutes for the node to drop the HOME's
+              #   volume after its hold pod is removed, before it refuses (OP535: the first probes were
+              #   refused one second after their own hold pod went);
+              # - the leader adds each finished task Session to the dev_env_task_usage_* counters once and
+              #   marks it with the annotation dev-env.haynesops.com/task-usage-counted; a Session that
+              #   finished over 168 hours ago is marked skipped and not added (OP524). Expect one
+              #   annotation write on every existing Session after this rolls out; no pod changes.
+              # Previous pin sha-a1d40ea@sha256:787079aed7298b08faebfb74d63fb2e58921aff3391eb473f653b691bccb14c4
+              # (haynes-ops#4778); rollback target for the operator alone. Roll the clean-up back with its
+              # flags, never with an operator older than sha-a1d40ea.
+              tag: sha-6a8541b@sha256:0a2ace9740a0963efc3092595107d839901ee9a28a1d0e31a634d88aec18a9f7
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
@@ -415,14 +427,15 @@ spec:
               # DESIGN-061 H4 (OP521): task clean-up for six named probes only. Needs the terminal
               # record and the executor stop above, and leader election (default on, not set here).
               # --task-cleanup-grace stays 168h and --task-cleanup-min-shared-free stays 2Gi; neither
-              # is set. The first five probes are trivial purged tasks; the sixth, dev-env-1110-102659,
-              # holds one local commit and one untracked file, so it proves the bundle and its restore.
+              # is set. The first six probes (2026-11-10, haynes-ops#4779) are cleaned. These six are the
+              # second set, for OP535: five trivial purged tasks and dev-env-1110-115642, which holds one
+              # local commit and one untracked file. All six must be cleaned on the first pass.
               # Every other Session's record parks while this list is set. Stop: set
               # --enable-task-session-cleanup=false. Pause: set --task-cleanup-max-active=0. Roll back
               # with these flags, not with an older operator.
               - '--enable-task-session-cleanup=true'
               - '--task-cleanup-max-active=1'
-              - '--task-cleanup-sessions=dev-env-1109-234800,haynes-studio-1110-000448,haynes-studio-1110-001254,haynes-studio-1110-001254-2,haynes-studio-1110-001255,dev-env-1110-102659'
+              - '--task-cleanup-sessions=dev-env-1110-115101,dev-env-1110-115115,dev-env-1110-115351,dev-env-1110-115358,dev-env-1110-115634,dev-env-1110-115642'
               # Off with the canary route (main.go:252). Ordinary project tasks get no retained common rules.
               - '--enable-retained-common-rules=false'
               # Off: main.go:259 refuses canaries together with general private admission. The
