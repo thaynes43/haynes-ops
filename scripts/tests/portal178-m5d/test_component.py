@@ -1154,13 +1154,13 @@ class ComponentRenderTest(unittest.TestCase):
         # OP509: passive session allowance readings, exactly once and with no value.
         self.assertEqual([a for a in operator["args"] if a.startswith("--enable-session-allowances")],
                          ["--enable-session-allowances"])
-        # OP521 H4: task clean-up for the six probes only. Grace and the shared-volume floor stay unset.
+        # OP521 H5: the task clean-up for every finished or purged task Session, two at once, with
+        # no allowlist. Grace and the shared-volume floor stay unset.
         self.assertEqual([a for a in operator["args"] if a.startswith("--enable-task-session-cleanup")],
                          ["--enable-task-session-cleanup=true"])
         self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-max-active")],
-                         ["--task-cleanup-max-active=1"])
-        self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-sessions")],
-                         ["--task-cleanup-sessions=dev-env-1110-115101,dev-env-1110-115115,dev-env-1110-115351,dev-env-1110-115358,dev-env-1110-115634,dev-env-1110-115642"])
+                         ["--task-cleanup-max-active=2"])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-sessions")], [])
         self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-grace")], [])
         self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-min-shared-free")], [])
         # The measured-usage pilot (2026-10-28): one new key and the signed 2.52.0 agent image,
