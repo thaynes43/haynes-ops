@@ -40,7 +40,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: provision
-              image: ghcr.io/thaynes43/audio-authoring:0.2.0@sha256:c96248cbb452561612c75bf0ed627d0c0f686c9fe55b1afa9e1a5503d9f7564c
+              image: ghcr.io/thaynes43/audio-authoring:0.2.0@sha256:6a468782e7852c2d7b87ba72965b1e30dac456a4a082cd4a4081f3aad30f7821
               imagePullPolicy: IfNotPresent
               args: [prefetch]
               env:
