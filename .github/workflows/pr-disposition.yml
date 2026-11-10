@@ -20,6 +20,13 @@
 #                             or a bump the shepherd ruled OUT-OF-SCOPE.
 #                             (2026-07-17, split out of stranded so the two are separable).
 #
+# Night-lane verdicts (OP512 step 2). The upgrade lane writes the same bot comment with a
+# second marker, `<!-- upgrade-lane v1 -->`. Only a current-head comment by the bot that
+# carries that marker is read for these tokens: NIGHTLY and SCHEDULED -> shepherd,
+# OWNER-WINDOW -> stranded (the list that needs Tom), BLOCKED and AGENT-SESSION ->
+# manual-only. MERGED, REVERTED, EXCLUDED and any comment without the marker keep the
+# handling below, so no comment that exists today changes its label.
+#
 # Read-only classification; only manipulates its own four labels. Runs on a schedule
 # (catches Renovate enabling auto-merge after it re-evaluates) + on demand.
 name: PR Disposition
@@ -115,6 +122,15 @@ jobs:
             const DISPOS = ['disposition:auto-merge', 'disposition:shepherd', 'disposition:stranded', 'disposition:manual-only'];
             const isRenovate = login => login === 'renovate[bot]';
             const VET_AUTHOR = 'haynes-ops-bot[bot]';
+            // OP512 step 2: lane verdicts, read only from a comment that carries the lane marker.
+            const LANE_MARKER = '<!-- upgrade-lane v1 -->';
+            const LANE_DISPOSITION = {
+              NIGHTLY: ['disposition:shepherd', 'NightLane'],
+              SCHEDULED: ['disposition:shepherd', 'NightLane'],
+              'OWNER-WINDOW': ['disposition:stranded', 'Owner'],
+              BLOCKED: ['disposition:manual-only', 'Manual'],
+              'AGENT-SESSION': ['disposition:manual-only', 'AgentSession'],
+            };
             const isShepherd = pr => pr.user?.login === VET_AUTHOR && pr.head?.ref?.startsWith('shepherd/');
             const tier2Path = p => {
               const m = p.match(/^kubernetes\/[^/]+\/apps\/([^/]+)\/(.+)$/);
@@ -165,6 +181,7 @@ jobs:
                 if (m && m[1] === pr.head.sha) {
                   verdict = m[2].toUpperCase();
                   vet = { commentId: Number.isSafeInteger(c.id) ? c.id : null, sha: m[1], verdict };
+                  if (c.body.includes(LANE_MARKER)) vet.lane = 'v1';
                 }
               }
               const provenance = {
@@ -199,6 +216,8 @@ jobs:
               } else if (actual === 'enabled') {
                 want = 'disposition:auto-merge'; reason = 'merge-request-enabled'; predictedOwner = 'GitHub';
                 if (verdict === 'HOLD') core.warning(`#${pr.number} current-head hold conflicts with enabled auto-merge; no merge state changed`);
+              } else if (vet?.lane && Object.hasOwn(LANE_DISPOSITION, verdict)) {
+                [want, predictedOwner] = LANE_DISPOSITION[verdict]; reason = 'current-head-lane-verdict';
               } else if (verdict === 'HOLD') {
                 want = 'disposition:stranded'; reason = 'current-head-hold'; predictedOwner = 'Shepherd';
               } else if (verdict && verdict !== 'AUTO-MERGE') {
