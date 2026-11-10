@@ -1,12 +1,24 @@
-# Nightly upgrade lane (dry-run, OP512 step 1)
+# Nightly upgrade lane (dry-run, OP512 steps 1 and 2)
 
 The nightly lane will merge low-risk Renovate updates one at a time at night, after the
 backups, with a health check after each one. Tom asked for upgrades to be 100% agent
 driven (OP512, comment 6168). The design is OP512 comment 6193
 (<https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/512>).
 
-**Status: dry-run only.** This step classifies updates and records what the lane would
-do. It merges nothing, comments on nothing and labels nothing.
+**Status: dry-run only.** The lane classifies updates and records what it would do. It
+merges nothing, comments on nothing and labels nothing.
+
+**Step 2 (OP512 rollout step 2) added**, with no change to anything that merges:
+
+- CI for the lane's own tests: workflow `Upgrade Agent Selftests`
+  (`.github/workflows/upgrade-agent-selftests.yml`), aggregate check
+  `Upgrade Agent Selftests - Success`. See [Tests](#tests).
+- The labeler reads the lane's verdict tokens. See
+  [Lane verdicts in the labeler](#lane-verdicts-in-the-labeler).
+- Two new fields in every record, `fingerprint` and `cluster_effect_wait`, plus a fix to
+  version comparison. See [What step 2 records](#what-step-2-records).
+- The comparison of the first dry-run night (2026-11-10) with the hand-run of the same
+  night. See [Reading the 2026-11-10 comparison](#reading-the-2026-11-10-comparison).
 
 ## What runs
 
@@ -115,6 +127,71 @@ Of the PRs that pass every gate, the tick picks one. It prefers no cluster effec
 delayed, then stateless, then stateful, then the lowest PR number. In this step it only
 records the choice.
 
+## What step 2 records
+
+- **`fingerprint`** names the change, not the commit. It is `sha256:` over each file
+  section of `gh pr diff`, in path order: the `diff --git` line, then every added or
+  removed line exactly as written. Hunk headers, context lines, `index` lines and the
+  "No newline" marker are left out, so a Renovate rebase onto a moved base keeps the
+  value, and any change to an added or removed line changes it. A binary section, an
+  empty diff or a failed read gives `null`, and `fingerprint_basis` then says `binary`
+  or `unavailable`. The record also carries `commit_count` and `change_key` (the
+  package, version and file identity that step 1 called `fingerprint`).
+  - Evidence: on 2026-11-10 the rebases of #4477 (871dab84 to 41c67183) and #4607
+    (d91793d3 to ea9bbac8) were byte-identical; the rebase of #4336 (c90af518 to
+    da0449f2) changed one line. These three pairs are the fixture
+    `scripts/upgrade-agent/fixtures/lane-rebase-pairs-20261110.json`.
+  - Step 2 only records the value. Using it, for example to carry Tom's approving review
+    or a vet decline across a rebase, needs a single Renovate commit and an equal
+    fingerprint, and comes in a later step.
+- **`cluster_effect_wait`** appears on a source PR for one of our own images whose
+  digest pin Renovate auto-merges (`own_image_pin_wait` in `upgrade-rules.json`). The
+  cluster changes only when Renovate's next hosted run opens the pin PR, and those runs
+  follow pushes to main. On 2026-11-10 the upgrade-shepherd and upgrade-agent pins
+  waited 55 minutes for the next push, so source to cluster took 87 minutes. Such a unit
+  counts as verified only when the pin has merged, Flux applied it and the workload
+  soaked on the new digest.
+- **Version operators.** Renovate's pip table prints `==0.36.2`. Step 1 could not
+  compare that with a hold's `<2.0.0` and recorded a false hold on #4757 on every tick
+  of the night. The classifier now strips one leading operator (`==`, `~=`, `^`, `~`,
+  `>=`, `<=`, `!=`, `=`) and a leading `v` before it compares versions. #4757 now reads
+  as `BLOCKED` because its `validate` build fails, which is the real reason.
+
+## Lane verdicts in the labeler
+
+`.github/workflows/pr-disposition.yml` reads a lane verdict only from a comment that
+meets all three conditions:
+
+- it is by `haynes-ops-bot[bot]` (the REST login with the `[bot]` suffix);
+- it starts with `<!-- shepherd-vet sha=<current head> -->`;
+- it carries `<!-- upgrade-lane v1 -->`.
+
+| Token | Label |
+|---|---|
+| `NIGHTLY`, `SCHEDULED` | `disposition:shepherd` |
+| `OWNER-WINDOW` | `disposition:stranded` (the list that needs Tom) |
+| `BLOCKED`, `AGENT-SESSION` | `disposition:manual-only` |
+| `MERGED`, `REVERTED`, `EXCLUDED`, `HOLD` | the handling that existed before step 2 |
+
+An enabled auto-merge and an unreadable merge state still come first. A comment without
+the lane marker keeps its old label. No such comment exists yet, because the lane writes
+no comments until step 3. `scripts/pr-disposition-test.cjs` pins each token, a token by
+a non-bot author (ignored), a token for an older head (ignored) and the same tokens
+without the marker (unchanged).
+
+## Reading the 2026-11-10 comparison
+
+The report is `dryrun-comparison-20261110.md` on the tracker (OP512). Read it this way:
+
+- The 20 scheduled ticks (06:00Z to 10:45Z) began after the hand-run had already merged
+  8 of its 10 night updates (05:37Z to 05:55Z). Its verdicts on those PRs are therefore
+  counterfactual: the step-1 classifier run read-only against each PR at its delivered
+  head. They are not tick output, and the report labels them as such.
+- `would merge` never advances in a dry run, because nothing merges. Every window tick
+  named #3915. A live lane would have moved on to the next candidate.
+- The gates the tick could not see for the counterfactual PRs (backups, the Flux
+  baseline, alerts) are taken from the hand-run's checkpoints and from Prometheus.
+
 ## Reading the state
 
 ```bash
@@ -200,12 +277,30 @@ node scripts/upgrade-agent/lane-classify-selftest.mjs      # lanes, drift, own i
 node scripts/upgrade-agent/lane-night-dryrun-selftest.mjs  # the dry-run guarantee
 ```
 
-No CI workflow runs these yet. Rollout step 2 adds one.
+Since step 2 these run in CI as `Upgrade Agent Selftests` on pull requests and pushes to
+main that touch the shepherd app (`kubernetes/main/apps/upgrade-agent/shepherd/app/**`),
+the two shared shell sources the selftests execute (`coordination-lib.sh`,
+`respond.sh`), `scripts/upgrade-agent/**`, any workflow file (for the drift test) or
+`.renovate/**`. The workflow runs, one at a time:
+
+- the two lane selftests above, plus `node --check` and `jq .` on the shipped files;
+- the shell selftests: `coordination-sig`, `held-audit`, `shepherd-verdict`,
+  `stale-corpse` and `triage-claim` (`scripts/upgrade-agent/*-selftest.sh`);
+- the delivery helper's offline suite:
+  `python3 -I -B scripts/upgrade-agent/test_deliver_reviewed_pr.py -v`.
+
+`Upgrade Agent Selftests - Success` passes when every job passed or was skipped. It is
+**not** a required check; branch protection is the owner's. The workflow's own entry in
+the check map (`upgrade-agent-selftests`) is what keeps the drift test green.
+
+```bash
+node scripts/pr-disposition-test.cjs                        # the labeler truth table, lane tokens included
+```
 
 ## What later steps add (design, rollout order)
 
-2. A workflow that runs the upgrade-agent selftests and this drift test, plus the
-   labeler mapping.
+2. Done: the selftest workflow and the labeler mapping. The fingerprint and the pin
+   wait are recorded but not used yet.
 3. The per-PR record as one bot comment, the comment-author check in the shepherd
    pre-filter, and the one-retry rule for stalled checks.
 4. Coordination with triage and the gate: ownership of a regression signature, the

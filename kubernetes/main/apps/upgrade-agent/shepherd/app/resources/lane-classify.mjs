@@ -21,6 +21,8 @@
 //   packages: [{ name, update, from, to }],   // the Renovate body table
 //   checks: [{ workflow, name, status, conclusion, completed_at }],   // head commit
 //   vet_markers: [{ author, sha, verdict }],  // '<!-- shepherd-vet sha=… -->' comments
+//   patch_fingerprint: 'sha256:…' | null,     // patchFingerprint() of `gh pr diff` (step 2)
+//   patch_basis: 'pr-diff' | 'binary' | 'unavailable',
 // }
 // opts = { now: epoch ms, holdRules: [packageRules from .renovate/holds.json5] }
 //
@@ -102,7 +104,12 @@ export function parseJson5(text) {
 }
 
 // ── versions ───────────────────────────────────────────────────────────────────
-const numParts = v => (String(v || '').replace(/^v/i, '').match(/^\d+(?:\.\d+)*/) || [''])[0].split('.').filter(Boolean).map(Number);
+// A version as Renovate's table prints it may carry the manager's operator: pip pins
+// show `==0.36.2` (seen on #4757, 2026-11-10: every night tick recorded a false "cannot
+// compare ==0.36.2 with <2.0.0" hold), npm ranges `^1.2.3` or `~1.2.3`. Strip one leading
+// operator and a leading v before comparing; anything else is compared as written.
+export const bareVersion = v => String(v ?? '').trim().replace(/^(?:===|==|~=|>=|<=|!=|\^|~|=)\s*/, '').replace(/^v(?=\d)/i, '');
+const numParts = v => (bareVersion(v).match(/^\d+(?:\.\d+)*/) || [''])[0].split('.').filter(Boolean).map(Number);
 export function compareVersions(a, b) {
   const x = numParts(a), y = numParts(b);
   for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d < 0 ? -1 : 1; }
@@ -129,7 +136,7 @@ const nameVariants = name => {
 export function versionAllowed(allowed, to) {
   if (!allowed) return true;
   const re = reFromRenovate(allowed);
-  if (re) return re.test(String(to).replace(/^v/i, ''));
+  if (re) return re.test(bareVersion(to));
   const m = /^\s*(<=|<|>=|>)\s*v?([\d.]+)\s*$/.exec(allowed);
   if (!m || !isVersionLike(to)) return null;
   const c = compareVersions(to, m[2]);
@@ -156,6 +163,42 @@ export function holdMatches(facts, holdRules) {
     }
   }
   return out;
+}
+
+// ── patch fingerprint (OP512 step 2) ────────────────────────────────────────────
+// A Renovate rebase changes the head SHA while the change stays the same (2026-11-10:
+// #4477 871dab84 -> 41c67183 and #4607 d91793d3 -> ea9bbac8 were byte-identical; #4336
+// c90af518 -> da0449f2 changed one line, claude-code 2.1.321 -> 2.1.322). The fingerprint
+// names the change, not the commit: sha256 over, for each file section of the unified
+// diff in path order, the `diff --git` line and then every added or removed line exactly
+// as written. Hunk headers (line numbers), context lines, `index` lines (blob ids) and
+// "\ No newline" markers are left out, so a rebase onto a moved base keeps the value and
+// any change to an added or removed line changes it. A binary section has no comparable
+// text, so its value is null (basis 'binary'); so is an empty or unreadable diff.
+// Step 2 only RECORDS the value. Carrying a reviewed verdict or an owner approval across
+// a rebase on an equal fingerprint (single Renovate commit only) is a later step.
+export function patchFingerprint(diffText) {
+  const text = String(diffText ?? '');
+  if (!text.trim()) return { fingerprint: null, basis: 'unavailable' };
+  const sections = [];
+  let cur = null;
+  for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
+    if (line.startsWith('diff --git ')) { cur = { head: line, body: [], inHunk: false }; sections.push(cur); continue; }
+    if (!cur) continue;
+    if (!cur.inHunk) {
+      if (line.startsWith('@@')) cur.inHunk = true;
+      else if (/^(Binary files .* differ|GIT binary patch)$/.test(line)) cur.binary = true;
+      continue;
+    }
+    if (line.startsWith('@@')) continue;
+    if (line.startsWith('+') || line.startsWith('-')) cur.body.push(line);
+  }
+  if (!sections.length) return { fingerprint: null, basis: 'unavailable' };
+  if (sections.some(x => x.binary)) return { fingerprint: null, basis: 'binary' };
+  sections.sort((a, b) => (a.head < b.head ? -1 : a.head > b.head ? 1 : 0));
+  const h = createHash('sha256');
+  for (const x of sections) { h.update(x.head + '\n'); for (const l of x.body) h.update(l + '\n'); }
+  return { fingerprint: 'sha256:' + h.digest('hex'), basis: 'pr-diff' };
 }
 
 // ── the check map ─────────────────────────────────────────────────────────────
@@ -321,11 +364,21 @@ export function classify(facts, rules, opts = {}) {
   const reason = top ? top.reason
     : `${ev.expected.length} expected checks SUCCESS on ${head7}; Renovate-only commits; ${aClass}${ce.targets.length ? ` (${ce.targets.join(', ')})` : ''}${ce.own_images.length ? ` via own image ${ce.own_images.join(', ')}` : ''}`;
   const pk = (facts.packages || [])[0] || {};
+  // Our own images whose digest pin Renovate auto-merges: the cluster changes only when
+  // Renovate's NEXT hosted run opens the pin PR, and those runs follow pushes to main
+  // (2026-11-10: the upgrade-shepherd pin waited 55 minutes for the next push).
+  const waitImages = ce.own_images.filter(id => { const o = rules.own_images.find(x => x.id === id); return o?.cluster_effect === 'delayed' && o.pin_automerge === true; });
+  const wait = waitImages.length && rules.own_image_pin_wait ? { waits_for: rules.own_image_pin_wait.waits_for, images: waitImages, verified_when: rules.own_image_pin_wait.verified_when } : null;
   return {
     schema: 'haynes.upgrade-lane/v1',
     pr: facts.number,
     head: facts.head_sha,
-    fingerprint: createHash('sha256').update(JSON.stringify([(facts.packages || []).map(p => [p.name, p.from, p.to]), [...files].sort()])).digest('hex').slice(0, 16),
+    // the change, not the commit: equal across a byte-identical Renovate rebase
+    fingerprint: facts.patch_fingerprint ?? null,
+    fingerprint_basis: facts.patch_basis || 'unavailable',
+    commit_count: commits.length,
+    // package/version/files identity (the step-1 'fingerprint'), for "never re-merge a reverted version"
+    change_key: createHash('sha256').update(JSON.stringify([(facts.packages || []).map(p => [p.name, p.from, p.to]), [...files].sort()])).digest('hex').slice(0, 16),
     title: facts.title,
     package: pk.name ?? null, from: pk.from ?? null, to: pk.to ?? null,
     packages: facts.packages || [],
@@ -335,6 +388,7 @@ export function classify(facts, rules, opts = {}) {
     findings: findings.map(f => `${f.lane}/${f.class}: ${f.reason}`),
     checks: ev,
     cluster_effect: ce.effect, targets: ce.targets, own_images: ce.own_images,
+    cluster_effect_wait: wait,
   };
 }
 
@@ -419,6 +473,10 @@ export function gatherFacts(repo, number, run = runReadOnly) {
   // which GraphQL's author.login drops. The repository is public, so this matters.
   const comments = JSON.parse(run('gh', ['api', '--paginate', '--slurp', `repos/${repo}/issues/${number}/comments?per_page=100`])).flat();
   const files = (v.files || []).map(f => f.path);
+  // The diff is a read too; a failed read leaves the fingerprint null, never a guess.
+  let diff = null;
+  try { diff = run('gh', ['pr', 'diff', String(number), '-R', repo], { allowFail: true }); } catch { diff = null; }
+  const fp = patchFingerprint(diff);
   return {
     number: v.number,
     head_sha: v.headRefOid,
@@ -433,6 +491,8 @@ export function gatherFacts(repo, number, run = runReadOnly) {
     checks: (v.statusCheckRollup || []).filter(c => c.__typename === 'CheckRun').map(c => ({
       workflow: c.workflowName, name: c.name, status: c.status, conclusion: c.conclusion, completed_at: c.completedAt, started_at: c.startedAt })),
     vet_markers: parseVetMarkers(comments.map(c => ({ author: c.user?.login, body: c.body }))),
+    patch_fingerprint: fp.fingerprint,
+    patch_basis: fp.basis,
   };
 }
 

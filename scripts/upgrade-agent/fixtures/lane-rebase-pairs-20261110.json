@@ -1,0 +1,48 @@
+{
+ "captured": "2026-11-10",
+ "source": "gh api -H \"Accept: application/vnd.github.diff\" repos/thaynes43/haynes-ops/commits/<sha> (read-only); each head is one renovate[bot] commit with one parent. gh pr diff of the delivered head was byte-identical to its commit diff.",
+ "pairs": [
+  {
+   "pr": 4477,
+   "title": "kubectl 1.37.2 (two CronJobs)",
+   "same_change": true,
+   "source": "OP513 comment 6300: delivered at the rebased head, patch byte-identical",
+   "before": {
+    "sha": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+    "diff": "diff --git a/kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml b/kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml\nindex f6a3f4908..47e64fef2 100644\n--- a/kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml\n+++ b/kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml\n@@ -66,7 +66,7 @@ spec:\n               # everything through `kubectl -o jsonpath`. docker.io is on the Kyverno\n               # restrict-image-registries allowlist; the tag is pinned and Renovate\n               # bumps it via the `kubernetes` manager.\n-              image: docker.io/alpine/kubectl:1.37.1\n+              image: docker.io/alpine/kubectl:1.37.2\n               # The image ENTRYPOINT is kubectl itself, so command must override it.\n               command: [\"/bin/sh\", \"/opt/node-out-of-service/node-out-of-service.sh\"]\n               env:\ndiff --git a/kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml b/kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml\nindex 2c14233aa..ac7fac540 100644\n--- a/kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml\n+++ b/kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml\n@@ -44,7 +44,7 @@ spec:\n             - name: canary\n               # alpine/kubectl, as in kube-system/node-out-of-service: BusyBox ash + curl +\n               # kubectl, which is all canary.sh and probe.sh need. The image ENTRYPOINT is kubectl.\n-              image: docker.io/alpine/kubectl:1.37.1\n+              image: docker.io/alpine/kubectl:1.37.2\n               command: [\"/bin/sh\", \"/opt/plex-hw-canary/canary.sh\"]\n               env:\n                 - name: K8S_SERVERS\n"
+   },
+   "after": {
+    "sha": "41c67183f231926a1b44ff0489a9cda62ef92623",
+    "diff": "diff --git a/kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml b/kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml\nindex f6a3f4908..47e64fef2 100644\n--- a/kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml\n+++ b/kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml\n@@ -66,7 +66,7 @@ spec:\n               # everything through `kubectl -o jsonpath`. docker.io is on the Kyverno\n               # restrict-image-registries allowlist; the tag is pinned and Renovate\n               # bumps it via the `kubernetes` manager.\n-              image: docker.io/alpine/kubectl:1.37.1\n+              image: docker.io/alpine/kubectl:1.37.2\n               # The image ENTRYPOINT is kubectl itself, so command must override it.\n               command: [\"/bin/sh\", \"/opt/node-out-of-service/node-out-of-service.sh\"]\n               env:\ndiff --git a/kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml b/kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml\nindex 2c14233aa..ac7fac540 100644\n--- a/kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml\n+++ b/kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml\n@@ -44,7 +44,7 @@ spec:\n             - name: canary\n               # alpine/kubectl, as in kube-system/node-out-of-service: BusyBox ash + curl +\n               # kubectl, which is all canary.sh and probe.sh need. The image ENTRYPOINT is kubectl.\n-              image: docker.io/alpine/kubectl:1.37.1\n+              image: docker.io/alpine/kubectl:1.37.2\n               command: [\"/bin/sh\", \"/opt/plex-hw-canary/canary.sh\"]\n               env:\n                 - name: K8S_SERVERS\n"
+   }
+  },
+  {
+   "pr": 4607,
+   "title": "ceph-csi-rbd 3.18.2 (gasha01)",
+   "same_change": true,
+   "source": "OP513 comment 6310: delivered at the rebased head, patch byte-identical",
+   "before": {
+    "sha": "d91793d3e1be1dd719a04b0061a4bbe83d8d1965",
+    "diff": "diff --git a/kubernetes/main/apps/storage/ceph-csi/gasha01-rbd/app/helmrelease.yaml b/kubernetes/main/apps/storage/ceph-csi/gasha01-rbd/app/helmrelease.yaml\nindex 398fb20de..6ab964d60 100644\n--- a/kubernetes/main/apps/storage/ceph-csi/gasha01-rbd/app/helmrelease.yaml\n+++ b/kubernetes/main/apps/storage/ceph-csi/gasha01-rbd/app/helmrelease.yaml\n@@ -9,7 +9,7 @@ spec:\n   chart:\n     spec:\n       chart: ceph-csi-rbd\n-      version: 3.18.1\n+      version: 3.18.2\n       sourceRef:\n         kind: HelmRepository\n         name: ceph-csi\n"
+   },
+   "after": {
+    "sha": "ea9bbac853a034011dfad694f4a0d0592d32e1eb",
+    "diff": "diff --git a/kubernetes/main/apps/storage/ceph-csi/gasha01-rbd/app/helmrelease.yaml b/kubernetes/main/apps/storage/ceph-csi/gasha01-rbd/app/helmrelease.yaml\nindex 398fb20de..6ab964d60 100644\n--- a/kubernetes/main/apps/storage/ceph-csi/gasha01-rbd/app/helmrelease.yaml\n+++ b/kubernetes/main/apps/storage/ceph-csi/gasha01-rbd/app/helmrelease.yaml\n@@ -9,7 +9,7 @@ spec:\n   chart:\n     spec:\n       chart: ceph-csi-rbd\n-      version: 3.18.1\n+      version: 3.18.2\n       sourceRef:\n         kind: HelmRepository\n         name: ceph-csi\n"
+   }
+  },
+  {
+   "pr": 4336,
+   "title": "upgrade-agent and upgrade-shepherd toolchains",
+   "same_change": false,
+   "source": "OP513 comment 6310: Renovate moved claude-code 2.1.321 -> 2.1.322 in the rebase; the one line was re-reviewed",
+   "before": {
+    "sha": "c90af518850c6a187e836ee41c26918429c3ac06",
+    "diff": "diff --git a/scripts/upgrade-agent/Dockerfile b/scripts/upgrade-agent/Dockerfile\nindex b313daf22..8f68fe4d7 100644\n--- a/scripts/upgrade-agent/Dockerfile\n+++ b/scripts/upgrade-agent/Dockerfile\n@@ -11,7 +11,7 @@\n FROM debian:bookworm-slim\n \n # renovate: datasource=github-releases depName=kubernetes/kubernetes\n-ARG KUBECTL_VERSION=v1.37.1\n+ARG KUBECTL_VERSION=v1.37.2\n \n SHELL [\"/bin/bash\", \"-o\", \"pipefail\", \"-c\"]\n \ndiff --git a/scripts/upgrade-shepherd/Dockerfile b/scripts/upgrade-shepherd/Dockerfile\nindex 6de0dcde5..06cb8eaa9 100644\n--- a/scripts/upgrade-shepherd/Dockerfile\n+++ b/scripts/upgrade-shepherd/Dockerfile\n@@ -14,13 +14,13 @@\n FROM node:24-slim\n \n # renovate: datasource=github-releases depName=kubernetes/kubernetes\n-ARG KUBECTL_VERSION=v1.37.1\n+ARG KUBECTL_VERSION=v1.37.2\n # renovate: datasource=github-releases depName=fluxcd/flux2\n-ARG FLUX_VERSION=2.9.6\n+ARG FLUX_VERSION=2.10.0\n # renovate: datasource=github-releases depName=cli/cli\n-ARG GH_VERSION=2.103.2\n+ARG GH_VERSION=2.103.3\n # renovate: datasource=npm depName=@anthropic-ai/claude-code\n-ARG CLAUDE_CODE_VERSION=2.1.310\n+ARG CLAUDE_CODE_VERSION=2.1.321\n \n SHELL [\"/bin/bash\", \"-o\", \"pipefail\", \"-c\"]\n \n"
+   },
+   "after": {
+    "sha": "da0449f2f6e8ba7ba8e23e549c727f2509458c42",
+    "diff": "diff --git a/scripts/upgrade-agent/Dockerfile b/scripts/upgrade-agent/Dockerfile\nindex b313daf22..8f68fe4d7 100644\n--- a/scripts/upgrade-agent/Dockerfile\n+++ b/scripts/upgrade-agent/Dockerfile\n@@ -11,7 +11,7 @@\n FROM debian:bookworm-slim\n \n # renovate: datasource=github-releases depName=kubernetes/kubernetes\n-ARG KUBECTL_VERSION=v1.37.1\n+ARG KUBECTL_VERSION=v1.37.2\n \n SHELL [\"/bin/bash\", \"-o\", \"pipefail\", \"-c\"]\n \ndiff --git a/scripts/upgrade-shepherd/Dockerfile b/scripts/upgrade-shepherd/Dockerfile\nindex 6de0dcde5..24aa61284 100644\n--- a/scripts/upgrade-shepherd/Dockerfile\n+++ b/scripts/upgrade-shepherd/Dockerfile\n@@ -14,13 +14,13 @@\n FROM node:24-slim\n \n # renovate: datasource=github-releases depName=kubernetes/kubernetes\n-ARG KUBECTL_VERSION=v1.37.1\n+ARG KUBECTL_VERSION=v1.37.2\n # renovate: datasource=github-releases depName=fluxcd/flux2\n-ARG FLUX_VERSION=2.9.6\n+ARG FLUX_VERSION=2.10.0\n # renovate: datasource=github-releases depName=cli/cli\n-ARG GH_VERSION=2.103.2\n+ARG GH_VERSION=2.103.3\n # renovate: datasource=npm depName=@anthropic-ai/claude-code\n-ARG CLAUDE_CODE_VERSION=2.1.310\n+ARG CLAUDE_CODE_VERSION=2.1.322\n \n SHELL [\"/bin/bash\", \"-o\", \"pipefail\", \"-c\"]\n \n"
+   }
+  }
+ ]
+}

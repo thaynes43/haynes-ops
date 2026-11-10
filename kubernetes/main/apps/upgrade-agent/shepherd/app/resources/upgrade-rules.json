@@ -780,6 +780,18 @@
       "note": "these builds publish sha- tags that consumers pin by digest by hand (pipeline_pins.py, reviewed-digests.json); a source merge changes no running pod."
     }
   ],
+  "own_image_pin_wait": {
+    "applies_to": "own_images with cluster_effect delayed and pin_automerge true",
+    "waits_for": "renovate-pin-after-next-push-to-main",
+    "text": "A source merge changes the cluster only when Renovate's next hosted run opens the digest pin PR and auto-merges it, and Flux applies it at its next poll. Renovate's runs follow pushes to main, so after a source merge late in a quiet night the rebuilt image can stay unpinned until the next push.",
+    "verified_when": "the main build for the merge is green, the pin PR for the new digest has merged, Flux applied it and the workload soaked on the new digest",
+    "observed_20261110": [
+      "upgrade-shepherd and upgrade-agent (#4336): source 07:03:22Z, builds green 07:03Z; Renovate ran 07:07Z before the images were pushed and again only after the next push to main at 07:59Z; pins #4772/#4773 opened 08:00-08:01Z, auto-merged 08:03-08:04Z, applied at the 08:30Z Flux poll (87 minutes source to cluster, 55 of them waiting for Renovate)",
+      "audio-authoring (#4753): source 06:00:13Z; pin #4769 opened 06:09Z, auto-merged 06:11:54Z; pod replaced about 06:32Z",
+      "actions-runner (#4736, not a Renovate PR): source 06:36:24Z; pin #4770 opened 06:42Z, auto-merged 06:45:16Z; runner pools Ready on 0.1.2 by 07:02Z"
+    ],
+    "source": "OP513 comments 6326, 6331 and 6350"
+  },
   "package_rules": [
     {
       "id": "qbittorrent-allowed-client",
