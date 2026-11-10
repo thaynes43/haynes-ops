@@ -1128,6 +1128,9 @@ class ComponentRenderTest(unittest.TestCase):
         # (haynes-ops #4723); now exactly once.
         self.assertEqual([a for a in operator["args"] if a.startswith("--enable-child-usage-capture")],
                          ["--enable-child-usage-capture"])
+        # OP509: passive session allowance readings, exactly once and with no value.
+        self.assertEqual([a for a in operator["args"] if a.startswith("--enable-session-allowances")],
+                         ["--enable-session-allowances"])
         # The measured-usage pilot (2026-10-28): one new key and the signed 2.52.0 agent image,
         # each flag once. The parent is the coordinator session; launch stays off.
         self.assertEqual([a for a in operator["args"] if a.startswith("--pilot-agent-image")], [
