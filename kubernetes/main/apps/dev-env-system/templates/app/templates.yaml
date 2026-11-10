@@ -40,17 +40,25 @@
 # agent-run thread start (OP489, dev-env#1005) plus Remote Control state in agent-run (dev-env#1002).
 # No new env, mount or template field is required by the image.
 # Rollback image:2.94.0@sha256:1b00c73b7509a91259d71ee5eac04ab95045b8ecbedcb7a35d94b6c9d4c2f4dd.
-image: ghcr.io/thaynes43/dev-env:2.95.0@sha256:6e5cf70f33fb11cb5d6047ba6e671dcb7d0bc309d8885e4d06b52b96ffa5dc3c
+# v2.97.0 source 9ff246b6dbd7482eb983b7acbf916ceb9e61593a (release #1012; 2.96.0 was never pinned here).
+# publish-agent.yml run 42724115371 built, smoke-tested, signed and verified this digest.
+# Carries the Go toolchain at go.mod's version with GOTOOLCHAIN=local (OP504, dev-env#1013),
+# agentd's cursor task provider (OP500, dev-env#1009; it needs the `cursor` stanza below),
+# agent-run's Codex thread start through the API (OP495, dev-env#1007) and its truthful reap
+# wording for a private session (OP490, dev-env#1011).
+# Rollback image:2.95.0@sha256:6e5cf70f33fb11cb5d6047ba6e671dcb7d0bc309d8885e4d06b52b96ffa5dc3c
+# (and remove the `cursor` stanza, which the 2.95.0 agentd does not use but an older operator rejects).
+image: ghcr.io/thaynes43/dev-env:2.97.0@sha256:343a77002dafda36805c6dfcc6f4377579700896873c4eadd5ab0e15da110428
 
 # New-sessions-only rollout for THIS image (DESIGN-001 5.2, dev-env#925; Q-03 option B, a
 # per-rollout deviation recorded in the PR that sets it). While this equals `image`, the
-# operator marks no session Draining: new sessions and resumes use the 2.95.0 revision and
+# operator marks no session Draining: new sessions and resumes use the 2.97.0 revision and
 # running sessions keep their pods until their own suspend and resume. It is not part of the
 # revision. It MUST equal `image` exactly: the Renovate rule bumps only the `image:` line, so
 # the next image bump PR must update this line to the new image or delete it (deleting it
 # resumes idle drain), otherwise the templates are invalid and new sessions wait.
 rollout:
-  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.95.0@sha256:6e5cf70f33fb11cb5d6047ba6e671dcb7d0bc309d8885e4d06b52b96ffa5dc3c
+  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.97.0@sha256:343a77002dafda36805c6dfcc6f4377579700896873c4eadd5ab0e15da110428
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
@@ -126,6 +134,18 @@ mounts:
 # ExternalSecret in dev-agents (KICKOFF 8.8).
 claude:
   staticToken: { name: dev-env-claude-secret, key: CLAUDE_CODE_OAUTH_TOKEN }
+
+# Cursor task sessions (dev-env DESIGN-058, OP500). Naming this Secret key is what enables
+# `agent-run --agent cursor`: without the stanza the API refuses a cursor create with
+# provider_unconfigured. The operator sets the key as CURSOR_API_KEY on pods whose agent is
+# cursor and on no other pod; agentd strips the name from every Claude and Codex agent's
+# environment. The Secret is the ExternalSecret dev-env-cursor in dev-agents (haynes-ops#4729;
+# Tom, 2026-11-09: "Reuse CURSOR_MEATBALL_KEY"). The stanza is pod content, so it changes the
+# templates revision; the rollout hold above keeps running sessions where they are. It needs
+# an operator that knows the field (sha-69662d4 or later, haynes-ops#4732): an older one
+# rejects the whole document.
+cursor:
+  apiKey: { name: dev-env-cursor-secret, key: CURSOR_API_KEY }
 
 # D-18. `full` and `dev` carry the cigar-journal MCP token as `ops` does (mcp.json's
 # ${CIGAR_JOURNAL_TOKEN}, from its own Secret dev-env-cigar-secret, not dev-env-mcp-secret),
