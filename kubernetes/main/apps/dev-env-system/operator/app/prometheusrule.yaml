@@ -1,14 +1,19 @@
 ---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
 # dev-env v2's pages (thaynes43/dev-env DESIGN-001 D-10, D-56; DESIGN-024 section 7).
-# All but DevEnvReapedStopUnproven are severity critical, the one severity
-# Alertmanager sends to Tom's phone by Pushover. DevEnvReapedStopUnproven is a
-# warning: nothing routes it, so it shows only in Alertmanager and Grafana.
+# All but DevEnvReapedStopUnproven and DevEnvTaskCleanupOverdue are severity
+# critical, the one severity Alertmanager sends to Tom's phone by Pushover. Those
+# two are warnings: nothing routes them, so they show only in Alertmanager and Grafana.
 #
 # DevEnvReapedStopUnproven (dev-env DESIGN-025 25.4; OP490, OP515): a reaped session
 # whose agent's stop is still not proven an hour after the reap. A stop normally lands
 # within a minute. Nothing is at risk while it fires (the HOME volume is kept), so it
 # does not page; the coordinator's daily sweep (OP498) reads it.
+#
+# DevEnvTaskCleanupOverdue (dev-env DESIGN-061 section 6; OP521): a finished or purged
+# task Session is still in the clean-up more than 8 days after its clock. Owner holds,
+# canaries and pilots are left out of the expression. It pages nobody. The design
+# expects it on day one for unproven Sessions, until those have their own proof.
 #
 # DevEnvRescueFailed: a session's newest rescue failed (condition RescueFailed True).
 # D-10 keeps its volume and blocks archive until a human decides. The 20 minutes let
@@ -88,6 +93,23 @@ spec:
               kept until the stop is proven. Never delete the session, its Pod or its
               volume by hand. This is a warning: it pages nobody and shows only in
               Alertmanager and Grafana; the dev-env coordinator's daily sweep reads it.
+        # DESIGN-061 section 6. Gauges come from each replica's cache, so max, never sum.
+        # held and protected stay out: owner holds, canaries and pilots.
+        - alert: DevEnvTaskCleanupOverdue
+          expr: max(dev_env_task_cleanup_oldest_seconds{state=~"waiting|queued|rescuing|saved|deleting|refused|unproven"}) > 8 * 86400
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              A dev-env task session is still in the task clean-up more than 8 days after
+              its clock.
+            description: >-
+              The oldest task clean-up in waiting, queued, rescuing, saved, deleting,
+              refused or unproven is over 8 days. Owner holds, canaries and pilots are not
+              in this expression. A refused rescue keeps its HOME, and an unproven stop
+              stays until its own proof. This is a warning: it pages nobody and shows only
+              in Alertmanager and Grafana.
         - alert: DevEnvCoordinationRecordsNearLimit
           expr: |
             max by (kind, project) (dev_env_coordination_records)

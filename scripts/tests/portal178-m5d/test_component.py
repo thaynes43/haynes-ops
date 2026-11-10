@@ -126,10 +126,10 @@ OPERATOR_IMAGE = (
     "sha-3e3e93d"
     "@sha256:8cf8a2ba541033280563cb483aa891f49e990358d2a9f347648140f827afdd10"
 )
-# dev-env main 25b77247 (dev-env#1019, #1018); publish42740968309 signed and verified this digest.
+# dev-env main 6a8541b2 (dev-env#1046, #1040); publish 42814341103 signed and verified this digest.
 APPROVED_OPERATOR_IMAGE = (
-    "sha-25b7724"
-    "@sha256:7e1664b487f784262b4e336a49bd8a2df17d4440ee34e7de5ca025720c5270b5"
+    "sha-6a8541b"
+    "@sha256:0a2ace9740a0963efc3092595107d839901ee9a28a1d0e31a634d88aec18a9f7"
 )
 PREVIOUS_OPERATOR_IMAGE = (
     "sha-11be6ed"
@@ -1154,6 +1154,15 @@ class ComponentRenderTest(unittest.TestCase):
         # OP509: passive session allowance readings, exactly once and with no value.
         self.assertEqual([a for a in operator["args"] if a.startswith("--enable-session-allowances")],
                          ["--enable-session-allowances"])
+        # OP521 H5: the task clean-up for every finished or purged task Session, two at once, with
+        # no allowlist. Grace and the shared-volume floor stay unset.
+        self.assertEqual([a for a in operator["args"] if a.startswith("--enable-task-session-cleanup")],
+                         ["--enable-task-session-cleanup=true"])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-max-active")],
+                         ["--task-cleanup-max-active=2"])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-sessions")], [])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-grace")], [])
+        self.assertEqual([a for a in operator["args"] if a.startswith("--task-cleanup-min-shared-free")], [])
         # The measured-usage pilot (2026-10-28): one new key and the signed 2.52.0 agent image,
         # each flag once. The parent is the coordinator session; launch stays off.
         self.assertEqual([a for a in operator["args"] if a.startswith("--pilot-agent-image")], [

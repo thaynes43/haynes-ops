@@ -57,17 +57,30 @@
 # stored and served it since haynes-ops#4748. No provider request, login or new credential, and
 # no new env, mount or template field. Sessions on an older image simply send no reading.
 # Rollback image:2.97.0@sha256:343a77002dafda36805c6dfcc6f4377579700896873c4eadd5ab0e15da110428.
-image: ghcr.io/thaynes43/dev-env:2.98.0@sha256:bbe42186c27f94ec79dcb68301d6de93049ae094462f35ebfc937ac414e991d6
+# v2.99.0 source a1d40ea6 (release #1026). publish-agent.yml run 42791485940 built, smoke-tested,
+# signed and verified this digest. Carries agentd's strict rescue, rescue-verify and drop-log
+# for the clean-up (DESIGN-061, OP521), agent-run coordinator start, and the remote
+# thread-start fix. No new env, mount or template field. Sessions on an older image keep
+# running until their own suspend and resume.
+# Rollback image:2.98.0@sha256:bbe42186c27f94ec79dcb68301d6de93049ae094462f35ebfc937ac414e991d6.
+# v2.100.0 source 619f2f05 (release #1043). publish-agent.yml run 42818376701 built, smoke-tested,
+# signed and verified this digest. Carries the agent-run fix for starting a remote Claude thread
+# (OP531: the launch waited for a state the agent never reports and dropped the first message)
+# and opwork's project check, groom and order (dev-env#1038: show, complete and create's epic
+# refuse an item of another project unless --project names it). No new env, mount or template
+# field. Sessions on an older image keep running until their own suspend and resume.
+# Rollback image:2.99.0@sha256:f3ba7f1ce570591a95ee1f08bf515a368f34e04549c3e607d3bb65b8a349ab2d.
+image: ghcr.io/thaynes43/dev-env:2.100.0@sha256:d22d60dbee6700107f1508a89cb490385b9c856da199c5220913334e859381f0
 
 # New-sessions-only rollout for THIS image (DESIGN-001 5.2, dev-env#925; Q-03 option B, a
 # per-rollout deviation recorded in the PR that sets it). While this equals `image`, the
-# operator marks no session Draining: new sessions and resumes use the 2.98.0 revision and
+# operator marks no session Draining: new sessions and resumes use the 2.100.0 revision and
 # running sessions keep their pods until their own suspend and resume. It is not part of the
 # revision. It MUST equal `image` exactly: the Renovate rule bumps only the `image:` line, so
 # the next image bump PR must update this line to the new image or delete it (deleting it
 # resumes idle drain), otherwise the templates are invalid and new sessions wait.
 rollout:
-  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.98.0@sha256:bbe42186c27f94ec79dcb68301d6de93049ae094462f35ebfc937ac414e991d6
+  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.100.0@sha256:d22d60dbee6700107f1508a89cb490385b9c856da199c5220913334e859381f0
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
