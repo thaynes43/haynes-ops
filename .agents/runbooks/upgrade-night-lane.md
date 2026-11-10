@@ -130,10 +130,21 @@ records the choice.
 ## What step 2 records
 
 - **`fingerprint`** names the change, not the commit. It is `sha256:` over each file
-  section of `gh pr diff`, in path order: the `diff --git` line, then every added or
-  removed line exactly as written. Hunk headers, context lines, `index` lines and the
-  "No newline" marker are left out, so a Renovate rebase onto a moved base keeps the
-  value, and any change to an added or removed line changes it. A binary section, an
+  section of the head commit's own diff, fetched by its SHA
+  (`gh api -H 'Accept: application/vnd.github.diff' repos/<repo>/commits/<head>`), in
+  path order: the header lines (`diff --git`, file modes,
+  new, deleted or renamed, `---` and `+++`), then every added or removed line exactly as
+  written. The `index` and similarity lines, hunk headers, context lines and the "No
+  newline" marker are left out. A Renovate rebase onto a moved base therefore keeps the
+  value, and any change to a path, a mode or an added or removed line changes it.
+  - Only a PR with one commit has a fingerprint: `fingerprint_basis` is `commit-diff`.
+    It is `multi-commit` for more commits, and `binary` or `unavailable` (value `null`)
+    for a binary section or a failed read.
+  - Because the diff is read by SHA, a push between the reads cannot pair one head with
+    another head's patch.
+  - Known limit: context is left out, so the same added and removed lines at another
+    place in the same file give the same value. Any later use must still require green
+    checks on the new head. A binary section, an
   empty diff or a failed read gives `null`, and `fingerprint_basis` then says `binary`
   or `unavailable`. The record also carries `commit_count` and `change_key` (the
   package, version and file identity that step 1 called `fingerprint`).
@@ -151,11 +162,12 @@ records the choice.
   waited 55 minutes for the next push, so source to cluster took 87 minutes. Such a unit
   counts as verified only when the pin has merged, Flux applied it and the workload
   soaked on the new digest.
-- **Version operators.** Renovate's pip table prints `==0.36.2`. Step 1 could not
-  compare that with a hold's `<2.0.0` and recorded a false hold on #4757 on every tick
-  of the night. The classifier now strips one leading operator (`==`, `~=`, `^`, `~`,
-  `>=`, `<=`, `!=`, `=`) and a leading `v` before it compares versions. #4757 now reads
-  as `BLOCKED` because its `validate` build fails, which is the real reason.
+- **Exact pins.** Renovate's pip table prints `==0.36.2`. Step 1 could not compare
+  that with a hold's `<2.0.0` and recorded a false hold on #4757 on every tick of the
+  night. The classifier now reads an exact pin (`==`, `===`, `=`) and a leading `v` as
+  the version it names. A range (`>=`, `^`, `~`, `~=`, `<`, `!=`) is left as written.
+  It has no comparable version, so it still counts as held (fail closed). #4757 now
+  reads as `BLOCKED` because its `validate` build fails, which is the real reason.
 
 ## Lane verdicts in the labeler
 
@@ -164,16 +176,19 @@ meets all three conditions:
 
 - it is by `haynes-ops-bot[bot]` (the REST login with the `[bot]` suffix);
 - it starts with `<!-- shepherd-vet sha=<current head> -->`;
-- it carries `<!-- upgrade-lane v1 -->`.
+- `<!-- upgrade-lane v1 -->` is on its own line right after the `VERDICT:` line.
+  A marker quoted anywhere else does not count.
 
-| Token | Label |
-|---|---|
-| `NIGHTLY`, `SCHEDULED` | `disposition:shepherd` |
-| `OWNER-WINDOW` | `disposition:stranded` (the list that needs Tom) |
-| `BLOCKED`, `AGENT-SESSION` | `disposition:manual-only` |
-| `MERGED`, `REVERTED`, `EXCLUDED`, `HOLD` | the handling that existed before step 2 |
+| Token | Label | Ranks like |
+|---|---|---|
+| `OWNER-WINDOW` | `disposition:stranded` (the list that needs Tom) | a `HOLD`: before the carve-outs |
+| `BLOCKED`, `AGENT-SESSION` | `disposition:manual-only` | a `HOLD`: before the carve-outs |
+| `NIGHTLY`, `SCHEDULED` | `disposition:shepherd` | the shepherd's `AUTO-MERGE`: a manual carve-out (Kometa, LazyLibrarian, ComfyUI, HA) still wins |
+| `MERGED`, `REVERTED`, `EXCLUDED`, `HOLD` | the handling that existed before step 2 | |
 
-An enabled auto-merge and an unreadable merge state still come first. A comment without
+An enabled auto-merge and an unreadable merge state still come first. A verdict that
+moves a PR toward a person outranks policy; a verdict that moves it toward automation
+does not. A comment without
 the lane marker keeps its old label. No such comment exists yet, because the lane writes
 no comments until step 3. `scripts/pr-disposition-test.cjs` pins each token, a token by
 a non-bot author (ignored), a token for an older head (ignored) and the same tokens

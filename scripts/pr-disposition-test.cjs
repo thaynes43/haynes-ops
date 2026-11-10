@@ -126,7 +126,17 @@ async function laneCheck(name,options,label,reason,changesOutcome) {
   await laneCheck('lane OWNER-WINDOW for an older head is ignored (manual carve-out stays)',{comments:[laneVet('OWNER-WINDOW',OTHER)],files:['kubernetes/main/apps/media/kometa/app/helmrelease.yaml']},'disposition:manual-only','known-policy-carve-out',false);
   await laneCheck('enabled auto-merge outranks a lane verdict',{pr:{auto_merge:enabled},comments:[laneVet('OWNER-WINDOW')]},'disposition:auto-merge','merge-request-enabled',false);
   await laneCheck('unknown merge state outranks a lane verdict',{missingMerge:true,comments:[laneVet('NIGHTLY')]},'disposition:stranded','merge-state-unavailable',false);
-  await laneCheck('lane NIGHTLY outranks a manual carve-out',{comments:[laneVet('NIGHTLY')],files:['kubernetes/main/apps/media/kometa/app/helmrelease.yaml']},'disposition:shepherd','current-head-lane-verdict',true);
+  // Toward automation ranks like AUTO-MERGE (after the carve-outs); toward people ranks like HOLD.
+  for(const token of ['NIGHTLY','SCHEDULED'])
+    await laneCheck('a manual carve-out outranks lane '+token,{comments:[laneVet(token)],files:['kubernetes/main/apps/media/kometa/app/helmrelease.yaml']},'disposition:manual-only','known-policy-carve-out',false);
+  await laneCheck('lane NIGHTLY on a shepherd carve-out stays shepherd',{comments:[laneVet('NIGHTLY')],files:['kubernetes/main/apps/media/plex/app/helmrelease.yaml'],pr:{labels:[{name:'type/patch'}]}},'disposition:shepherd','known-policy-carve-out',true);
+  await laneCheck('lane OWNER-WINDOW outranks a manual carve-out',{comments:[laneVet('OWNER-WINDOW')],files:['kubernetes/main/apps/media/kometa/app/helmrelease.yaml']},'disposition:stranded','current-head-lane-verdict',true);
+  await laneCheck('lane AGENT-SESSION outranks a shepherd ramp path',{comments:[laneVet('AGENT-SESSION')],files:['kubernetes/main/apps/network/traefik/app/helmrelease.yaml']},'disposition:manual-only','current-head-lane-verdict',false);
+  // The lane marker counts only on its own line right after VERDICT (not inside free text).
+  const freeText=(verdict)=>({id:6540904902,user:{login:'haynes-ops-bot[bot]'},body:`<!-- shepherd-vet sha=${SHA} -->\nVERDICT: ${verdict}\nnotes quoting <!-- upgrade-lane v1 --> from somewhere\n`});
+  const trailing=(verdict)=>({id:6540904903,user:{login:'haynes-ops-bot[bot]'},body:`<!-- shepherd-vet sha=${SHA} -->\nVERDICT: ${verdict}\nfree text\n<!-- upgrade-lane v1 -->\n`});
+  for(const [name,c] of [['inside a line',freeText('NIGHTLY')],['on a later line',trailing('NIGHTLY')],['owner token on a later line',trailing('OWNER-WINDOW')]])
+    await laneCheck('a lane marker '+name+' is not a lane comment',{comments:[c]},'disposition:manual-only','current-head-declined',false);
   await laneCheck('a later lane verdict replaces an earlier shepherd HOLD',{comments:[vet('HOLD'),laneVet('NIGHTLY')]},'disposition:shepherd','current-head-lane-verdict',true);
   await laneCheck('a later shepherd vet without the marker replaces an earlier lane verdict',{comments:[laneVet('NIGHTLY'),{...vet('HOLD'),id:6540904901}]},'disposition:stranded','current-head-hold',false);
   await laneCheck('a lowercase lane token is read like the shepherd tokens',{comments:[laneVet('owner-window')]},'disposition:stranded','current-head-lane-verdict',true);

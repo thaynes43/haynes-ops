@@ -21,8 +21,8 @@
 //   packages: [{ name, update, from, to }],   // the Renovate body table
 //   checks: [{ workflow, name, status, conclusion, completed_at }],   // head commit
 //   vet_markers: [{ author, sha, verdict }],  // '<!-- shepherd-vet sha=… -->' comments
-//   patch_fingerprint: 'sha256:…' | null,     // patchFingerprint() of `gh pr diff` (step 2)
-//   patch_basis: 'pr-diff' | 'binary' | 'unavailable',
+//   patch_fingerprint: 'sha256:…' | null,     // patchFingerprint() of the head commit's diff (step 2)
+//   patch_basis: 'commit-diff' | 'binary' | 'multi-commit' | 'unavailable',
 // }
 // opts = { now: epoch ms, holdRules: [packageRules from .renovate/holds.json5] }
 //
@@ -104,11 +104,13 @@ export function parseJson5(text) {
 }
 
 // ── versions ───────────────────────────────────────────────────────────────────
-// A version as Renovate's table prints it may carry the manager's operator: pip pins
-// show `==0.36.2` (seen on #4757, 2026-11-10: every night tick recorded a false "cannot
-// compare ==0.36.2 with <2.0.0" hold), npm ranges `^1.2.3` or `~1.2.3`. Strip one leading
-// operator and a leading v before comparing; anything else is compared as written.
-export const bareVersion = v => String(v ?? '').trim().replace(/^(?:===|==|~=|>=|<=|!=|\^|~|=)\s*/, '').replace(/^v(?=\d)/i, '');
+// A version as Renovate's table prints it may carry the manager's operator. An EXACT pin
+// (`==0.36.2`, `===0.36.2`, `=0.36.2`) names one version, so it is compared as that
+// version (seen on #4757, 2026-11-10: every night tick recorded a false "cannot compare
+// ==0.36.2 with <2.0.0" hold). A RANGE (`>=`, `^`, `~`, `~=`, `<`, `!=`) admits versions
+// a hold may exclude, so it is left as written: it then has no comparable version and
+// counts as held (fail closed). A leading v is dropped.
+export const bareVersion = v => String(v ?? '').trim().replace(/^(?:===|==|=)\s*(?=v?\d)/, '').replace(/^v(?=\d)/i, '');
 const numParts = v => (bareVersion(v).match(/^\d+(?:\.\d+)*/) || [''])[0].split('.').filter(Boolean).map(Number);
 export function compareVersions(a, b) {
   const x = numParts(a), y = numParts(b);
@@ -170,10 +172,11 @@ export function holdMatches(facts, holdRules) {
 // #4477 871dab84 -> 41c67183 and #4607 d91793d3 -> ea9bbac8 were byte-identical; #4336
 // c90af518 -> da0449f2 changed one line, claude-code 2.1.321 -> 2.1.322). The fingerprint
 // names the change, not the commit: sha256 over, for each file section of the unified
-// diff in path order, the `diff --git` line and then every added or removed line exactly
-// as written. Hunk headers (line numbers), context lines, `index` lines (blob ids) and
-// "\ No newline" markers are left out, so a rebase onto a moved base keeps the value and
-// any change to an added or removed line changes it. A binary section has no comparable
+// diff in path order, its header lines (`diff --git`, file modes, new/deleted/rename,
+// `---`/`+++`) and then every added or removed line exactly as written. Left out: the
+// `index` and similarity lines (blob ids and scores move with the base), hunk headers
+// (line numbers), context lines and "\ No newline" markers. So a rebase onto a moved base
+// keeps the value, and any change to a path, a mode or an added or removed line changes it. A binary section has no comparable
 // text, so its value is null (basis 'binary'); so is an empty or unreadable diff.
 // Step 2 only RECORDS the value. Carrying a reviewed verdict or an owner approval across
 // a rebase on an equal fingerprint (single Renovate commit only) is a later step.
@@ -183,11 +186,12 @@ export function patchFingerprint(diffText) {
   const sections = [];
   let cur = null;
   for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
-    if (line.startsWith('diff --git ')) { cur = { head: line, body: [], inHunk: false }; sections.push(cur); continue; }
+    if (line.startsWith('diff --git ')) { cur = { head: line, meta: [], body: [], inHunk: false }; sections.push(cur); continue; }
     if (!cur) continue;
     if (!cur.inHunk) {
       if (line.startsWith('@@')) cur.inHunk = true;
       else if (/^(Binary files .* differ|GIT binary patch)$/.test(line)) cur.binary = true;
+      else if (line && !/^(index |similarity index |dissimilarity index )/.test(line)) cur.meta.push(line);
       continue;
     }
     if (line.startsWith('@@')) continue;
@@ -197,8 +201,8 @@ export function patchFingerprint(diffText) {
   if (sections.some(x => x.binary)) return { fingerprint: null, basis: 'binary' };
   sections.sort((a, b) => (a.head < b.head ? -1 : a.head > b.head ? 1 : 0));
   const h = createHash('sha256');
-  for (const x of sections) { h.update(x.head + '\n'); for (const l of x.body) h.update(l + '\n'); }
-  return { fingerprint: 'sha256:' + h.digest('hex'), basis: 'pr-diff' };
+  for (const x of sections) { h.update(x.head + '\n'); for (const l of x.meta) h.update('H' + l + '\n'); for (const l of x.body) h.update('L' + l + '\n'); }
+  return { fingerprint: 'sha256:' + h.digest('hex'), basis: 'commit-diff' };
 }
 
 // ── the check map ─────────────────────────────────────────────────────────────
@@ -473,10 +477,17 @@ export function gatherFacts(repo, number, run = runReadOnly) {
   // which GraphQL's author.login drops. The repository is public, so this matters.
   const comments = JSON.parse(run('gh', ['api', '--paginate', '--slurp', `repos/${repo}/issues/${number}/comments?per_page=100`])).flat();
   const files = (v.files || []).map(f => f.path);
-  // The diff is a read too; a failed read leaves the fingerprint null, never a guess.
-  let diff = null;
-  try { diff = run('gh', ['pr', 'diff', String(number), '-R', repo], { allowFail: true }); } catch { diff = null; }
-  const fp = patchFingerprint(diff);
+  // The fingerprint is of the head commit's own diff, fetched BY ITS SHA, so a push
+  // between the two reads cannot pair one head with another head's patch. Only a single
+  // commit has "the" patch (the design's carry-over rule needs one Renovate commit); for
+  // more commits the value is null. A failed read leaves it null, never a guess.
+  const nCommits = (v.commits || []).length;
+  let fp = { fingerprint: null, basis: nCommits > 1 ? 'multi-commit' : 'unavailable' };
+  if (nCommits === 1 && /^[0-9a-f]{40}$/.test(v.headRefOid || '') && v.commits[0].oid === v.headRefOid) {
+    let diff = null;
+    try { diff = run('gh', ['api', '-H', 'Accept: application/vnd.github.diff', `repos/${repo}/commits/${v.headRefOid}`], { allowFail: true }); } catch { diff = null; }
+    fp = patchFingerprint(diff);
+  }
   return {
     number: v.number,
     head_sha: v.headRefOid,

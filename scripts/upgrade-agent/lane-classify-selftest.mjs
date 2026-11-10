@@ -204,7 +204,12 @@ const expectLane = (name, facts, lane, klass) => {
 {
   // pip tables print `==0.36.2`; every night tick on 2026-11-10 recorded #4757 as held
   // ("cannot compare ==0.36.2 with <2.0.0") although 0.36.2 is inside the hold.
-  ok(L.bareVersion('==0.36.2') === '0.36.2' && L.bareVersion('^1.2.3') === '1.2.3' && L.bareVersion('~=3.12') === '3.12' && L.bareVersion('v1.37.2') === '1.37.2', 'bareVersion strips one operator and a leading v');
+  ok(L.bareVersion('==0.36.2') === '0.36.2' && L.bareVersion('===0.36.2') === '0.36.2' && L.bareVersion('=1.2.3') === '1.2.3' && L.bareVersion('v1.37.2') === '1.37.2', 'bareVersion strips an exact-pin operator and a leading v');
+  for (const r of ['>=1.9.0', '^1.9.0', '~1.9.0', '~=1.9', '<3', '!=2.0.0']) ok(L.bareVersion(r) === r, `bareVersion leaves the range ${r} as written`);
+  for (const r of ['>=1.9.0', '^1.9.0', '~=1.9']) ok(L.versionAllowed('<2.0.0', r) === null, `a range target ${r} cannot be compared with <2.0.0 (counts as held)`);
+  ok(L.versionAllowed('/^1\\./', '^1.2.3') === false, 'a range target does not match a version regex hold');
+  const rg = fact(4662); rg.packages = [{ name: 'huggingface-hub', update: null, from: '==0.36.1', to: '>=1.9.0' }];
+  expectLane('a range target inside a held package stays held (fail closed)', rg, 'LANE-B-OWNER', 'hold');
   ok(L.bareVersion('latest') === 'latest' && L.bareVersion('vendor-1') === 'vendor-1', 'bareVersion leaves non-versions as written');
   ok(L.versionAllowed('<2.0.0', '==0.36.2') === true && L.versionAllowed('<2.0.0', '==2.0.1') === false, 'allowedVersions compares a pip pin by its version');
   ok(L.versionAllowed('/^3\\.12(?:\\.\\d+)?$/', '==3.12.4') === true, 'allowedVersions regex sees the bare pip version');
@@ -218,12 +223,13 @@ const expectLane = (name, facts, lane, klass) => {
   const cmp = fact(4662);
   cmp.packages = [{ name: 'some-lib', update: 'minor', from: '==1.2.0', to: '==1.3.0' }];
   ok(L.updateTypes(cmp).includes('minor') && L.compareVersions('==1.3.0', '1.2.9') === 1, 'compareVersions reads pip pins');
+  ok(L.compareVersions('^1.3.0', '1.2.9') === -1, 'compareVersions finds no version in a range (as on main)');
 
   // patch fingerprint against the night's real rebases (fixtures/lane-rebase-pairs-20261110.json)
   const rp = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-rebase-pairs-20261110.json'), 'utf8'));
   for (const p of rp.pairs) {
     const a = L.patchFingerprint(p.before.diff), b = L.patchFingerprint(p.after.diff);
-    ok(a.basis === 'pr-diff' && /^sha256:[0-9a-f]{64}$/.test(a.fingerprint || ''), `fingerprint of #${p.pr} ${p.before.sha.slice(0, 8)} is a sha256`, JSON.stringify(a));
+    ok(a.basis === 'commit-diff' && /^sha256:[0-9a-f]{64}$/.test(a.fingerprint || ''), `fingerprint of #${p.pr} ${p.before.sha.slice(0, 8)} is a sha256`, JSON.stringify(a));
     ok((a.fingerprint === b.fingerprint) === p.same_change, `#${p.pr} ${p.before.sha.slice(0, 8)} -> ${p.after.sha.slice(0, 8)}: fingerprint ${p.same_change ? 'equal (byte-identical rebase)' : 'differs (Renovate changed a line)'}`, `${a.fingerprint} ${b.fingerprint}`);
   }
   const base = rp.pairs[0].before.diff;
@@ -234,7 +240,11 @@ const expectLane = (name, facts, lane, klass) => {
   ok(L.patchFingerprint(base.replace(/\n/g, '\r\n')).fingerprint === fp0, 'fingerprint is the same with CRLF line ends');
   ok(L.patchFingerprint(base.replace(/^\+(.*)1\.37\.2/m, '+$11.37.3')).fingerprint !== fp0, 'an edited added line changes the fingerprint');
   ok(L.patchFingerprint(base.replace(/^-(?!--)(.*)$/m, '-$1 ')).fingerprint !== fp0, 'trailing whitespace on a removed line changes the fingerprint (no whitespace folding)');
-  ok(L.patchFingerprint(base.replace(/^--- a\//m, '--- a/moved/')).fingerprint === fp0, 'the ---/+++ header lines are not hashed as removed or added lines');
+  ok(L.patchFingerprint(base.replace(/^(diff --git .*\n)/m, '$1old mode 100644\nnew mode 100755\n')).fingerprint !== fp0, 'a file mode change changes the fingerprint');
+  ok(L.patchFingerprint(base.replace(/^(diff --git .*\n)/m, '$1new file mode 100644\n')).fingerprint !== fp0, 'a new file differs from a modified one');
+  const asBody = base.replace(/^--- (a\/\S+)$/m, '--- $1').replace(/^(diff --git .*\n(?:.*\n)*?)--- (a\/\S+)\n\+\+\+ (b\/\S+)\n/m, '$1');
+  ok(L.patchFingerprint(asBody).fingerprint !== fp0, 'the ---/+++ header lines are hashed as headers, so dropping them changes the value');
+  ok(L.patchFingerprint(base.replace(/^(diff --git .*\n)/m, '$1similarity index 97%\n')).fingerprint === fp0, 'a similarity score line is ignored like the index line');
   const secs = base.split(/(?=^diff --git )/m).filter(Boolean);
   ok(secs.length >= 2 && L.patchFingerprint(secs.slice().reverse().join('')).fingerprint === fp0, 'file order does not matter', `${secs.length} sections`);
   ok(L.patchFingerprint(secs[0]).fingerprint !== fp0, 'dropping a file changes the fingerprint');
@@ -244,23 +254,31 @@ const expectLane = (name, facts, lane, klass) => {
   ok(L.patchFingerprint(bin).fingerprint === null && L.patchFingerprint(bin).basis === 'binary' && L.patchFingerprint(base + bin).basis === 'binary', 'a binary section makes the fingerprint null (basis binary)');
 
   // the record carries it; gatherFacts reads `gh pr diff`; a failed diff read is null
-  const withFp = fact(4477); withFp.patch_fingerprint = fp0; withFp.patch_basis = 'pr-diff';
+  const withFp = fact(4477); withFp.patch_fingerprint = fp0; withFp.patch_basis = 'commit-diff';
   const rf = cls(withFp);
-  ok(rf.fingerprint === fp0 && rf.fingerprint_basis === 'pr-diff' && rf.commit_count === 1 && /^[0-9a-f]{16}$/.test(rf.change_key), 'the record carries fingerprint, basis, commit count and change_key', JSON.stringify({ f: rf.fingerprint, b: rf.fingerprint_basis, c: rf.commit_count, k: rf.change_key }));
+  ok(rf.fingerprint === fp0 && rf.fingerprint_basis === 'commit-diff' && rf.commit_count === 1 && /^[0-9a-f]{16}$/.test(rf.change_key), 'the record carries fingerprint, basis, commit count and change_key', JSON.stringify({ f: rf.fingerprint, b: rf.fingerprint_basis, c: rf.commit_count, k: rf.change_key }));
   ok(rf.lane === cls(fact(4477)).lane, 'the fingerprint does not change the lane in step 2');
   const noFp = cls(fact(4477));
   ok(noFp.fingerprint === null && noFp.fingerprint_basis === 'unavailable', 'facts without a diff record a null fingerprint');
   const f77 = fact(4477);
-  const stubView = { number: 4477, headRefOid: f77.head_sha, headRefName: f77.branch, title: f77.title, author: { login: f77.author }, isDraft: false, labels: [], files: f77.files.map(path => ({ path })), changedFiles: f77.files.length, commits: [], statusCheckRollup: [], body: '' };
-  const stubRun = (diffOut) => (cmd, argv) => {
+  const stubView = { number: 4477, headRefOid: f77.head_sha, headRefName: f77.branch, title: f77.title, author: { login: f77.author }, isDraft: false, labels: [], files: f77.files.map(path => ({ path })), changedFiles: f77.files.length, commits: [{ oid: f77.head_sha, authors: [{ login: 'renovate[bot]' }] }], statusCheckRollup: [], body: '' };
+  let diffCalls = [];
+  const stubRun = (diffOut, view = stubView) => (cmd, argv) => {
     if (!L.isReadOnlyCommand(cmd, argv)) throw new Error('stub refused a non-read');
-    if (argv[0] === 'pr' && argv[1] === 'view') return JSON.stringify(stubView);
+    if (argv[0] === 'pr' && argv[1] === 'view') return JSON.stringify(view);
+    if (argv[0] === 'api' && argv.some(a => /\/commits\//.test(a))) { diffCalls.push(argv); if (diffOut instanceof Error) throw diffOut; return diffOut; }
     if (argv[0] === 'api') return '[[]]';
-    if (argv[0] === 'pr' && argv[1] === 'diff') { if (diffOut instanceof Error) throw diffOut; return diffOut; }
     throw new Error(`unexpected ${argv.join(' ')}`);
   };
   const g1 = L.gatherFacts('x/y', 4477, stubRun(rp.pairs[0].after.diff));
-  ok(g1.patch_fingerprint === fp0 && g1.patch_basis === 'pr-diff', 'gatherFacts fingerprints the PR diff (the rebased #4477 equals the reviewed one)');
+  ok(g1.patch_fingerprint === fp0 && g1.patch_basis === 'commit-diff', 'gatherFacts fingerprints the head commit\'s diff (the rebased #4477 equals the reviewed one)');
+  ok(diffCalls.length === 1 && diffCalls[0].includes(`repos/x/y/commits/${f77.head_sha}`) && diffCalls[0].includes('Accept: application/vnd.github.diff'), 'the diff is fetched by the head SHA read in the same pass (no race with a push)', JSON.stringify(diffCalls));
+  diffCalls = [];
+  const two = { ...stubView, commits: [{ oid: 'c'.repeat(40), authors: [] }, { oid: f77.head_sha, authors: [] }] };
+  const g4 = L.gatherFacts('x/y', 4477, stubRun(rp.pairs[0].after.diff, two));
+  ok(g4.patch_fingerprint === null && g4.patch_basis === 'multi-commit' && diffCalls.length === 0, 'more than one commit: no fingerprint and no diff read');
+  const moved = { ...stubView, commits: [{ oid: 'd'.repeat(40), authors: [] }] };
+  ok(L.gatherFacts('x/y', 4477, stubRun(rp.pairs[0].after.diff, moved)).patch_fingerprint === null, 'a commit list that does not end at the head gives no fingerprint');
   const g2 = L.gatherFacts('x/y', 4477, stubRun(null));
   ok(g2.patch_fingerprint === null && g2.patch_basis === 'unavailable', 'a failed diff read (allowFail null) leaves the fingerprint null');
   const g3 = L.gatherFacts('x/y', 4477, stubRun(new Error('boom')));

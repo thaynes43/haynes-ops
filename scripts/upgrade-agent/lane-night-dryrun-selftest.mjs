@@ -224,7 +224,7 @@ const out = o => { process.stdout.write(typeof o === 'string' ? o : JSON.stringi
 const fail = () => { process.stderr.write('Error from server (Forbidden)'); process.exit(1); };
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'list') { if (w.failList) fail(); out(w.list); }
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'view') out(w.prs[argv[2]]);
-if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'diff') { if (w.diffs?.[argv[2]] === 'FAIL') fail(); out(w.diffs?.[argv[2]] ?? ''); }
+if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/commits\\/[0-9a-f]{40}$/.test(a))) { const sha = argv.find(a => /\\/commits\\//.test(a)).split('/').pop(); const n = Object.keys(w.prs).find(k => w.prs[k].headRefOid === sha); if (w.diffs?.[n] === 'FAIL') fail(); out(w.diffs?.[n] ?? ''); }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => a.includes('contents/.renovate/holds.json5'))) out({ content: w.holds });
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /issues\\/\\d+\\/comments/.test(a))) { const n = argv.find(a => /issues\\/\\d+\\/comments/.test(a)).match(/issues\\/(\\d+)/)[1]; out([w.comments[n] || []]); }
 if (cmd === 'kubectl' && argv[0] === 'get') { const ns = argv[argv.indexOf('-n') + 1]; const v = w.k8s[argv[1] + '@' + ns] ?? w.k8s[argv[1]]; if (v === 'FAIL' || v === undefined) fail(); out(v === 'GARBAGE' ? 'not json' : v); }
@@ -282,9 +282,9 @@ process.exit(0);
     ok(r.summary.baseline?.flux_warnings?.includes('Kustomization dev-env-system/dev-env-h7-metadata-audit'), 'an unrelated NotReady Kustomization is a warning', JSON.stringify(r.summary.baseline));
     ok(r.summary.change_lock === 'not-implemented' && /change lock: not-implemented/.test(r.stdout), 'the change lock is reported as not-implemented');
     ok(/would merge this tick: #4662/.test(r.stdout), 'the log says what it would merge');
-    // step 2: the tick reads `gh pr diff` (a read) and records the patch fingerprint
-    ok(r.calls.some(c => c.cmd === 'gh' && c.argv[0] === 'pr' && c.argv[1] === 'diff' && c.argv[2] === '4477'), 'the tick reads the PR diff with gh pr diff');
-    ok(r.rec(4477).fingerprint === L.patchFingerprint(rebase.pairs[0].before.diff).fingerprint && r.rec(4477).fingerprint_basis === 'pr-diff', '#4477 record carries the fingerprint of the reviewed patch (byte-identical rebase)', String(r.rec(4477).fingerprint));
+    // step 2: the tick reads the head commit's diff (gh api GET by SHA) and records the fingerprint
+    ok(r.calls.some(c => c.cmd === 'gh' && c.argv[0] === 'api' && c.argv.includes(`repos/thaynes43/haynes-ops/commits/${fact(4477).head_sha}`)), 'the tick reads the head commit diff by SHA with gh api');
+    ok(r.rec(4477).fingerprint === L.patchFingerprint(rebase.pairs[0].before.diff).fingerprint && r.rec(4477).fingerprint_basis === 'commit-diff', '#4477 record carries the fingerprint of the reviewed patch (byte-identical rebase)', String(r.rec(4477).fingerprint));
     ok(r.rec(4670).fingerprint === null && r.rec(4670).fingerprint_basis === 'unavailable' && blk(r, 4670) === '', 'a failed diff read records a null fingerprint and blocks nothing in step 2', `${r.rec(4670).fingerprint_basis} | ${blk(r, 4670)}`);
     ok(r.rec(4662).cluster_effect_wait?.waits_for === 'renovate-pin-after-next-push-to-main', 'the own-image record says it waits for the Renovate pin', JSON.stringify(r.rec(4662).cluster_effect_wait));
   }
