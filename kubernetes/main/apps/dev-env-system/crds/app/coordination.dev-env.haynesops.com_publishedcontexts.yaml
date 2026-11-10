@@ -45,9 +45,14 @@ spec:
               actor:
                 properties:
                   kind:
+                    description: |-
+                      policy is the Meatball caller on an InboxMessage. TaskClaim and
+                      PublishedContext refuse it. MaxLength bounds the string a rule reads.
                     enum:
                     - session
                     - coordinator
+                    - policy
+                    maxLength: 11
                     type: string
                   podName:
                     maxLength: 253
@@ -285,6 +290,8 @@ spec:
             x-kubernetes-validations:
             - message: published context and original provenance are immutable
               rule: self == oldSelf
+            - message: a published context actor is not a caller policy
+              rule: self.actor.kind != 'policy'
             - message: source UID must equal original publication identity
               rule: self.identity.sessionUID == self.source.uid
             - message: managed assertions require their bounded fixed identity and
