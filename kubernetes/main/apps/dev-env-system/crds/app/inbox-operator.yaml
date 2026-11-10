@@ -8,6 +8,13 @@ rules:
   - apiGroups: [coordination.dev-env.haynesops.com]
     resources: [inboxmessages, inboxreadacks]
     verbs: [get, create, list]
+  # A held parent-note wait (dev-env DESIGN-062 section 7.2, OP686) watches for
+  # one reply instead of polling. watch shows the operator nothing that list
+  # and get on the same objects do not already show it. Nothing uses it until
+  # the operator runs with --enable-parent-notes.
+  - apiGroups: [coordination.dev-env.haynesops.com]
+    resources: [inboxmessages]
+    verbs: [watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
