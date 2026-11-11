@@ -104,7 +104,15 @@ spec:
           # (frontdoor), step Verify the signature: this digest, keyless, by
           # publish.yml on main. Previous image, and the rollback target:
           # sha-7cc86a8@sha256:61cd9b2feba29ca8a97015b70884606d8158ac36d0e61fd6f9b0c2978c011d55
-          image: ghcr.io/thaynes43/dev-env-frontdoor:sha-6bc602c@sha256:c55e85e47503b05564b392fbac6d95896ede831dafc612ee68042702a267c83d
+          # dev-env fc89551 (release 2.104.0, PR #1074, OP708): the brief coordinator_start
+          # sends now tells a coordinator to run agent-run parent wait-any in the background,
+          # so it is woken when a worker leaves it a note. Text only: no tool, route, limit or
+          # authority change. The command it names needs agent image 2.104.0, pinned in the
+          # same change. Publish run 43053918951, job Publish (frontdoor), step Verify the
+          # signature: this digest, keyless, by publish.yml on main. Previous image, and the
+          # rollback target:
+          # sha-6bc602c@sha256:c55e85e47503b05564b392fbac6d95896ede831dafc612ee68042702a267c83d
+          image: ghcr.io/thaynes43/dev-env-frontdoor:sha-fc89551@sha256:335e8f92ca45f4a0e6d6cd8a25f363c352b7b849f3429d4901ff215ddd0810c9
           imagePullPolicy: IfNotPresent
           args:
             - --listen=:8080
