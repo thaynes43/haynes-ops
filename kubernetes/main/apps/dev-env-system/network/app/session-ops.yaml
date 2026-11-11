@@ -1,0 +1,167 @@
+---
+# Ops tier (DESIGN-064 6.1): what a dev-agents pod labelled
+# dev-env.haynesops.com/egress: ops may reach. Summoned ops sessions read
+# attacker-influenced text, so this is a name list. It is not the public web.
+#
+# Ingress: none. Cilium default-deny is per direction, so an egress-only policy
+# would leave an ops pod open to ingress once the platform tier stops selecting
+# it (DESIGN-064 6.1, F7). `ingress` below is the same empty rule
+# session-platform.yaml carries. Cilium reads `- {}` as "selects the pod,
+# allows no peer" (session-platform.yaml lines 6-8). kubectl exec and kubelet
+# probes do not cross the pod network.
+#
+# DNS lists names. The platform tier's any-name rule (matchPattern: "*") would
+# be a way out of a pod with no open web, so this tier does not use it. The
+# names are v1's list in upgrade-agent/dev-env-ops/app/networkpolicy.yaml lines
+# 31-52, minus api.pushover.net (Q-02), plus the operator service name (N5).
+# Cilium `*` does not cross a label boundary, so a multi-label service FQDN
+# needs an exact matchName (v1 lines 19-20).
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: dev-env-session-ops
+spec:
+  description: dev-env v2 session pods, ops tier (ingress denied; named egress only)
+  endpointSelector:
+    matchLabels:
+      io.kubernetes.pod.namespace: dev-agents
+      dev-env.haynesops.com/egress: ops
+    # The same maintenance, project-canary and fixture exclusions
+    # session-platform.yaml carries. Copied as that list, key for key.
+    matchExpressions:
+      # Maintenance executors have no additive platform or public-web tier.
+      - key: dev-env.haynesops.com/maintenance
+        operator: DoesNotExist
+      - key: dev-env.haynesops.com/project-canary
+        operator: DoesNotExist
+      - key: app.kubernetes.io/name
+        operator: NotIn
+        values:
+          - dev-env-owned-native-lifecycle
+          - dev-env-owned-luna-1019
+          - dev-env-owned-luna-1019-2
+          - dev-env-owned-luna-1019-3
+          - dev-env-owned-luna-1019-4
+          - dev-env-owned-luna-1019-5
+          - dev-env-owned-luna-1019-6
+          - dev-env-owned-luna-1019-7
+          - dev-env-owned-luna-1019-8
+          - dev-env-owned-luna-1019-9
+          - dev-env-project-bootstrap-check
+          - dev-env-v2-portal
+  ingress:
+    - {}
+  egress:
+    # DNS through CoreDNS, names only. api.pushover.net is not in this list.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*.cluster.local"
+              - matchPattern: "*.svc"
+              - matchName: "kube-prometheus-stack-alertmanager.observability.svc.cluster.local"
+              - matchName: "kube-prometheus-stack-prometheus.observability.svc.cluster.local"
+              - matchName: "loki.observability.svc.cluster.local"
+              # v2 (N5). v1's patterns do not match this multi-label name, and
+              # sessions are given it as --api-url (operator helmrelease.yaml).
+              - matchName: "dev-env-operator.dev-env-system.svc.cluster.local"
+              - matchName: "github.com"
+              - matchPattern: "*.github.com"
+              - matchPattern: "*.githubusercontent.com"
+              - matchName: "ghcr.io"
+              - matchName: "anthropic.com"
+              - matchPattern: "*.anthropic.com"
+              - matchName: "claude.ai"
+              - matchPattern: "*.claude.ai"
+              - matchName: "claude.com"
+              - matchPattern: "*.claude.com"
+              - matchName: "bridge.claudeusercontent.com"
+              - matchName: "cigars.haynesnetwork.com"
+    # Kubernetes API server. The Service port and the node's real one, as v1.
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # The operator /v1 API. v1 had no v2 operator to reach.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-operator
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+    # GitHub: clone, push, pull requests, release notes.
+    - toFQDNs:
+        - matchName: "github.com"
+        - matchPattern: "*.github.com"
+        - matchPattern: "*.githubusercontent.com"
+        - matchName: "ghcr.io"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Anthropic and Claude, including Remote Control's bridge host.
+    - toFQDNs:
+        - matchName: "anthropic.com"
+        - matchPattern: "*.anthropic.com"
+        - matchName: "claude.ai"
+        - matchPattern: "*.claude.ai"
+        - matchName: "claude.com"
+        - matchPattern: "*.claude.com"
+        - matchName: "bridge.claudeusercontent.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Cigar-journal MCP, over its public ingress.
+    - toFQDNs:
+        - matchName: "cigars.haynesnetwork.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Prometheus, Alertmanager and Loki, each by its own labels, on the port
+    # the session scripts use (9090, 9093, 3100). v1 also allowed 80 and 8080
+    # to the whole observability namespace. No script or contract a session
+    # runs uses those ports: loki-query.sh is :3100, and the Loki gateway is
+    # deployed at replicas 0. The 8080 port on the Prometheus and Alertmanager
+    # Services is the config-reloader sidecar, not the query API.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+            prometheus: kube-prometheus-stack
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: alertmanager
+            alertmanager: kube-prometheus-stack
+      toPorts:
+        - ports:
+            - port: "9093"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: loki
+            app.kubernetes.io/instance: loki
+            app.kubernetes.io/component: single-binary
+      toPorts:
+        - ports:
+            - port: "3100"
+              protocol: TCP
