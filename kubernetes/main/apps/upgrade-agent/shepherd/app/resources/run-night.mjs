@@ -15,6 +15,12 @@
 // blocker named "unreadable: <what>", never a pass. A target is stateless only on
 // positive evidence. data.pause on upgrade-lane-state stops the tick (kill switch).
 //
+// OP550 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/550):
+// a critical alert blocks only when it belongs to the target (R5, alertGate); checks are
+// stale when main changed one of the PR's files after them (R7, gh api GET of main's
+// commits per file); a shared component maps to the Kustomizations that include it (R8,
+// in lane-classify.mjs); ceph-csi is lane B by rule (R10, upgrade-rules.json).
+//
 // DRY-RUN GUARANTEE. This build has no live mode. Any UPGRADE_NIGHT_MODE other than
 // "dryrun" is refused before any read. Every command goes through runReadOnly()
 // (gh pr list/view, gh api GET, kubectl get); the only write is writeLaneState(),
@@ -162,6 +168,137 @@ export function fluxScope(mine, ks, hr) {
   return { namespaces: [...nss], chain: [...chain], blocking };
 }
 
+// ── critical alerts scoped to the target's workloads (R5, OP550) ─────────────────
+// upgrade-rules.json alert_scope says what blocks. These helpers resolve the subject an
+// alert names to the Kustomization that applied it, from objects the tick already reads
+// (pods, Jobs and CronJobs of the namespace, every Kustomization and HelmRelease). null
+// means "cannot tell", which blocks.
+const lbls = o => o?.metadata?.labels || {};
+// An object's Kustomization: its own Flux labels, else the HelmRelease that rendered it
+// (helm.toolkit.fluxcd.io/name, else app.kubernetes.io/instance) and that HelmRelease's
+// Flux labels.
+export function ownerKs(o, hr) {
+  if (!o) return null;
+  const l = lbls(o);
+  if (l['kustomize.toolkit.fluxcd.io/name']) return `${l['kustomize.toolkit.fluxcd.io/namespace'] || o.metadata.namespace}/${l['kustomize.toolkit.fluxcd.io/name']}`;
+  const name = l['helm.toolkit.fluxcd.io/name'] || l['app.kubernetes.io/instance'];
+  const ns = l['helm.toolkit.fluxcd.io/namespace'] || o.metadata?.namespace;
+  const h = name ? (hr?.items || []).find(x => x.metadata?.name === name && x.metadata?.namespace === ns) : null;
+  const hl = lbls(h);
+  return hl['kustomize.toolkit.fluxcd.io/name'] ? `${hl['kustomize.toolkit.fluxcd.io/namespace'] || ns}/${hl['kustomize.toolkit.fluxcd.io/name']}` : null;
+}
+const byName = (list, n) => (list?.items || []).find(x => x.metadata?.name === n) || null;
+// A pod's Kustomization: its labels, else up its owner chain (Job, then CronJob).
+function podOwner(p, f, hr) {
+  const own = ownerKs(p, hr);
+  if (own) return own;
+  const ref = (p.metadata?.ownerReferences || []).find(r => r.kind === 'Job');
+  return ref ? jobOwner(ref.name, f, hr) : null;
+}
+function jobOwner(name, f, hr) {
+  if (!f.jobs) return null; // Jobs unreadable: cannot tell (fail closed)
+  const j = byName(f.jobs, name);
+  if (j) {
+    const own = ownerKs(j, hr);
+    if (own) return own;
+    const ref = (j.metadata?.ownerReferences || []).find(r => r.kind === 'CronJob');
+    return ref ? ownerKs(byName(f.cronjobs, ref.name), hr) : null;
+  }
+  const pods = (f.pods?.items || []).filter(p => [lbls(p)['batch.kubernetes.io/job-name'], lbls(p)['job-name']].includes(name));
+  if (pods.length) return ownersOf(pods.map(p => ownerKs(p, hr)));
+  // a Job the history limit already removed: CronJob Jobs are named <cronjob>-<minutes>
+  const m = /^(.+)-\d{6,}$/.exec(name);
+  return m ? ownerKs(byName(f.cronjobs, m[1]), hr) : null;
+}
+// One owner, or null when the candidates disagree or any is unknown.
+const ownersOf = list => (list.length && list.every(x => x && x === list[0]) ? list[0] : null);
+const isScraper = (p, scope) => (scope.scraper_pod_app_names || []).includes(lbls(p)['app.kubernetes.io/name']);
+// The first workload label present names the subject. Returns
+// { by: 'label=value' | null, owner: '<ns>/<ks>' | null }; by null = names no workload.
+export function alertSubject(metric, f, ks, hr, scope) {
+  const fo = scope.flux_object || {};
+  const kind = metric[fo.kind_label], fname = metric[fo.name_label];
+  const ns = metric.namespace || metric[fo.namespace_label];
+  if (!metric.namespace && kind && fname && (fo.kinds || []).includes(kind)) {
+    if (kind === 'Kustomization') return { by: `Kustomization ${ns}/${fname}`, owner: (ks?.items || []).some(k => k.metadata.namespace === ns && k.metadata.name === fname) ? `${ns}/${fname}` : null };
+    return { by: `HelmRelease ${ns}/${fname}`, owner: ownerKs((hr?.items || []).find(h => h.metadata.namespace === ns && h.metadata.name === fname) || null, hr) };
+  }
+  for (const key of scope.subject_labels || []) {
+    const v = metric[key];
+    if (!v) continue;
+    const by = `${key}=${v}`;
+    if (key === 'job_name') return { by, owner: jobOwner(v, f, hr) };
+    if (key === 'cronjob') return { by, owner: ownerKs(byName(f.cronjobs, v), hr) };
+    if (key === 'pod') {
+      const p = byName(f.pods, v);
+      if (p && isScraper(p, scope)) continue; // the exporter's own pod: not the subject
+      return { by, owner: p ? podOwner(p, f, hr) : null };
+    }
+    if (['deployment', 'statefulset', 'daemonset'].includes(key)) {
+      const kindOf = { deployment: 'ReplicaSet', statefulset: 'StatefulSet', daemonset: 'DaemonSet' }[key];
+      const pods = (f.pods?.items || []).filter(p => (p.metadata?.ownerReferences || []).some(r => r.kind === kindOf && (key === 'deployment' ? r.name === `${v}-${lbls(p)['pod-template-hash']}` : r.name === v)));
+      return { by, owner: pods.length ? ownersOf(pods.map(p => podOwner(p, f, hr))) : null };
+    }
+    if (key === 'persistentvolumeclaim') {
+      const pods = (f.pods?.items || []).filter(p => (p.spec?.volumes || []).some(x => x.persistentVolumeClaim?.claimName === v));
+      return { by, owner: pods.length ? ownersOf(pods.map(p => podOwner(p, f, hr))) : null };
+    }
+    // app-style labels: pods carrying that name or instance
+    const pods = (f.pods?.items || []).filter(p => [lbls(p)['app.kubernetes.io/name'], lbls(p)['app.kubernetes.io/instance'], lbls(p).app].includes(v));
+    return { by, owner: pods.length ? ownersOf(pods.map(p => podOwner(p, f, hr))) : null };
+  }
+  return { by: null, owner: null };
+}
+// The alert gate for one target. alerts = ALERTS metrics; scope = fluxScope(); facts(ns)
+// = { pods, cronjobs, jobs } of a namespace. Returns { blockers[], unrelated[], cluster[] }.
+export function alertGate(alerts, scope, clusterWideIds, facts, ks, hr, alertScope) {
+  const out = { blockers: [], unrelated: [], cluster: [] };
+  const chain = new Set(scope.chain);
+  // the namespaces of the dependsOn chain (each Kustomization's own and its targetNamespace):
+  // an alert there blocks when it traces to a chain Kustomization (a Flux failure of volsync,
+  // say); anything else there is listed, never a namespace fallback (as before R5)
+  const chainNs = new Set();
+  for (const id of scope.chain) {
+    const [n, nm] = id.split('/');
+    chainNs.add(n);
+    const k = (ks?.items || []).find(x => x.metadata?.namespace === n && x.metadata?.name === nm);
+    if (k?.spec?.targetNamespace) chainNs.add(k.spec.targetNamespace);
+  }
+  // a Flux alert names a chain Kustomization by its id even when the tick lists no such object
+  const fo = alertScope.flux_object || {};
+  const withChainFlux = (s, m) => {
+    const id = !m.namespace && m[fo.kind_label] === 'Kustomization' && m[fo.name_label] ? `${m[fo.namespace_label]}/${m[fo.name_label]}` : null;
+    return !s.owner && id && chain.has(id) ? { ...s, owner: id } : s;
+  };
+  for (const m of alerts) {
+    const name = m.alertname || '(unnamed)';
+    const nss = [m.namespace, m[fo.namespace_label]].filter(Boolean);
+    if (!nss.length) {
+      if (clusterWideIds.length) out.blockers.push(`critical alert ${name} has no namespace label and the target is cluster-wide (${clusterWideIds.join(', ')})`);
+      else out.cluster.push(`${name}: no namespace label; the target is not cluster-wide`);
+      continue;
+    }
+    const ns = nss.find(n => scope.namespaces.includes(n));
+    if (!ns) {
+      const dep = nss.find(n => chainNs.has(n));
+      if (!dep) continue;
+      const f = facts(dep);
+      const d = withChainFlux(alertSubject(m, f, ks, hr, alertScope), m);
+      if (d.owner && chain.has(d.owner)) out.blockers.push(`critical alert firing in ${dep}: ${name} (${d.by}) belongs to ${d.owner}, in the target's dependsOn chain`);
+      // a workload the tick could not look up because a read failed: fail closed
+      else if (!d.owner && d.by && (!f.pods || !f.cronjobs || !f.jobs)) out.blockers.push(`unreadable: pods, Jobs or CronJobs in ${dep} (a dependency's namespace), so ${name} (${d.by}) cannot be traced`);
+      else out.unrelated.push(`${name} (${d.by || 'no workload'}) in ${dep}, a dependency's namespace: ${d.owner ? `belongs to ${d.owner}` : 'not traced'}, outside the dependsOn chain`);
+      continue;
+    }
+    const s = withChainFlux(alertSubject(m, facts(ns), ks, hr, alertScope), m);
+    if (!s.by) out.blockers.push(`critical alert firing in ${ns}: ${name} names no workload (namespace fallback)`);
+    else if (!s.owner) out.blockers.push(`critical alert firing in ${ns}: ${name} (${s.by}) cannot be traced to a Kustomization (fail closed)`);
+    else if (chain.has(s.owner)) out.blockers.push(`critical alert firing in ${ns}: ${name} (${s.by}) belongs to ${s.owner}, the target or its dependsOn chain`);
+    else out.unrelated.push(`${name} (${s.by}) belongs to ${s.owner}, not to the target`);
+  }
+  return out;
+}
+
 // ── durable state for a target: stateless only on positive evidence ─────────────
 const mountsPvc = spec => (spec?.volumes || []).filter(v => v.persistentVolumeClaim || v.ephemeral).map(v => v.persistentVolumeClaim?.claimName || `${v.name} (ephemeral)`);
 export function stateEvidence(k, hr, rs, pods, cronjobs) {
@@ -208,10 +345,13 @@ async function tick() {
     schedules: kget(['scheduledbackups.postgresql.cnpg.io', '-A']), ceph: kget(['cephclusters.ceph.rook.io', '-A']),
   } : {};
   const prom = cluster ? await httpGetJson(`${PROM}/api/v1/query?query=${encodeURIComponent('ALERTS{alertstate="firing",severity="critical"}')}`) : null;
-  const alertNs = Array.isArray(prom?.data?.result) ? [...new Set(prom.data.result.map(r => r.metric?.namespace || '(cluster)'))] : null;
+  const alerts = Array.isArray(prom?.data?.result) ? prom.data.result.map(r => r.metric || {}) : null;
+  const alertScope = rules.alert_scope || {};
+  const nsOf = m => m.namespace || m[alertScope.flux_object?.namespace_label] || '(cluster)';
+  const alertNs = alerts ? [...new Set(alerts.map(nsOf))] : null;
   const ceph = (cf.ceph?.items || []).map(c => c.status?.ceph?.health || 'unknown').join(',') || 'unknown';
   const nsCache = new Map();
-  const nsFacts = ns => { if (!nsCache.has(ns)) nsCache.set(ns, { pods: kget(['pods', '-n', ns]), cronjobs: kget(['cronjobs', '-n', ns]) }); return nsCache.get(ns); };
+  const nsFacts = ns => { if (!nsCache.has(ns)) nsCache.set(ns, { pods: kget(['pods', '-n', ns]), cronjobs: kget(['cronjobs', '-n', ns]), jobs: kget(['jobs', '-n', ns]) }); return nsCache.get(ns); };
   const win = inWindow(now, night.timezone, night.merge_window_local.first, night.merge_window_local.last);
   const orders = cm(night.work_orders_configmap);
   const orderBad = [], claimed = [];
@@ -222,10 +362,23 @@ async function tick() {
     const blockers = [];
     const backup = [];
     let scope = { namespaces: [], chain: [], blocking: [] };
+    let alertView = { unrelated: [], cluster: [] };
     if (!cms) blockers.push('unreadable: configmaps in upgrade-agent (work orders, pause)');
     if (orderBad.length) blockers.push(`unreadable: work order ${orderBad.join(', ')}`);
     if (claimed.length) blockers.push(`work order claimed: ${claimed.join(', ')}`);
     if ((r.checks?.stale || []).length) blockers.push(`checks older than ${rules.check_max_age_days}d need a Renovate retry first`);
+    // R7: a main commit to one of the PR's files that is newer than the head's checks
+    {
+      const files = r.files || [], ref = r.checks?.reference_time;
+      if (!files.length) blockers.push('unreadable: the PR files to compare with main');
+      else if (!ref) blockers.push("unreadable: when the head's checks ran (needed to compare them with main)");
+      else {
+        const st = L.checksPredateMain(ref, files, L.mainCommitsTouching(REPO, files, ref, run));
+        r.checks.main_newer = st.newer;
+        if (st.unreadable.length) blockers.push(`unreadable: main commits since the head's checks for ${st.unreadable.join(', ')}`);
+        if (st.newer.length) blockers.push(`checks predate main: ${st.newer.slice(0, 3).map(c => `${c.path} changed by ${String(c.sha).slice(0, 8)} at ${c.at}`).join('; ')}${st.newer.length > 3 ? ` (+${st.newer.length - 3})` : ''}, after the head's checks (${ref}); needs a Renovate rebase first`);
+      }
+    }
     if (r.cluster_effect === 'immediate') {
       for (const [what, v] of [['kustomizations', cf.ks], ['helmreleases', cf.hr], ['replicationsources', cf.rs], ['CNPG backups', cf.backups], ['CNPG scheduledbackups', cf.schedules]]) if (!v) blockers.push(`unreadable: ${what}`);
       const mine = cf.ks ? r.targets.flatMap(t => { const k = kustomizationsFor(t, cf.ks); if (!k.length) blockers.push(`target-unmapped: no Kustomization applies ${t}`); return k; }) : [];
@@ -243,17 +396,23 @@ async function tick() {
         if (!ev.sources.length && ev.evidence.length) blockers.push(`backup-unmatched: ${ev.ks} has durable state (${ev.evidence.join('; ')}) and no ReplicationSource applied by it`);
       }
       if (cf.backups && cf.schedules) for (const c of rules.cnpg_clients) {
-        if (!r.targets.some(t => c.paths.some(g => L.matchGlob(`${t}/x`, g)))) continue;
+        // a namespace-level target (a shared component's consumer) covers the clients below it
+        if (!r.targets.some(t => c.paths.some(g => L.matchGlob(`${t}/x`, g) || g.startsWith(t + '/')))) continue;
         backup.push({ target: c.cluster, ...cnpgFresh(c.cluster, cf.schedules.items, cf.backups.items, now, maxAge) });
       }
       for (const b of backup.filter(x => !x.pass)) blockers.push(`backup not fresh: ${b.name} (${b.why})`);
       if (/HEALTH_ERR|unknown/.test(ceph)) blockers.push(cf.ceph ? `Ceph ${ceph}` : 'unreadable: cephclusters');
-      if (!alertNs) blockers.push('unreadable: critical alerts (Prometheus)');
-      else { const hot = alertNs.filter(n => scope.namespaces.includes(n)); if (hot.length) blockers.push(`critical alert firing in ${hot.join(', ')}`); }
+      if (!alerts) blockers.push('unreadable: critical alerts (Prometheus)');
+      else if (cf.ks && cf.hr) {
+        // R5: only alerts that belong to the target block (alert_scope in upgrade-rules.json)
+        const g = alertGate(alerts, scope, r.cluster_wide || [], nsFacts, cf.ks, cf.hr, alertScope);
+        blockers.push(...g.blockers);
+        alertView = { unrelated: g.unrelated, cluster: g.cluster };
+      }
     }
     if (!win.open) blockers.push(`outside the merge window (${night.merge_window_local.first}-${night.merge_window_local.last} ${night.timezone}, now ${win.local})`);
     r.backup = { rule: night.backup_rule.text, targets: backup, stateful: backup.length > 0 };
-    r.gates = { namespaces: scope.namespaces, blockers, would_be_eligible: blockers.length === 0 };
+    r.gates = { namespaces: scope.namespaces, blockers, alerts_not_blocking: alertView, would_be_eligible: blockers.length === 0 };
   }
 
   const fluxWarnings = cluster ? [...(cf.ks?.items || []).filter(isNotReady).map(k => `Kustomization ${ksId(k)}`), ...(cf.hr?.items || []).filter(isNotReady).map(h => `HelmRelease ${h.metadata.namespace}/${h.metadata.name}`)].filter(x => !flagged.has(x)) : [];
@@ -265,7 +424,9 @@ async function tick() {
   const summary = {
     mode: MODE, at: new Date(now).toISOString(), repo: REPO, window: { ...win, tz: night.timezone },
     backup_rule: night.backup_rule.text,
-    baseline: { ceph: cluster ? ceph : 'not needed', alerts_read: cluster ? alertNs !== null : 'not needed', critical_alert_namespaces: alertNs ?? [], flux_warnings: fluxWarnings },
+    baseline: { ceph: cluster ? ceph : 'not needed', alerts_read: cluster ? alertNs !== null : 'not needed', critical_alert_namespaces: alertNs ?? [],
+      critical_alerts: (alerts || []).map(m => `${m.alertname || '(unnamed)'} @ ${nsOf(m)}${(alertScope.subject_labels || []).filter(k => m[k]).slice(0, 1).map(k => ` ${k}=${m[k]}`).join('')}`).slice(0, 40),
+      flux_warnings: fluxWarnings },
     change_lock: 'not-implemented', work_orders_claimed: claimed, counts, lane_a_candidates: lanes.map(r => r.pr),
     would_merge: pick ? { pr: pick.pr, head: pick.head, class: pick.class, reason: 'DRY-RUN: nothing was merged' } : null,
     why_none: pick ? null : (lanes.length ? 'every lane-A candidate has a blocker (see records[].gates.blockers)' : 'no lane-A candidate'),

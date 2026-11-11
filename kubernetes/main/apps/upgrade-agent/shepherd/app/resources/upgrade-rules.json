@@ -983,6 +983,28 @@
       "source": "shepherd prompt class 3; 2026-08-20 incident"
     },
     {
+      "id": "ceph-csi-chart",
+      "match": {
+        "packages": [
+          "/^ceph-csi-/"
+        ]
+      },
+      "needs": "agent",
+      "reason": "ceph-csi backs every dev-env session home (gasha01-rbd) plus Prometheus and Loki: a driver roll while a session volume is being created or attached can fail that session. Merge only after the dev-env v2 coordinator confirms no session volume create, resume or attach is in flight (lane B agent; the in-flight check itself is lane-B work, not evaluated by the night lane)",
+      "source": "OP550 R10; OP513 checkpoint 3 (#4607: the hand-run cleared the roll with the v2 coordinator); before this rule only the shepherd's LLM LEFT kept it out of lane A"
+    },
+    {
+      "id": "ceph-csi-apps",
+      "match": {
+        "paths": [
+          "kubernetes/main/apps/storage/ceph-csi/**"
+        ]
+      },
+      "needs": "agent",
+      "reason": "ceph-csi backs every dev-env session home (gasha01-rbd) plus Prometheus and Loki: a driver roll while a session volume is being created or attached can fail that session. Merge only after the dev-env v2 coordinator confirms no session volume create, resume or attach is in flight (lane B agent; the in-flight check itself is lane-B work, not evaluated by the night lane)",
+      "source": "OP550 R10: any change under the ceph-csi apps, whatever the package is called"
+    },
+    {
       "id": "cilium-minor",
       "match": {
         "paths": [
@@ -1087,7 +1109,295 @@
       "status": "not-implemented-until-live-step",
       "note": "Planned gate: nothing takes this lock yet, so the dry-run reports it as not-implemented and does not count it as a protection."
     },
-    "baseline_rule": "Blockers: a NotReady Kustomization that applies the target, is in its dependsOn chain, or targets its namespace; a NotReady HelmRelease in its namespace; a firing critical alert in its namespace; Ceph HEALTH_ERR or unknown. Every other NotReady Flux object is reported as a warning.",
+    "baseline_rule": "Blockers: a NotReady Kustomization that applies the target, is in its dependsOn chain, or targets its namespace; a NotReady HelmRelease in its namespace; a firing critical alert that belongs to the target (alert_scope: in its namespace and resolved to the target or its chain, unresolvable, or naming no workload), and for a cluster-wide target any critical alert with no namespace; Ceph HEALTH_ERR or unknown. Every other NotReady Flux object is reported as a warning, and every alert that did not block is listed with the reason.",
     "pause": "A non-empty data.pause on ConfigMap upgrade-lane-state stops every tick before any GitHub read; the tick only logs that it is paused."
+  },
+  "cluster_wide_targets": [
+    {
+      "id": "flux",
+      "globs": [
+        "kubernetes/main/flux/**",
+        "kubernetes/main/bootstrap/**",
+        "kubernetes/main/apps/flux-system/**"
+      ],
+      "reason": "Flux itself and its bootstrap: every Kustomization depends on it"
+    },
+    {
+      "id": "cilium",
+      "globs": [
+        "kubernetes/main/apps/kube-system/cilium/**"
+      ],
+      "reason": "the CNI: every pod's network"
+    },
+    {
+      "id": "coredns",
+      "globs": [
+        "kubernetes/main/apps/kube-system/coredns/**"
+      ],
+      "reason": "cluster DNS"
+    },
+    {
+      "id": "rook-ceph",
+      "globs": [
+        "kubernetes/main/apps/storage/rook-ceph/**"
+      ],
+      "reason": "Ceph, its operator and its CSI drivers: most volumes"
+    },
+    {
+      "id": "csi",
+      "globs": [
+        "kubernetes/main/apps/storage/ceph-csi/**",
+        "kubernetes/main/apps/storage/openebs-system/**",
+        "kubernetes/main/apps/storage/volsync-system/**"
+      ],
+      "reason": "CSI drivers, local volumes, snapshots and VolSync: volumes in every namespace"
+    },
+    {
+      "id": "admission",
+      "globs": [
+        "kubernetes/main/apps/kyverno/**"
+      ],
+      "reason": "admission policies: every create and update"
+    },
+    {
+      "id": "multus",
+      "globs": [
+        "kubernetes/main/apps/network/multus/**"
+      ],
+      "reason": "secondary networks of pods in several namespaces"
+    },
+    {
+      "id": "shared-common",
+      "globs": [
+        "kubernetes/shared/components/common/**"
+      ],
+      "reason": "the shared app-template chart source and alert and Gatus components that most apps include"
+    }
+  ],
+  "alert_scope": {
+    "doc": "R5 (OP550). A firing critical alert blocks a lane-A target only when it belongs to the target. Its namespace is the namespace label, else exported_namespace (Flux alerts). An alert in a namespace of the target's dependsOn chain (a chain Kustomization's namespace or targetNamespace) blocks only when it traces to a chain Kustomization; there it is otherwise listed, with no namespace fallback. An alert in any other namespace does not block. Inside the target's namespaces, the first workload label present (subject_labels, in order) names the subject; the tick resolves it against the namespace's pods, Jobs, CronJobs and HelmReleases to the Kustomization that applied it. It blocks when that Kustomization is the target's or in its dependsOn chain, when the label cannot be resolved (fail closed) and when the alert names no workload (namespace fallback). It does not block when the subject resolves to another Kustomization. A pod that is the scraping exporter itself (scraper_pod_app_names) names no workload. An alert with no namespace at all blocks only a cluster-wide target (cluster_wide_targets).",
+    "subject_labels": [
+      "job_name",
+      "cronjob",
+      "deployment",
+      "statefulset",
+      "daemonset",
+      "pod",
+      "persistentvolumeclaim",
+      "app",
+      "app_kubernetes_io_name",
+      "app_kubernetes_io_instance"
+    ],
+    "flux_object": {
+      "namespace_label": "exported_namespace",
+      "kind_label": "customresource_kind",
+      "name_label": "name",
+      "kinds": [
+        "Kustomization",
+        "HelmRelease"
+      ]
+    },
+    "scraper_pod_app_names": [
+      "kube-state-metrics"
+    ],
+    "no_namespace": "An alert with neither namespace nor exported_namespace blocks every cluster-wide target and no other target. Seen 2026-11-10 and 2026-11-11: DevEnvRescueFailed (session), CNPGBackupStale (job=<ns>/<cluster>), KyvernoEnforceBlockingAdmission (policy_name), GpuMissing and the SMART alerts (node), SigoalumniServiceEndpoints* (service), KubeAPIErrorBudgetBurn, CephOSDDownHigh, PVEExporterNoData.",
+    "namespace_fallback_seen": "Critical alerts seen in the 30 days to 2026-11-11 that block every target in their namespace because they name no workload or name one the tick cannot trace: BlackboxProbeFailed and AlertmanagerClusterFailedToSendAlerts (observability, no workload label); PersistentVolumeClaimStuckPending (its pod label is kube-state-metrics itself); KubePersistentVolumeFillingUp when no running pod mounts the claim; CephDaemonCrash (rook-ceph) and etcdDatabaseQuotaLowSpace (kube-system), whose pods have no Flux or Helm owner. Traced to an owner, so they block only a target that is that owner or depends on it (checked for the labels on 2026-11-11): MediaAutomationJobFailed and KometaOverlaysRunTooLong (job_name), CigarJournalCredentialMonitorStale (cronjob), QbittorrentVpnDown (deployment), OOMKilled (pod, while that pod exists), the PVE alerts (the exporter pod, prometheus-pve-exporter), NodeRebooted (node-exporter, kube-prometheus-stack), FluxReconciliationFailure for a Kustomization or HelmRelease (exported_namespace and name); a failing Flux source blocks its namespace."
+  },
+  "shared_components": {
+    "doc": "R8 (OP550). The kustomization.yaml directories that include each shared component (components:, and through a component that includes another). A changed file maps to the deepest component that contains it; its consumers become the PR's targets and are judged by the path classes and path rules as if the PR had touched them. No entry or no consumer: the component path stays the target, which the tick reports as target-unmapped. scripts/upgrade-agent/lane-classify-selftest.mjs rebuilds this list from the repository and fails when it differs; --print-shared-components prints it.",
+    "entries": [
+      {
+        "path": "kubernetes/shared/components/arc/dind",
+        "consumers": [
+          "kubernetes/main/apps/arc-runners/demo-console/app",
+          "kubernetes/main/apps/arc-runners/haynes-swarm/app",
+          "kubernetes/main/apps/arc-runners/sigmaphiomicron-com/app",
+          "kubernetes/main/apps/arc-runners/sigoalumni-org/app"
+        ]
+      },
+      {
+        "path": "kubernetes/shared/components/common/alerts",
+        "consumers": []
+      },
+      {
+        "path": "kubernetes/shared/components/common/alerts/alertmanager",
+        "consumers": [
+          "kubernetes/main/apps/frontend"
+        ]
+      },
+      {
+        "path": "kubernetes/shared/components/common/alerts/github-status",
+        "consumers": []
+      },
+      {
+        "path": "kubernetes/shared/components/common/gatus/external",
+        "consumers": [
+          "kubernetes/main/apps/ai/open-webui/app"
+        ]
+      },
+      {
+        "path": "kubernetes/shared/components/common/gatus/guarded",
+        "consumers": [
+          "kubernetes/main/apps/ai/ollama/assist02/app",
+          "kubernetes/main/apps/ai/ollama/prime/app",
+          "kubernetes/main/apps/ai/stable-diffusion/comfyui",
+          "kubernetes/main/apps/ai/wan-video/app",
+          "kubernetes/main/apps/frontend/headlamp/app",
+          "kubernetes/main/apps/frontend/homepage/app",
+          "kubernetes/main/apps/home-automation/appdaemon/app",
+          "kubernetes/main/apps/home-automation/go2rtc/app",
+          "kubernetes/main/apps/home-automation/ha-mcp/app",
+          "kubernetes/main/apps/kube-system/cilium/app",
+          "kubernetes/main/apps/observability/mcp-grafana/app",
+          "kubernetes/main/apps/observability/mcp-unifi/app"
+        ]
+      },
+      {
+        "path": "kubernetes/shared/components/common/repos",
+        "consumers": []
+      },
+      {
+        "path": "kubernetes/shared/components/common/repos/app-template",
+        "consumers": [
+          "kubernetes/main/apps/ai/llama-server/app",
+          "kubernetes/main/apps/ai/ollama/assist02/app",
+          "kubernetes/main/apps/ai/ollama/prime/app",
+          "kubernetes/main/apps/ai/stable-diffusion/comfyui",
+          "kubernetes/main/apps/ai/studio-render/app",
+          "kubernetes/main/apps/ai/wan-video/app",
+          "kubernetes/main/apps/ai/wyoming-protocol/kokoro",
+          "kubernetes/main/apps/ai/wyoming-protocol/openwakeword",
+          "kubernetes/main/apps/ai/wyoming-protocol/piper",
+          "kubernetes/main/apps/ai/wyoming-protocol/speech-to-phrase",
+          "kubernetes/main/apps/ai/wyoming-protocol/whisper",
+          "kubernetes/main/apps/database/mosquitto/app",
+          "kubernetes/main/apps/dev-env-system",
+          "kubernetes/main/apps/dev/audio-authoring/app",
+          "kubernetes/main/apps/dev/blender-authoring-2/app",
+          "kubernetes/main/apps/dev/blender-authoring/app",
+          "kubernetes/main/apps/dev/dev-env/app",
+          "kubernetes/main/apps/downloads",
+          "kubernetes/main/apps/external-secrets/onepassword-connect/app",
+          "kubernetes/main/apps/frontend",
+          "kubernetes/main/apps/frontend/haynesnetwork-mcp-hop/app",
+          "kubernetes/main/apps/home-automation/appdaemon/app",
+          "kubernetes/main/apps/home-automation/cigar-mcp-hop/app",
+          "kubernetes/main/apps/home-automation/esphome/app",
+          "kubernetes/main/apps/home-automation/go2rtc/app",
+          "kubernetes/main/apps/home-automation/ha-mcp/app",
+          "kubernetes/main/apps/home-automation/home-assistant/app",
+          "kubernetes/main/apps/home-automation/music-assistant/app",
+          "kubernetes/main/apps/home-automation/zigbee2mqtt/app",
+          "kubernetes/main/apps/home-automation/zwave/app",
+          "kubernetes/main/apps/media",
+          "kubernetes/main/apps/network/multus/app",
+          "kubernetes/main/apps/observability/gatus/app",
+          "kubernetes/main/apps/observability/kromgo/app",
+          "kubernetes/main/apps/observability/mcp-grafana/app",
+          "kubernetes/main/apps/observability/mcp-unifi/app",
+          "kubernetes/main/apps/observability/nvidia-gpu-exporter/app",
+          "kubernetes/main/apps/observability/prometheus-pve-exporter/app",
+          "kubernetes/main/apps/observability/unpoller/app",
+          "kubernetes/main/apps/observability/vector/app",
+          "kubernetes/main/apps/office/paperless-ngx/app",
+          "kubernetes/main/apps/photos/hass-immich-addon/app",
+          "kubernetes/main/apps/photos/immich/machine-learning",
+          "kubernetes/main/apps/photos/immich/server",
+          "kubernetes/main/apps/storage/storage-util",
+          "kubernetes/main/apps/upgrade-agent/alert-responder/app",
+          "kubernetes/main/apps/upgrade-agent/dev-env-ops/app",
+          "kubernetes/main/apps/upgrade-agent/health-gate/app",
+          "kubernetes/main/apps/upgrade-agent/shepherd/app"
+        ]
+      },
+      {
+        "path": "kubernetes/shared/components/gatus/external",
+        "consumers": [
+          "kubernetes/main/apps/media/plex/app",
+          "kubernetes/main/apps/media/plexops/app",
+          "kubernetes/main/apps/network/authentik/app",
+          "kubernetes/main/apps/office/paperless-ngx/app",
+          "kubernetes/main/apps/photos/immich/server"
+        ]
+      },
+      {
+        "path": "kubernetes/shared/components/gatus/gaurded",
+        "consumers": [
+          "kubernetes/main/apps/downloads/kapowarr/app",
+          "kubernetes/main/apps/downloads/lazylibrarian/app",
+          "kubernetes/main/apps/downloads/prowlarr/app",
+          "kubernetes/main/apps/downloads/qbittorrent/app",
+          "kubernetes/main/apps/downloads/sabnzbd/app",
+          "kubernetes/main/apps/downloads/sabnzbd/fast",
+          "kubernetes/main/apps/downloads/slskd/app",
+          "kubernetes/main/apps/downloads/soularr/app",
+          "kubernetes/main/apps/home-automation/esphome/app",
+          "kubernetes/main/apps/home-automation/home-assistant/app",
+          "kubernetes/main/apps/home-automation/music-assistant/app",
+          "kubernetes/main/apps/home-automation/zigbee2mqtt/app",
+          "kubernetes/main/apps/home-automation/zwave/app",
+          "kubernetes/main/apps/media/audiobookshelf/app",
+          "kubernetes/main/apps/media/bazarr/app",
+          "kubernetes/main/apps/media/kavita/app",
+          "kubernetes/main/apps/media/lidarr/app",
+          "kubernetes/main/apps/media/maintainerr/app",
+          "kubernetes/main/apps/media/radarr/app",
+          "kubernetes/main/apps/media/seerr/app",
+          "kubernetes/main/apps/media/sonarr/app",
+          "kubernetes/main/apps/media/tautulli/k8plex",
+          "kubernetes/main/apps/media/tautulli/plexops",
+          "kubernetes/main/apps/observability/blackbox-exporter/app",
+          "kubernetes/main/apps/observability/grafana/app",
+          "kubernetes/main/apps/observability/kromgo/app"
+        ]
+      },
+      {
+        "path": "kubernetes/shared/components/volsync/aws",
+        "consumers": [
+          "kubernetes/main/apps/ai/ollama/assist02/app",
+          "kubernetes/main/apps/ai/ollama/prime/app",
+          "kubernetes/main/apps/ai/open-webui/app",
+          "kubernetes/main/apps/ai/wyoming-protocol/piper",
+          "kubernetes/main/apps/ai/wyoming-protocol/speech-to-phrase",
+          "kubernetes/main/apps/ai/wyoming-protocol/whisper",
+          "kubernetes/main/apps/downloads/kapowarr/app",
+          "kubernetes/main/apps/downloads/lazylibrarian/app",
+          "kubernetes/main/apps/downloads/prowlarr/app",
+          "kubernetes/main/apps/downloads/qbittorrent/app",
+          "kubernetes/main/apps/downloads/sabnzbd/app",
+          "kubernetes/main/apps/downloads/sabnzbd/fast",
+          "kubernetes/main/apps/downloads/slskd/app",
+          "kubernetes/main/apps/home-automation/esphome/app",
+          "kubernetes/main/apps/home-automation/home-assistant/app",
+          "kubernetes/main/apps/home-automation/music-assistant/app",
+          "kubernetes/main/apps/home-automation/zigbee2mqtt/app",
+          "kubernetes/main/apps/home-automation/zwave/app",
+          "kubernetes/main/apps/media/audiobookshelf/app",
+          "kubernetes/main/apps/media/bazarr/app",
+          "kubernetes/main/apps/media/kavita/app",
+          "kubernetes/main/apps/media/lidarr/app",
+          "kubernetes/main/apps/media/maintainerr/app",
+          "kubernetes/main/apps/media/plex/app",
+          "kubernetes/main/apps/media/plexops/app",
+          "kubernetes/main/apps/media/radarr/app",
+          "kubernetes/main/apps/media/seerr/app",
+          "kubernetes/main/apps/media/sonarr/app",
+          "kubernetes/main/apps/media/tautulli/k8plex",
+          "kubernetes/main/apps/media/tautulli/plexops",
+          "kubernetes/main/apps/office/paperless-ngx/app",
+          "kubernetes/main/apps/photos/immich/machine-learning"
+        ]
+      },
+      {
+        "path": "kubernetes/shared/components/volsync/aws-extra",
+        "consumers": [
+          "kubernetes/main/apps/ai/wyoming-protocol/speech-to-phrase"
+        ]
+      }
+    ]
+  },
+  "check_rules": {
+    "doc": "R7 (OP550). Checks are stale when a commit on main that touches one of the PR's files is newer than the head's checks: the earliest of the head commit's date and the start of each expected check's newest attempt (a re-run reuses the old merge commit, so its own start time is not used alone). Read per file with gh api GET repos/<repo>/commits?sha=main&path=<file>&since=<time>. A failed read, or no readable time, blocks (fail closed). The age rule (check_max_age_days) still applies too. lane-classify.mjs exports checksReferenceTime, mainCommitsTouching and checksPredateMain for the merge step (story 752).",
+    "branch_up_to_date": "Off for main, established 2026-11-11 from read-only evidence: PR 3915, 92 commits behind main with both required checks SUCCESS, reads mergeStateStatus CLEAN (with the setting on it would read BEHIND); and #4333, #4340, #4693, #4670 and #4753 were merged on 2026-11-10 by the non-admin haynes-dev-bot while 11 to 80 commits behind main. GET /branches/main/protection is not readable by the bot, so the setting itself was not read."
   }
 }

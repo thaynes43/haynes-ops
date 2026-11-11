@@ -25,6 +25,60 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const RES = join(ROOT, 'kubernetes/main/apps/upgrade-agent/shepherd/app/resources');
 const L = await import(join(RES, 'lane-classify.mjs'));
+
+// R8 (OP550): who includes each shared component, read from the repository. Every
+// kustomization.yaml under kubernetes/ is read; an entry of its `components:` list that
+// resolves to a directory under kubernetes/shared/components/ with a kustomization.yaml
+// makes that file's directory a consumer. Inside kubernetes/shared/components a
+// component that lists another (in components: or resources:) passes its consumers on.
+// `node scripts/upgrade-agent/lane-classify-selftest.mjs --print-shared-components`
+// prints the entries for upgrade-rules.json.
+function yamlList(text, key) {
+  const lines = text.split('\n');
+  const i = lines.findIndex(l => new RegExp(`^${key}:\\s*(#.*)?$`).test(l));
+  if (i < 0) return [];
+  const out = [];
+  for (let j = i + 1; j < lines.length; j++) {
+    const l = lines[j];
+    if (!l.trim() || /^\s*#/.test(l)) continue;
+    const m = /^\s*-\s*['"]?([^'"#\s]+)['"]?\s*(#.*)?$/.exec(l);
+    if (!m || !/^\s/.test(l) && !/^-/.test(l)) break;
+    out.push(m[1]);
+  }
+  return out;
+}
+function scanSharedComponents(root) {
+  const walk = d => readdirSync(join(root, d), { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(`${d}/${e.name}`) : (e.name === 'kustomization.yaml' ? [`${d}/${e.name}`] : []));
+  const files = walk('kubernetes');
+  const SC = 'kubernetes/shared/components/';
+  const comps = new Set(files.filter(f => f.startsWith(SC)).map(f => dirname(f)));
+  const direct = new Map([...comps].map(c => [c, new Set()]));
+  const includes = new Map([...comps].map(c => [c, new Set()]));
+  const norm = p => { const out = []; for (const s of p.split('/')) { if (s === '..') out.pop(); else if (s && s !== '.') out.push(s); } return out.join('/'); };
+  for (const f of files) {
+    const dir = dirname(f), text = readFileSync(join(root, f), 'utf8');
+    const inShared = dir.startsWith(SC);
+    for (const key of inShared ? ['components', 'resources'] : ['components']) {
+      for (const entry of yamlList(text, key)) {
+        const to = norm(`${dir}/${entry}`);
+        if (!comps.has(to)) continue;
+        if (inShared) includes.get(dir).add(to); else direct.get(to).add(dir);
+      }
+    }
+  }
+  // a consumer of component A also consumes everything A includes, transitively
+  const consumers = new Map([...comps].map(c => [c, new Set(direct.get(c))]));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [a, inc] of includes) for (const b of inc) for (const c of consumers.get(a)) if (!consumers.get(b).has(c)) { consumers.get(b).add(c); changed = true; }
+  }
+  return [...comps].sort().map(path => ({ path, consumers: [...consumers.get(path)].sort() }));
+}
+if (process.argv.includes('--print-shared-components')) {
+  console.log(JSON.stringify(scanSharedComponents(ROOT), null, 2));
+  process.exit(0);
+}
 const rules = L.loadRules(join(RES, 'upgrade-rules.json'));
 const holdRules = L.parseJson5(readFileSync(join(ROOT, '.renovate/holds.json5'), 'utf8')).packageRules;
 const fx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-queue-20261109.json'), 'utf8'));
@@ -301,6 +355,82 @@ const expectLane = (name, facts, lane, klass) => {
   ok(whr.cluster_effect === 'immediate' && whr.cluster_effect_wait === null, 'the digest-less whisper pin (immediate) records no wait', JSON.stringify(whr.cluster_effect_wait));
   const pw = rules.own_image_pin_wait;
   ok(pw && rules.own_images.filter(o => o.cluster_effect === 'delayed' && o.pin_automerge === true).length >= 4 && Array.isArray(pw.observed_20261110) && pw.observed_20261110.length === 3, 'upgrade-rules.json documents the pin wait with the night\'s evidence');
+}
+
+// ── 3c. OP550: R7 stale checks, R8 shared components, R10 ceph-csi, cluster-wide ──
+{
+  const gx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-gates-20261110.json'), 'utf8'));
+  const gfact = n => clone(gx.prs[n]);
+  const AT = Date.parse('2026-11-10T06:45:00Z'); // the tick that saw #4770
+
+  // R10: #4607 (ceph-csi-rbd 3.18.2 on gasha01) is lane B by rule, not by the shepherd's LLM verdict
+  const c7 = fact(4607); c7.vet_markers = [];
+  const c7r = expectLane('#4607 without any vet verdict is LANE-B-AGENT by the ceph-csi rule', c7, 'LANE-B-AGENT', 'rule-agent');
+  ok(c7r.rules.includes('ceph-csi-chart') && c7r.rules.includes('ceph-csi-apps') && /no session volume create, resume or attach is in flight/.test(c7r.reason), '#4607 names the ceph-csi rule and the in-flight check it needs', `${c7r.rules} | ${c7r.reason}`);
+  const c7v = cls(fact(4607));
+  ok(c7v.lane === 'LANE-B-AGENT' && c7v.rules.includes('ceph-csi-chart'), "#4607 with the shepherd's LEFT is still LANE-B-AGENT and records the rule", JSON.stringify(c7v.rules));
+  const c7a = fact(4607); c7a.vet_markers = [{ author: 'haynes-ops-bot[bot]', sha: c7a.head_sha, verdict: 'AUTO-MERGE' }];
+  expectLane('a vet AUTO-MERGE cannot move ceph-csi to lane A', c7a, 'LANE-B-AGENT', 'rule-agent');
+  const cf = fact(4607); cf.files = ['kubernetes/main/apps/storage/ceph-csi/gasha01-cephfs/app/helmrelease.yaml']; cf.packages = [{ name: 'ceph-csi-cephfs', update: 'patch', from: '3.18.1', to: '3.18.2' }]; cf.vet_markers = [];
+  expectLane('ceph-csi-cephfs is LANE-B-AGENT too', cf, 'LANE-B-AGENT', 'rule-agent');
+  const cp = fact(4477); cp.packages = [{ name: 'ghcr.io/example/other', update: 'patch', from: '1.0.0', to: '1.0.1' }]; cp.files = ['kubernetes/main/apps/storage/ceph-csi/gasha01-rbd/app/helmrelease.yaml'];
+  ok(cls(cp).rules.includes('ceph-csi-apps') && cls(cp).lane === 'LANE-B-AGENT', 'any package under the ceph-csi apps is LANE-B-AGENT (path rule)');
+
+  // R8: #4770, the actions-runner pin in kubernetes/shared/components/arc/dind
+  const p70 = L.classify(gfact(4770), rules, { now: AT, holdRules });
+  const pools = ['demo-console', 'haynes-swarm', 'sigmaphiomicron-com', 'sigoalumni-org'].map(p => `kubernetes/main/apps/arc-runners/${p}/app`);
+  ok(p70.lane === 'LANE-A' && p70.class === 'cluster-change', '#4770 is LANE-A cluster-change', `${p70.lane}/${p70.class}: ${p70.reason}`);
+  ok(pools.every(t => p70.targets.includes(t)) && p70.targets.includes('kubernetes/main/apps/arc-runners/sigo-alumni') && !p70.targets.some(t => t.startsWith('kubernetes/shared/')), '#4770 targets the four runner pools that include arc/dind, plus sigo-alumni', JSON.stringify(p70.targets));
+  ok(p70.via_components.length === 4 && p70.via_components.every(v => v.startsWith('kubernetes/shared/components/arc/dind -> ')), 'the record lists the component and each consumer', JSON.stringify(p70.via_components));
+  const um = gfact(4770);
+  const r2 = structuredClone(rules); r2.shared_components.entries = r2.shared_components.entries.filter(e => e.path !== 'kubernetes/shared/components/arc/dind');
+  ok(L.classify(um, r2, { now: AT, holdRules }).targets.includes('kubernetes/shared/components/arc'), 'a component with no map entry stays the target (the tick reports target-unmapped)');
+  const r3 = structuredClone(rules); r3.shared_components.entries.find(e => e.path === 'kubernetes/shared/components/arc/dind').consumers = [];
+  ok(L.classify(um, r3, { now: AT, holdRules }).targets.includes('kubernetes/shared/components/arc/dind'), 'a component with no consumer stays the target (fail closed)');
+  ok(L.componentFor('kubernetes/shared/components/common/repos/app-template/ocirepository.yaml', rules)?.path === 'kubernetes/shared/components/common/repos/app-template', 'a file maps to the deepest component that contains it');
+  // a shared component reaches the consumers' path classes: the app-template chart source
+  // reaches dev-env-system, so the v2 coordinator owns it
+  const at = fact(4477); at.files = ['kubernetes/shared/components/common/repos/app-template/ocirepository.yaml']; at.packages = [{ name: 'ghcr.io/bjw-s-labs/helm/app-template', update: 'patch', from: '4.6.0', to: '4.6.1' }];
+  const atr = expectLane('an app-template bump reaches dev-env-system through the shared component and is EXCLUDED', at, 'EXCLUDED', 'v2-coordinator');
+  ok(/via shared component kubernetes\/shared\/components\/common\/repos\/app-template in kubernetes\/main\/apps\/dev-env-system/.test(atr.reason), 'the reason names the component and the consumer', atr.reason);
+  ok(atr.cluster_wide.includes('shared-common') && atr.targets.length >= 40, 'the app-template source is cluster-wide and targets every consumer', `${atr.cluster_wide} ${atr.targets.length}`);
+  const gz = fact(4477); gz.files = ['kubernetes/shared/components/volsync/aws-extra/replicationsource.yaml'];
+  const gzr = cls(gz);
+  ok(gzr.targets.includes('kubernetes/main/apps/ai/wyoming-protocol/speech-to-phrase') && gzr.findings.every(f => !/EXCLUDED|LANE-B-OWNER/.test(f)), 'a component with one ordinary consumer maps to it and adds no path class', JSON.stringify(gzr.targets));
+  // the map in upgrade-rules.json is the repository's (drift)
+  const scanned = scanSharedComponents(ROOT);
+  ok(JSON.stringify(scanned) === JSON.stringify(rules.shared_components.entries), 'drift: shared_components in upgrade-rules.json matches the kustomization.yaml files (regenerate with --print-shared-components)',
+    JSON.stringify(scanned.filter(e => JSON.stringify(e) !== JSON.stringify(rules.shared_components.entries.find(x => x.path === e.path))).map(e => e.path)));
+  ok(scanned.find(e => e.path === 'kubernetes/shared/components/arc/dind').consumers.length === 4, 'drift: arc/dind has the four runner pools');
+
+  // R5: which targets are cluster-wide
+  ok(JSON.stringify(cls(fact(4607)).cluster_wide) === '["csi"]', 'ceph-csi is cluster-wide (csi)');
+  ok(cls(fact(4477)).cluster_wide.length === 0, 'a leaf CronJob is not cluster-wide');
+  ok(L.clusterWide(['kubernetes/main/apps/kube-system/cilium/app/helmrelease.yaml'], rules)[0] === 'cilium' && L.clusterWide(['kubernetes/main/flux/apps.yaml'], rules)[0] === 'flux' && L.clusterWide(['kubernetes/main/apps/storage/rook-ceph/rook-ceph/app/helmrelease.yaml'], rules)[0] === 'rook-ceph', 'flux, cilium and rook-ceph are cluster-wide');
+
+  // R7: checks that predate a main commit to one of the PR's files
+  const MC = gx.main_commits_20261110T0010Z;
+  ok(L.checksReferenceTime('2026-11-08T04:27:45Z', '2026-11-08T04:28:00Z') === '2026-11-08T04:27:45.000Z' && L.checksReferenceTime(null, '2026-11-08T04:28:00Z') === '2026-11-08T04:28:00.000Z' && L.checksReferenceTime(null, null) === null, 'reference time: the earlier of the head commit and the first check');
+  const old = fact(4334); old.head_committed_at = gx.pr4334_old_head.committed_at;
+  const oldr = cls(old);
+  ok(oldr.checks.reference_time === '2026-11-08T04:27:45.000Z' && JSON.stringify(oldr.files) === JSON.stringify(old.files) && oldr.head_committed_at === old.head_committed_at, "#4334's old head: the record carries files, head_committed_at and checks.reference_time", JSON.stringify({ t: oldr.checks.reference_time, f: oldr.files }));
+  const st = L.checksPredateMain(oldr.checks.reference_time, oldr.files, { byPath: MC, unreadable: [] });
+  ok(st.newer.length === 1 && st.newer[0].sha.startsWith('a5ccd7c2') && st.newer[0].path === 'scripts/comfyui/Dockerfile' && !st.unreadable.length, "#4334's old head reads stale: #4372 changed scripts/comfyui/Dockerfile on main at 00:00:50Z", JSON.stringify(st));
+  const reb = cls(gfact(4334));
+  ok(reb.checks.reference_time === '2026-11-10T00:06:49.000Z' && L.checksPredateMain(reb.checks.reference_time, reb.files, { byPath: MC, unreadable: [] }).newer.length === 0, "#4334's rebased head (2417f4fa) is not stale", reb.checks.reference_time);
+  ok(L.checksPredateMain('2026-11-10T00:00:50Z', ['a'], { byPath: { a: [{ sha: 'x', at: '2026-11-10T00:00:50Z' }] } }).newer.length === 0, 'a commit at exactly the reference time is not newer (since is inclusive)');
+  ok(L.checksPredateMain('2026-11-10T00:00:50Z', ['a'], { byPath: { a: [{ sha: 'x', at: null }] } }).newer.length === 1, 'fail closed: a main commit with no readable date counts as newer');
+  ok(L.checksPredateMain(null, ['a'], { byPath: {} }).unreadable.length === 1, 'fail closed: no reference time is unreadable');
+  const rerun = fact(4334); rerun.head_committed_at = gx.pr4334_old_head.committed_at;
+  for (const c of rerun.checks) { c.started_at = '2026-11-10T00:05:00Z'; c.completed_at = '2026-11-10T00:09:00Z'; }
+  ok(cls(rerun).checks.reference_time === '2026-11-08T04:27:45.000Z', 'a re-run after the main commit does not refresh the reference (it reuses the old merge commit; the head date wins)');
+  const calls = [];
+  const stub = out => (cmd, argv) => { calls.push(argv); if (!L.isReadOnlyCommand(cmd, argv)) throw new Error('not a read'); if (out instanceof Error) throw out; return typeof out === 'function' ? out(argv) : out; };
+  const mc = L.mainCommitsTouching('x/y', ['scripts/comfyui/Dockerfile'], '2026-11-08T04:27:45.000Z', stub(JSON.stringify([{ sha: 'a5ccd7c24fc2c8f33164b346df1c8b37cdd6b8e7', commit: { committer: { date: '2026-11-10T00:00:50Z' } } }])));
+  ok(mc.byPath['scripts/comfyui/Dockerfile'][0].at === '2026-11-10T00:00:50Z' && !mc.unreadable.length, 'mainCommitsTouching reads the committer date of each commit');
+  ok(calls[0][0] === 'api' && calls[0][1] === 'repos/x/y/commits?sha=main&path=scripts%2Fcomfyui%2FDockerfile&since=2026-11-08T04%3A27%3A45.000Z&per_page=10' && calls.length === 1, 'it is one gh api GET per file, on main, since the reference time', JSON.stringify(calls));
+  ok(L.mainCommitsTouching('x/y', ['a'], 't', stub(null)).unreadable[0] === 'a' && L.mainCommitsTouching('x/y', ['a'], 't', stub(new Error('403'))).unreadable[0] === 'a' && L.mainCommitsTouching('x/y', ['a'], 't', stub('{"message":"x"}')).unreadable[0] === 'a', 'fail closed: a failed, thrown or non-list read is unreadable');
+  ok(L.mainCommitsTouching('x/y', ['<file list truncated>'], 't', stub('[]')).unreadable.length === 1 && L.mainCommitsTouching('x/y', ['a'], null, stub('[]')).unreadable.length === 1, 'fail closed: a truncated file list or no reference time is unreadable');
 }
 
 // ── 4. drift: every PR path filter in .github/workflows is in the check map ──────
