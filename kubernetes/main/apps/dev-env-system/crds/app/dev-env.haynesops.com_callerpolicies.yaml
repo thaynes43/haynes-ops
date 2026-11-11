@@ -13,6 +13,9 @@
 # seven fields are no longer required by the schema alone; a rule requires them when
 # summon is absent. Schema only. This directory declares no CallerPolicy object and no
 # ServiceAccount, and at this copy no pinned operator reads spec.summon.
+# Do not roll this file back once a CallerPolicy with spec.summon exists, even before a
+# session uses it: the older schema drops summon and requires the first caller's seven
+# fields, so a summon-only policy could not be read or updated under it.
 #
 # Keep it in step with the operator: copy a changed file here before (or with) the pin
 # that writes its new fields.
