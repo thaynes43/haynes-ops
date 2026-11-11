@@ -24,7 +24,11 @@
 //      no gh write is made even with a write token and the class allowlisted; every
 //      failed read is a named blocker; pause stops the tick; an unknown mode or class is
 //      refused before a single command runs. Live mode merges once, pinned to the head,
-//      only when every condition holds, and refuses each one that does not.
+//      only when every condition holds, and refuses each one that does not;
+//   5. the settle gate (story 551) through the tick: a merge to kubernetes/** 10 minutes
+//      earlier is the one blocker on an otherwise clean PR inside the window, the
+//      2026-11-10 shepherd merges (fixtures/settle-20261110.json) make every candidate
+//      wait until Flux settled, each read fails closed, and live mode does not merge.
 //
 // Usage: node scripts/upgrade-agent/lane-night-dryrun-selftest.mjs
 // Requires: node 24. No network (one loopback listener), no cluster access.
@@ -310,6 +314,19 @@ try {
     body: '| Package | Update | Change |\n|---|---|---|\n' + f.packages.map(p => `| ${p.name} | ${p.update || ''} | \`${p.from}\` → \`${p.to}\` |`).join('\n') + '\n',
   });
   const ready = v => ({ conditions: [{ type: 'Ready', status: v ? 'True' : 'False' }] });
+  // story 551: main's newest change to kubernetes/** in every world unless a test sets its
+  // own, a day before the clock; and the Flux objects, trimmed to what the older gates read,
+  // get the generations and transition times the settle gate reads, as a cluster settled
+  // long before the test clock. Fields a test sets are kept, so a test can unsettle one.
+  const K8S0 = { sha: '9'.repeat(40), at: '2026-11-01T07:00:00Z', message: 'fix(container): an older change to kubernetes/** (#4600)' };
+  const fillSettled = o => {
+    if (!o || typeof o !== 'object') return o;
+    const x = structuredClone(o);
+    x.metadata = { generation: 1, ...(x.metadata || {}) };
+    x.status = { observedGeneration: x.metadata.generation, ...(x.status || {}) };
+    if (Array.isArray(x.status.conditions)) x.status.conditions = x.status.conditions.map(c => ({ lastTransitionTime: '2026-10-01T00:00:00Z', ...c }));
+    return x;
+  };
   const flux = (ks, ns) => ({ 'kustomize.toolkit.fluxcd.io/name': ks, 'kustomize.toolkit.fluxcd.io/namespace': ns });
   const ks = (ns, name, path, dependsOn = [], v = true) => ({ metadata: { namespace: ns, name }, spec: { targetNamespace: ns, path, dependsOn }, status: ready(v) });
   const healthy = () => ({
@@ -326,6 +343,8 @@ try {
       status: { lastSyncTime: '2026-11-02T05:00:51Z', nextSyncTime: '2026-11-03T05:00:00Z', latestMoverStatus: { result: 'Successful' } } }] },
     'backups.postgresql.cnpg.io': { items: [] }, 'scheduledbackups.postgresql.cnpg.io': { items: [] },
     'cephclusters.ceph.rook.io': { items: [{ status: { ceph: { health: 'HEALTH_OK' } } }] },
+    // story 551: Flux's source, at main's newest change to kubernetes/** (K8S0)
+    'gitrepositories.source.toolkit.fluxcd.io': { items: [{ metadata: { namespace: 'flux-system', name: 'haynes-ops', generation: 1 }, status: { observedGeneration: 1, artifact: { revision: `main@sha1:${K8S0.sha}` }, conditions: [{ type: 'Ready', status: 'True', reason: 'Succeeded', lastTransitionTime: '2026-10-01T00:00:00Z' }] } }] },
     'pods@database': { items: [{ metadata: { namespace: 'database', name: 'mosquitto-0', labels: { 'app.kubernetes.io/instance': 'mosquitto' } }, spec: { volumes: [{ name: 'data', persistentVolumeClaim: { claimName: 'data-mosquitto-0' } }] } }] },
     pods: { items: [] }, cronjobs: { items: [] }, jobs: { items: [] },
   });
@@ -366,8 +385,8 @@ if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => a.includes('contents/.re
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/compare\\//.test(a))) { const s = argv.find(a => /\\/compare\\//.test(a)).split('...')[1].split('?')[0]; const c = (w.contains || {})[s]; if (c === 'FAIL') fail(); out({ status: c === false ? 'diverged' : 'behind', ahead_by: c === false ? 1 : 0, behind_by: 3 }); }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/commits\\?sha=main&/.test(a))) {
   const q = new URLSearchParams(argv.find(a => /\\/commits\\?/.test(a)).split('?')[1]);
-  const v = q.get('since') ? (w.mainCommits || {})[q.get('path')] : (w.mainNewest || {})[q.get('path')];
-  if (v === 'FAIL') fail(); out((v || []).map(c => ({ sha: c.sha, commit: { committer: { date: c.at } } })));
+  const v = q.get('since') ? (w.mainCommits || {})[q.get('path')] : (w.mainNewest || {})[q.get('path') ?? '(all)'];
+  if (v === 'FAIL') fail(); out((v || []).map(c => (c.commit ? c : { sha: c.sha, parents: c.parents ?? [{ sha: 'e'.repeat(40) }], commit: { committer: { date: c.at }, author: { date: c.author_at ?? c.at }, message: c.message ?? '' } })));
 }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /issues\\/\\d+\\/comments/.test(a))) { const n = argv.find(a => /issues\\/\\d+\\/comments/.test(a)).match(/issues\\/(\\d+)/)[1]; out([w.comments[n] || []]); }
 if (cmd === 'kubectl' && argv[0] === 'get') {
@@ -421,6 +440,10 @@ process.exit(0);
   const tick = (world, extraEnv = {}, args = ['--write-state'], { keepNow = false } = {}) => new Promise(resolve => {
     for (const f of [logFile, mergedFile, lockFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`]) rmSync(f, { force: true });
     if (world.lock) writeFileSync(lockFile, JSON.stringify(world.lock));
+    if (!world.rawSettle) {
+      world = { ...world, mainNewest: { kubernetes: [K8S0], '(all)': [K8S0], ...(world.mainNewest || {}) }, k8s: { ...world.k8s } };
+      for (const kind of ['kustomizations.kustomize.toolkit.fluxcd.io', 'helmreleases.helm.toolkit.fluxcd.io']) if (Array.isArray(world.k8s[kind]?.items)) world.k8s[kind] = { ...world.k8s[kind], items: world.k8s[kind].items.map(fillSettled) };
+    }
     writeFileSync(join(tmp, 'world.json'), JSON.stringify(world));
     const e = { ...env, ...extraEnv };
     const pin = !keepNow;
@@ -766,6 +789,60 @@ process.exit(0);
     const r4 = await tick(baseWorld([4477]), {}, []);
     ok(r4.status === 0 && r4.writes.length === 0 && r4.calls.length > 0, 'without --write-state the tick makes reads only');
     ok(r4.calls.every(c => L.isReadOnlyCommand(c.cmd, c.argv)), 'every call of a local run is a read');
+  }
+
+  // ── story 551: the settle gate through the real tick ──────────────────────────────
+  {
+    const sx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/settle-20261110.json'), 'utf8'));
+    const settleBlk = r => (r.rec(4477).gates?.blockers || []).filter(b => /^settle gate: /.test(b));
+    // inside the window (02:00 New York) with every other gate passing: a merge to
+    // kubernetes/** 10 minutes earlier is the one blocker, and nothing is chosen
+    const w1 = baseWorld([4477]);
+    const t10 = new Date(Date.parse(NOW) - 10 * 60e3).toISOString();
+    w1.mainNewest = { kubernetes: [{ sha: '7'.repeat(40), at: t10, message: 'feat(container): the shepherd merged a ramp PR' }], '(all)': [{ sha: '7'.repeat(40), at: t10 }] };
+    w1.k8s['gitrepositories.source.toolkit.fluxcd.io'].items[0].status.artifact.revision = `main@sha1:${'7'.repeat(40)}`;
+    const r1 = await tick(w1);
+    ok(r1.status === 0 && JSON.stringify(r1.rec(4477).gates.blockers) === JSON.stringify([`settle gate: main changed kubernetes/** 10 min ago (77777777 at ${new Date(Date.parse(t10)).toISOString()}: feat(container): the shepherd merged a ramp PR); no lane merge before ${new Date(Date.parse(NOW) + 20 * 60e3).toISOString()}, 30 min after it`]), 'tick: inside the window, a kubernetes/** merge 10 min ago is the only blocker on an otherwise clean PR', JSON.stringify(r1.rec(4477).gates.blockers));
+    ok(r1.summary.would_merge === null && r1.summary.settle?.settled === false && r1.summary.settle.newest_change?.sha === '7'.repeat(40), 'tick: so nothing is chosen, and summary.settle says why', JSON.stringify(r1.summary.settle).slice(0, 300));
+    ok(/upgrade-night dryrun: settle gate: NOT settled: main changed kubernetes\/\*\* 10 min ago/.test(r1.stderr) && /^settle gate: NOT settled \(1 blocker\)$/m.test(r1.stdout), 'tick: the log and stdout carry the settle verdict', r1.stderr.split('\n').filter(l => /settle/.test(l)).join(' | '));
+    ok((r1.summary.merge_step?.lane_refusals || []).some(x => /^settle gate: main changed kubernetes/.test(x)) && r1.summary.merge_step_settle?.settled === false, 'tick: the merge step re-reads it and records the refusal (dry-run)', JSON.stringify(r1.summary.merge_step?.lane_refusals));
+    const r0 = await tick(baseWorld([4477]));
+    ok(r0.summary.settle?.settled === true && settleBlk(r0).length === 0 && /settle gate: settled \(main's newest change to kubernetes\/\*\* 99999999 at 2026-11-01T07:00:00\.000Z, 1440 min ago; Flux at 99999999; nothing progressing; 1 failing, not settling\)/.test(r0.stderr), 'tick: a settled world: no settle blocker, and the log says settled (the long-broken h7 Kustomization counts as failing, not settling)', r0.stderr.split('\n').filter(l => /settle/.test(l)).join(' | '));
+    // the 2026-11-10 shepherd merges, through the tick: it waits at each instant and opens once settled
+    const fxWorld = inst => {
+      const w = baseWorld([4477]);
+      const m = sx.main[inst.main];
+      w.mainNewest = { kubernetes: m.kubernetes, '(all)': m.all };
+      w.k8s['gitrepositories.source.toolkit.fluxcd.io'] = { items: [inst.flux.gitrepository] };
+      w.k8s['kustomizations.kustomize.toolkit.fluxcd.io'].items.push(...inst.flux.kustomizations);
+      w.k8s['helmreleases.helm.toolkit.fluxcd.io'].items.push(...inst.flux.helmreleases);
+      w.contains = { [m.kubernetes[0].sha]: revFromFx(inst) === m.kubernetes[0].sha };
+      return w;
+    };
+    const revFromFx = inst => M.revisionSha(inst.flux.gitrepository.status.artifact.revision);
+    for (const inst of sx.instants) {
+      const r = await tick(fxWorld(inst), { FAKE_NOW: inst.at });
+      const sb = settleBlk(r);
+      ok(inst.want === 'settled' ? sb.length === 0 && r.summary.settle?.settled === true : sb.length > 0 && r.summary.settle?.settled === false,
+        `tick at ${inst.at} (2026-11-10 shepherd merges, ${inst.id}): ${inst.want === 'settled' ? 'no settle blocker' : 'every lane-A candidate waits'}`, sb.join(' | ') || JSON.stringify(r.summary.settle).slice(0, 300));
+    }
+    // fail closed through the tick
+    const wg = baseWorld([4477]); wg.k8s['gitrepositories.source.toolkit.fluxcd.io'] = 'FAIL';
+    ok(settleBlk(await tick(wg)).includes('settle gate: unreadable: GitRepository flux-system/haynes-ops'), 'tick: an unreadable Flux source is a settle blocker');
+    const wm = baseWorld([4477]); wm.mainNewest = { kubernetes: 'FAIL' };
+    ok(settleBlk(await tick(wm)).includes("settle gate: unreadable: main's newest commits to kubernetes/**"), "tick: an unreadable main history is a settle blocker");
+    const wp = baseWorld([4477]); wp.k8s['helmreleases.helm.toolkit.fluxcd.io'].items[0].status = { observedGeneration: 1, conditions: [{ type: 'Ready', status: 'Unknown', reason: 'Progressing', lastTransitionTime: '2026-11-02T06:58:00Z' }] };
+    ok(settleBlk(await tick(wp)).some(b => /^settle gate: Flux not settled: HelmRelease database\/mosquitto: Ready Unknown \(Progressing\)$/.test(b)), 'tick: a HelmRelease in another namespace that is progressing blocks every candidate (cluster-wide)');
+    // live mode: the settle gate holds the merge; nothing reaches gh pr merge
+    const permW = join(tmp, 'perm-write-551.json'); writeFileSync(permW, '{"contents":"write","pull_requests":"write","checks":"read"}');
+    const LV = { UPGRADE_NIGHT_MODE: 'live', UPGRADE_NIGHT_LIVE_CLASSES: 'delayed-cluster-change', GH_TOKEN_PERMISSIONS_FILE: permW };
+    const wl = baseWorld([4662]); wl.mainNewest = w1.mainNewest; wl.k8s['gitrepositories.source.toolkit.fluxcd.io'] = w1.k8s['gitrepositories.source.toolkit.fluxcd.io'];
+    const rl = await tick(wl, LV);
+    ok(rl.status === 0 && rl.merges.length === 0 && rl.summary.would_merge === null && (rl.rec(4662).gates.blockers || []).some(b => /^settle gate: main changed kubernetes/.test(b)) && rl.lock?.data?.holder === '', 'live: a kubernetes/** merge 10 min ago holds the merge: no gh pr merge call, the lock released', `merges=${rl.merges.length} ${JSON.stringify(rl.rec(4662).gates.blockers)}`);
+    const rc = await tick(baseWorld([4662]), LV);
+    ok(rc.merges.length === 1, 'live, settled: the same PR merges (the gate is what held it)');
+    // static: one tick-start read, pushed into every candidate's blockers
+    ok(count(night, /M\.settleCheck\(/g) === 1 && /if \(settle\) blockers\.push\(\.\.\.settle\.blockers\.map\(b => `settle gate: \$\{b\}`\)\);/.test(night), 'run-night.mjs: one settle read per tick, a blocker on every lane-A candidate');
   }
 } finally {
   server.close();

@@ -5,7 +5,8 @@
 # Runs every selftest under scripts/upgrade-agent/ that needs no cluster, network or
 # LLM: the night lane's classifier (with the check-map drift test, which reads every
 # file in .github/workflows and .renovate), its dry-run tick, its merge step and change
-# lock (story 752), the five shell selftests of the shepherd, triage, gate and responder
+# lock (story 752) and the settle gate (story 551), the six shell selftests of the shepherd
+# (its stand-aside for the night lane included, story 551), triage, gate and responder
 # helpers, and the delivery helper's offline suite. Before this workflow nothing ran them
 # in CI.
 #
@@ -83,7 +84,7 @@ jobs:
       - name: Shell selftests, one at a time
         run: |
           set -euo pipefail
-          for t in coordination-sig held-audit shepherd-verdict stale-corpse triage-claim; do
+          for t in coordination-sig held-audit shepherd-verdict shepherd-stand-aside stale-corpse triage-claim; do
             echo "::group::${t}-selftest.sh"
             nice -n 19 bash "scripts/upgrade-agent/${t}-selftest.sh"
             echo "::endgroup::"

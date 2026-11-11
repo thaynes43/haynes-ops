@@ -13,6 +13,8 @@
 #     WebFetch/WebSearch, NO kubectl write.
 #   - DRY-RUN by default: makes NO changes. Set UPGRADE_AGENT_MODE=shepherd to enable
 #     edits + PR authorship.
+#   - STAND-ASIDE (story 551): no merge while the night lane's change lock is held, while
+#     its merge window is open, or when either is unreadable (shepherd_may_merge, below).
 #
 # KNOWN 4b.1 GAP (closed by the 4b.2 guardrails): the token has contents:write, so a
 # rogue/injected agent could in principle `git push` straight to main. 4b.1 is
@@ -236,6 +238,109 @@ shepherd_escalate() {
   bash /opt/coordination/escalate.sh shepherd "job:${HOSTNAME:-unknown} mode=${MODE}" "$1"
 }
 
+# ── STAND ASIDE FOR THE NIGHT LANE (story 551) ── One actor merges cluster changes at a
+# time (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/551).
+# The night lane (CronJob upgrade-shepherd-upgrade-night) holds ConfigMap
+# upgrade-agent/upgrade-change-lock during each tick and for 4h after a live merge, and
+# merges only inside its window (night.merge_window_local in upgrade-rules.json, 01:30 to
+# 04:45 New York). A run of this script merges nothing while the lock is held, while that
+# window is open, or when either cannot be read (fail closed):
+#   - before the LLM turn (MODE auto or remediate) the launcher takes MERGE_TOOLS off the
+#     allowlist and appends a MERGE STAND-ASIDE rule; the check is here, not in a prompt;
+#   - the stall fallback asks again just before its own `gh pr merge`.
+# Everything else (pre-filter, vet, PR authoring, comments, work orders, reports) runs as
+# before. When shepherd_may_merge returns 0 the allowlist and the prompt are unchanged.
+LANE_RULES="${UPGRADE_AGENT_LANE_RULES:-/opt/shepherd/upgrade-rules.json}"
+CHANGE_LOCK_NS="upgrade-agent"
+CHANGE_LOCK_CM="upgrade-change-lock"
+MERGE_STAND_ASIDE_WHY=""
+
+# stdin = {now: epoch s, local: "HH:MM" or null, rules: the .night object of
+# upgrade-rules.json or null, lock: null (no ConfigMap), "unreadable", or the ConfigMap}.
+# Pure. Prints "merge" or "stand-aside <why>". The lock reads as the lane reads it
+# (night-merge.mjs lockStatus): free when absent or data.holder is empty, expired once
+# data.expires_at has passed, held otherwise; a holder with no readable expiry is held.
+merge_gate_decide() {
+  jq -r '
+    def hhmm: type == "string" and test("^[0-2][0-9]:[0-5][0-9]$");
+    def mins: split(":") | (.[0] | tonumber) * 60 + (.[1] | tonumber);
+    (.rules.merge_window_local.first // null) as $f
+    | (.rules.merge_window_local.last // null) as $l
+    | (.rules.timezone // null) as $tz
+    | if ((($f | hhmm) and ($l | hhmm) and ($tz | type) == "string") | not) then
+        "stand-aside unreadable: the night lane merge window (night.merge_window_local and night.timezone in upgrade-rules.json)"
+      elif ((.local | hhmm) | not) then "stand-aside unreadable: the time in \($tz)"
+      elif (.local | mins) >= ($f | mins) and (.local | mins) <= ($l | mins) then
+        "stand-aside inside the night lane merge window (\($f)-\($l) \($tz), now \(.local))"
+      elif .lock == null then "merge"
+      elif (.lock | type) != "object" then "stand-aside unreadable: ConfigMap upgrade-agent/upgrade-change-lock"
+      elif ((.lock.data.holder // "") == "") then "merge"
+      else (.lock.data.expires_at // null) as $e
+        | ($e | if type == "string" then (sub("\\.[0-9]+Z$"; "Z") | try fromdateiso8601 catch null) else null end) as $x
+        | if $x == null then "stand-aside the change lock is held by \(.lock.data.holder) with no readable expires_at"
+          elif $x <= .now then "merge"
+          else "stand-aside the change lock is held by \(.lock.data.holder) (\(.lock.data.phase // "taken")) until \($e)"
+          end
+      end' 2>/dev/null
+}
+
+# Prints the lock ConfigMap as JSON, null when it does not exist, or "unreadable".
+change_lock_read() {
+  local out err="/tmp/change-lock-read.err"
+  if out="$(kubectl -n "$CHANGE_LOCK_NS" get configmap "$CHANGE_LOCK_CM" -o json 2>"$err")" \
+     && printf '%s' "$out" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    printf '%s' "$out"
+  elif grep -q 'NotFound' "$err" 2>/dev/null; then
+    printf 'null'
+  else
+    printf '"unreadable"'
+  fi
+}
+
+# $1 = IANA zone, $2 = epoch s. HH:MM in that zone, from Node's ICU (the image's tzdata
+# is not relied on: without it `TZ=… date` silently prints UTC). Empty on any error.
+lane_local_time() {
+  node -e 'const [tz, s] = process.argv.slice(1); const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(Number(s) * 1000)).map(x => [x.type, x.value])); process.stdout.write(`${p.hour}:${p.minute}`);' "$1" "$2" 2>/dev/null
+}
+
+# Returns 0 ONLY when this run may merge now. Any other outcome, an error here included,
+# is a stand-aside, with the reason in MERGE_STAND_ASIDE_WHY and a STAND-ASIDE log line.
+shepherd_may_merge() {
+  local now night tz local_t lock input verdict
+  now="$(epoch_now)"
+  night="$(jq -c '.night // null' "$LANE_RULES" 2>/dev/null)" || night="null"
+  [ -n "$night" ] || night="null"
+  tz="$(printf '%s' "$night" | jq -r '.timezone // empty' 2>/dev/null)" || tz=""
+  local_t=""
+  [ -z "$tz" ] || local_t="$(lane_local_time "$tz" "$now")" || local_t=""
+  lock="$(change_lock_read)"
+  input="$(jq -nc --argjson now "$now" --arg local "$local_t" --argjson rules "$night" --argjson lock "$lock" \
+    '{now: $now, local: (if $local == "" then null else $local end), rules: $rules, lock: $lock}' 2>/dev/null)" || input=""
+  verdict="$(printf '%s' "$input" | merge_gate_decide)" || verdict=""
+  if [ -n "$input" ] && [ "$verdict" = "merge" ]; then
+    MERGE_STAND_ASIDE_WHY=""
+    log "stand-aside: not needed: the change lock is free and the night lane window is closed (local ${local_t} ${tz})."
+    return 0
+  fi
+  case "$verdict" in
+    "stand-aside "?*) MERGE_STAND_ASIDE_WHY="${verdict#stand-aside }" ;;
+    *) MERGE_STAND_ASIDE_WHY="unreadable: the stand-aside decision (${verdict:-no output})" ;;
+  esac
+  log "STAND-ASIDE: this run merges nothing: ${MERGE_STAND_ASIDE_WHY} (story 551)."
+  return 1
+}
+
+# Rewrites ALLOWED without the MERGE_TOOLS entries (exact matches).
+drop_merge_tools() {
+  local t m keep kept=()
+  for t in "${ALLOWED[@]}"; do
+    keep=1
+    for m in "${MERGE_TOOLS[@]}"; do [ "$t" = "$m" ] && keep=0; done
+    [ "$keep" -eq 0 ] || kept+=("$t")
+  done
+  ALLOWED=("${kept[@]}")
+}
+
 # ── AUTO-MERGE STALL FALLBACK (2026-09-30, #3287) ── `gh pr merge --auto` on a PR whose
 # checks finished long ago can leave GitHub with nothing to act on. #3280 (rook v1.20.8
 # operator) had 7/7 checks green since 02:21Z; the 04:07Z run enabled auto-merge while
@@ -310,6 +415,11 @@ automerge_decide() {
 # a PR that is still unmerged. Returns 0 = merged, 1 = not merged.
 automerge_complete() {
   local pr="$1" sha="$2" waited="$3" out merged_at
+  # story 551: the lock and the lane's window are read again right before this merge call
+  if ! shepherd_may_merge; then
+    log "automerge-fallback: STAND-ASIDE: #$pr is CLEAN and green but the fallback does not merge it: ${MERGE_STAND_ASIDE_WHY:-unknown}. Its queued GitHub auto-merge is left as it is."
+    return 1
+  fi
   log "automerge-fallback: #$pr has been CLEAN with every check green for ${waited}s and GitHub has not merged it — merging it (plain squash, pinned to ${sha:0:10}, no --admin)."
   if out="$(gh pr merge "$pr" -R "$REPO" --squash --delete-branch --match-head-commit "$sha" 2>&1)"; then
     log "automerge-fallback: #$pr merged by the fallback."
@@ -695,6 +805,20 @@ SAFETY_PROMPT="${SAFETY_PROMPT} VERDICTS — choose by WHO has to act next. 'DEF
 if [ "$MODE" != "dryrun" ]; then
   SAFETY_PROMPT="${SAFETY_PROMPT} VET MARKER: when you FINISH vetting a Renovate PR — whatever the verdict (auto-merge enabled, declined, held, left-for-Renovate, or you authored a supporting-edit PR for it), EXCEPT a DEFER — record the vet so it is never re-done at this state: get the head SHA with 'gh pr view <N> --json headRefOid', use the Write tool to author /tmp/vet-comment.md whose FIRST line is exactly '<!-- shepherd-vet sha=<HEAD_SHA> -->' followed by 'VERDICT: <one word>' and 2-4 sentences of reasoning, then run 'gh pr comment <N> --body-file /tmp/vet-comment.md'. Never build the comment inline. Conversely, SKIP (do not re-vet) any PR whose CURRENT head SHA already appears in a shepherd-vet comment — treat its recorded verdict as done. A DEFERRED PR gets NO marker: the marker would stop the next run from re-reading it, and that next run is what clears the wait."
 fi
+
+# ── STAND ASIDE (story 551), BEFORE the LLM turn ── The merge decision is the LLM's, so the
+# check sits here, in the launcher: while the change lock is held, inside the night lane's
+# window, or when either is unreadable, MERGE_TOOLS leave the allowlist (dontAsk denies
+# them) and the rule below says why. Only the modes that carry MERGE_TOOLS are touched.
+MERGE_STOOD_ASIDE=""
+case "$MODE" in
+  auto|remediate)
+    if ! shepherd_may_merge; then
+      MERGE_STOOD_ASIDE=1
+      drop_merge_tools
+      SAFETY_PROMPT="${SAFETY_PROMPT} MERGE STAND-ASIDE (this run only; story 551): ${MERGE_STAND_ASIDE_WHY}. The launcher took gh pr merge off your allowlist for this run; do not merge or enable auto-merge by any route (gh api included). Do everything else as usual: vet, author supporting-edit PRs, comment, hand off work orders. For a PR you would otherwise queue for auto-merge, write 'DEFER: #<N> waits for the night lane to stand down — <reason above>' and give it NO vet marker, so a later run merges it."
+    fi ;;
+esac
 
 if [ "$AUTH_PATH" = "plan" ]; then
   log "MODE=$MODE auth=$AUTH_PATH model=$MODEL max_turns=unbounded(timeout=$RUN_TIMEOUT; api fallback=$MAX_TURNS) budget=\$$MAX_BUDGET cap=\$$MONTHLY_CAP"

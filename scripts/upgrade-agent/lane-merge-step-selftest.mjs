@@ -18,7 +18,11 @@
 //      kept after a merge; a stale lock taken over by its lease;
 //   4. the token and the class allowlist; the merge argv (squash, pinned to the head, no
 //      bypass flag); callMerge refusing every mode but live and hand before it spawns;
-//   5. the hand-run CLI (--check-only and --merge) against stub gh and kubectl.
+//   5. the hand-run CLI (--check-only and --merge) against stub gh and kubectl;
+//   6. the settle gate (story 551): each Flux state, each read failing closed, the
+//      2026-11-10 shepherd merges (fixtures/settle-20261110.json: the lane waits through
+//      multus's roll and opens once it settled), and the re-read at a live merge call and
+//      before a hand --merge, where another actor's merge in between refuses the call.
 // The tick-level cases (dry-run never reaching the merge call, live refusals through the
 // real tick) are in lane-night-dryrun-selftest.mjs.
 //
@@ -190,6 +194,126 @@ const GO_MOD = 'scripts/tests/dev-env-archive-guard/go.mod';
   }
 }
 
+// ── 3b. the settle gate (story 551): pure, and the 2026-11-10 fixture ───────────────────
+// fixtures/settle-20261110.json: main as GitHub listed it after the shepherd's #4760 and
+// #4761 (05:01:56Z, 05:02:06Z) and Renovate's #4767 (05:03:25Z), and the Flux objects
+// rebuilt from Prometheus around multus's roll (unsettled until 05:36:43Z).
+const sx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/settle-20261110.json'), 'utf8'));
+{
+  const sc = M.settleConfig(rules);
+  ok(sc.ok && sc.minutes === 30 && sc.watched_path === 'kubernetes' && sc.source.namespace === 'flux-system' && sc.source.name === 'haynes-ops' && sx.settle_minutes === sc.minutes, 'git ships the settle gate at 30 minutes on kubernetes/**, Flux source flux-system/haynes-ops', JSON.stringify(sc));
+  for (const [k, v] of [['minutes', 29], ['minutes', '30'], ['minutes', 0], ['watched_path', 'kubernetes/main'], ['history_per_page', 4], ['flux_source', { kind: 'OCIRepository', namespace: 'flux-system', name: 'haynes-ops' }], ['flux_source', { kind: 'GitRepository', namespace: 'flux-system' }]]) {
+    const r2 = structuredClone(rules); r2.night.settle_gate[k] = v;
+    const sv = M.settleVerdict({ cfg: M.settleConfig(r2) }, NOW);
+    ok(!M.settleConfig(r2).ok && !sv.settled && /night\.settle_gate in upgrade-rules\.json is invalid/.test(sv.blockers[0] || ''), `an invalid settle config refuses (${k}=${JSON.stringify(v)})`);
+  }
+  ok(!M.settleVerdict(null, NOW).settled && !M.settleVerdict({ cfg: sc }, NaN).settled, 'no facts, or no time, is not settled');
+  // one Flux object
+  const W = 30 * 60e3, at = '2026-11-11T15:00:00Z';
+  const o = (conds, extra = {}) => ({ metadata: { generation: 2, ...(extra.meta || {}) }, spec: extra.spec || {}, status: { observedGeneration: extra.og ?? 2, conditions: conds } });
+  const R = (status, reason = 'X', t = at) => ({ type: 'Ready', status, reason, lastTransitionTime: t });
+  const Rc = reason => ({ type: 'Reconciling', status: 'True', reason, lastTransitionTime: at });
+  const st = x => M.fluxSettleState(x, NOW, W);
+  ok(st(o([R('True')])).state === 'settled', 'Flux: Ready True at its generation is settled');
+  ok(st(o([R('Unknown', 'Progressing')])).state === 'progressing' && /Ready Unknown \(Progressing\)/.test(st(o([R('Unknown', 'Progressing')])).why), 'Flux: Ready Unknown is progressing');
+  ok(st(o([R('True'), Rc('Progressing')])).state === 'progressing', 'Flux: Ready True but Reconciling is progressing');
+  ok(st(o([R('True')], { og: 1 })).state === 'progressing' && /generation 2 not observed yet \(observed 1\)/.test(st(o([R('True')], { og: 1 })).why), 'Flux: a generation not observed yet is progressing');
+  ok(st({ metadata: {}, status: { conditions: [R('True')] } }).state === 'progressing', 'Flux: no generation or observedGeneration fails closed (progressing)');
+  ok(st(o([])).state === 'progressing' && st({ metadata: {} }).state === 'progressing', 'Flux: no Ready condition, or no conditions, is progressing');
+  ok(st(o([R('False', 'DependencyNotReady', new Date(NOW - 5 * 60e3).toISOString())])).state === 'progressing', 'Flux: NotReady for 5 min (inside the window) is progressing');
+  ok(st(o([R('False', 'HealthCheckFailed', '2026-11-09T20:00:00Z'), Rc('ProgressingWithRetry')], { og: -1 })).state === 'failing', 'Flux: NotReady for days and retrying (dev-env-h7-metadata-audit) is failing, not settling');
+  ok(st(o([R('False', 'HealthCheckFailed', new Date(NOW - 5 * 60e3).toISOString()), { ...Rc('ProgressingWithRetry'), lastTransitionTime: new Date(NOW - 5 * 60e3).toISOString() }], { og: -1 })).state === 'failing', "Flux: the retry loop rewrites the transition time (h7 read live on 2026-11-11, 5 min old): still failing, not settling");
+  ok(st(o([R('False', 'HealthCheckFailed', '2026-11-09T20:00:00Z'), Rc('Progressing')])).state === 'progressing', 'Flux: an old NotReady reconciling anew is progressing');
+  ok(st(o([R('False', 'X', null)])).state === 'progressing', 'Flux: NotReady since an unreadable time fails closed');
+  ok(st(o([R('Maybe')])).state === 'progressing', 'Flux: an unknown Ready status fails closed');
+  ok(st(o([R('Unknown')], { spec: { suspend: true } })).state === 'settled', 'Flux: a suspended object is settled (nothing will move it)');
+  ok(M.commitTime({ commit: { committer: { date: '2026-11-10T05:00:00Z' }, author: { date: '2026-11-10T05:10:00Z' } } }) === Date.parse('2026-11-10T05:10:00Z') && Number.isNaN(M.commitTime({ commit: { author: { date: '2026-11-10T05:10:00Z' } } })), 'commitTime: the later of committer and author; no committer date is unreadable');
+  ok(M.revisionSha(`main@sha1:${'a'.repeat(40)}`) === 'a'.repeat(40) && M.revisionSha('main@sha256:abc') === null && M.revisionSha(null) === null, 'revisionSha reads main@sha1:<40 hex> only');
+
+  // the 2026-11-10 instants, read through readSettleFacts with a reader serving the fixture
+  const fxRun = inst => (cmd, argv) => {
+    const api = argv.find(a => String(a).startsWith('repos/')) || '';
+    const m = sx.main[inst.main];
+    if (cmd === 'gh' && /\/commits\?sha=main&path=kubernetes&per_page=20$/.test(api)) return JSON.stringify(m.kubernetes);
+    if (cmd === 'gh' && /\/commits\?sha=main&per_page=20$/.test(api)) return JSON.stringify(m.all);
+    if (cmd === 'gh' && /\/compare\//.test(api)) {
+      const [base, tip] = api.split('/compare/')[1].split('?')[0].split('...');
+      const order = m.all.map(c => c.sha); // newest first
+      const bi = order.indexOf(base), ti = order.indexOf(tip);
+      return bi < 0 && ti < 0 ? null : JSON.stringify({ ahead_by: ti >= 0 && (bi < 0 || ti < bi) ? Math.max(1, (bi < 0 ? order.length : bi) - ti) : 0 });
+    }
+    if (cmd === 'kubectl' && argv[1] === 'kustomizations.kustomize.toolkit.fluxcd.io') return JSON.stringify({ items: inst.flux.kustomizations });
+    if (cmd === 'kubectl' && argv[1] === 'helmreleases.helm.toolkit.fluxcd.io') return JSON.stringify({ items: inst.flux.helmreleases });
+    if (cmd === 'kubectl' && argv[1] === 'gitrepositories.source.toolkit.fluxcd.io') return JSON.stringify({ items: [inst.flux.gitrepository] });
+    return null;
+  };
+  const judge = (inst, now = Date.parse(inst.at)) => M.settleVerdict(M.readSettleFacts(M.REPO, rules, fxRun(inst)), now);
+  ok(sx.instants.length === 5 && sx.instants.filter(i => i.want === 'wait').length === 4, 'the fixture has four waiting instants and one settled');
+  for (const inst of sx.instants) {
+    const v = judge(inst);
+    const text = [...v.blockers, ...v.unsettled].join(' | ');
+    ok(v.settled === (inst.want === 'settled') && inst.because.every(b => text.includes(b)), `2026-11-10 ${inst.at} (${inst.id}): the lane ${inst.want === 'settled' ? 'may merge' : 'waits'}${inst.because.length ? ` (${inst.because.join('; ')})` : ''}`, text || JSON.stringify(v.newest_change));
+  }
+  const i0 = sx.instants.find(i => i.id === 'after-4767');
+  const v0 = judge(i0);
+  ok(v0.newest_change?.sha === 'acaca28d9ed92317ad9fccb889a8336b5747758a' && v0.newest_change.at === '2026-11-10T05:03:25.000Z' && /no lane merge before 2026-11-10T05:33:25\.000Z/.test(v0.blockers.join(' ')), "the newest change is #4767 (Renovate's auto-merge at 05:03:25Z), whoever merged it; the wait runs to 05:33:25Z", JSON.stringify(v0.newest_change));
+  const race = sx.instants.find(i => i.id === 'counterfactual-race');
+  const vr = judge(race);
+  ok(!vr.settled && !vr.blockers.some(b => /^main changed/.test(b)) && vr.blockers.some(b => /^Flux has not fetched main's newest change to kubernetes\/\*\* yet: GitRepository flux-system\/haynes-ops is at 08f367f6, which does not contain 3dadf34a$/.test(b)), 'counterfactual: 30 min after #4761 but before multus rolls, only the Flux-fetched rule holds the lane', vr.blockers.join(' | '));
+  const roll = sx.instants.find(i => i.id === 'multus-rolling');
+  const vroll = judge(roll);
+  ok(vroll.unsettled.some(x => /^Kustomization home-automation\/home-assistant: has not attempted acaca28d yet/.test(x)) && vroll.failing_not_settling.some(x => /dev-env-h7-metadata-audit/.test(x)) && !vroll.blockers.some(b => /h7-metadata-audit/.test(b)), "multus rolling: dependents that have not attempted the revision are unsettled; the long-broken h7 Kustomization is listed, not blocking", JSON.stringify({ u: vroll.unsettled, f: vroll.failing_not_settling }));
+  const done = sx.instants.find(i => i.id === 'settled-counterfactual');
+  const before = Date.parse('2026-11-10T05:33:24.999Z'), after30 = Date.parse('2026-11-10T05:33:25Z');
+  ok(!judge(done, before).settled && judge(done, after30).settled, 'the 30 minutes end exactly at 05:33:25Z (strict): 1 ms before still waits');
+  // each settle read fails closed
+  const failing = (inst, which) => (cmd, argv) => {
+    const api = argv.find(a => String(a).startsWith('repos/')) || '';
+    if (which === 'k8s' && /path=kubernetes/.test(api)) return null;
+    if (which === 'k8s-empty' && /path=kubernetes/.test(api)) return '[]';
+    if (which === 'all' && /\/commits\?sha=main&per_page=/.test(api)) return 'not json';
+    if (which === 'compare' && /\/compare\//.test(api)) return null;
+    if (which === argv[1]) return null;
+    if (which === 'source-absent' && argv[1] === 'gitrepositories.source.toolkit.fluxcd.io') return JSON.stringify({ items: [] });
+    if (which === 'source-garbled' && argv[1] === 'gitrepositories.source.toolkit.fluxcd.io') return JSON.stringify({ items: [{ ...inst.flux.gitrepository, status: { ...inst.flux.gitrepository.status, artifact: { revision: 'main@sha1:nothex' } } }] });
+    return fxRun(inst)(cmd, argv);
+  };
+  for (const [which, re] of [['k8s', /^unreadable: main's newest commits to kubernetes\/\*\*$/], ['k8s-empty', /^unreadable: main lists no commit to kubernetes\/\*\* at all$/], ['all', /^unreadable: main's newest commits \(to find merge commits/],
+    ['kustomizations.kustomize.toolkit.fluxcd.io', /^unreadable: kustomizations \(settle gate\)$/], ['helmreleases.helm.toolkit.fluxcd.io', /^unreadable: helmreleases \(settle gate\)$/], ['gitrepositories.source.toolkit.fluxcd.io', /^unreadable: GitRepository flux-system\/haynes-ops$/],
+    ['source-absent', /^GitRepository flux-system\/haynes-ops does not exist$/], ['source-garbled', /^unreadable: the artifact revision of GitRepository flux-system\/haynes-ops/]]) {
+    const v = M.settleVerdict(M.readSettleFacts(M.REPO, rules, failing(done, which)), Date.parse(done.at));
+    ok(!v.settled && v.blockers.some(b => re.test(b)), `settle gate: ${which} unreadable fails closed`, v.blockers.join(' | '));
+  }
+  const cmpFail = structuredClone(done); cmpFail.flux.gitrepository.status.artifact.revision = 'main@sha1:08f367f6b8d5f87f61a718fc59c0e2dfe4069178';
+  const vc = M.settleVerdict(M.readSettleFacts(M.REPO, rules, failing(cmpFail, 'compare')), Date.parse(done.at));
+  ok(!vc.settled && vc.blockers.some(b => /^unreadable: whether GitRepository flux-system\/haynes-ops \(08f367f6\) contains acaca28d$/.test(b)), 'settle gate: a failed compare of the source revision fails closed', vc.blockers.join(' | '));
+  // merge commits and a crowded window
+  const base = { cfg: sc, k8s: sx.main.acaca28d.kubernetes, all: sx.main.acaca28d.all, ks: { items: done.flux.kustomizations }, hr: { items: done.flux.helmreleases }, source: done.flux.gitrepository, contains: true };
+  const t40 = Date.parse(done.at);
+  ok(M.settleVerdict(base, t40).settled, 'the settled counterfactual, as plain facts: settled');
+  const mc = structuredClone(base); mc.all[0].parents.push({ sha: 'b'.repeat(40) });
+  ok(!M.settleVerdict(mc, Date.parse('2026-11-10T05:20:00Z')).settled && M.settleVerdict(mc, Date.parse('2026-11-10T05:20:00Z')).blockers.some(b => /^main commit acaca28d at 2026-11-10T05:03:25\.000Z has 2 parents, inside the settle window/.test(b)), 'a merge commit inside the window fails closed');
+  ok(!M.settleVerdict(mc, t40).blockers.some(b => /parents/.test(b)), 'a merge commit older than the window does not count');
+  const np = structuredClone(base); delete np.all[0].parents;
+  ok(M.settleVerdict(np, Date.parse('2026-11-10T05:20:00Z')).blockers.some(b => /has unreadable parents/.test(b)), 'unreadable parents inside the window fail closed');
+  const crowded = structuredClone(base); crowded.all = Array.from({ length: 20 }, (_, i) => ({ sha: String(i % 10).repeat(40), parents: [{ sha: 'c'.repeat(40) }], commit: { committer: { date: new Date(t40 - (i + 1) * 60e3).toISOString() } } }));
+  ok(M.settleVerdict(crowded, t40).blockers.some(b => /^unreadable: main has 20 or more commits inside the settle window/.test(b)), 'twenty commits inside the window: more than one read lists (fail closed)');
+  // the revision every Kustomization of the source must have attempted
+  const na = structuredClone(base); na.ks.items[0].status.lastAttemptedRevision = 'main@sha1:08f367f6b8d5f87f61a718fc59c0e2dfe4069178';
+  ok(M.settleVerdict(na, t40).blockers.some(b => /Kustomization network\/multus: has not attempted acaca28d yet \(last attempted 08f367f6\)/.test(b)), 'a Kustomization of the source that has not attempted its revision is unsettled');
+  const ns = structuredClone(na); ns.ks.items[0].spec.suspend = true;
+  ok(M.settleVerdict(ns, t40).settled, 'a suspended Kustomization is not waited for');
+  const oc = structuredClone(na); oc.ks.items[0].spec.sourceRef = { kind: 'OCIRepository', name: 'flux-manifests', namespace: 'flux-system' };
+  ok(M.settleVerdict(oc, t40).settled, 'a Kustomization of another source is not compared with the GitRepository revision');
+  const gf = structuredClone(base); gf.source.status.conditions = [{ type: 'Ready', status: 'False', reason: 'GitOperationFailed', lastTransitionTime: '2026-11-09T00:00:00Z' }];
+  ok(M.settleVerdict(gf, t40).blockers.some(b => /^GitRepository flux-system\/haynes-ops is NotReady \(GitOperationFailed\)/.test(b)), 'a source that has been failing blocks: nothing it serves can be judged settled');
+  ok(!M.settleVerdict({ ...base, contains: false }, t40).settled && !M.settleVerdict({ ...base, contains: null }, t40).settled && !M.settleVerdict({ ...base, contains: undefined }, t40).settled, 'the source must be known to contain the newest change: false, null and undefined all wait');
+  const fut = structuredClone(base); fut.k8s[0].commit.committer.date = '2026-11-10T06:00:00Z';
+  ok(M.settleVerdict(fut, t40).blockers.some(b => /^main changed kubernetes\/\*\* 0 min ago/.test(b)), 'a commit dated after now (clock skew) waits');
+  const late = structuredClone(base); late.k8s[0].commit.author.date = '2026-11-10T05:20:00Z';
+  ok(!M.settleVerdict(late, t40).settled, 'the later of committer and author date counts');
+}
+
 // ── 4. the lock and the merge call against stub kubectl and gh ─────────────────────────
 const tmp = mkdtempSync(join(tmpdir(), 'merge-step-'));
 try {
@@ -226,7 +350,9 @@ if (cmd === 'gh' && api.includes('contents/.renovate/holds.json5')) { if (w.hold
 if (cmd === 'gh' && /\\/issues\\/\\d+\\/comments/.test(api)) out([w.comments || []]);
 if (cmd === 'gh' && /\\/commits\\/[0-9a-f]{40}$/.test(api)) out('');
 if (cmd === 'gh' && /\\/compare\\//.test(api)) { const c = (w.compare || {})[api.split('...')[1].split('?')[0]]; if (!c) fail(); out(c); }
-if (cmd === 'gh' && /\\/commits\\?sha=main&/.test(api)) { const q = new URLSearchParams(api.split('?')[1]); const v = q.get('since') ? (w.since || {})[q.get('path')] ?? [] : (w.newest || {})[q.get('path')]; if (!v) fail(); out(v.map(c => ({ sha: c.sha, commit: { committer: { date: c.at } } }))); }
+if (cmd === 'gh' && /\\/commits\\?sha=main&/.test(api)) { const q = new URLSearchParams(api.split('?')[1]); const v = q.get('since') ? (w.since || {})[q.get('path')] ?? [] : (w.newest || {})[q.get('path') ?? '(all)']; if (!v || v === 'FAIL') fail(); out(v.map(c => (c.commit ? c : { sha: c.sha, parents: c.parents ?? [{ sha: 'e'.repeat(40) }], commit: { committer: { date: c.at }, author: { date: c.author_at ?? c.at }, message: c.message ?? '' } }))); }
+// story 551: the settle gate's Flux reads (any kubectl get that is not a ConfigMap)
+if (cmd === 'kubectl' && argv[0] === 'get' && argv[1] !== 'configmaps') { const v = (w.flux || {})[argv[1]]; if (!v || v === 'FAIL') fail(); out(v); }
 if (cmd === 'kubectl' && argv[0] === 'get') {
   const name = argv[argv.indexOf('--field-selector') + 1].replace('metadata.name=', '');
   if (w.cmFail) fail();
@@ -252,10 +378,20 @@ fail('stub: unexpected call ' + cmd + ' ' + argv.join(' '));
   const lockNow = () => (existsSync(lockFile) ? JSON.parse(readFileSync(lockFile, 'utf8')) : null);
   const HOLDS = Buffer.from(readFileSync(join(ROOT, '.renovate/holds.json5'))).toString('base64');
   const atMerge = () => (existsSync(`${lockFile}.at-merge`) ? JSON.parse(readFileSync(`${lockFile}.at-merge`, 'utf8')) : null);
+  // story 551: by default main's newest change to kubernetes/** is a day old and Flux is
+  // settled on it, so the settle gate passes and every older case keeps its meaning
+  const K8S0 = { sha: '9'.repeat(40), at: '2026-11-10T16:00:00Z', message: 'fix(container): an older change to kubernetes/** (#4700)' };
+  const fluxReady = t => [{ type: 'Ready', status: 'True', reason: 'ReconciliationSucceeded', lastTransitionTime: t }];
+  const SRC = { kind: 'GitRepository', name: 'haynes-ops', namespace: 'flux-system' };
+  const settledFlux = (rev = K8S0.sha) => ({
+    'gitrepositories.source.toolkit.fluxcd.io': { items: [{ metadata: { namespace: 'flux-system', name: 'haynes-ops', generation: 1 }, status: { observedGeneration: 1, artifact: { revision: `main@sha1:${rev}` }, conditions: fluxReady('2026-11-01T00:00:00Z') } }] },
+    'kustomizations.kustomize.toolkit.fluxcd.io': { items: [{ metadata: { namespace: 'network', name: 'multus', generation: 2 }, spec: { sourceRef: SRC }, status: { observedGeneration: 2, lastAttemptedRevision: `main@sha1:${rev}`, conditions: fluxReady('2026-11-01T00:00:00Z') } }] },
+    'helmreleases.helm.toolkit.fluxcd.io': { items: [{ metadata: { namespace: 'network', name: 'multus', generation: 4 }, spec: {}, status: { observedGeneration: 4, conditions: fluxReady('2026-11-01T00:00:00Z') } }] },
+  });
   const world = (w = {}) => {
     for (const f of [logFile, lockFile, mergedFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`, `${lockFile}.writes`]) rmSync(f, { force: true });
     if (w.lock) writeFileSync(lockFile, JSON.stringify(w.lock));
-    writeFileSync(worldFile, JSON.stringify({ view: fx.view, newest: fx.main_newest, compare: fx.compare, prCommits: fx.pr_commits, comments: fx.comments, holds: HOLDS, cms: [], ...w }));
+    writeFileSync(worldFile, JSON.stringify({ view: fx.view, newest: { ...fx.main_newest, kubernetes: [K8S0], '(all)': [K8S0] }, compare: fx.compare, prCommits: fx.pr_commits, comments: fx.comments, holds: HOLDS, cms: [], flux: settledFlux(), ...w }));
   };
   // the read-only runner, as the tick uses it, with the stub binaries on PATH
   const run = (cmd, argv, o = {}) => L.runReadOnly(cmd, argv, { env, ...o });
@@ -511,6 +647,69 @@ M.laneMergeStep({ mode: 'live', subject: { pr: 3915, head: '${HEAD}', class: 'no
     const r = cli(args);
     ok(r.status === 2 && /usage: night-merge\.mjs/.test(r.stderr) && r.calls.length === 0, `usage error (${why}): exit 2 before any call`, `${r.status} ${r.stderr}`);
   }
+
+  // ── 6. the settle gate through the merge step and the hand run (story 551) ──────────
+  const recent = (min, sha = '7'.repeat(40)) => ({ sha, at: new Date(NOW - min * 60e3).toISOString(), message: `fix(container): another actor's merge ${min} min ago` });
+  const unsettled = { newest: { ...fx.main_newest, kubernetes: [recent(10)], '(all)': [recent(10), K8S0] }, flux: settledFlux('7'.repeat(40)) };
+  // dry-run: the step records the settle verdict; the PR itself stays ready
+  world(unsettled);
+  const g1 = M.laneMergeStep({ ...base, mode: 'dryrun', subject, run });
+  ok(g1.verdict.verdict === 'refused' && g1.verdict.pr_ready === true && has(g1.verdict.lane_refusals, /^settle gate: main changed kubernetes\/\*\* 10 min ago \(77777777 at 2026-11-11T15:50:00\.000Z: fix\(container\): another actor's merge 10 min ago\); no lane merge before 2026-11-11T16:20:00\.000Z, 30 min after it$/) && g1.settle?.settled === false && lockNow().data.holder === '', 'dry-run step: a merge to kubernetes/** 10 min ago is a lane refusal; the PR stays ready; the lock is released', JSON.stringify(g1.verdict.lane_refusals));
+  world();
+  const g2 = M.laneMergeStep({ ...base, mode: 'dryrun', subject, run });
+  ok(g2.settle?.settled === true && !g2.verdict.lane_refusals.some(x => /settle gate/.test(x)), 'dry-run step on a settled world: no settle refusal, recorded settled', JSON.stringify(g2.settle));
+  // live: unsettled at the step read
+  world(unsettled);
+  const g3 = M.laneMergeStep({ ...live, run });
+  ok(g3.verdict.verdict === 'refused' && has(g3.verdict.lane_refusals, /^settle gate: main changed kubernetes/) && noMerge() && lockNow().data.holder === '', 'live: unsettled at the step: refused, no merge call, lock released', JSON.stringify(g3.verdict.lane_refusals));
+  // live: settled at the step, then another actor merges before the call (the re-read)
+  world();
+  let k8sReads = 0;
+  const lateMerge = (cmd, argv, o) => {
+    const api = argv.find(a => String(a).startsWith('repos/')) || '';
+    if (cmd === 'gh' && /\/commits\?sha=main&path=kubernetes&/.test(api) && ++k8sReads >= 2) return JSON.stringify([{ sha: '6'.repeat(40), parents: [{ sha: '9'.repeat(40) }], commit: { committer: { date: new Date(NOW - 30e3).toISOString() }, author: { date: new Date(NOW - 30e3).toISOString() }, message: 'feat(container): the shepherd merged meanwhile' } }]);
+    return run(cmd, argv, o);
+  };
+  const g4 = M.laneMergeStep({ ...live, run: lateMerge });
+  ok(g4.verdict.verdict === 'refused' && k8sReads === 2 && has(g4.verdict.lane_refusals, /^settle gate at the merge call: main changed kubernetes\/\*\* 0 min ago \(66666666 /) && g4.verdict.settle_at_merge_call?.settled === false && noMerge() && lockNow().data.holder === '', 'live: a merge by another actor between the step read and the call is caught at the call; no merge, lock released', JSON.stringify(g4.verdict.lane_refusals));
+  // live: Flux starts progressing between the step read and the call
+  world();
+  let ksReads = 0;
+  const lateRoll = (cmd, argv, o) => {
+    if (cmd === 'kubectl' && argv[1] === 'helmreleases.helm.toolkit.fluxcd.io' && ++ksReads >= 2) return JSON.stringify({ items: [{ metadata: { namespace: 'network', name: 'multus', generation: 5 }, status: { observedGeneration: 4, conditions: fluxReady('2026-11-01T00:00:00Z') } }] });
+    return run(cmd, argv, o);
+  };
+  const g5 = M.laneMergeStep({ ...live, run: lateRoll });
+  ok(g5.verdict.verdict === 'refused' && has(g5.verdict.lane_refusals, /^settle gate at the merge call: Flux not settled: HelmRelease network\/multus: generation 5 not observed yet \(observed 4\)$/) && noMerge(), 'live: a HelmRelease that starts progressing before the call refuses it', JSON.stringify(g5.verdict.lane_refusals));
+  // the re-check sits before beginMerge and the call, after the window and age checks
+  {
+    const lm = readFileSync(join(RES, 'night-merge.mjs'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
+    const body = lm.slice(lm.indexOf('export function laneMergeStep('), lm.indexOf('export function parseCli('));
+    const i = k => body.indexOf(k);
+    ok(i('settleCheck({ rules, run, now: clock() });\n    laneRef.push') > 0 && i('settleCheck({ rules, run, now: clock() });\n    laneRef.push') < i("if (mode !== 'live') {"), 'night-merge.mjs: the step reads the settle gate before its dry-run return');
+    const second = body.indexOf('settleCheck(', body.indexOf("if (mode !== 'live') {"));
+    ok(second > 0 && second > i('the merge window is closed at the merge call') && second < i('const begin = beginMerge(') && second < i('callMerge({'), 'night-merge.mjs: live mode re-reads the settle gate after the window and age checks, before beginMerge and the call');
+  }
+  // the hand run: at its start and again just before a --merge call
+  const h1 = cli(CHECK, unsettled);
+  ok(h1.status === 1 && /: REFUSED$/m.test(h1.stdout) && /refused: settle gate: main changed kubernetes\/\*\* 10 min ago/.test(h1.stdout) && /settle gate: NOT settled: main changed kubernetes/.test(h1.stdout) && h1.writes.length === 0, '--check-only within 30 min of another merge: REFUSED with the settle reason, exit 1', h1.stdout);
+  const h2 = cli(CHECK);
+  ok(h2.status === 0 && /settle gate: settled \(main's newest change to kubernetes\/\*\* 99999999 at 2026-11-10T16:00:00\.000Z, 1440 min ago; Flux at 99999999; nothing progressing\)/.test(h2.stdout), '--check-only on a settled world prints the settle line', h2.stdout);
+  world();
+  let hReads = 0;
+  const handLate = (cmd, argv, o) => {
+    const api = argv.find(a => String(a).startsWith('repos/')) || '';
+    if (cmd === 'gh' && /\/commits\?sha=main&path=kubernetes&/.test(api) && ++hReads >= 2) return JSON.stringify([{ sha: '5'.repeat(40), parents: [{ sha: '9'.repeat(40) }], commit: { committer: { date: new Date(NOW - 60e3).toISOString() }, author: { date: new Date(NOW - 60e3).toISOString() }, message: 'renovate merged meanwhile' } }]);
+    return run(cmd, argv, o);
+  };
+  const h3 = M.handRun({ pr: 3915, head: HEAD, merge: true }, { rules, run: handLate, env, now: NOW, clock: () => NOW });
+  ok(h3.verdict === 'refused' && hReads === 2 && has(h3.refusals, /^settle gate just before the merge call: main changed kubernetes\/\*\* 1 min ago \(55555555 /) && !calls().some(c => c.cmd === 'gh' && c.argv[1] === 'merge'), 'hand --merge: a merge by another actor after the start is caught just before the call; no merge', JSON.stringify(h3.refusals));
+  world(unsettled);
+  const h4 = M.handRun({ pr: 3915, head: HEAD, merge: true }, { rules, run, env, now: NOW, clock: () => NOW });
+  ok(h4.verdict === 'refused' && has(h4.refusals, /^settle gate: main changed kubernetes/) && !calls().some(c => c.cmd === 'gh' && c.argv[1] === 'merge'), 'hand --merge on an unsettled world: refused at the start, no merge call');
+  world({ lock: lockOf({ holder: 'upgrade-night/x/1', phase: 'merged-awaiting-verification', expires_at: '2026-11-11T19:00:00Z' }) });
+  const h5 = M.handRun({ pr: 3915, head: HEAD, merge: true }, { rules, run, env, now: NOW, clock: () => NOW });
+  ok(h5.verdict === 'refused' && has(h5.refusals, /^the change lock is held by upgrade-night\/x\/1 \(merged-awaiting-verification\) until 2026-11-11T19:00:00Z$/) && !calls().some(c => c.cmd === 'gh' && c.argv[1] === 'merge') && !calls().some(c => ['create', 'replace'].includes(c.argv[0])), 'hand --merge while the lane holds the lock (post-merge hold): refused, no merge, the lock untouched (story 551 item 6)', JSON.stringify(h5.refusals));
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

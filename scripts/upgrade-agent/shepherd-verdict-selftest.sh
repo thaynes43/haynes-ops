@@ -21,8 +21,9 @@
 #
 # Rule, same as the other selftests here: the functions under test are EXTRACTED from
 # the shipped script, never copy-pasted, and the shipped defaults are read from it too.
-# Stubbed: log, epoch_now, sleep (a fake clock), gh, shepherd_escalate, and the
-# ConfigMap read/write (defer_state_read / defer_state_write).
+# Stubbed: log, epoch_now, sleep (a fake clock), gh, shepherd_escalate, the
+# ConfigMap read/write (defer_state_read / defer_state_write), and shepherd_may_merge
+# (always yes here; story 551's stand-aside is shepherd-stand-aside-selftest.sh).
 #
 # Usage: scripts/upgrade-agent/shepherd-verdict-selftest.sh
 # Requires: bash 4+, jq. No cluster or GitHub access.
@@ -86,6 +87,10 @@ FAKE_NOW=0
 epoch_now() { printf '%s' "$FAKE_NOW"; }
 sleep() { FAKE_NOW=$((FAKE_NOW + $1)); }
 shepherd_escalate() { printf '%s\t%s\n' "${ESCALATE_SIG:-<text-sig>}" "$1" >> "$T/esc"; }
+# story 551: automerge_complete asks shepherd_may_merge (the change lock and the night
+# lane's window) before its merge call. Here it always says yes; the stand-aside itself is
+# pinned in shepherd-stand-aside-selftest.sh.
+shepherd_may_merge() { return 0; }
 esc_sigs() { [ -s "$T/esc" ] && cut -f1 "$T/esc" | paste -sd' ' -; }
 
 # gh: `pr list` → $LIST_JSON; `pr view N --json mergedAt` → merged state; `pr view N` →

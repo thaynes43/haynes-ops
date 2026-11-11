@@ -89,11 +89,16 @@ const ok = (cond, name, detail = '') => { if (cond) passes++; else { fails++; co
 const clone = o => JSON.parse(JSON.stringify(o));
 const fact = n => { const p = fx.prs.find(x => x.facts.number === n); if (!p) throw new Error(`no fixture #${n}`); return clone(p.facts); };
 const cls = (facts) => L.classify(facts, rules, { now: NOW, holdRules });
-const expectLane = (name, facts, lane, klass) => {
-  const r = cls(facts);
+const expectLane = (name, facts, lane, klass, rulesX = rules) => {
+  const r = L.classify(facts, rulesX, { now: NOW, holdRules });
   ok(r.lane === lane && (!klass || r.class === klass), name, `got ${r.lane}/${r.class}: ${r.reason}`);
   return r;
 };
+// Story 551: a PR on the shepherd's ramp is EXCLUDED (class shepherd-ramp), the strictest
+// lane. The package rules for ramp components (cilium, rook-ceph, Dragonfly) are pinned
+// against the rules without that class, so each still fires on its own if a component
+// leaves the ramp; section 7 pins what the shipped rules make of them.
+const rulesNoRamp = { ...rules, path_classes: rules.path_classes.filter(p => p.id !== 'shepherd-ramp') };
 
 // ── 1. the named cases from the work order ────────────────────────────────────
 {
@@ -205,16 +210,16 @@ const expectLane = (name, facts, lane, klass) => {
   expectLane('kometa needs an agent probe', fact(4521), 'LANE-B-AGENT', 'rule-agent');
   expectLane('actions-runner Dockerfile without VERSION needs an agent edit', fact(4189), 'LANE-B-AGENT', 'rule-agent');
   expectLane('ComfyUI version without IMAGE_TAG needs an agent edit', fact(4349), 'LANE-B-AGENT', 'rule-agent');
-  expectLane('Dragonfly 2.1 licence change is for Tom', fact(4658), 'LANE-B-OWNER', 'rule-owner');
+  expectLane('Dragonfly 2.1 licence change is for Tom (rules without the ramp class)', fact(4658), 'LANE-B-OWNER', 'rule-owner', rulesNoRamp);
   const cil = fact(4477);
   cil.files = ['kubernetes/main/apps/kube-system/cilium/app/helmrelease.yaml'];
   cil.packages = [{ name: 'cilium', update: 'minor', from: '1.18.4', to: '1.19.0' }]; cil.labels = ['type/minor'];
-  expectLane('cilium minor is one-way (owner)', cil, 'LANE-B-OWNER', 'rule-owner');
+  expectLane('cilium minor is one-way (owner; rules without the ramp class)', cil, 'LANE-B-OWNER', 'rule-owner', rulesNoRamp);
   cil.packages[0].update = 'patch'; cil.packages[0].to = '1.18.5'; cil.labels = ['type/patch'];
-  expectLane('cilium patch stays LANE-A', cil, 'LANE-A', 'cluster-change');
+  expectLane('cilium patch is LANE-A by the package rules (rules without the ramp class)', cil, 'LANE-A', 'cluster-change', rulesNoRamp);
   const rk = fact(4477);
   rk.files = ['kubernetes/main/apps/storage/rook-ceph/rook-ceph/app/helmrelease.yaml'];
-  expectLane('any rook-ceph bump needs the embedded-Ceph check (agent)', rk, 'LANE-B-AGENT', 'rule-agent');
+  expectLane('any rook-ceph bump needs the embedded-Ceph check (agent; rules without the ramp class)', rk, 'LANE-B-AGENT', 'rule-agent', rulesNoRamp);
   expectLane('a merger-own path (shepherd toolchain) is EXCLUDED', fact(4336), 'EXCLUDED', 'merger-own-path');
   expectLane('a workflow file is EXCLUDED', fact(4384), 'EXCLUDED', 'workflow-file');
   const re = fact(4477); re.files = ['.renovate/holds.json5'];
@@ -533,7 +538,7 @@ function prTrigger(text) {
   const pinned = {
     4384: 'EXCLUDED', 4708: 'LANE-B-AGENT', 4636: 'LANE-A', 4372: 'LANE-A', 4334: 'LANE-A', 4335: 'LANE-A', 4662: 'LANE-A', 4336: 'EXCLUDED',
     4189: 'LANE-B-AGENT', 4349: 'LANE-B-AGENT', 4376: 'LANE-B-OWNER', 4377: 'EXCLUDED', 4378: 'EXCLUDED', 4610: 'LANE-B-OWNER', 3915: 'LANE-B-OWNER',
-    4477: 'LANE-A', 4693: 'LANE-A', 4333: 'LANE-A', 4340: 'LANE-A', 4521: 'LANE-B-AGENT', 4670: 'LANE-A', 4607: 'LANE-B-AGENT', 4658: 'LANE-B-OWNER',
+    4477: 'LANE-A', 4693: 'LANE-A', 4333: 'LANE-A', 4340: 'LANE-A', 4521: 'LANE-B-AGENT', 4670: 'LANE-A', 4607: 'LANE-B-AGENT', 4658: 'EXCLUDED' /* story 551: dragonfly is on the shepherd's ramp; LANE-B-OWNER without it */,
     4660: 'LANE-B-OWNER', 4710: 'LANE-B-OWNER', 4642: 'LANE-B-OWNER', 4644: 'LANE-B-OWNER',
   };
   const reviewed = fx.prs.filter(p => p.review);
@@ -546,6 +551,49 @@ function prTrigger(text) {
     rows.push(`#${facts.number}  ${review.verdict.padEnd(23)} ${r.lane.padEnd(12)} ${r.class}`);
   }
   console.log('reviewed PRs (reviewer verdict -> classifier lane/class):\n  ' + rows.join('\n  '));
+}
+
+// ── 7. one owner: a PR on the shepherd's ramp is the shepherd's (story 551) ─────────
+// The rule: the shepherd owns every Renovate PR that touches a path on its ramp, and the
+// lane never merges one (#4780 traefik was both LANE-A and on the ramp on 2026-11-10).
+// The path class shepherd-ramp must name exactly the prefixes the shepherd's pre-filter
+// matches: UPGRADE_AGENT_RAMP (the upgrade-shepherd controller's env in helmrelease.yaml)
+// through ramp_globs_for (run-shepherd.sh), each prefix as <prefix>**.
+{
+  const hrText = readFileSync(join(ROOT, 'kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml'), 'utf8');
+  const sh = readFileSync(join(RES, 'run-shepherd.sh'), 'utf8');
+  const rampLines = [...hrText.matchAll(/^\s+UPGRADE_AGENT_RAMP:\s*(.+?)\s*$/gm)].map(m => m[1]);
+  ok(rampLines.length === 1, 'helmrelease.yaml sets UPGRADE_AGENT_RAMP once', JSON.stringify(rampLines));
+  const ramp = (rampLines[0] || '').split(/\s+/).filter(Boolean);
+  const fn = sh.slice(sh.indexOf('ramp_globs_for() {'), sh.indexOf('\n}\n', sh.indexOf('ramp_globs_for() {')));
+  const arms = Object.fromEntries([...fn.matchAll(/^\s+([a-z-]+)\)\s+printf '%s' "([^"]*)" ;;/gm)].map(m => [m[1], m[2].split(/\s+/).filter(Boolean)]));
+  ok(ramp.length >= 10 && ramp.every(c => arms[c]?.length), 'every ramp component has a path mapping in ramp_globs_for', ramp.filter(c => !arms[c]?.length).join(', '));
+  const want = [...new Set(ramp.flatMap(c => arms[c] || []).map(p => `${p.replace(/\/?$/, '/')}**`))].sort();
+  const pc = rules.path_classes.find(p => p.id === 'shepherd-ramp');
+  ok(pc && pc.lane === 'EXCLUDED' && pc.class === 'shepherd-ramp', 'the shepherd-ramp path class is EXCLUDED, class shepherd-ramp', JSON.stringify(pc && { lane: pc.lane, class: pc.class }));
+  const have = [...(pc?.globs || [])].sort();
+  ok(JSON.stringify(have) === JSON.stringify(want), "drift: shepherd-ramp names exactly the shepherd's ramp prefixes", `missing: ${want.filter(g => !have.includes(g)).join(', ') || 'none'}; extra: ${have.filter(g => !want.includes(g)).join(', ') || 'none'}`);
+  // #4780 as merged on 2026-11-10: one file, traefik-external's ocirepository.yaml
+  const tr = fact(4477); tr.number = 4780; tr.files = ['kubernetes/main/apps/network/traefik/traefik-external/app/ocirepository.yaml'];
+  tr.packages = [{ name: 'ghcr.io/traefik/helm/traefik', update: 'patch', from: '42.3.1', to: '42.3.2' }]; tr.labels = ['type/patch'];
+  expectLane('#4780 (traefik, on the ramp) is LANE-A without the rule', clone(tr), 'LANE-A', 'cluster-change', rulesNoRamp);
+  const t2 = expectLane("#4780 is the shepherd's: EXCLUDED/shepherd-ramp", clone(tr), 'EXCLUDED', 'shepherd-ramp');
+  ok(t2.rules.includes('shepherd-ramp') && /the shepherd owns it/.test(t2.reason), 'the record names the rule and the owner', `${t2.rules} | ${t2.reason}`);
+  for (const [n, f] of [['multus (#4760)', 'kubernetes/main/apps/network/multus/app/helmrelease.yaml'], ['dragonfly-operator (#4761)', 'kubernetes/main/apps/database/dragonfly/app/helmrelease.yaml'], ['plex', 'kubernetes/main/apps/media/plex/app/helmrelease.yaml'], ['flux', 'kubernetes/main/flux/config/cluster.yaml']]) {
+    const x = fact(4477); x.files = [f];
+    expectLane(`${n} is the shepherd's`, x, 'EXCLUDED', 'shepherd-ramp');
+  }
+  expectLane('a leaf off the ramp (#4477) stays LANE-A', fact(4477), 'LANE-A', 'cluster-change');
+  const nr = fact(4477); nr.files = ['kubernetes/main/apps/network/traefik-forward-auth/app/helmrelease.yaml'];
+  ok(L.classify(nr, rules, { now: NOW, holdRules }).class !== 'shepherd-ramp', 'a sibling directory that only shares a name prefix (traefik-forward-auth) is not on the ramp');
+  // what the shipped rules make of the ramp package-rule cases above: the shepherd's, with
+  // the package rule still in the record's findings
+  const cil = fact(4477); cil.files = ['kubernetes/main/apps/kube-system/cilium/app/helmrelease.yaml'];
+  cil.packages = [{ name: 'cilium', update: 'minor', from: '1.18.4', to: '1.19.0' }]; cil.labels = ['type/minor'];
+  const cr = expectLane('cilium minor with the shipped rules: the shepherd owns it', cil, 'EXCLUDED', 'shepherd-ramp');
+  ok(cr.findings.some(f => f.startsWith('LANE-B-OWNER/rule-owner')), '  ... and the one-way rule is still in its findings', cr.findings.join(' | '));
+  const dr = expectLane('Dragonfly 2.1 with the shipped rules: the shepherd owns it', fact(4658), 'EXCLUDED', 'shepherd-ramp');
+  ok(dr.findings.some(f => f.startsWith('LANE-B-OWNER/rule-owner')), '  ... and the licence rule is still in its findings', dr.findings.join(' | '));
 }
 
 console.log(`\n${passes} passed, ${fails} failed`);
