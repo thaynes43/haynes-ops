@@ -168,7 +168,9 @@ For each critical alert, the tick now does this:
      namespace and its `targetNamespace`) blocks only when it traces to a chain
      Kustomization, such as a Flux failure of `volsync-system/volsync` for mosquitto.
      Anything else there is listed under `gates.alerts_not_blocking.unrelated`; the
-     namespace fallback does not apply there. This was added after the review of PR 4825.
+     namespace fallback does not apply there. If that namespace's pods, Jobs or CronJobs
+     cannot be read, an alert naming a workload there blocks (fail closed). Both were
+     added after the review of PR 4825.
    - An alert in any other namespace does not block, as before.
 2. **Subject.** The first label present names the subject: `job_name`, `cronjob`,
    `deployment`, `statefulset`, `daemonset`, `pod`, `persistentvolumeclaim`, then `app`,

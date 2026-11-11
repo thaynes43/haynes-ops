@@ -282,8 +282,11 @@ export function alertGate(alerts, scope, clusterWideIds, facts, ks, hr, alertSco
     if (!ns) {
       const dep = nss.find(n => chainNs.has(n));
       if (!dep) continue;
-      const d = withChainFlux(alertSubject(m, facts(dep), ks, hr, alertScope), m);
+      const f = facts(dep);
+      const d = withChainFlux(alertSubject(m, f, ks, hr, alertScope), m);
       if (d.owner && chain.has(d.owner)) out.blockers.push(`critical alert firing in ${dep}: ${name} (${d.by}) belongs to ${d.owner}, in the target's dependsOn chain`);
+      // a workload the tick could not look up because a read failed: fail closed
+      else if (!d.owner && d.by && (!f.pods || !f.cronjobs || !f.jobs)) out.blockers.push(`unreadable: pods, Jobs or CronJobs in ${dep} (a dependency's namespace), so ${name} (${d.by}) cannot be traced`);
       else out.unrelated.push(`${name} (${d.by || 'no workload'}) in ${dep}, a dependency's namespace: ${d.owner ? `belongs to ${d.owner}` : 'not traced'}, outside the dependsOn chain`);
       continue;
     }
