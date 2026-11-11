@@ -91,17 +91,26 @@
 # front door's parent_send (OP687, dev-env#1061). No new env, mount or template field.
 # Sessions on an older image keep running until their own suspend and resume.
 # Rollback image:2.101.1@sha256:ad609fe0f9be5de71fbb9b35c7143304a3ae28df013f89836e2be925c61565ac.
-image: ghcr.io/thaynes43/dev-env:2.102.0@sha256:813f0b5164d459ac3304cc97a5d985d3dc834908b86bae8a1ba5c10ba9378e63
+# v2.103.0 source 3cb7bc19 (release #1069). publish-agent.yml run 42991925643 built, smoke-tested,
+# signed and verified this digest. agent-run gains the host-selection commands (OP699,
+# dev-env#1070): codex-host select, and thread start --agent codex without --host and the
+# interactive Codex create ask the operator for an existing paired host first. The operator
+# routes are on since haynes-ops#4816; a host on its hands-off list is never chosen. Also the
+# corrected coordinator brief for agent-run coordinator start (OP706, dev-env#1071). No new env,
+# mount or template field. Sessions on an older image keep running until their own suspend and
+# resume.
+# Rollback image:2.102.0@sha256:813f0b5164d459ac3304cc97a5d985d3dc834908b86bae8a1ba5c10ba9378e63.
+image: ghcr.io/thaynes43/dev-env:2.103.0@sha256:2ff9c63032827f226d0eabd4226704ac1de8d9576f0362354a85d7e57e2e42f4
 
 # New-sessions-only rollout for THIS image (DESIGN-001 5.2, dev-env#925; Q-03 option B, a
 # per-rollout deviation recorded in the PR that sets it). While this equals `image`, the
-# operator marks no session Draining: new sessions and resumes use the 2.102.0 revision and
+# operator marks no session Draining: new sessions and resumes use the 2.103.0 revision and
 # running sessions keep their pods until their own suspend and resume. It is not part of the
 # revision. It MUST equal `image` exactly: the Renovate rule bumps only the `image:` line, so
 # the next image bump PR must update this line to the new image or delete it (deleting it
 # resumes idle drain), otherwise the templates are invalid and new sessions wait.
 rollout:
-  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.102.0@sha256:813f0b5164d459ac3304cc97a5d985d3dc834908b86bae8a1ba5c10ba9378e63
+  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.103.0@sha256:2ff9c63032827f226d0eabd4226704ac1de8d9576f0362354a85d7e57e2e42f4
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
