@@ -740,8 +740,16 @@ What it does not cover:
 - The LLM keeps `gh api repos/*` for release-note reads, and that pattern also admits a
   REST merge call. The rule forbids it. This gap predates story 551; closing it needs a
   GET-only wrapper.
-- A remediate run inside the window opens its fix PR but does not merge it. Triage then
-  reads the run as pending.
+- A remediate run while the lock is held, or inside the window, opens its fix PR but does
+  not merge it, either itself or by queuing `--auto`. Triage then reads the run as pending.
+  After a live lane merge the lock stays held for 4 hours (phase
+  `merged-awaiting-verification`, until as late as about 08:45 New York). A regression from
+  that merge is most likely in exactly that time, and a shepherd revert of it waits until
+  the hold ends. This is deliberate for now. That hold is the lane's verification window,
+  and reverting the lane's own merge is the lane's job (`owedWork()`, stories 553, 753 and
+  754). A second merger inside it is what story 551 removes. **Decide before live mode
+  (story 556)** whether a remediate revert of the lock's own merged PR may pass. Today no
+  lane merge happens: the lane is dry-run with an empty allowlist.
 
 ### One owner for a PR on the shepherd's ramp
 
