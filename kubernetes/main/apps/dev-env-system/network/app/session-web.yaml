@@ -1,8 +1,8 @@
 ---
 # Web tier (DESIGN-001 D-24): TCP 80 and 443 to any PUBLIC address, for every session
 # pod except profile `ops` (its pods carry dev-env.haynesops.com/egress: ops, set by
-# the profile in dev-env-templates, and get the ops tier instead when summoned
-# sessions arrive). Until that tier exists an `ops` pod has only the platform tier.
+# the profile in dev-env-templates). Those pods are selected by dev-env-session-ops
+# (session-ops.yaml, DESIGN-064 6.1) and are excluded here and from the platform tier.
 #
 # Cilium's `world` entity is not used: it includes the LAN. A CIDR set excepts every
 # range that is not the public internet, so a session cannot reach the LAN
