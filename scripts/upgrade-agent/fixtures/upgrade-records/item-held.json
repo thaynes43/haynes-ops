@@ -69,7 +69,12 @@
       "fingerprint": null,
       "fingerprint_basis": "unavailable",
       "commit_count": 1,
-      "change_key": "4aafaf894cbf8332"
+      "change_key": "4aafaf894cbf8332",
+      "files": [
+        "scripts/tests/dev-env-archive-guard/go.mod",
+        "scripts/tests/dev-env-archive-guard/go.sum"
+      ],
+      "head_committed_at": null
     },
     "lane_detail": {
       "from_schema": "haynes.upgrade-lane/v1",
@@ -93,12 +98,17 @@
           "dev-env archive guard source tests / Archive Guard Source - Success (FAILURE)"
         ],
         "pending": [],
-        "stale": []
+        "stale": [],
+        "ran_at": "2026-11-05T17:00:38.000Z",
+        "reference_time": "2026-11-05T17:00:38.000Z"
       },
       "cluster_effect": "none",
       "cluster_effect_wait": null,
+      "via_components": [],
+      "cluster_wide": [],
       "gates": null,
-      "backup": null
+      "backup": null,
+      "last_attempt": {}
     }
   }
 }

@@ -60,7 +60,11 @@
         "fingerprint": null,
         "fingerprint_basis": "unavailable",
         "commit_count": 1,
-        "change_key": "153c42122b6670e6"
+        "change_key": "153c42122b6670e6",
+        "files": [
+          "scripts/audio-authoring/requirements.txt"
+        ],
+        "head_committed_at": null
       }
     },
     "events": [

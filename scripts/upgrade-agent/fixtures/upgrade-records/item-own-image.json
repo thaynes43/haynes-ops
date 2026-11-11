@@ -59,7 +59,11 @@
       "fingerprint": null,
       "fingerprint_basis": "unavailable",
       "commit_count": 1,
-      "change_key": "153c42122b6670e6"
+      "change_key": "153c42122b6670e6",
+      "files": [
+        "scripts/audio-authoring/requirements.txt"
+      ],
+      "head_committed_at": null
     },
     "lane_detail": {
       "from_schema": "haynes.upgrade-lane/v1",
@@ -74,7 +78,10 @@
         "missing": [],
         "failing": [],
         "pending": [],
-        "stale": []
+        "stale": [],
+        "ran_at": "2026-11-05T05:44:59.000Z",
+        "reference_time": "2026-11-05T05:44:59.000Z",
+        "main_newer": []
       },
       "cluster_effect": "delayed",
       "cluster_effect_wait": {
@@ -84,18 +91,25 @@
         ],
         "verified_when": "the main build for the merge is green, the pin PR for the new digest has merged, Flux applied it and the workload soaked on the new digest"
       },
+      "via_components": [],
+      "cluster_wide": [],
       "gates": {
         "namespaces": [],
         "blockers": [
           "outside the merge window (01:30-04:45 America/New_York, now 18:40)"
         ],
+        "alerts_not_blocking": {
+          "unrelated": [],
+          "cluster": []
+        },
         "would_be_eligible": false
       },
       "backup": {
         "rule": "Per source: the newest successful VolSync sync (status.lastSyncTime, latestMoverStatus.result=Successful) or completed CNPG Backup (metadata.creationTimestamp, phase=completed) must be at or after that source's most recent scheduled run and no older than 24 hours at merge time. VolSync: the most recent run is status.nextSyncTime when that is already past, else nextSyncTime minus the schedule's period (spec.trigger.schedule). CNPG: ScheduledBackup status.lastScheduleTime. CNPG startedAt/stoppedAt are not used: some instances stamp local time with Z.",
         "targets": [],
         "stateful": false
-      }
+      },
+      "last_attempt": {}
     }
   }
 }

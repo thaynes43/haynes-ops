@@ -60,7 +60,12 @@
       "fingerprint": null,
       "fingerprint_basis": "unavailable",
       "commit_count": 1,
-      "change_key": "bb9992cc873e5ccb"
+      "change_key": "bb9992cc873e5ccb",
+      "files": [
+        "kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml",
+        "kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml"
+      ],
+      "head_committed_at": null
     },
     "lane_detail": {
       "from_schema": "haynes.upgrade-lane/v1",
@@ -83,22 +88,32 @@
           "Flux Local / Flux Local - Test (main) (2026-10-31T03:30:08Z)",
           "Flux Local / Flux Local - Diff (main/helmrelease) (2026-10-31T03:29:21Z)",
           "Flux Local / Flux Local - Diff (main/kustomization) (2026-10-31T03:29:31Z)"
-        ]
+        ],
+        "ran_at": "2026-10-31T03:28:30.000Z",
+        "reference_time": "2026-10-31T03:28:30.000Z",
+        "main_newer": []
       },
       "cluster_effect": "immediate",
       "cluster_effect_wait": null,
+      "via_components": [],
+      "cluster_wide": [],
       "gates": {
         "namespaces": [],
         "blockers": [
           "outside the merge window (01:30-04:45 America/New_York, now 18:40)"
         ],
+        "alerts_not_blocking": {
+          "unrelated": [],
+          "cluster": []
+        },
         "would_be_eligible": false
       },
       "backup": {
         "rule": "Per source: the newest successful VolSync sync (status.lastSyncTime, latestMoverStatus.result=Successful) or completed CNPG Backup (metadata.creationTimestamp, phase=completed) must be at or after that source's most recent scheduled run and no older than 24 hours at merge time. VolSync: the most recent run is status.nextSyncTime when that is already past, else nextSyncTime minus the schedule's period (spec.trigger.schedule). CNPG: ScheduledBackup status.lastScheduleTime. CNPG startedAt/stoppedAt are not used: some instances stamp local time with Z.",
         "targets": [],
         "stateful": false
-      }
+      },
+      "last_attempt": {}
     }
   }
 }

@@ -114,13 +114,32 @@
             "missing": { "type": "array", "items": { "type": "string" } },
             "failing": { "type": "array", "items": { "type": "string" } },
             "pending": { "type": "array", "items": { "type": "string" } },
-            "stale": { "type": "array", "items": { "type": "string" } }
+            "stale": { "type": "array", "items": { "type": "string" } },
+            "ran_at": { "description": "When the head's checks ran: the earliest start of the counted attempts (R7, story 550).", "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
+            "reference_time": { "description": "The earlier of the head commit's date and ran_at: what main is compared against.", "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
+            "main_newer": {
+              "description": "Set by the tick for lane-A records: main commits to the PR's files newer than reference_time.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["path", "sha", "at"],
+                "properties": {
+                  "path": { "type": "string", "minLength": 1 },
+                  "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+                  "at": { "type": ["string", "null"] }
+                }
+              }
+            }
           }
         },
         "cluster_effect": { "enum": ["none", "delayed", "immediate", null] },
         "cluster_effect_wait": { "type": ["object", "null"] },
-        "gates": { "type": ["object", "null"] },
-        "backup": { "type": ["object", "null"] }
+        "via_components": { "description": "Shared components the PR changes and the consumer directories they reach ('<component> -> <consumer>', R8).", "type": "array", "items": { "type": "string" } },
+        "cluster_wide": { "description": "Ids of cluster_wide_targets the PR reaches (R5): a change that reaches every namespace.", "type": "array", "items": { "type": "string" } },
+        "gates": { "description": "Tonight's gates (lane-A records only): namespaces, blockers, alerts_not_blocking, would_be_eligible.", "type": ["object", "null"] },
+        "backup": { "type": ["object", "null"] },
+        "last_attempt": { "description": "The tick's merge-step verdict for this PR, as written (at, mode, chosen, verdict, pr_refusals, lane_refusals, merge_call); empty when the step did not run on it. Not the item's attempts: a live verdict becomes events (eventsFromMergeStep in record-format.mjs).", "type": ["object", "null"] }
       }
     }
   },
@@ -148,7 +167,7 @@
     },
     "state": {
       "description": "See upgrade-states.v1.json. approved and scheduled are reserved for piece 2 and refused by the validator.",
-      "enum": ["needed", "held", "blocked", "unknown", "closed", "in_progress", "merged_unverified", "awaiting_pin", "done", "failed", "reverting", "reverted_unverified", "reverted", "escalated", "approved", "scheduled"]
+      "enum": ["needed", "held", "blocked", "unknown", "closed", "in_progress", "merged_unverified", "awaiting_pin", "done", "failed", "reverting", "reverted_unverified", "reverted", "escalated", "merge_unknown", "approved", "scheduled"]
     },
     "version_kind": { "description": "semver = dotted numbers (an exact pin such as ==1.2.3 counts); digest = a hex digest; date; other; unknown = no version.", "enum": ["semver", "digest", "date", "other", "unknown"] },
     "version": {
@@ -194,7 +213,9 @@
         "fingerprint": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
         "fingerprint_basis": { "enum": ["commit-diff", "binary", "multi-commit", "unavailable", null] },
         "commit_count": { "type": ["integer", "null"], "minimum": 0 },
-        "change_key": { "type": ["string", "null"], "pattern": "^[0-9a-f]{16}$" }
+        "change_key": { "type": ["string", "null"], "pattern": "^[0-9a-f]{16}$" },
+        "files": { "description": "The PR's changed files.", "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "head_committed_at": { "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] }
       }
     },
     "attempt": {
@@ -206,7 +227,7 @@
         "actor": { "$ref": "#/$defs/actor" },
         "started_at": { "$ref": "#/$defs/timestamp" },
         "at": { "description": "Time of the attempt's latest event.", "$ref": "#/$defs/timestamp" },
-        "result": { "enum": ["in-progress", "merge-refused", "merged", "awaiting-pin", "verified", "failed-verification", "drill", "reverted", "escalated"] },
+        "result": { "enum": ["in-progress", "merge-refused", "merge-failed", "merge-unknown", "merged", "awaiting-pin", "verified", "failed-verification", "drill", "reverted", "escalated"] },
         "recovery": { "description": "After a revert: whether recovery was verified.", "enum": ["verified", "failed", null] },
         "drill": { "type": "boolean" },
         "evidence_url": { "type": ["string", "null"], "pattern": "^https://" }

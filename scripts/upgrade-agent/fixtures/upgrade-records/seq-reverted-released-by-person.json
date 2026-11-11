@@ -74,7 +74,13 @@
         "fingerprint": null,
         "fingerprint_basis": "unavailable",
         "commit_count": 1,
-        "change_key": "72e28ef39cbdf656"
+        "change_key": "72e28ef39cbdf656",
+        "files": [
+          "kubernetes/main/apps/storage/storage-util/rsync-music/app/helmrelease.yaml",
+          "kubernetes/main/apps/storage/storage-util/rsync-photos/app/helmrelease.yaml",
+          "kubernetes/main/apps/storage/storage-util/rsync-scans/app/helmrelease.yaml"
+        ],
+        "head_committed_at": null
       }
     },
     "events": [

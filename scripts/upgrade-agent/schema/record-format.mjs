@@ -9,6 +9,7 @@
 //   replay(template, events)    -> { item, errors }   all events of one item, in order
 //   itemId(item), eventId(event)                      the derived ids the validator insists on
 //   fromLaneRecord(record, ctx) -> item               the mapping from haynes.upgrade-lane/v1
+//   eventsFromMergeStep(item, verdict, ctx) -> [event] what one merge-step verdict writes
 //   validate(schema, value)     -> [error]   the JSON Schema subset below
 //   schemaProblems(schema)      -> [string]  keywords the subset lacks, $refs that do not resolve
 //
@@ -278,14 +279,15 @@ export function versionKind(v) {
 
 // ctx: { repo, observed_at (when the record has no 'updated'), first_seen (when known;
 // age_days then counts from it, a lower bound) }. Throws on a record it cannot map
-// rather than dropping a field: a non-empty last_attempt is rebuilt from events.
+// rather than dropping a field. The item's state comes from the lane's verdict only;
+// a merge-step verdict (last_attempt) is copied, and becomes events through
+// eventsFromMergeStep().
 export function fromLaneRecord(rec, ctx = {}) {
   if (rec?.schema !== LANE_SCHEMA) throw new Error(`fromLaneRecord: schema ${rec?.schema} is not ${LANE_SCHEMA}`);
   const repo = ctx.repo;
   if (!repo) throw new Error('fromLaneRecord: ctx.repo is required');
   const observed = rec.updated ?? ctx.observed_at;
   if (!observed) throw new Error(`fromLaneRecord #${rec.pr}: no 'updated' and no ctx.observed_at`);
-  if (rec.last_attempt && Object.keys(rec.last_attempt).length) throw new Error(`fromLaneRecord #${rec.pr}: last_attempt is not empty; attempts are rebuilt from events (story 593), so the mapping must be revisited`);
   const unknownLane = rec.lane === 'BLOCKED' && rec.class === 'facts-incomplete';
   const lane = unknownLane ? 'unknown' : LANES[rec.lane];
   if (!lane) throw new Error(`fromLaneRecord #${rec.pr}: lane ${rec.lane} has no mapping`);
@@ -314,9 +316,43 @@ export function fromLaneRecord(rec, ctx = {}) {
     first_seen: first,
     observed_at: observed,
     coverage: unknownLane ? { status: 'partial', detail: rec.reason ?? 'facts incomplete' } : { status: 'read' },
-    carrier: { kind: 'github-pr', repo, pr: rec.pr, head: rec.head ?? null, title: rec.title ?? null, fingerprint: rec.fingerprint ?? null, fingerprint_basis: rec.fingerprint_basis ?? null, commit_count: rec.commit_count ?? null, change_key: rec.change_key ?? null },
-    lane_detail: { from_schema: rec.schema, rules: rec.rules || [], findings, checks: rec.checks || {}, cluster_effect: rec.cluster_effect ?? null, cluster_effect_wait: rec.cluster_effect_wait ?? null, gates: rec.gates ?? null, backup: rec.backup ?? null },
+    carrier: { kind: 'github-pr', repo, pr: rec.pr, head: rec.head ?? null, title: rec.title ?? null, fingerprint: rec.fingerprint ?? null, fingerprint_basis: rec.fingerprint_basis ?? null, commit_count: rec.commit_count ?? null, change_key: rec.change_key ?? null, files: rec.files || [], head_committed_at: rec.head_committed_at ?? null },
+    lane_detail: { from_schema: rec.schema, rules: rec.rules || [], findings, checks: rec.checks || {}, cluster_effect: rec.cluster_effect ?? null, cluster_effect_wait: rec.cluster_effect_wait ?? null, via_components: rec.via_components || [], cluster_wide: rec.cluster_wide || [], gates: rec.gates ?? null, backup: rec.backup ?? null, last_attempt: rec.last_attempt ?? null },
   };
   item.id = itemId(item);
   return item;
+}
+
+// ── merge-step verdicts to events (lane-v1-to-item-v1.json, merge_step_verdicts) ─
+// verdict: summary.merge_step of one tick (night-merge.mjs laneMergeStep, story 752).
+// ctx: { repo, at (the tick's summary.at) }. Returns the events to append, in order, for
+// the item the verdict names; [] when the verdict writes none. The caller applies them
+// with applyEvent(), which refuses them unless the item is needed in lane A-night.
+export function eventsFromMergeStep(item, v, ctx = {}) {
+  if (!v || v.mode !== 'live' || !['refused', 'merged', 'merge-failed', 'merge-unknown'].includes(v.verdict)) return [];
+  if ((v.lane_refusals || []).length) return []; // the lane declined: no attempt on the item
+  if (!ctx.repo || !ctx.at) throw new Error('eventsFromMergeStep: ctx.repo and ctx.at are required');
+  if (item.carrier?.pr !== v.pr) throw new Error(`eventsFromMergeStep: the verdict is for PR ${v.pr}, the item's carrier is PR ${item.carrier?.pr}`);
+  const attempt = (item.attempts || []).length + 1;
+  const carrier = { repo: ctx.repo, pr: v.pr, head: v.head ?? null };
+  const after = Date.parse(v.merged?.merged_at || '') >= Date.parse(ctx.at) ? new Date(Date.parse(v.merged.merged_at)).toISOString() : ctx.at;
+  const ev = (type, from, to, extra) => {
+    const e = { schema: EVENT_SCHEMA, id: '', item_id: item.id, type, from, to, at: ctx.at, actor: { kind: 'lane', login: null }, recorded_by: 'lane', attempt, ...extra };
+    e.id = eventId(e);
+    return e;
+  };
+  const out = [ev('merge-attempted', 'needed', 'in_progress', { lane: item.lane, carrier })];
+  const call = v.merge_call || 'not recorded';
+  if (v.verdict === 'refused') {
+    const pr = v.pr_refusals || [];
+    out.push(ev('merge-refused', 'in_progress', 'needed', { class: 'merge-step-refused', reason: pr[0] || 'refused by the merge step', carrier, evidence: { pr_refusals: pr, lane_refusals: [] } }));
+  } else if (v.verdict === 'merged' && /^[0-9a-f]{40}$/.test(v.merged?.merge_commit || '')) {
+    out.push(ev('merged', 'in_progress', 'merged_unverified', { at: after, carrier, evidence: { merge_commit: v.merged.merge_commit, merge_call: call } }));
+  } else if (v.verdict === 'merge-failed') {
+    out.push(ev('merge-failed', 'in_progress', 'needed', { class: 'merge-call-failed', reason: call, carrier, evidence: { merge_call: call } }));
+  } else {
+    // merge-unknown, or merged with no merge commit to record: fail closed
+    out.push(ev('merge-unknown', 'in_progress', 'merge_unknown', { class: 'merge-outcome-unread', reason: v.verdict === 'merged' ? 'merged, but no merge commit was read' : call, carrier, evidence: { merge_call: call } }));
+  }
+  return out;
 }

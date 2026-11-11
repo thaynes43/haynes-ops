@@ -7,7 +7,8 @@
     "blocked": { "phase": "open", "meaning": "Something about the item must change first: a check failing or incomplete, facts incomplete, a merge refusal that needs a new head, or (story 753) a version remembered as reverted on a new carrier." },
     "unknown": { "phase": "open", "meaning": "The item could not be read; coverage says why. Unknown beats guessing." },
     "closed": { "phase": "open", "meaning": "No longer offered: the carrier closed without a merge or a newer version replaced it. A reopened carrier is observed again." },
-    "in_progress": { "phase": "attempt", "meaning": "The lane took the change lock and its merge step is running (story 752). Ends in merged or merge-refused." },
+    "in_progress": { "phase": "attempt", "meaning": "The lane took the change lock and its merge step is running (story 752; lock phase taken, then merging). Ends in merged, merge-refused, merge-failed or merge-unknown." },
+    "merge_unknown": { "phase": "attempt", "meaning": "The merge call was made and its outcome could not be read: GitHub may have merged. The change lock keeps its hold (lock phase merge-unknown). Owed: read the PR; merged at that head is merged, open at that head is merge-failed, still unreadable past its time box is escalated." },
     "merged_unverified": { "phase": "attempt", "meaning": "Merged; the rollout is not yet verified. Backfilled merges stay here: nobody verified them." },
     "awaiting_pin": { "phase": "attempt", "meaning": "An own-image source merged; verification waits, time-boxed, for the digest pin to merge, apply and soak (story 553)." },
     "done": { "phase": "settled", "meaning": "Merged and verified. Counts as done." },
@@ -23,6 +24,14 @@
     "why": "Piece 1 reads no approval (saga 547 comment 6922) and plans no schedule. These names keep their meaning for piece 2; the validator refuses them until a reviewed change lifts the reservation.",
     "states": ["approved", "scheduled"],
     "events": ["approval-recorded", "schedule-set"]
+  },
+  "lock_phases": {
+    "doc": "The phases night-merge.mjs writes to ConfigMap upgrade-agent/upgrade-change-lock (story 752), and the item state each one goes with. released (or a lapsed lease) means no merge call is in flight; until story 553 holds the lock through verification, a merged item outlives its post-merge lease. A tick that takes over an expired lock reads took_over_phase: taken means the call was never made (merge-refused, class attempt-abandoned); merging or merge-unknown means it may have been (read the PR: merged, merge-failed, or merge-unknown).",
+    "taken": ["in_progress"],
+    "merging": ["in_progress"],
+    "merged-awaiting-verification": ["merged_unverified"],
+    "merge-unknown": ["merge_unknown"],
+    "released": ["needed", "held", "blocked", "unknown", "closed", "merged_unverified", "awaiting_pin", "done", "failed", "reverting", "reverted_unverified", "reverted", "escalated"]
   },
   "events": {
     "observed": {
@@ -51,7 +60,7 @@
       ]
     },
     "merge-refused": {
-      "meaning": "The merge step refused, with its reason in class and reason (pending status, checks older than main, head behind main, lock held, pause set, attempt abandoned by a crashed tick). On a revert, the revert's merge was refused and stays owed.",
+      "meaning": "The merge step refused before any merge call, with its reason in class and reason and, from the lane's merge step, its pr_refusals and lane_refusals in evidence (pending status, checks older than main, head behind main, lock held, pause set; or an attempt abandoned by a crashed tick whose lock was still in phase taken). On a revert, the revert's merge was refused and stays owed.",
       "used_by": ["752", "753"],
       "requires": ["attempt", "class", "reason"],
       "edges": [
@@ -59,12 +68,28 @@
         { "from": ["reverting"], "to": ["reverting"], "actors": ["lane", "hand"] }
       ]
     },
+    "merge-failed": {
+      "meaning": "The merge call was made and did not merge: a real exit status with the PR still open at that head (verdict merge-failed), or a later read of a merge_unknown item finds it open at that head. The lock is released.",
+      "used_by": ["752"],
+      "requires": ["attempt", "class", "reason", "evidence.merge_call"],
+      "edges": [
+        { "from": ["in_progress", "merge_unknown"], "to": ["needed", "blocked"], "actors": ["lane", "hand"], "attempt_result": "merge-failed" }
+      ]
+    },
+    "merge-unknown": {
+      "meaning": "The merge call was made and its outcome could not be read (verdict merge-unknown: no exit status, or the PR could not be read after the call). Also what a tick records when it takes over an expired lock left in phase merging and cannot read the PR.",
+      "used_by": ["752", "754"],
+      "requires": ["attempt", "class", "reason", "evidence.merge_call"],
+      "edges": [
+        { "from": ["in_progress"], "to": ["merge_unknown"], "actors": ["lane", "hand"], "attempt_result": "merge-unknown" }
+      ]
+    },
     "merged": {
-      "meaning": "The carrier merged. From in_progress by the lane's own merge step; from an open state when someone else merged it (Renovate auto-merge, the shepherd, a hand run, a person), which opens a new attempt; from null when the first sight of the item is its merge (a backfill).",
+      "meaning": "The carrier merged. From in_progress by the lane's own merge step (verdict merged), or from merge_unknown when a later read finds it merged at that head; from an open state when someone else merged it (Renovate auto-merge, the shepherd, a hand run, a person), which opens a new attempt; from null when the first sight of the item is its merge (a backfill).",
       "used_by": ["752", "593"],
       "requires": ["attempt", "carrier", "evidence.merge_commit"],
       "edges": [
-        { "from": ["in_progress"], "to": ["merged_unverified"], "actors": ["lane", "hand"], "attempt_result": "merged" },
+        { "from": ["in_progress", "merge_unknown"], "to": ["merged_unverified"], "actors": ["lane", "hand"], "attempt_result": "merged" },
         { "from": [null, "needed", "held", "blocked", "unknown"], "to": ["merged_unverified"], "actors": ["renovate", "shepherd", "hand", "person"], "starts_attempt": true, "attempt_result": "merged" }
       ]
     },
@@ -134,11 +159,11 @@
       ]
     },
     "escalated": {
-      "meaning": "The lane cannot finish on its own: a revert cannot be opened or merged within its time box, or verification cannot be read. A person owns it.",
+      "meaning": "The lane cannot finish on its own: a merge outcome stays unreadable, a revert cannot be opened or merged within its time box, or verification cannot be read. A person owns it.",
       "used_by": ["553", "753", "754"],
       "requires": ["attempt", "class", "reason"],
       "edges": [
-        { "from": ["merged_unverified", "awaiting_pin", "failed", "reverting"], "to": ["escalated"], "actors": ["lane"], "attempt_result": "escalated" }
+        { "from": ["merge_unknown", "merged_unverified", "awaiting_pin", "failed", "reverting"], "to": ["escalated"], "actors": ["lane"], "attempt_result": "escalated" }
       ]
     },
     "resolved": {

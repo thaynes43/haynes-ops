@@ -65,7 +65,12 @@
       "fingerprint": null,
       "fingerprint_basis": "unavailable",
       "commit_count": 1,
-      "change_key": "bb9992cc873e5ccb"
+      "change_key": "bb9992cc873e5ccb",
+      "files": [
+        "kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml",
+        "kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml"
+      ],
+      "head_committed_at": null
     }
   }
 }

@@ -17,10 +17,14 @@
 //   3. every fixture in fixtures/upgrade-records/: valid ones pass, invalid ones are
 //      refused for the stated reason, one valid item per source the lane writes;
 //   4. the mapping from haynes.upgrade-lane/v1: every field the lane writes today (the
-//      classifier's output on the 2026-11-09 queue, plus the fields run-night.mjs sets)
-//      has a row in schema/lane-v1-to-item-v1.json, every copy row holds, and every
-//      converted record is a valid item. A new lane field fails here until its row says
-//      where it goes.
+//      classifier's output on the 2026-11-09 queue, the records the real tick wrote in
+//      fixtures/lane-tick-records-20261111.json, and the fields run-night.mjs sets, read
+//      from its source) has a row in schema/lane-v1-to-item-v1.json, every checks field
+//      is in the item schema, every copy row holds, and every converted record is a valid
+//      item. A new lane field fails here until its row says where it goes;
+//   5. the merge step's verdicts (story 752) to events: which verdicts write events, that
+//      those events replay legally, and that every verdict and lock phase night-merge.mjs
+//      can produce has a row.
 //
 // Usage: node scripts/upgrade-agent/record-format-selftest.mjs
 // Requires: node 24. No network, no cluster access, no package install.
@@ -32,6 +36,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const RES = join(ROOT, 'kubernetes/main/apps/upgrade-agent/shepherd/app/resources');
 const FIX = join(ROOT, 'scripts/upgrade-agent/fixtures/upgrade-records');
 const F = await import(join(ROOT, 'scripts/upgrade-agent/schema/record-format.mjs'));
+const tickFx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-tick-records-20261111.json'), 'utf8'));
 const L = await import(join(RES, 'lane-classify.mjs'));
 const rules = L.loadRules(join(RES, 'upgrade-rules.json'));
 const holdRules = L.parseJson5(readFileSync(join(ROOT, '.renovate/holds.json5'), 'utf8')).packageRules;
@@ -121,14 +126,28 @@ const NON_RESERVED_EVENTS = Object.keys(M.events).filter(e => !M.reserved.events
   }
   ok(sameSet([...seen], NON_RESERVED_STATES), 'machine: every non-reserved state is reachable from a new item', `reached ${[...seen].join(', ')}`);
   for (const s of NON_RESERVED_STATES) ok(edges.some(e => e.from.includes(s)), `machine: state ${s} has a way out`);
-  for (const e of ['observed', 'merge-attempted', 'merge-refused', 'merged', 'awaiting-pin', 'verified', 'verification-failed', 'revert-opened', 'revert-merged', 'recovery-verified', 'drill-requested', 'drill-cleared'])
+  for (const e of ['observed', 'merge-attempted', 'merge-refused', 'merge-failed', 'merge-unknown', 'merged', 'awaiting-pin', 'verified', 'verification-failed', 'revert-opened', 'revert-merged', 'recovery-verified', 'drill-requested', 'drill-cleared'])
     ok(NON_RESERVED_EVENTS.includes(e), `machine: event ${e} exists for the later stories`);
   for (const story of ['752', '553', '753', '593']) ok(NON_RESERVED_EVENTS.some(e => M.events[e].used_by.includes(story)), `machine: story ${story} has events to write`);
   // safety properties
   const into = st => edges.filter(e => e.to.includes(st));
   ok(into('in_progress').every(e => same(e.from, ['needed'])), 'safety: an attempt starts only from needed');
   ok(into('in_progress').filter(e => e.actors.includes('lane')).every(e => same(e.lanes, ['A-night'])), 'safety: the lane starts a merge only for lane A-night');
-  ok(edges.filter(e => e.name === 'merged' && e.actors.includes('lane')).every(e => same(e.from, ['in_progress'])), 'safety: the lane records a merge only after its merge step started');
+  const laneMerged = edges.filter(e => e.name === 'merged' && e.actors.includes('lane'));
+  ok(laneMerged.length === 1 && sameSet(laneMerged[0].from, ['in_progress', 'merge_unknown']), 'safety: the lane records a merge only after its merge step started (in_progress, or merge_unknown read later)', JSON.stringify(laneMerged.map(e => e.from)));
+  ok(sameSet(into('merge_unknown').map(e => e.name), ['merge-unknown']) && into('merge_unknown').every(e => same(e.from, ['in_progress'])), 'safety: merge_unknown is reached only from a merge call in progress');
+  ok(sameSet(edges.filter(e => e.from.includes('merge_unknown')).map(e => e.name), ['merged', 'merge-failed', 'escalated']), 'safety: merge_unknown ends only when the PR is read (merged, merge-failed) or a person takes it (escalated)');
+  // lock phases (story 752): every phase night-merge.mjs writes goes with item states
+  const lp = M.lock_phases;
+  const phases = Object.keys(lp).filter(k => k !== 'doc');
+  for (const ph of phases) ok(Array.isArray(lp[ph]) && lp[ph].length > 0 && lp[ph].every(x => NON_RESERVED_STATES.includes(x)), `machine: lock phase ${ph} goes with item states`);
+  ok(sameSet(phases.flatMap(ph => lp[ph]), NON_RESERVED_STATES), 'machine: every item state goes with a lock phase');
+  ok(['in_progress', 'merge_unknown'].every(x => !lp.released.includes(x)), 'machine: a merge in flight is never under a released lock');
+  const mergeSrc = readFileSync(join(RES, 'night-merge.mjs'), 'utf8');
+  const written = new Set([...mergeSrc.matchAll(/\bphase(?:\s*:\s*|\s*=\s*)'([a-z-]+)'/g)].map(m => m[1]));
+  for (const m of mergeSrc.matchAll(/const phase = [^;]*\?\s*'([a-z-]+)'\s*:\s*'([a-z-]+)'/g)) { written.add(m[1]); written.add(m[2]); }
+  ok(written.size >= 5, 'machine: lock phases found in night-merge.mjs', [...written].join(', '));
+  for (const ph of written) ok(phases.includes(ph), `machine: lock phase ${ph}, written by night-merge.mjs, is in lock_phases`);
   const outOfReverted = edges.filter(e => e.from.includes('reverted')).map(e => `${e.name}:${[...e.actors].sort().join('+')}`).sort();
   ok(same(outOfReverted, ['drill-cleared:hand+lane', 'resolved:person']), 'safety: exactly drill-cleared (a drill) and resolved by a person leave reverted', outOfReverted.join(', '));
   ok(M.events['drill-cleared'].requires.includes('drill'), 'safety: drill-cleared requires drill true');
@@ -142,7 +161,10 @@ const laneRecordOf = (n, mutate) => {
   if (mutate) mutate(facts);
   const r = L.classify(facts, rules, { now: NOW, holdRules });
   Object.assign(r, { updated: new Date(NOW).toISOString(), preapproval: {}, schedule: {}, last_attempt: {} });
-  if (r.lane === 'LANE-A') Object.assign(r, { backup: { rule: rules.night.backup_rule.text, targets: [], stateful: false }, gates: { namespaces: [], blockers: [], would_be_eligible: true } });
+  if (r.lane === 'LANE-A') {
+    Object.assign(r, { backup: { rule: rules.night.backup_rule.text, targets: [], stateful: false }, gates: { namespaces: [], blockers: [], alerts_not_blocking: { unrelated: [], cluster: [] }, would_be_eligible: true } });
+    r.checks.main_newer = [];
+  }
   return r;
 };
 {
@@ -187,10 +209,19 @@ const laneRecordOf = (n, mutate) => {
   ok(F.laneMapping.from === F.LANE_SCHEMA && F.laneMapping.to === F.ITEM_SCHEMA, 'mapping: from lane v1 to item v1');
   // what the lane writes today: the classifier's keys, plus every r.<field> = run-night.mjs sets
   const records = queue.prs.map(p => laneRecordOf(p.facts.number));
+  // run-night.mjs sets fields on a record as r.<f> = or subjectRec.<f> = (top level) and
+  // r.checks.<f> = (inside the checks object, which the item schema types field by field)
   const nightSrc = readFileSync(join(RES, 'run-night.mjs'), 'utf8');
-  const nightFields = [...nightSrc.matchAll(/\br\.([a-z_]+)\s*=(?!=)/g)].map(m => m[1]);
+  const sets = [...nightSrc.matchAll(/\b(?:r|subjectRec)\.([a-z_]+)(?:\.([a-z_]+))?\s*=(?!=)/g)].map(m => [m[1], m[2]]);
+  const nightFields = [...new Set(sets.filter(([, b]) => !b).map(([a]) => a))];
+  const nightChecks = [...new Set(sets.filter(([a, b]) => a === 'checks' && b).map(([, b]) => b))];
   ok(['backup', 'gates', 'updated', 'preapproval', 'schedule', 'last_attempt'].every(f => nightFields.includes(f)), 'mapping: run-night.mjs fields found in its source', nightFields.join(', '));
-  const written = new Set([...records.flatMap(r => Object.keys(r)), ...nightFields]);
+  ok(nightChecks.includes('main_newer'), 'mapping: run-night.mjs checks fields found in its source', nightChecks.join(', '));
+  const tickRecords = tickFx.records.map(x => x.record);
+  const written = new Set([...records.flatMap(r => Object.keys(r)), ...tickRecords.flatMap(r => Object.keys(r)), ...nightFields]);
+  const checkKeys = new Set([...records, ...tickRecords].flatMap(r => Object.keys(r.checks || {})).concat(nightChecks));
+  const schemaChecks = Object.keys(F.schemas.item.properties.lane_detail.properties.checks.properties);
+  for (const k of checkKeys) ok(schemaChecks.includes(k), `mapping: lane checks field ${k} is in the item schema (lane_detail.checks)`);
   for (const f of written) ok(rowOf.has(f), `mapping: lane field ${f} has a row`, 'add a row to scripts/upgrade-agent/schema/lane-v1-to-item-v1.json saying where it goes');
   for (const r of rows) ok(written.has(r.lane), `mapping: row ${r.lane} names a field the lane writes`);
   for (const r of rows) {
@@ -203,7 +234,7 @@ const laneRecordOf = (n, mutate) => {
   }
   // every record converts to a valid item, and every copy row holds
   const tally = {};
-  for (const rec of records) {
+  for (const rec of [...records, ...tickRecords]) {
     const it = F.fromLaneRecord(rec, { repo: REPO });
     const errs = F.checkItem(it);
     ok(errs.length === 0, `mapping: PR ${rec.pr} converts to a valid item`, errs.join('; '));
@@ -211,7 +242,7 @@ const laneRecordOf = (n, mutate) => {
     const k = `${it.source}/${it.lane}/${it.state}`;
     tally[k] = (tally[k] || 0) + 1;
   }
-  console.log(`mapping: ${records.length} queue PRs as source/lane/state: ` + Object.entries(tally).sort().map(([k, v]) => `${k} ${v}`).join(', '));
+  console.log(`mapping: ${records.length} queue PRs and ${tickRecords.length} tick records as source/lane/state: ` + Object.entries(tally).sort().map(([k, v]) => `${k} ${v}`).join(', '));
   // the map rows, case by case
   const conv = (n, mutate) => F.fromLaneRecord(laneRecordOf(n, mutate), { repo: REPO });
   const expectItem = (name, it, want) => ok(Object.entries(want).every(([k, v]) => get(it, k) === v), name, JSON.stringify(Object.fromEntries(Object.keys(want).map(k => [k, get(it, k)]))));
@@ -235,11 +266,53 @@ const laneRecordOf = (n, mutate) => {
   expectItem('map: a read-failed record is blocked, lane unknown, coverage partial, named after its PR', fb, { state: 'blocked', lane: 'unknown', 'coverage.status': 'partial', 'item.name': 'thaynes43/haynes-ops#4999', 'available.kind': 'unknown' });
   const pre = F.fromLaneRecord({ ...laneRecordOf(4477), preapproval: { by: 'owner' } }, { repo: REPO });
   ok(F.checkItem(pre).some(e => e.startsWith('/approval:')), 'map: a lane record with a non-empty preapproval gives an item the validator refuses');
-  let threw = '';
-  try { F.fromLaneRecord({ ...laneRecordOf(4477), last_attempt: { result: 'merged' } }, { repo: REPO }); } catch (e) { threw = e.message; }
-  ok(threw.includes('last_attempt is not empty'), 'map: a non-empty last_attempt is refused, not dropped');
+  const subj = tickRecords.find(r => r.last_attempt?.verdict === 'merged');
+  const subjItem = F.fromLaneRecord(subj, { repo: REPO });
+  ok(same(subjItem.lane_detail.last_attempt, subj.last_attempt) && subjItem.attempts.length === 0 && subjItem.state === 'needed', 'map: a merge-step verdict is copied to lane_detail.last_attempt; attempts and state come from events and the lane verdict');
   for (const [v, k] of [['1.37.2', 'semver'], ['v9.18.0-ls431', 'semver'], ['==5.0.0.93', 'semver'], ['24-slim', 'semver'], ['a0f2e26', 'digest'], ['sha256:' + 'ab'.repeat(32), 'digest'], ['latest', 'other'], [null, 'unknown']])
     ok(F.versionKind(v) === k, `map: version ${v} is ${k}`, F.versionKind(v));
+}
+
+// ── 5. merge-step verdicts to events (story 752) ─────────────────────────────
+{
+  const N = await import(join(RES, 'night-merge.mjs'));
+  const table = Object.keys(F.laneMapping.merge_step_verdicts.verdicts);
+  const outcomes = [N.mergeOutcome({ exit: 0 }, { merged: true }), N.mergeOutcome({ exit: 1 }, { state: 'OPEN' }), N.mergeOutcome({ exit: null }, null)];
+  for (const v of new Set([...outcomes, ...tickFx.merge_steps.map(x => x.merge_step.verdict)])) ok(table.some(k => k === v || k.startsWith(`${v} (`)), `verdicts: ${v} is in merge_step_verdicts`);
+  const tickRecords = tickFx.records.map(x => x.record);
+  const subject = tickRecords.find(r => r.last_attempt?.verdict === 'merged');
+  const base ={ ...F.fromLaneRecord(subject, { repo: REPO }) };
+  const want = { 'dryrun/refused': [], 'dryrun/would-merge': [], 'none/not-run': [], 'live/merged': ['merged_unverified', 'merged'], 'live/merge-failed': ['needed', 'merge-failed'], 'live/merge-unknown': ['merge_unknown', 'merge-unknown'] };
+  for (const { at, merge_step: v } of tickFx.merge_steps) {
+    const key = `${v.mode || 'none'}/${v.verdict}`;
+    const lane = (v.lane_refusals || []).length > 0, prOnly = !lane && (v.pr_refusals || []).length > 0;
+    const evs = F.eventsFromMergeStep({ ...base, carrier: { ...base.carrier, pr: v.pr ?? base.carrier.pr } }, v, { repo: REPO, at });
+    const tag = `events: ${key}${v.verdict === 'refused' ? (lane ? ' with lane refusals' : ' with PR refusals only') : ''}`;
+    if (v.mode !== 'live' || lane) { ok(evs.length === 0, `${tag} writes no event`, evs.map(e => e.type).join(', ')); continue; }
+    const r = F.replay({ ...base, carrier: { ...base.carrier, pr: v.pr } }, evs);
+    ok(r.errors.length === 0, `${tag} replays legally from needed`, r.errors.join('; '));
+    ok(evs[0].type === 'merge-attempted' && evs.every(e => e.attempt === 1 && e.actor.kind === 'lane'), `${tag} opens attempt 1 with merge-attempted`);
+    if (prOnly) ok(evs.length === 2 && evs[1].type === 'merge-refused' && r.item.state === 'needed' && same(evs[1].evidence.pr_refusals, v.pr_refusals), `${tag}: merge-refused with the refusals in evidence`, JSON.stringify(evs[1]));
+    else ok(r.item.state === want[key][0] && evs[1].type === want[key][1] && evs[1].evidence.merge_call === v.merge_call, `${tag}: ${want[key][1]}, item ${want[key][0]}`, `${evs[1]?.type} ${r.item.state}`);
+    if (v.verdict === 'merged') ok(evs[1].evidence.merge_commit === v.merged.merge_commit && evs[1].at === v.merged.merged_at.replace('Z', '.000Z'), `${tag}: the merge commit and time from the verdict`);
+    ok(same(evs.map(e => e.id), F.eventsFromMergeStep({ ...base, carrier: { ...base.carrier, pr: v.pr } }, v, { repo: REPO, at }).map(e => e.id)), `${tag}: the same verdict gives the same event ids (a retried write is a duplicate)`);
+  }
+  const merged = tickFx.merge_steps.find(x => x.merge_step.verdict === 'merged');
+  const noCommit = structuredClone(merged.merge_step); noCommit.merged.merge_commit = null;
+  ok(F.eventsFromMergeStep(base, noCommit, { repo: REPO, at: merged.at })[1]?.type === 'merge-unknown', 'events: merged with no merge commit is recorded as merge-unknown (fail closed)');
+  const heldItem = { ...base, state: 'held' };
+  ok(F.replay(heldItem, F.eventsFromMergeStep(heldItem, merged.merge_step, { repo: REPO, at: merged.at })).errors.some(e => e.includes('chain: merge-attempted starts from needed')), 'events: a verdict on an item that is not needed is refused by the chain');
+  const ownerItem = { ...base, lane: 'B-owner' };
+  ok(F.replay(ownerItem, F.eventsFromMergeStep(ownerItem, merged.merge_step, { repo: REPO, at: merged.at })).errors.some(e => e.includes('only for lane A-night')), 'events: a lane merge of an item outside lane A-night is refused');
+  let threw = '';
+  try { F.eventsFromMergeStep({ ...base, carrier: { ...base.carrier, pr: 1 } }, merged.merge_step, { repo: REPO, at: merged.at }); } catch (e) { threw = e.message; }
+  ok(threw.includes('the verdict is for PR'), 'events: a verdict for another PR is refused');
+  // a later tick reads the PR left merge_unknown: merged, or not merged
+  const unk = tickFx.merge_steps.find(x => x.merge_step.verdict === 'merge-unknown');
+  const r0 = F.replay(base, F.eventsFromMergeStep(base, unk.merge_step, { repo: REPO, at: unk.at }));
+  const later = (type, to, extra) => { const e = { schema: F.EVENT_SCHEMA, id: '', item_id: base.id, type, from: 'merge_unknown', to, at: '2026-11-02T07:15:00.000Z', actor: { kind: 'lane', login: null }, recorded_by: 'lane', attempt: 1, carrier: { repo: REPO, pr: base.carrier.pr, head: base.carrier.head }, ...extra }; e.id = F.eventId(e); return e; };
+  ok(F.applyEvent(r0.item, later('merged', 'merged_unverified', { evidence: { merge_commit: 'f'.repeat(40) } })).errors.length === 0, 'events: merge_unknown read later as merged');
+  ok(F.applyEvent(r0.item, later('merge-failed', 'needed', { class: 'not-merged', reason: 'open at that head on the next read', evidence: { merge_call: unk.merge_step.merge_call } })).errors.length === 0, 'events: merge_unknown read later as not merged');
 }
 
 console.log(`\n${passes} passed, ${fails} failed`);

@@ -16,7 +16,7 @@
     "item_id": { "type": "string", "pattern": "^[a-z][a-z-]*:[0-9a-f]{24}$" },
     "type": {
       "description": "approval-recorded and schedule-set are reserved for piece 2 and refused by the validator.",
-      "enum": ["observed", "closed", "merge-attempted", "merge-refused", "merged", "awaiting-pin", "verified", "verification-failed", "drill-requested", "revert-opened", "revert-merged", "recovery-verified", "recovery-failed", "escalated", "resolved", "drill-cleared", "approval-recorded", "schedule-set"]
+      "enum": ["observed", "closed", "merge-attempted", "merge-refused", "merge-failed", "merge-unknown", "merged", "awaiting-pin", "verified", "verification-failed", "drill-requested", "revert-opened", "revert-merged", "recovery-verified", "recovery-failed", "escalated", "resolved", "drill-cleared", "approval-recorded", "schedule-set"]
     },
     "from": {
       "description": "The item's state before the event; null when the event is the first one for the item.",
@@ -53,7 +53,10 @@
         "revert_branch": { "type": "string", "minLength": 1 },
         "revert_commit": { "$ref": "haynes.upgrade-item/v1#/$defs/sha" },
         "flux_revision": { "type": "string", "minLength": 1 },
-        "checks": { "description": "What the verifier checked, one 'name: result' line each.", "type": "array", "items": { "type": "string" } }
+        "checks": { "description": "What the verifier checked, one 'name: result' line each.", "type": "array", "items": { "type": "string" } },
+        "merge_call": { "description": "The merge call as the merge step recorded it, with its exit status (story 752).", "type": "string", "minLength": 1 },
+        "pr_refusals": { "description": "The merge step's refusals about the PR, as written.", "type": "array", "items": { "type": "string" } },
+        "lane_refusals": { "description": "The merge step's refusals about the lane itself, as written.", "type": "array", "items": { "type": "string" } }
       }
     }
   }

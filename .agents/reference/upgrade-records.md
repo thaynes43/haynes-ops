@@ -12,7 +12,9 @@ every attempt (story 593). This page covers the two records, the state machine t
 connects them, and how today's lane record maps onto an item.
 
 **Status.** The format, its validator and fixtures exist. Nothing writes these records
-yet; story 593 writes the first events. Metrics, counting rules and the dashboard pane
+yet; story 593 writes the first events. The lane's merge step (story 752) exists and runs
+in dry-run; [Merge-step verdicts and the change lock](#merge-step-verdicts-and-the-change-lock)
+says which of its verdicts become events. Metrics, counting rules and the dashboard pane
 belong to piece 2 (story 591 and question Q-547-07) and are not defined here. Tracker:
 [story 592](https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/592).
 
@@ -26,6 +28,7 @@ belong to piece 2 (story 591 and question Q-547-07) and are not defined here. Tr
 | `scripts/upgrade-agent/schema/lane-v1-to-item-v1.json` | Where each field of the lane record `haynes.upgrade-lane/v1` lands in an item |
 | `scripts/upgrade-agent/schema/record-format.mjs` | Validator and helpers: `checkItem`, `checkEvent`, `applyEvent`, `replay`, `itemId`, `eventId`, `fromLaneRecord` |
 | `scripts/upgrade-agent/fixtures/upgrade-records/` | Valid and invalid fixtures, one file per case |
+| `scripts/upgrade-agent/fixtures/lane-tick-records-20261111.json` | Records and merge-step verdicts written by the real `run-night.mjs` in the stub ticks of `lane-night-dryrun-selftest.mjs` (synthetic world, not cluster data). The mapping test converts them. |
 | `scripts/upgrade-agent/record-format-selftest.mjs` | The selftest; CI runs it in `Upgrade Agent Selftests - Night lane` |
 
 ## The item record
@@ -50,8 +53,8 @@ Renovate moves the PR to a newer version, that newer version is a new item.
 | `attempts[]` | One entry per attempt, built from the item's events: `n`, `actor`, `started_at`, `at` (the attempt's latest event), `result`, `recovery` (after a revert: `verified`, `failed` or null), `drill`, `evidence_url`. |
 | `first_seen`, `observed_at` | The collector's clock, in UTC. |
 | `coverage` | `status` is `read` (the whole item was read), `partial` (some facts failed to read) or `unread` (nothing could be read; the state must then be `unknown`). `detail` says what failed. |
-| `carrier` | The pull request that carries the item, as last seen: `repo`, `pr`, `head`, `title`, `fingerprint`, `fingerprint_basis`, `commit_count`, `change_key`. Required for PR sources. |
-| `lane_detail` | The lane's own detail, copied exactly as the lane wrote it: `rules`, `findings`, `checks`, `cluster_effect`, `cluster_effect_wait`, `gates`, `backup`. Its shape is set by `lane-classify.mjs` and `run-night.mjs`. |
+| `carrier` | The pull request that carries the item, as last seen: `repo`, `pr`, `head`, `title`, `fingerprint`, `fingerprint_basis`, `commit_count`, `change_key`, `files` (its changed files) and `head_committed_at`. Required for PR sources. |
+| `lane_detail` | The lane's own detail, copied exactly as the lane wrote it: `rules`, `findings`, `checks`, `cluster_effect`, `cluster_effect_wait`, `via_components`, `cluster_wide`, `gates`, `backup` and `last_attempt`. Their shapes are set by `lane-classify.mjs`, `run-night.mjs` and `night-merge.mjs`. `checks` is typed field by field (`expected`, `missing`, `failing`, `pending`, `stale`, `ran_at`, `reference_time`, `main_newer`), because the item's blocked state and the merge step depend on it. The others are kept as written. |
 
 **Sources.** In piece 1, the lane writes three sources. Each one has a valid fixture taken
 from the 2026-11-09 queue.
@@ -111,9 +114,10 @@ a step. A tick that reads an item and finds it unchanged writes no event; only t
 | `drill` | True on every event of a revert drill. |
 | `lane`, `class`, `reason` | For `observed`: the lane's verdict. For `merge-refused`: why the merge step refused. For a failure: the failure mode. |
 | `carrier` | `repo`, `pr`, `head`, `fingerprint` at the time of the event. |
-| `evidence` | `url`, `merge_commit`, `revert_pr`, `revert_branch`, `revert_commit`, `flux_revision`, `checks[]`. |
+| `evidence` | `url`, `merge_commit`, `merge_call`, `pr_refusals[]`, `lane_refusals[]`, `revert_pr`, `revert_branch`, `revert_commit`, `flux_revision`, `checks[]`. |
 
-In the fixtures, a compact event averages about 430 bytes.
+In the fixtures, a compact event averages about 440 bytes; the largest, a merge-step
+event with its merge call, is about 760.
 
 ## The state machine
 
@@ -135,7 +139,8 @@ When an edge applies to the lane, it can also limit which lanes the item may be 
 | `blocked` | open | Something about the item must change first: a failing or incomplete check, incomplete facts, or a refusal that needs a new head. |
 | `unknown` | open | The item could not be read. |
 | `closed` | open | No longer offered. If the carrier reopens, the item is observed again. |
-| `in_progress` | attempt | The lane holds the change lock and its merge step is running. |
+| `in_progress` | attempt | The lane holds the change lock and its merge step is running (lock phase `taken`, then `merging`). |
+| `merge_unknown` | attempt | The merge call was made and its outcome could not be read; GitHub may have merged. The lock keeps its hold. Owed: read the PR. |
 | `merged_unverified` | attempt | Merged, but nothing has verified it yet. Backfilled merges stay in this state. |
 | `awaiting_pin` | attempt | The source of one of our own images merged. Verification waits, within a time box, for the image's digest pin. |
 | `done` | settled | Merged and verified. |
@@ -153,8 +158,10 @@ When an edge applies to the lane, it can also limit which lanes the item may be 
 | `observed` | (new), needed, held, blocked, unknown, closed to needed, held, blocked, unknown | lane | lane, class, reason | 593 |
 | `closed` | needed, held, blocked, unknown to closed | lane, renovate, hand, person | reason | 593 |
 | `merge-attempted` | needed to in_progress (opens an attempt) | lane, only for lane A-night; hand | attempt, lane, carrier | 752 |
-| `merge-refused` | in_progress to needed or blocked; reverting to reverting (the revert's own merge was refused) | lane, hand | attempt, class, reason | 752, 753 |
-| `merged` | in_progress to merged_unverified | lane, hand | attempt, carrier, merge_commit | 752 |
+| `merge-refused` | in_progress to needed or blocked, before any merge call; reverting to reverting (the revert's own merge was refused) | lane, hand | attempt, class, reason | 752, 753 |
+| `merge-failed` | in_progress or merge_unknown to needed or blocked: the call was made and did not merge | lane, hand | attempt, class, reason, merge_call | 752 |
+| `merge-unknown` | in_progress to merge_unknown: the call was made and its outcome could not be read | lane, hand | attempt, class, reason, merge_call | 752, 754 |
+| `merged` | in_progress or merge_unknown to merged_unverified | lane, hand | attempt, carrier, merge_commit | 752 |
 | `merged` | (new), needed, held, blocked, unknown to merged_unverified (opens an attempt) | renovate, shepherd, hand, person | the same | 593 |
 | `awaiting-pin` | merged_unverified to awaiting_pin | lane | attempt | 553 |
 | `verified` | merged_unverified, awaiting_pin to done | lane, hand | attempt | 553 |
@@ -165,7 +172,7 @@ When an edge applies to the lane, it can also limit which lanes the item may be 
 | `revert-merged` | failed, merged_unverified, awaiting_pin, done to reverted_unverified | hand, person (a revert nobody recorded as opened) | the same | 593 |
 | `recovery-verified` | reverted_unverified to reverted | lane, hand | attempt | 753 |
 | `recovery-failed` | reverted_unverified to escalated | lane, hand | attempt, class, reason | 753, 554 |
-| `escalated` | merged_unverified, awaiting_pin, failed, reverting to escalated | lane | attempt, class, reason | 553, 753, 754 |
+| `escalated` | merge_unknown, merged_unverified, awaiting_pin, failed, reverting to escalated | lane | attempt, class, reason | 553, 753, 754 |
 | `resolved` | escalated to done, reverted or closed | hand, person | attempt, reason | 554 |
 | `resolved` | reverted to needed or closed (releases a remembered version, for example after a revert that was not the version's fault) | person only | attempt, reason | 753 |
 | `drill-cleared` | reverted to needed, only when the current attempt is a drill | lane, hand | attempt, drill | 753 |
@@ -175,7 +182,7 @@ made, or with `drill-requested`. Each of these adds an entry to `attempts[]` wit
 number. Every later event names that attempt and updates its `at`, its `result` (where
 the edge sets one) and its `recovery`. An attempt result is one of:
 
-- `in-progress`, `merge-refused`, `merged`, `awaiting-pin`, `verified`;
+- `in-progress`, `merge-refused`, `merge-failed`, `merge-unknown`, `merged`, `awaiting-pin`, `verified`;
 - `failed-verification`, `drill`, `reverted`, `escalated`.
 
 A drill gets an attempt of its own, with `drill: true`, so a count of real attempts can
@@ -184,37 +191,97 @@ leave it out.
 **Safety properties the selftest checks:**
 
 - An attempt starts only from `needed`. The lane may start one only for lane `A-night`.
-- The lane can record a merge only after its merge step has started.
+- The lane can record a merge only after its merge step has started: from `in_progress`,
+  or from `merge_unknown` when a later read finds the PR merged.
+- `merge_unknown` is reached only from a merge call in progress, and left only by reading
+  the PR (`merged`, `merge-failed`) or by `escalated`.
+- Every lock phase `night-merge.mjs` writes goes with item states, and a merge in flight is
+  never under a released lock.
 - Exactly two edges take an item out of `reverted`: `drill-cleared` (lane or hand, only
   for a drill) and `resolved` (a person only).
 - `drill-cleared` is refused unless the attempt was a drill, so a real revert stays
   remembered.
 - The lane takes no action on a held item.
 
+## Merge-step verdicts and the change lock
+
+The merge step (story 752, `night-merge.mjs`) writes one verdict per tick to
+`summary.merge_step`, and a short copy (`at`, `mode`, `chosen`, `verdict`, `pr_refusals`,
+`lane_refusals`, `merge_call`) to `last_attempt` on the record it ran on.
+`eventsFromMergeStep()` turns a verdict into history events, using the full verdict,
+because only that one carries the merge commit.
+
+| Verdict | Events |
+|---|---|
+| `not-run`, `would-merge`, any dry-run verdict | none: nothing was attempted. The verdict stays in `lane_detail.last_attempt`. |
+| `refused`, live, with any lane refusal (class not allowlisted, token, not chosen, lease, window, gate age, lock move) | none: the lane declined, which is not an attempt on the item |
+| `refused`, live, PR refusals only | `merge-attempted`, then `merge-refused` (class `merge-step-refused`, to `needed`, the refusals in `evidence`) |
+| `merged` | `merge-attempted`, then `merged` (merge commit and time from the verdict). With no merge commit read, `merge-unknown` instead. |
+| `merge-failed` | `merge-attempted`, then `merge-failed` (class `merge-call-failed`, to `needed`) |
+| `merge-unknown` | `merge-attempted`, then `merge-unknown` (class `merge-outcome-unread`) |
+| `merging`, `would-merge` from the hand run (`night-merge.mjs --merge`) | written by the hand run itself, actor `hand` (story 712) |
+
+A refused verdict goes to `needed`, not `blocked`: the open states follow the lane's own
+reading of the PR on the next tick, and the refusal stays in the attempt. Event ids
+depend only on the item, the type, the time and the attempt, so a write retried with the
+same verdict is a duplicate the history can drop. `applyEvent()` refuses the events unless
+the item is `needed` and in lane `A-night`.
+
+**The change lock** (`upgrade-agent/upgrade-change-lock`). Its phases go with item states
+(`lock_phases` in the machine file):
+
+| Lock phase | Item state |
+|---|---|
+| `taken`, `merging` | `in_progress` |
+| `merged-awaiting-verification` | `merged_unverified` |
+| `merge-unknown` | `merge_unknown` |
+| `released` | anything else: no merge call is in flight |
+
+A tick that takes over an expired lock reads `took_over_phase`:
+
+- `taken`: the call was never made. Record `merge-refused` with class `attempt-abandoned`.
+- `merging` or `merge-unknown`: the call may have been made. Read the PR: if it merged at
+  that head, record `merged`; if it is open at that head, `merge-failed`; if it cannot be
+  read, `merge-unknown`.
+
+Until story 553 holds the lock through verification, a merged item outlives its
+post-merge lease.
+
+Tick-level summary keys are not item fields: `merge_step` (the events above),
+`change_lock` (the phases above), `token_permissions` and `live_classes` (both become lane
+refusals), and `owed_work` (the attempt states `merged_unverified`, `awaiting_pin`,
+`failed`, `reverting`, `reverted_unverified` and `merge_unknown`).
+
 ## Mapping from `haynes.upgrade-lane/v1`
 
 `lane-v1-to-item-v1.json` lists every field the lane writes today, together with where it
-lands in the item. `fromLaneRecord()` performs the mapping. The selftest classifies the 30
-PRs of the 2026-11-09 queue and reads `run-night.mjs` for the fields it sets on each record.
-It fails if any written field has no row in the mapping, or if any row names a field the
-lane no longer writes. So a new lane field cannot be lost silently: whoever adds it must
+lands in the item. `fromLaneRecord()` performs the mapping. The selftest checks it against
+three sources:
+
+- the classifier's output for the 30 PRs of the 2026-11-09 queue;
+- the records in the captured tick fixture;
+- `run-night.mjs` itself, read for the fields it sets (`r.<field> =`, `subjectRec.<field> =`
+  and `r.checks.<field> =`).
+
+It fails if any written field has no row in the mapping, if any `checks` field is missing
+from the item schema, or if any row names a field the lane no longer writes. So a new lane field cannot be lost silently: whoever adds it must
 also add a row that says where it goes.
 
 | Lane field | Item field | How |
 |---|---|---|
 | `schema` | `lane_detail.from_schema` | copied |
-| `pr`, `head`, `fingerprint`, `fingerprint_basis`, `commit_count`, `change_key`, `title` | `carrier.*` | copied |
+| `pr`, `head`, `fingerprint`, `fingerprint_basis`, `commit_count`, `change_key`, `title`, `files`, `head_committed_at` | `carrier.*` | copied |
 | `package` | `item.name` | copied; `<repo>#<pr>` when the PR has no package table |
 | `from`, `to` | `installed.version`, `available.version` | copied; the `kind` is inferred |
 | `packages`, `targets`, `own_images` | `item.packages`, `item.targets`, `item.own_images` | copied |
 | `update_type` | `available.update_type` | copied |
 | `lane` | `lane` and `state` | mapped (see below) |
 | `class`, `reason` | `class`, `reason` | copied |
-| `rules`, `findings`, `checks`, `cluster_effect`, `cluster_effect_wait`, `backup`, `gates` | `lane_detail.*` | copied (`backup` and `gates` exist on lane-A records only) |
+| `rules`, `findings`, `checks`, `cluster_effect`, `cluster_effect_wait`, `via_components`, `cluster_wide`, `backup`, `gates` | `lane_detail.*` | copied (`backup` and `gates` exist on lane-A records only; `checks.main_newer` is set by the tick) |
 | `updated` | `observed_at` | copied |
 | `preapproval` | `approval` | renamed; must stay empty |
 | `schedule` | `schedule` | copied (empty today) |
-| `last_attempt` | `attempts` | renamed to a list rebuilt from events; the mapping refuses a non-empty `last_attempt` instead of dropping it |
+| `last_attempt` | `lane_detail.last_attempt` | copied: the tick's merge-step verdict for the PR it ran on, `{}` on the others. It is not `attempts`: that list is rebuilt from events, and a live verdict becomes events as the table above says. |
 
 **Lane and state.**
 
@@ -288,9 +355,12 @@ node scripts/upgrade-agent/record-format-selftest.mjs     # offline; Node 24
 
 ## Open points
 
-- The fixture events average about 430 bytes each. Story 593 planned on about 3,000
-  compact events per MiB, about 350 bytes each. It can store them more compactly (for
-  example, without the `schema` key on each line) or rotate sooner.
+- The fixture events average about 440 bytes each, about 760 at most. Story 593 planned
+  on about 3,000 compact events per MiB, about 350 bytes each. It can store them more
+  compactly (for example, without the `schema` key on each line) or rotate sooner.
+- In live mode, a PR the merge step refuses for its own reasons on every tick opens one
+  attempt per tick until it changes. Story 593 may collapse repeated refusals of the same
+  head.
 - The sources the lane does not write yet have only the generic item shape. Their adapter
   stories may need more fields.
 - `kind` is inferred from the version text. `semver` means the version starts with dotted
