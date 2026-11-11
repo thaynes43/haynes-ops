@@ -5,8 +5,9 @@ The existing hourly converter implements
 and [the converter design](https://github.com/thaynes43/haynesnetwork/blob/main/docs/designs/028-integrations-tab-goodreads-requests.md#amendment-2026-10-07-one-kavita-series-per-book-issue-825-adr-105).
 The work order is [issue 825](https://github.com/thaynes43/haynesnetwork/issues/825).
 
-The CronJob ships with STRIP_SERIES_METADATA=0. Conversion of MOBI/AZW3-only
-folders continues. Metadata removal requires STRIP_SERIES_METADATA=1.
+The CronJob enables STRIP_SERIES_METADATA=1 after the verified issue825 backfill.
+Conversion of MOBI/AZW3-only folders continues, and new conversion outputs are
+stripped before publication. Set STRIP_SERIES_METADATA=0 to disable metadata removal.
 STRIP_ONLY=1 skips conversion and partial-file cleanup; use it for inventory and
 backfill Jobs. STRIP_FOLDERS_JSON selects exact relative book folders and requires
 STRIP_ONLY=1. Without that variable the pass visits all EPUBs under EBOOK_ROOT.
@@ -18,8 +19,11 @@ including targeted one-offs; the read-only collision census still includes their
 metadata. A held folder is reported separately and is never called untagged.
 The configured hold is Daniel Silva/Ransom. Its EPUB has a saved Kavita reading
 location and session history, so its original metadata and files remain intact
-until its saved reading state has been idle for 30 days, as ruled in
+until a separate verified strip checks that its saved reading state has been idle for
+30 days, as ruled in
 [the state-preservation decision](https://github.com/thaynes43/haynesnetwork/issues/840).
+The last observed activity was July 27, already more than 30 days old on October 8.
+Do not reset that clock to the migration date. Its separate owed check controls release.
 No progress migration is authorized. Removing this hold requires a separate reviewed
 GitOps change after the idle check; the converter never ages a hold out itself.
 Compare that state before and after every migration scan. This hold stays in git
@@ -126,6 +130,25 @@ the strip gate still off. Restore before app, pairing or reading-list verificati
 long waits, or uncertain investigation. Enable hourly stripping later in a separate
 GitOps PR after those checks pass. Declare the tight maintenance window before
 deploying its pause and end the activity promptly after restoration.
+
+Stage the pause and its exact inverse while production is live. Retarget the open
+inverse PR to `main` before merging the pause, because automatic branch deletion
+can close an inverse that still uses the pause branch as its base. Arm recovery
+before holding the three affected Flux Kustomizations. Keep their workloads live
+while the pause lands in git, replay and validate the inverse locally, and push
+its final head once. Resume Flux onto the pause only after that final inverse has
+all required checks green and its completed advisory review has been handled.
+
+Record every Job intent and phase token before creation, then record the actual
+Job UID immediately afterward. Collect API inventories first and UID-bound
+Libretto process attestations last, and validate and start the first stage in one
+bounded command so the 30-second process proof stays fresh. The ten-minute edit
+window never extends on restart. Recovery stops only the phase's owned Jobs and
+Pods, restores the reviewed inverse, and verifies every schedule, acquisition
+setting and Flux revision. Poll a command that returns a running session until it
+finishes; a missing exit code is not an error. An accepted Kavita scan may outlive
+its requester Job, so record any pending scan when restoring after a timeout.
+
 Confirm the runtime configuration directly without printing credentials:
 
     kubectl exec -n media deployment/libretto -- node --input-type=module -e '
@@ -281,8 +304,11 @@ established and held, keep the corresponding copies protected and do not apply.
 The read-only `epub_copy_preflight.py` adapter collects the current library's OPF
 identity, stable source identity, SHA-256 and ancestor ignore markers without
 changing files. Its prepare command combines this full census with the app audit,
-all LL BookFile SQL rows, a stat-guarded Kavita database copy and explicit census
-protections. It produces a private candidate/protection report and schema-1
+every LL BookFile and AudioFile SQL row, a stat-guarded Kavita database copy, all
+census holds and ancestor `.ll_ignore` markers. Include complete saved reading, lock,
+curated-list and app-want dependencies; any unresolved or transitive dependency is
+protected. Preserve reading rows and saved locks exactly, and classify any intentional
+curated-list change separately. It produces a private candidate/protection report and schema-1
 snapshot. Captures retain their original timestamps; stale/partial inputs and
 missing writer attestations are reported as blockers rather than made fresh or
 complete. Each writer attestation supplies `established_at`, a fresh `checked_at`
@@ -367,7 +393,7 @@ eligible unprotected extra under that complete snapshot. Missing, repeated, chan
 protected or keeper entries refuse the entire selection before any move. Narrowing
 scope never removes source files, dependencies or protections from the snapshot.
 
-The invocation hashes the complete current corpus once. It moves the first exact
+The default invocation hashes the complete current corpus once. It moves the first exact
 selected extra, verifies the retained bytes/manifest/ownership, absent original and
 unchanged keeper, then verifies the complete remaining file census against the
 original fingerprints. This includes every protected EPUB and non-EPUB library
@@ -378,15 +404,17 @@ protection and freshness guards under the same continuously held fence and earli
 source expiry. Unselected extras stay in EBooks. These checks reuse the verified
 complete census and avoid another whole-corpus hash inside the 300-second window.
 
-The dedicated manual copy writer owns a PostgreSQL 16 primary READ ONLY transaction and SHARE locks on both
+SOURCE owns its own primary PostgreSQL 16 READ ONLY transaction and SHARE locks before
+the first repeatable-read snapshot. MAIN separately owns a PostgreSQL 16 primary READ ONLY
+transaction and SHARE locks on both
 book_requests and books_items throughout consolidation. It compares the complete captured application rows under
 those locks before reading the library, checks the same backend before each move and first-retention proof, and
 refuses any mismatch, lost connection or deadline. The image contains the pinned driver at build time; runtime Jobs
 install nothing. Source-capture locks stay held until the writer stops, and the recovery supervisor stops owned
 writers before releasing its locks or restoring services.
 
-The copy-only image is built from `scripts/book-copy-writer/Dockerfile`. It bundles the reviewed, unchanged
-`epub_copies.py` and `epub_metadata.py`; it has no Calibre conversion or metadata-stripping entrypoint. Its workflow
+The copy-only image is built from `scripts/book-copy-writer/Dockerfile`. It bundles the reviewed
+`epub_copies.py`, `epub_metadata.py` and manual `bound_census.py`; it has no Calibre conversion or metadata-stripping entrypoint. Its workflow
 builds and tests PRs without publishing, publishes only main, and signs the immutable image digest. Pin that actual
 published digest in the reviewed manual Job before a maintenance window; building the image does not deploy it.
 
@@ -444,6 +472,13 @@ connects to production or installs packages in a runtime Pod.
 The [bounded proof contract](https://github.com/thaynes43/haynesnetwork/blob/main/docs/designs/028-integrations-tab-goodreads-requests.md)
 defines the separate live byte evidence and fenced current validation below.
 
+Select this manual mode explicitly with `--bound-census`. Its proof stays inside
+the existing `snapshot.json` transport; no fourth file or larger transport cap is
+accepted. The proof keeps the original complete byte capture and its absolute
+expiry, plus the current SOURCE stat census and actual native identities. SOURCE
+produces schema-2 `stat_census` evidence without reading EPUB bytes. The trusted
+assembly derives the byte census only after comparing every current fingerprint.
+
 The complete byte and OPF census may be collected while production is running. It is
 not a dependency snapshot or permission to move files. It must retain SHA-256, raw OPF
 and parsed identity for every EPUB, plus device, inode, size, modification time, change
@@ -473,3 +508,49 @@ pause without reducing selected-file or dependency checks. Normal hourly behavio
 is unchanged. Keep the existing absolute expiry, exact writer ownership and restore
 watcher. Any performance claim must come from actual completed captures, not the
 faster of inconsistent earlier timings.
+
+For the duplicate-copy window, register all five exact Job intents before the first service stop: the primary
+PostgreSQL plus NFS source census, stopped LazyLibrarian reader, stopped Kavita reader, native Lidarr reader and
+the single copy writer. Record source and writer PostgreSQL ownership separately, including phase-qualified source
+application name and actual Job/Pod UIDs. A stopped reader may bind only to the source session already observed
+and recorded as healthy. All manual Pod templates opt out of k8tz injection; verify the admitted executable,
+containers, mounts, identity and immutable image rather than accepting an unknown injected workload.
+
+The copy service window has a 300-second hard ceiling and mutation stops by 250 seconds.
+The independent recovery watcher starts at the first actual service stop and must reserve
+time for actual restoration. The reviewed attempts used a 210-second trigger; observed
+restoration alone has taken about 98 seconds, so a theoretical 50-second reserve is
+insufficient. Stop all six relevant schedules, LazyLibrarian and Kavita and disable Libretto acquisition only after
+the reviewed inverse is ready while services remain live. Hold the four application Flux scopes during preparation.
+Capture complete dependencies after the real stops and source SHARE fence. Place the source and writer on the
+same reviewed node, then compare the writer's actual complete stat census with the source before delivering proofs.
+Require exact device/inode identities and actual user and parent-directory access; no normalization proves a move.
+
+Publishers remain running. This proof covers configured publishing into EBooks, not
+arbitrary privileged writes or undiscovered aliases. Use exact current controller, Pod
+specification, image, mount, PVC and PV evidence; unknown infrastructure needs an explicit
+normal-write profile rather than a namespace or storage-driver exemption. Prove every
+configured destination and hook from complete native configuration and
+actual mount identity, including local block volumes, NFS exports and nested mounts. Unknown or changing scope
+refuses the copy. Bind the writer's absolute deadline before creating it to the earliest of the phase abort clock,
+65 seconds after publisher capture starts and 35 seconds after capture completes. Do not refresh evidence while
+a writer can mutate or extend its deadline. Verify one archived copy and the complete unchanged remainder before
+continuing the exact selection. Preserve every protected or uncertain copy for review.
+
+On success, refusal, uncertainty or expiry, restore first. Stop and remove all five owned Jobs and Pods, then prove
+both PostgreSQL application names and every recorded backend absent before every Flux
+scope resume. Check the exact restored GitRepository revision before each resume. A writer
+that exits quickly may report its actual fence PID in the completed owned log; do not claim that the parent saved
+that PID before the first archive. Startup gaps still require application-name absence checks. Verify all six
+schedules active, LazyLibrarian and Kavita Ready and Libretto acquisition normal after the inverse applies.
+Only then perform any required scan and app or collection verification under a separate bounded window.
+
+Retain actual SOURCE and MAIN identities separately. Stream the actual MAIN event prefix
+continuously before delivering its proofs. Every outcome preserves that prefix: missing
+completion means a lower bound and unknown total, never permission to replay. On refusal,
+stop owned work, release its locks and request restoration before publishing bounded
+private diagnostics. Never persist arbitrary foreign exception text or source rows.
+Node-bound stopped readers use the actual reader node; their deadlines are rounded earlier
+rather than extended to compensate for timestamp precision. A normal hourly run performs
+its identity preflight before cleanup; only an exact interrupted publication pair escalates
+unknown identity to a whole-run refusal.
