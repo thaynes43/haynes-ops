@@ -14,6 +14,7 @@ scope, the routine lifecycle writes are yours. Run `opwork.py --help` for the co
   opwork.py create --epic 95 --origin 97 --source-key followup:97:x --subject "..."   # a Story under Epic 95
   opwork.py create --type Epic --epic SAGA_ID --source-key K --subject "..."          # an Epic under a Saga
   opwork.py create --type Saga --source-key K --subject "..."                         # a Saga: no parent, no --epic
+  opwork.py move 97 --parent 95 [--reason "..."] [--force]   # an Epic under another Saga, a Story under another Epic
   opwork.py checkpoint 97 "state..."            # explicit local record, no tracker needed
   opwork.py checkins [--owner OWNER] [--status S] -o json
   opwork.py checkpoint-update 97 --next-action TEXT --check-after UTC --evidence TEXT
@@ -36,6 +37,17 @@ Scripts that call Tracker.patch directly pass Markdown text or exactly {"raw": t
 field is not sent. None, empty or blank text would clear the field, so it is refused (exit 3)
 before any request unless the call names the field in allow_clear; then it is sent as {"raw": ""}.
 Any other value is refused (exit 1) before any request. No command here changes a description.
+
+`move` changes the parent of an existing Epic or Story and nothing else. The grammar is the one `create`
+enforces (an Epic goes under a Saga, a Story under an Epic; a Saga has no parent and cannot be moved),
+checked from both items' types before any write. An item already under that parent is a no-op (exit 0). An item
+in an explicit hold (Needs answer, Needs approval, Paused) is refused (exit 3) unless --force. The PATCH carries
+the lockVersion; on a conflict the item is re-read and re-checked once and the PATCH is sent once more, then it
+fails (exit 3). It is confirmed by a read back of the parent, type, status, subject, source key and project;
+any difference is "NOT confirmed" (exit 6). Only then is an attributed note written on the item naming the old
+and new parent (full links), the session and the --reason. That note is a second step: if it cannot be
+recorded the move stays done and the command says so (exit 6, the note saved locally for `flush` when it may
+have been sent), it never moves the item again.
 
 Every item line carries the canonical OpenProject link, for example
 https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/97. OPWORK_BASE_URL
@@ -259,7 +271,7 @@ class Tracker:
     def by_source_key(self, key):
         return [w for w in self.scan([{"status": {"operator": "*", "values": []}}]) if text_of(w.get(SOURCE_KEY)) == key]
 
-    def patch(self, wp, fields=None, status=None, lock=None, assignee=None, allow_clear=()):
+    def patch(self, wp, fields=None, status=None, lock=None, assignee=None, allow_clear=(), parent=None):
         """PATCH only the supplied fields, with lockVersion, then read back. Conflict re-reads and
         refuses; never overwrites, never retries. Formattable fields (MARKDOWN) go out as
         {"raw": text}, checked by formattable() before any request: an omitted field is not sent,
@@ -274,6 +286,8 @@ class Tracker:
             links["status"] = {"href": "/api/v3/statuses/%d" % self.resolve("statuses", status)}
         if assignee:
             links["assignee"] = {"href": "/api/v3/users/%d" % assignee}
+        if parent:
+            links["parent"] = {"href": "/api/v3/work_packages/%d" % parent}
         if links:
             payload["_links"] = links
         try:
@@ -287,7 +301,8 @@ class Tracker:
             raise Fail("PATCH #%d rejected HTTP %s: %s" % (wp["id"], code, data.get("message", data.get("raw", ""))))
         now = self.wp(wp["id"])  # tracker still down: the caller reports unavailable
         ok = all(text_of(now.get(k)) == texts.get(k, v) for k, v in fields.items()) and (not status or now["_links"]["status"]["title"].lower() == status.lower()) \
-            and (not assignee or (now["_links"].get("assignee") or {}).get("href") == "/api/v3/users/%d" % assignee)
+            and (not assignee or (now["_links"].get("assignee") or {}).get("href") == "/api/v3/users/%d" % assignee) \
+            and (not parent or (now["_links"].get("parent") or {}).get("href") == "/api/v3/work_packages/%d" % parent)
         if not ok and code is None:
             raise Fail("NOT APPLIED: tracker error on the update of #%d; read back shows no change, safe to retry: %s" % (wp["id"], line(now)), 5)
         if not ok:
@@ -675,6 +690,76 @@ def not_confirmed(now, key, state, problems, label):
     return failure
 
 
+def move_plan(t, a):
+    """Read the item and the new parent and decide, before any write: the item (for the lock), or the
+    text of a no-op. The grammar is read from both items' types; a Saga has no parent, so it is refused
+    without reading the parent."""
+    w = t.wp(a.id)
+    kind = w["_links"]["type"]["title"]
+    if kind == "Saga" or kind not in PARENT_OF:
+        raise Fail("Grammar: #%d is a %s; a Saga has no parent and cannot be moved%s" % (a.id, kind, "" if kind == "Saga" else ", and only an Epic or a Story can be"))
+    if a.parent == a.id:
+        raise Fail("Grammar: #%d cannot be its own parent" % a.id)
+    parent = t.wp(a.parent)
+    parent_kind = parent["_links"]["type"]["title"]
+    if parent_kind != PARENT_OF[kind]:
+        raise Fail("Grammar: a %s goes under a %s, but #%d is a %s" % (kind, PARENT_OF[kind], a.parent, parent_kind))
+    if href_id(w["_links"].get("parent")) == a.parent:
+        return w, "already under #%d, nothing changed: %s" % (a.parent, line(w))
+    status = w["_links"]["status"]["title"]
+    if status in HOLDS and not a.force:
+        raise Fail("REFUSED: #%d is [%s], an explicit hold. Wait for the answer/approval; --force only with explicit authorization." % (w["id"], status), 3)
+    return w, None
+
+
+def cmd_move(t, a, session):
+    w, done = move_plan(t, a)
+    if done:
+        return done
+    def send(item):
+        try:
+            return t.patch(item, parent=a.parent)
+        except Fail as error:
+            if error.code == 6:  # the update is not visible on read back: nothing was confirmed
+                error.output = "NOT confirmed: #%d" % a.id
+            raise
+    try:
+        now = send(w)
+    except Fail as conflict:
+        if conflict.code != 3 or not str(conflict).startswith("CONFLICT"):
+            raise
+        w, done = move_plan(t, a)  # changed under us: read again, check again, send once more
+        if done:
+            return done
+        now = send(w)  # a second conflict ends here, nothing overwritten
+    old = href_id(w["_links"].get("parent"))
+    key = text_of(w.get(SOURCE_KEY))
+    want = {"subject": w["subject"], "markdown": {}, "present": [], "type": w["_links"]["type"]["href"], "status": w["_links"]["status"]["href"],
+            "parent": "/api/v3/work_packages/%d" % a.parent}
+    now, problems = read_back_problems(t, a.id, key, want, "was moved")
+    if problems:
+        failure = Fail("UNCERTAIN: #%d move under #%d, but its read back does not match: %s. Not confirmed; no note was written. Inspect with `show %d`; a re-run is safe (it is a no-op once the parent is right)." % (
+            a.id, a.parent, "; ".join(problems), a.id), 6)
+        failure.output = "NOT confirmed: " + safe_line(now)
+        raise failure
+    result = "moved (read back): " + line(now).replace(" parent=#%d " % a.parent, " parent=#%d (was %s) " % (a.parent, "#%d" % old if old else "none"), 1)
+    note = "Moved from %s to %s by <%s>.%s" % (wp_url(old) if old else "no parent", wp_url(a.parent), session, " Reason: %s" % a.reason if a.reason else "")
+    try:
+        t.comment(a.id, note, session)
+    except (Fail, t.unavailable) as error:  # the second step: the item stays moved, the note is reported and kept
+        saved = " The tracker refused it, so nothing was sent: add it with `comment %d`." % a.id  # no token: a clean refusal, safe to post by hand
+        if getattr(error, "token", None) and getattr(error, "body", None):
+            try:
+                path, _ = save_pending("note", error.token, wp=a.id, session=session, text=note, body=error.body, **posted_fields(error))
+                saved = " Saved locally: %s (`flush` posts it unless it already landed)." % path
+            except LocalWriteFail as saving:  # a failing local save must not hide that the move is done
+                saved = " The local save also failed: %s." % saving
+        failure = Fail("MOVE DONE, NOTE NOT RECORDED: #%d is under #%d (read back). The note about the move failed (%s).%s" % (a.id, a.parent, error, saved), 6)
+        failure.output = result
+        raise failure from error
+    return result + "\nnote recorded on #%d (read back)" % a.id
+
+
 def cmd_create(t, a, session):
     # --epic is the parent id. Only the grammar's own shape is checked here, before any tracker request:
     # a Saga takes no parent; an Epic needs a Saga id and a Story an Epic id.
@@ -1008,6 +1093,8 @@ def build_parser():
     add("status", cmd_status, wp, (("state",), {}), (("--note",), {}), lock, force, help="explicit status change")
     add("complete", cmd_complete, wp, (("--evidence",), {"required": True}), lock, force, help="evidence comment, then Accepted")
     add("relate", cmd_relate, (("src",), {"type": int}), (("dst",), {"type": int}), (("--type",), {"default": "relates", "choices": RELATIONS}), help="link two items")
+    add("move", cmd_move, wp, (("--parent",), {"type": int, "required": True, "help": "the new parent id: a Saga id for an Epic, an Epic id for a Story"}), (("--reason",), {"help": "why, written into the note on the item"}),
+        (("--force",), {"action": "store_true", "help": "move an item that is in an explicit hold (explicit authorization only)"}), help="move an Epic or Story under a different parent")
     add("create", cmd_create, (("--epic",), {"type": int, "help": "the parent id: a Saga id for an Epic, an Epic id for a Story; not allowed for a Saga"}), (("--subject",), {"required": True}), (("--source-key",), {"required": True, "help": "stable key, e.g. followup:97:topic"}),
         (("--origin",), {"type": int, "help": "originating Story (relates link)"}), (("--type",), {"default": "Story", "choices": list(PARENT_OF)}), (("--description",), {}), (("--repos",), {}),
         (("--acceptance",), {}), (("--constraints",), {}), (("--confirm-new",), {"action": "store_true"}), help="search-first Saga, Epic or Story (default Story), filed Ungroomed")
@@ -1063,7 +1150,7 @@ def run(argv, tracker, unavailable):
         if args.fn is cmd_checkpoint_update and hasattr(down, "token"):
             print("TRACKER UNAVAILABLE: structured checkpoint queued locally; write is UNCONFIRMED and flush deduplicates by token.", file=sys.stderr)
             return 5
-        mutating = args.fn in (cmd_claim, cmd_comment, cmd_status, cmd_complete, cmd_create, cmd_relate)
+        mutating = args.fn in (cmd_claim, cmd_comment, cmd_status, cmd_complete, cmd_create, cmd_relate, cmd_move)
         if not mutating:
             print("TRACKER UNAVAILABLE: %s. The read failed; authorized bounded work can continue." % down, file=sys.stderr)
             return 5

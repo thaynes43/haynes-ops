@@ -269,6 +269,7 @@ opwork.py complete 97 --evidence "tests ..."     # evidence + Accepted when the 
 opwork.py create --epic 95 --origin 97 --source-key followup:97:topic --subject "..."   # a Story under Epic 95
 opwork.py create --type Epic --epic SAGA_ID --source-key K --subject "..."   # an Epic under a Saga
 opwork.py create --type Saga --source-key K --subject "..."                 # a Saga: no parent, no --epic
+opwork.py move 97 --parent 95 --reason "regrouped"   # an existing Epic under another Saga, a Story under another Epic
 opwork.py relate 130 97 --type relates
 opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local record, replay
 ```
@@ -298,6 +299,23 @@ opwork.py checkpoint 97 "state" | pending | flush  # tracker unreachable: local 
   re-run asks for, except the status, because a reused item may have moved on since.
   Provenance names the creating session, so a re-run checks only that it is present. The item is reused, and the origin relation added, only when the check passes; until
   then every re-run exits 6 and posts nothing. Several items with one key are listed as before.
+- **Move** (OP681, 2026-11-11): `move ID --parent NEW_PARENT_ID [--reason "text"] [--force]` changes
+  the parent of an existing Epic or Story and changes nothing else. It reads both items first and
+  applies the same grammar as `create`: an Epic goes only under a Saga and a Story only under an
+  Epic (exit 1, before any write); a Saga has no parent and cannot be moved. An item already under
+  that parent is a no-op (exit 0, nothing written). An item in an explicit hold (`Needs answer`,
+  `Needs approval`, `Paused`) is refused (exit 3) unless `--force`; ownership is not checked, since
+  regrouping is not a claim. The PATCH sends only the parent link, with `lockVersion`. A 409 is
+  not applied, so it alone is retried: the item is re-read, the grammar, no-op and hold checks run
+  again, and the PATCH goes out once more with the new lock; a second 409 fails (exit 3) and
+  overwrites nothing. The result is read back by id and checked exactly: the parent is the requested
+  one, and the type, status, subject, source key and project are unchanged. The output is
+  `moved (read back): #ID ... parent=#NEW (was #OLD) ...`; any difference or an unreadable result is
+  `NOT confirmed` (exit 6), with no note written. Only after a confirmed move is the attributed note
+  written on the item (the old and new parent as full links, the session and the reason). The note is
+  a second step: if it cannot be recorded the item stays moved and the command exits 6 with
+  `MOVE DONE, NOTE NOT RECORDED`, keeping the note locally for `flush` when it may have been sent. A
+  re-run is then a no-op, so it never moves or notes twice. An Epic's Stories stay under the Epic.
 - **Conflicts**: every write sends `lockVersion`; a stale one (409), another owner, or an
   explicit hold or pause (`Needs answer`, `Needs approval`, `Paused`) is re-read and refused (exit 3), never
   overwritten. `--force` is a takeover/override for an explicitly authorized case only.
