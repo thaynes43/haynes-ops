@@ -77,17 +77,23 @@
 # opwork's machine-readable guard refusal for the front door (OP632). No new env, mount or
 # template field. Sessions on an older image keep running until their own suspend and resume.
 # Rollback image:2.100.0@sha256:d22d60dbee6700107f1508a89cb490385b9c856da199c5220913334e859381f0.
-image: ghcr.io/thaynes43/dev-env:2.101.0@sha256:2f79534eede3b2a800d6355155ec9348007efa1ea6d40d0201753a4be9812467
+# v2.101.1 source a9f5d56e (release #1064). publish-agent.yml run 42946470860 built, smoke-tested,
+# signed and verified this digest. Carries the Codex reply fix (OP694: thread start and thread
+# status read the reply where Codex 0.160.1 puts it, so they can report responded) and
+# agent-run parent answer and parent wait (OP686). No new env, mount or template field.
+# Sessions on an older image keep running until their own suspend and resume.
+# Rollback image:2.101.0@sha256:2f79534eede3b2a800d6355155ec9348007efa1ea6d40d0201753a4be9812467.
+image: ghcr.io/thaynes43/dev-env:2.101.1@sha256:ad609fe0f9be5de71fbb9b35c7143304a3ae28df013f89836e2be925c61565ac
 
 # New-sessions-only rollout for THIS image (DESIGN-001 5.2, dev-env#925; Q-03 option B, a
 # per-rollout deviation recorded in the PR that sets it). While this equals `image`, the
-# operator marks no session Draining: new sessions and resumes use the 2.101.0 revision and
+# operator marks no session Draining: new sessions and resumes use the 2.101.1 revision and
 # running sessions keep their pods until their own suspend and resume. It is not part of the
 # revision. It MUST equal `image` exactly: the Renovate rule bumps only the `image:` line, so
 # the next image bump PR must update this line to the new image or delete it (deleting it
 # resumes idle drain), otherwise the templates are invalid and new sessions wait.
 rollout:
-  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.101.0@sha256:2f79534eede3b2a800d6355155ec9348007efa1ea6d40d0201753a4be9812467
+  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.101.1@sha256:ad609fe0f9be5de71fbb9b35c7143304a3ae28df013f89836e2be925c61565ac
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
