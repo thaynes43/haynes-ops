@@ -7,8 +7,9 @@
 # would leave an ops pod open to ingress once the platform tier stops selecting
 # it (DESIGN-064 6.1, F7). `ingress` below is the same empty rule
 # session-platform.yaml carries. Cilium reads `- {}` as "selects the pod,
-# allows no peer" (session-platform.yaml lines 6-8). kubectl exec and kubelet
-# probes do not cross the pod network.
+# allows no peer" (session-platform.yaml lines 6-8). `kubectl exec` and attach
+# go through the kubelet, not the pod network, and kubelet probes are always
+# admitted from the local host.
 #
 # DNS lists names. The platform tier's any-name rule (matchPattern: "*") would
 # be a way out of a pod with no open web, so this tier does not use it. The
