@@ -1,0 +1,142 @@
+{
+  "note": "PR 3915 (kubernetes monorepo v0.36.6, scripts/tests/dev-env-archive-guard) as the night-merge.mjs reads saw it on 2026-11-11, captured read-only for lane-merge-step-selftest.mjs. Main was 94 commits ahead of the head, but main had no commit to the two files after the head base; the merge step read it as ready.",
+  "captured_at": "2026-11-11T16:19:04.370Z",
+  "head": "a7174f4ef958dbfdaf15e8533beffe2c8dde2822",
+  "main_ahead_of_head": 94,
+  "view": {
+    "author": {
+      "login": "app/renovate"
+    },
+    "baseRefName": "main",
+    "changedFiles": 2,
+    "commits": [
+      {
+        "oid": "a7174f4ef958dbfdaf15e8533beffe2c8dde2822",
+        "committedDate": "2026-11-10T00:10:58Z",
+        "authors": [
+          {
+            "login": "renovate[bot]"
+          }
+        ]
+      }
+    ],
+    "files": [
+      {
+        "path": "scripts/tests/dev-env-archive-guard/go.mod"
+      },
+      {
+        "path": "scripts/tests/dev-env-archive-guard/go.sum"
+      }
+    ],
+    "headRefOid": "a7174f4ef958dbfdaf15e8533beffe2c8dde2822",
+    "isDraft": false,
+    "mergeStateStatus": "CLEAN",
+    "mergeable": "MERGEABLE",
+    "number": 3915,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Claude Code Review",
+        "name": "Claude Review (advisory)",
+        "status": "COMPLETED",
+        "conclusion": "SKIPPED",
+        "startedAt": "2026-11-10T00:11:04Z",
+        "completedAt": "2026-11-10T00:11:04Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Diff Scope",
+        "name": "Diff Scope - Success",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-10T00:11:07Z",
+        "completedAt": "2026-11-10T00:11:14Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Flux Local",
+        "name": "Flux Local - Filter",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-10T00:11:06Z",
+        "completedAt": "2026-11-10T00:11:10Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "dev-env archive guard source tests",
+        "name": "Archive Guard Source - Success",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-10T00:11:07Z",
+        "completedAt": "2026-11-10T00:18:44Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Flux Local",
+        "name": "Flux Local - external-dns annotation prefix",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-10T00:11:06Z",
+        "completedAt": "2026-11-10T00:11:11Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Flux Local",
+        "name": "Flux Local - Test (${{ matrix.cluster }})",
+        "status": "COMPLETED",
+        "conclusion": "SKIPPED",
+        "startedAt": "2026-11-10T00:11:10Z",
+        "completedAt": "2026-11-10T00:11:10Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Flux Local",
+        "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+        "status": "COMPLETED",
+        "conclusion": "SKIPPED",
+        "startedAt": "2026-11-10T00:11:10Z",
+        "completedAt": "2026-11-10T00:11:10Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Flux Local",
+        "name": "Flux Local - Portal OIDC guard",
+        "status": "COMPLETED",
+        "conclusion": "SKIPPED",
+        "startedAt": "2026-11-10T00:11:10Z",
+        "completedAt": "2026-11-10T00:11:10Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Flux Local",
+        "name": "Flux Local - Success",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-10T00:11:14Z",
+        "completedAt": "2026-11-10T00:11:16Z"
+      }
+    ]
+  },
+  "main_newest": {
+    "scripts/tests/dev-env-archive-guard/go.mod": [
+      {
+        "sha": "17fa8fd2c48f5f5296ebf050c671d72a9799f50c",
+        "at": "2026-10-23T05:08:55Z"
+      }
+    ],
+    "scripts/tests/dev-env-archive-guard/go.sum": [
+      {
+        "sha": "17fa8fd2c48f5f5296ebf050c671d72a9799f50c",
+        "at": "2026-10-23T05:08:55Z"
+      }
+    ]
+  },
+  "compare": {
+    "17fa8fd2c48f5f5296ebf050c671d72a9799f50c": {
+      "status": "behind",
+      "ahead_by": 0,
+      "behind_by": 421
+    }
+  }
+}

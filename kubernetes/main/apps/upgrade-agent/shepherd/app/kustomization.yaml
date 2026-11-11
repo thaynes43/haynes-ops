@@ -20,6 +20,8 @@ configMapGenerator:
       - resources/lane-classify.mjs
       - resources/upgrade-rules.json
       - resources/run-night.mjs
+      # upgrade-night (story 752): the merge step, the change lock and the hand-run CLI.
+      - resources/night-merge.mjs
 generatorOptions:
   disableNameSuffixHash: true
   labels:

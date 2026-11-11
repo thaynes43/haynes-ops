@@ -1106,11 +1106,14 @@
     },
     "change_lock": {
       "configmap": "upgrade-change-lock",
-      "status": "not-implemented-until-live-step",
-      "note": "Planned gate: nothing takes this lock yet, so the dry-run reports it as not-implemented and does not count it as a protection."
+      "status": "implemented (story 752); other actors honour it from story 551",
+      "lease_seconds": 600,
+      "post_merge_lease_seconds": 14400,
+      "min_lease_left_seconds": 240,
+      "note": "ConfigMap upgrade-agent/upgrade-change-lock. Free when absent or data.holder is empty; expired when data.expires_at has passed; otherwise held. Every tick run with --write-state takes it (create, or replace at the resourceVersion it read) before the merge step's reads and releases it before it ends. The lease (600s) is shorter than the 15-minute tick, so a crashed tick costs at most the next one. After a live merge it stays held, phase merged-awaiting-verification, for post_merge_lease_seconds (4h): verification is not built (story 553), so the lane merges at most once a night. The lane does not merge with less than min_lease_left_seconds of lease left. An unreadable lock, or a holder with no readable expires_at, fails closed."
     },
     "baseline_rule": "Blockers: a NotReady Kustomization that applies the target, is in its dependsOn chain, or targets its namespace; a NotReady HelmRelease in its namespace; a firing critical alert that belongs to the target (alert_scope: in its namespace and resolved to the target or its chain, unresolvable, or naming no workload), and for a cluster-wide target any critical alert with no namespace; Ceph HEALTH_ERR or unknown. Every other NotReady Flux object is reported as a warning, and every alert that did not block is listed with the reason.",
-    "pause": "A non-empty data.pause on ConfigMap upgrade-lane-state stops every tick before any GitHub read; the tick only logs that it is paused."
+    "pause": "A non-empty data.pause on ConfigMap upgrade-lane-state stops every tick before any GitHub read: no merge and no lock take. The merge step reads it again just before it takes the lock, so a pause set during a tick stops that tick's merge. Verification and reverts already owed for a merge the lane made carry on through a hook (stories 553, 753, 754; not built). suspend: true on the upgrade-night controller stops every tick, owed work included."
   },
   "cluster_wide_targets": [
     {
