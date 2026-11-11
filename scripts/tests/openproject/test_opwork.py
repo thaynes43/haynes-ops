@@ -1171,6 +1171,15 @@ class MoveTests(Base):
         self.assertEqual(self.fake.parent_changes, [(10, 8)])
         self.assertEqual(self.run_cli("move", "10", "--parent", "8")[1].startswith("already under #8"), True)  # a re-run does not move it again
 
+    def test_a_failing_local_save_of_the_note_does_not_hide_that_the_move_is_done(self):
+        self.fake.fail["POST /api/v3/work_packages/10/activities"] = "before"
+        with mock.patch.object(op, "save_pending", side_effect=op.LocalWriteFail("tok", "pending note could not be saved", OSError("disk"), 10)):
+            code, out, err = self.run_cli("move", "10", "--parent", "8")
+        self.assertEqual(code, 6, err)
+        self.assertIn("moved (read back): #10 Story [Ungroomed] parent=#8 (was #5)", out)
+        self.assertIn("MOVE DONE, NOTE NOT RECORDED", err)
+        self.assertIn("The local save also failed", err)
+
     def test_a_tracker_that_rejects_the_parent_change_is_reported_and_nothing_else_is_written(self):
         original = self.fake.handle
         self.fake.handle = lambda m, u, p: (403, {"message": "You are not authorized to access this resource."}) if m == "PATCH" else original(m, u, p)

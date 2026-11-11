@@ -749,8 +749,11 @@ def cmd_move(t, a, session):
     except (Fail, t.unavailable) as error:  # the second step: the item stays moved, the note is reported and kept
         saved = ""
         if getattr(error, "token", None) and getattr(error, "body", None):
-            path, _ = save_pending("note", error.token, wp=a.id, session=session, text=note, body=error.body, **posted_fields(error))
-            saved = " Saved locally: %s (`flush` posts it unless it already landed)." % path
+            try:
+                path, _ = save_pending("note", error.token, wp=a.id, session=session, text=note, body=error.body, **posted_fields(error))
+                saved = " Saved locally: %s (`flush` posts it unless it already landed)." % path
+            except LocalWriteFail as saving:  # a failing local save must not hide that the move is done
+                saved = " The local save also failed: %s." % saving
         failure = Fail("MOVE DONE, NOTE NOT RECORDED: #%d is under #%d (read back). The note about the move failed (%s).%s Add it with `comment %d`." % (a.id, a.parent, error, saved, a.id), 6)
         failure.output = result
         raise failure from error
