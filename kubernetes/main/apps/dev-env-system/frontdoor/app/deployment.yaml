@@ -95,9 +95,16 @@ spec:
           # such a session. They call the operator's parent-note routes as this
           # pod's ServiceAccount; no new Kubernetes right, Secret or mount.
           # Publish run 42952959258, job Publish (frontdoor), step Verify the signature:
-          # this digest, keyless, by publish.yml on main. Previous image, and the
-          # rollback target: sha-50d13f0@sha256:97dfd6818e20ce92f4c4bcb8094bf8ba90bbde87cd3b3698e5fd1215d5eef9fb
-          image: ghcr.io/thaynes43/dev-env-frontdoor:sha-7cc86a8@sha256:61cd9b2feba29ca8a97015b70884606d8158ac36d0e61fd6f9b0c2978c011d55
+          # this digest, keyless, by publish.yml on main.
+          # dev-env 6bc602c (PR #1071, OP706): the brief coordinator_start sends
+          # no longer ends "Never wait on Meatball or ask Meatball anything". A
+          # coordinator finishes alone where it can and, when only its parent can
+          # answer, leaves one note with agent-run parent tell. Text only: no tool,
+          # route, limit or authority change. Publish run 42968077790, job Publish
+          # (frontdoor), step Verify the signature: this digest, keyless, by
+          # publish.yml on main. Previous image, and the rollback target:
+          # sha-7cc86a8@sha256:61cd9b2feba29ca8a97015b70884606d8158ac36d0e61fd6f9b0c2978c011d55
+          image: ghcr.io/thaynes43/dev-env-frontdoor:sha-6bc602c@sha256:c55e85e47503b05564b392fbac6d95896ede831dafc612ee68042702a267c83d
           imagePullPolicy: IfNotPresent
           args:
             - --listen=:8080
