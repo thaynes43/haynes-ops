@@ -1,0 +1,896 @@
+{
+ "captured": "2026-11-11, 15:17Z to 15:36Z (alerts: Prometheus history for 2026-11-10T06:30Z)",
+ "source": "Read-only. alerts_20261110T0630Z: Prometheus ALERTS{alertstate=\"firing\",severity=\"critical\"} at 2026-11-10T06:30:00Z (the first tick inside the merge window), through the Grafana MCP server. kustomizations, helmreleases and namespaces: kubectl get on 2026-11-11, trimmed to the fields the tick reads; the recyclarr Job recyclarr-29903670 that the alert names was still kept by its failed-jobs history, and the exporter pod in PVEVMNotOnboot was still running. prs: gh pr view at their last head (#4770 at 3987a9e8, the head the 06:45Z tick saw; #4334 at its rebased head 2417f4fa). main_commits_20261110T0010Z: gh api GET repos/thaynes43/haynes-ops/commits?sha=main&path=<file>&since=2026-10-26T00:00:00Z&until=2026-11-10T00:10:00Z, the commits that existed at 2026-11-10T00:10Z, after #4372 merged and before the rebased #4334 merged.",
+ "alerts_20261110T0630Z": [
+  {
+   "alertname": "DevEnvRescueFailed",
+   "alertstate": "firing",
+   "session": "dev-env-1020-002245",
+   "severity": "critical"
+  },
+  {
+   "alertname": "DevEnvRescueFailed",
+   "alertstate": "firing",
+   "session": "dev-env-1029-132039",
+   "severity": "critical"
+  },
+  {
+   "alertname": "FluxReconciliationFailure",
+   "alertstate": "firing",
+   "customresource_kind": "Kustomization",
+   "exported_namespace": "dev-env-system",
+   "name": "dev-env-h7-metadata-audit",
+   "severity": "critical"
+  },
+  {
+   "alertname": "MediaAutomationJobFailed",
+   "alertstate": "firing",
+   "condition": "true",
+   "container": "kube-state-metrics",
+   "endpoint": "http",
+   "instance": "10.42.5.39:8080",
+   "job": "kube-state-metrics",
+   "job_name": "recyclarr-29903670",
+   "kubernetes_node": "talosw03",
+   "namespace": "media",
+   "pod": "kube-state-metrics-6dd4fbf594-cwtvg",
+   "service": "kube-state-metrics",
+   "severity": "critical"
+  },
+  {
+   "alertname": "PVEVMNotOnboot",
+   "alertstate": "firing",
+   "endpoint": "metrics",
+   "id": "qemu/103",
+   "instance": "10.42.3.65:9221",
+   "job": "prometheus-pve-exporter",
+   "name": "talosw01",
+   "namespace": "observability",
+   "node": "HaynesIntelligence",
+   "pod": "prometheus-pve-exporter-5b97bbfc48-cslqf",
+   "scope": "host",
+   "service": "prometheus-pve-exporter",
+   "severity": "critical",
+   "template": "0",
+   "type": "qemu"
+  }
+ ],
+ "kustomizations": [
+  {
+   "metadata": {
+    "name": "arc-demo-console",
+    "namespace": "arc-runners"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/arc-runners/demo-console/app",
+    "targetNamespace": "arc-runners",
+    "dependsOn": [
+     {
+      "name": "arc-runner-infrastructure",
+      "namespace": "arc-runners"
+     },
+     {
+      "name": "arc-controller",
+      "namespace": "arc-systems"
+     },
+     {
+      "name": "arc-github-app",
+      "namespace": "arc-runners"
+     },
+     {
+      "name": "kyverno-policies",
+      "namespace": "kyverno"
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "arc-haynes-swarm",
+    "namespace": "arc-runners"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/arc-runners/haynes-swarm/app",
+    "targetNamespace": "arc-runners",
+    "dependsOn": [
+     {
+      "name": "arc-runner-infrastructure",
+      "namespace": "arc-runners"
+     },
+     {
+      "name": "arc-controller",
+      "namespace": "arc-systems"
+     },
+     {
+      "name": "arc-github-app",
+      "namespace": "arc-runners"
+     },
+     {
+      "name": "kyverno-policies",
+      "namespace": "kyverno"
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "arc-runner-infrastructure",
+    "namespace": "arc-runners"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/arc-runners/infrastructure/app",
+    "targetNamespace": "arc-runners"
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "arc-sigmaphiomicron-com",
+    "namespace": "arc-runners"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/arc-runners/sigmaphiomicron-com/app",
+    "targetNamespace": "arc-runners",
+    "dependsOn": [
+     {
+      "name": "arc-runner-infrastructure",
+      "namespace": "arc-runners"
+     },
+     {
+      "name": "arc-controller",
+      "namespace": "arc-systems"
+     },
+     {
+      "name": "arc-github-app",
+      "namespace": "arc-runners"
+     },
+     {
+      "name": "kyverno-policies",
+      "namespace": "kyverno"
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "arc-sigo-alumni",
+    "namespace": "arc-runners"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/arc-runners/sigo-alumni/app",
+    "targetNamespace": "arc-runners",
+    "dependsOn": [
+     {
+      "name": "arc-runner-infrastructure",
+      "namespace": "arc-runners"
+     },
+     {
+      "name": "arc-controller",
+      "namespace": "arc-systems"
+     },
+     {
+      "name": "arc-github-app",
+      "namespace": "arc-runners"
+     },
+     {
+      "name": "kyverno-policies",
+      "namespace": "kyverno"
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "arc-sigoalumni-org",
+    "namespace": "arc-runners"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/arc-runners/sigoalumni-org/app",
+    "targetNamespace": "arc-runners",
+    "dependsOn": [
+     {
+      "name": "arc-runner-infrastructure",
+      "namespace": "arc-runners"
+     },
+     {
+      "name": "arc-controller",
+      "namespace": "arc-systems"
+     },
+     {
+      "name": "arc-github-app",
+      "namespace": "arc-runners"
+     },
+     {
+      "name": "kyverno-policies",
+      "namespace": "kyverno"
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "gasha01-rbd",
+    "namespace": "ceph-csi"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/storage/ceph-csi/gasha01-rbd/app",
+    "targetNamespace": "ceph-csi",
+    "dependsOn": [
+     {
+      "name": "external-secrets-stores",
+      "namespace": "external-secrets"
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "dev-env-h7-metadata-audit",
+    "namespace": "dev-env-system"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/dev-env-system/h7-metadata-audit/app",
+    "dependsOn": [
+     {
+      "name": "dev-env-h7-metadata-reader"
+     },
+     {
+      "name": "dev-env-shelf"
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "False"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "node-out-of-service",
+    "namespace": "kube-system"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/kube-system/node-out-of-service/app",
+    "targetNamespace": "kube-system"
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "plex-hw-canary",
+    "namespace": "media"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/media/plex-hw-canary/app",
+    "targetNamespace": "media",
+    "dependsOn": [
+     {
+      "name": "external-secrets-stores",
+      "namespace": "external-secrets"
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "recyclarr",
+    "namespace": "media"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/media/recyclarr/app",
+    "targetNamespace": "media",
+    "dependsOn": [
+     {
+      "name": "radarr",
+      "namespace": "media"
+     },
+     {
+      "name": "sonarr",
+      "namespace": "media"
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "kube-prometheus-stack",
+    "namespace": "observability"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/observability/kube-prometheus-stack/app",
+    "targetNamespace": "observability",
+    "dependsOn": [
+     {
+      "name": "external-secrets-stores",
+      "namespace": "external-secrets"
+     },
+     {
+      "name": "openebs",
+      "namespace": "openebs-system"
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "prometheus-pve-exporter",
+    "namespace": "observability"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/observability/prometheus-pve-exporter/app",
+    "targetNamespace": "observability",
+    "dependsOn": [
+     {
+      "name": "external-secrets-stores",
+      "namespace": "external-secrets"
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  }
+ ],
+ "helmreleases": [
+  {
+   "metadata": {
+    "name": "recyclarr",
+    "namespace": "media",
+    "labels": {
+     "app.kubernetes.io/name": "recyclarr",
+     "kustomize.toolkit.fluxcd.io/name": "recyclarr",
+     "kustomize.toolkit.fluxcd.io/namespace": "media"
+    }
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "kube-prometheus-stack",
+    "namespace": "observability",
+    "labels": {
+     "app.kubernetes.io/name": "kube-prometheus-stack",
+     "kustomize.toolkit.fluxcd.io/name": "kube-prometheus-stack",
+     "kustomize.toolkit.fluxcd.io/namespace": "observability"
+    }
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "prometheus-pve-exporter",
+    "namespace": "observability",
+    "labels": {
+     "app.kubernetes.io/name": "prometheus-pve-exporter",
+     "kustomize.toolkit.fluxcd.io/name": "prometheus-pve-exporter",
+     "kustomize.toolkit.fluxcd.io/namespace": "observability"
+    }
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
+  }
+ ],
+ "namespaces": {
+  "media": {
+   "cronjobs": [
+    {
+     "metadata": {
+      "name": "plex-hw-canary",
+      "namespace": "media",
+      "labels": {
+       "app.kubernetes.io/name": "plex-hw-canary",
+       "kustomize.toolkit.fluxcd.io/name": "plex-hw-canary",
+       "kustomize.toolkit.fluxcd.io/namespace": "media"
+      }
+     }
+    },
+    {
+     "metadata": {
+      "name": "recyclarr",
+      "namespace": "media",
+      "labels": {
+       "app.kubernetes.io/controller": "recyclarr",
+       "app.kubernetes.io/instance": "recyclarr",
+       "app.kubernetes.io/managed-by": "Helm",
+       "app.kubernetes.io/name": "recyclarr",
+       "helm.sh/chart": "app-template-5.3.0_0e13b1456564",
+       "helm.toolkit.fluxcd.io/name": "recyclarr",
+       "helm.toolkit.fluxcd.io/namespace": "media"
+      }
+     }
+    }
+   ],
+   "jobs": [
+    {
+     "metadata": {
+      "name": "recyclarr-29903670",
+      "namespace": "media",
+      "labels": {
+       "app.kubernetes.io/controller": "recyclarr",
+       "app.kubernetes.io/instance": "recyclarr",
+       "app.kubernetes.io/name": "recyclarr",
+       "batch.kubernetes.io/controller-uid": "85bc13e6-0a73-416f-90de-6da6e5437333",
+       "batch.kubernetes.io/job-name": "recyclarr-29903670",
+       "controller-uid": "85bc13e6-0a73-416f-90de-6da6e5437333",
+       "job-name": "recyclarr-29903670"
+      },
+      "ownerReferences": [
+       {
+        "kind": "CronJob",
+        "name": "recyclarr"
+       }
+      ]
+     }
+    }
+   ],
+   "pods": [
+    {
+     "metadata": {
+      "name": "recyclarr-29903670-7jxcv",
+      "namespace": "media",
+      "labels": {
+       "app.kubernetes.io/controller": "recyclarr",
+       "app.kubernetes.io/instance": "recyclarr",
+       "app.kubernetes.io/name": "recyclarr",
+       "batch.kubernetes.io/controller-uid": "85bc13e6-0a73-416f-90de-6da6e5437333",
+       "batch.kubernetes.io/job-name": "recyclarr-29903670",
+       "controller-uid": "85bc13e6-0a73-416f-90de-6da6e5437333",
+       "job-name": "recyclarr-29903670",
+       "topology.kubernetes.io/region": "main",
+       "topology.kubernetes.io/zone": "w"
+      },
+      "ownerReferences": [
+       {
+        "kind": "Job",
+        "name": "recyclarr-29903670"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "observability": {
+   "cronjobs": [],
+   "jobs": [],
+   "pods": [
+    {
+     "metadata": {
+      "name": "kube-state-metrics-6dd4fbf594-cwtvg",
+      "namespace": "observability",
+      "labels": {
+       "app.kubernetes.io/component": "metrics",
+       "app.kubernetes.io/instance": "kube-prometheus-stack",
+       "app.kubernetes.io/managed-by": "Helm",
+       "app.kubernetes.io/name": "kube-state-metrics",
+       "app.kubernetes.io/part-of": "kube-state-metrics",
+       "app.kubernetes.io/version": "2.20.0",
+       "pod-template-hash": "6dd4fbf594",
+       "release": "kube-prometheus-stack",
+       "topology.kubernetes.io/region": "main",
+       "topology.kubernetes.io/zone": "w"
+      },
+      "ownerReferences": [
+       {
+        "kind": "ReplicaSet",
+        "name": "kube-state-metrics-6dd4fbf594"
+       }
+      ]
+     }
+    },
+    {
+     "metadata": {
+      "name": "prometheus-pve-exporter-5b97bbfc48-cslqf",
+      "namespace": "observability",
+      "labels": {
+       "app.kubernetes.io/controller": "prometheus-pve-exporter",
+       "app.kubernetes.io/instance": "prometheus-pve-exporter",
+       "app.kubernetes.io/name": "prometheus-pve-exporter",
+       "pod-template-hash": "5b97bbfc48",
+       "topology.kubernetes.io/region": "main",
+       "topology.kubernetes.io/zone": "w"
+      },
+      "ownerReferences": [
+       {
+        "kind": "ReplicaSet",
+        "name": "prometheus-pve-exporter-5b97bbfc48"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "kube-system": {
+   "cronjobs": [
+    {
+     "metadata": {
+      "name": "node-out-of-service",
+      "namespace": "kube-system",
+      "labels": {
+       "app.kubernetes.io/name": "node-out-of-service",
+       "kustomize.toolkit.fluxcd.io/name": "node-out-of-service",
+       "kustomize.toolkit.fluxcd.io/namespace": "kube-system"
+      }
+     }
+    }
+   ],
+   "jobs": [],
+   "pods": []
+  }
+ },
+ "prs": {
+  "4334": {
+   "number": 4334,
+   "head_sha": "2417f4fae608d377fb1f96eefa6cbb80c584c7e5",
+   "title": "chore(container): update image python to 9aaa474",
+   "branch": "renovate/python-3.14-slim",
+   "author": "app/renovate",
+   "is_draft": false,
+   "labels": [
+    "renovate/container",
+    "disposition:manual-only",
+    "type/digest"
+   ],
+   "files": [
+    "scripts/book-copy-writer/Dockerfile",
+    "scripts/comfyui/Dockerfile"
+   ],
+   "commits": [
+    {
+     "sha": "2417f4fae608d377fb1f96eefa6cbb80c584c7e5",
+     "authors": [
+      "renovate[bot]"
+     ]
+    }
+   ],
+   "head_committed_at": "2026-11-10T00:06:49Z",
+   "packages": [
+    {
+     "name": "python",
+     "update": "digest",
+     "from": "35caba8",
+     "to": "9aaa474"
+    }
+   ],
+   "checks": [
+    {
+     "workflow": "Claude Code Review",
+     "name": "Claude Review (advisory)",
+     "status": "COMPLETED",
+     "conclusion": "SKIPPED",
+     "started_at": "2026-11-10T00:06:55Z",
+     "completed_at": "2026-11-10T00:06:54Z"
+    },
+    {
+     "workflow": "Book Copy Writer",
+     "name": "Book Copy Writer - Success",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T00:06:57Z",
+     "completed_at": "2026-11-10T00:07:54Z"
+    },
+    {
+     "workflow": "Build and Push ComfyUI Image",
+     "name": "build-and-push-comfyui",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T00:06:57Z",
+     "completed_at": "2026-11-10T00:13:35Z"
+    },
+    {
+     "workflow": "Diff Scope",
+     "name": "Diff Scope - Success",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T00:06:57Z",
+     "completed_at": "2026-11-10T00:07:02Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - Filter",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T00:06:57Z",
+     "completed_at": "2026-11-10T00:07:04Z"
+    },
+    {
+     "workflow": "Book Copy Writer",
+     "name": "Publish validated copy writer",
+     "status": "COMPLETED",
+     "conclusion": "SKIPPED",
+     "started_at": "2026-11-10T00:07:55Z",
+     "completed_at": "2026-11-10T00:07:54Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - external-dns annotation prefix",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T00:06:57Z",
+     "completed_at": "2026-11-10T00:07:01Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - Test (${{ matrix.cluster }})",
+     "status": "COMPLETED",
+     "conclusion": "SKIPPED",
+     "started_at": "2026-11-10T00:07:04Z",
+     "completed_at": "2026-11-10T00:07:04Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+     "status": "COMPLETED",
+     "conclusion": "SKIPPED",
+     "started_at": "2026-11-10T00:07:04Z",
+     "completed_at": "2026-11-10T00:07:04Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - Portal OIDC guard",
+     "status": "COMPLETED",
+     "conclusion": "SKIPPED",
+     "started_at": "2026-11-10T00:07:04Z",
+     "completed_at": "2026-11-10T00:07:04Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - Success",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T00:07:08Z",
+     "completed_at": "2026-11-10T00:07:11Z"
+    }
+   ],
+   "vet_markers": []
+  },
+  "4770": {
+   "number": 4770,
+   "head_sha": "3987a9e87b2ab4f0dd1075c4ab9bcdd7b26d5d8f",
+   "title": "fix(container): update image ghcr.io/thaynes43/actions-runner to v0.1.2",
+   "branch": "renovate/ghcr.io-thaynes43-actions-runner-0.x",
+   "author": "app/renovate",
+   "is_draft": false,
+   "labels": [
+    "renovate/container",
+    "type/patch"
+   ],
+   "files": [
+    "kubernetes/main/apps/arc-runners/sigo-alumni/app/helmrelease.yaml",
+    "kubernetes/shared/components/arc/dind/helmrelease.yaml"
+   ],
+   "commits": [
+    {
+     "sha": "3987a9e87b2ab4f0dd1075c4ab9bcdd7b26d5d8f",
+     "authors": [
+      "renovate[bot]"
+     ]
+    }
+   ],
+   "head_committed_at": "2026-11-10T06:42:31Z",
+   "packages": [
+    {
+     "name": "ghcr.io/thaynes43/actions-runner",
+     "update": "patch",
+     "from": "0.1.1",
+     "to": "0.1.2"
+    }
+   ],
+   "checks": [
+    {
+     "workflow": "Claude Code Review",
+     "name": "Claude Review (advisory)",
+     "status": "COMPLETED",
+     "conclusion": "SKIPPED",
+     "started_at": "2026-11-10T06:42:40Z",
+     "completed_at": "2026-11-10T06:42:39Z"
+    },
+    {
+     "workflow": "Diff Scope",
+     "name": "Diff Scope - Success",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T06:42:42Z",
+     "completed_at": "2026-11-10T06:42:47Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - Filter",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T06:42:41Z",
+     "completed_at": "2026-11-10T06:42:45Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - external-dns annotation prefix",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T06:42:41Z",
+     "completed_at": "2026-11-10T06:42:46Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - Test (main)",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T06:42:47Z",
+     "completed_at": "2026-11-10T06:44:41Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - Diff (main/helmrelease)",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T06:42:47Z",
+     "completed_at": "2026-11-10T06:43:40Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - Diff (main/kustomization)",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T06:42:48Z",
+     "completed_at": "2026-11-10T06:43:52Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - Portal OIDC guard",
+     "status": "COMPLETED",
+     "conclusion": "SKIPPED",
+     "started_at": "2026-11-10T06:42:45Z",
+     "completed_at": "2026-11-10T06:42:45Z"
+    },
+    {
+     "workflow": "Flux Local",
+     "name": "Flux Local - Success",
+     "status": "COMPLETED",
+     "conclusion": "SUCCESS",
+     "started_at": "2026-11-10T06:44:44Z",
+     "completed_at": "2026-11-10T06:44:47Z"
+    }
+   ],
+   "vet_markers": []
+  }
+ },
+ "pr4334_old_head": {
+  "sha": "81c84f1b836b4e713e4e6bce534116b4bb674523",
+  "committed_at": "2026-11-08T04:27:45Z",
+  "note": "the head in lane-queue-20261109.json; its checks ran 2026-11-08T04:27Z to 04:34Z"
+ },
+ "main_commits_20261110T0010Z": {
+  "scripts/book-copy-writer/Dockerfile": [
+   {
+    "sha": "7174205053f22753c3c35a13e98a3cd0973775ee",
+    "at": "2026-10-26T20:00:03Z",
+    "note": "#4289, before the old head"
+   }
+  ],
+  "scripts/comfyui/Dockerfile": [
+   {
+    "sha": "a5ccd7c24fc2c8f33164b346df1c8b37cdd6b8e7",
+    "at": "2026-11-10T00:00:50Z",
+    "note": "#4372 pytest 9.2.0, after the old head's checks"
+   },
+   {
+    "sha": "7174205053f22753c3c35a13e98a3cd0973775ee",
+    "at": "2026-10-26T20:00:03Z",
+    "note": "#4289, before the old head"
+   }
+  ]
+ }
+}

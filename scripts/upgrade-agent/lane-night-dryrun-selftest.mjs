@@ -35,6 +35,8 @@ const N = await import(join(RES, 'run-night.mjs'));
 const fx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-queue-20261109.json'), 'utf8'));
 const bk = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-backup-sources-20261110.json'), 'utf8'));
 const rebase = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-rebase-pairs-20261110.json'), 'utf8'));
+const gx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-gates-20261110.json'), 'utf8'));
+const rules = L.loadRules(join(RES, 'upgrade-rules.json'));
 const SSA = ['apply', '--server-side', '--field-manager=upgrade-night', '--force-conflicts', '-f', '-'];
 
 let fails = 0, passes = 0;
@@ -177,6 +179,62 @@ ok(threw, 'runReadOnly throws before running a refused command');
   ok(N.inWindow(T('2026-11-10T09:46:00Z'), 'America/New_York', '01:30', '04:45').open === false, 'window shut at 04:46 New York');
 }
 
+// ── 3b. R5 (OP550): critical alerts scoped to the target's workloads ──────────────
+// The five critical alerts firing at 2026-11-10T06:30Z and the objects they name, read
+// back live (fixtures/lane-gates-20261110.json). On that night the namespace rule held
+// #4477 (plex-hw-canary) back all night on recyclarr's failed Job, and would have held
+// #4710 (kube-prometheus-stack) back on a Proxmox VM's onboot flag.
+{
+  const AS = rules.alert_scope;
+  const K = { items: gx.kustomizations }, HR = { items: gx.helmreleases };
+  const facts = (over = {}) => ns => ({ pods: { items: [] }, cronjobs: { items: [] }, jobs: { items: [] }, ...(gx.namespaces[ns] ? Object.fromEntries(Object.entries(gx.namespaces[ns]).map(([k, v]) => [k, { items: v }])) : {}), ...(over[ns] || {}) });
+  const target = t => { const mine = N.kustomizationsFor(t, K); return N.fluxScope(mine, K, HR); };
+  const gate = (alerts, t, cw = [], f = facts()) => N.alertGate(alerts, target(t), cw, f, K, HR, AS);
+  const A = gx.alerts_20261110T0630Z;
+  const media = A.find(a => a.alertname === 'MediaAutomationJobFailed'), pve = A.find(a => a.alertname === 'PVEVMNotOnboot');
+
+  // #4477: kubernetes/main/apps/kube-system/node-out-of-service and media/plex-hw-canary
+  const s77 = N.fluxScope([...N.kustomizationsFor('kubernetes/main/apps/kube-system/node-out-of-service', K), ...N.kustomizationsFor('kubernetes/main/apps/media/plex-hw-canary', K)], K, HR);
+  const g77 = N.alertGate(A, s77, [], facts(), K, HR, AS);
+  ok(g77.blockers.length === 0, "#4477 is not blocked by recyclarr's MediaAutomationJobFailed (2026-11-10T06:30Z alerts)", g77.blockers.join(' | '));
+  ok(g77.unrelated.some(u => /MediaAutomationJobFailed \(job_name=recyclarr-29903670\) belongs to media\/recyclarr/.test(u)), 'the recyclarr alert is traced through its Job and HelmRelease to media/recyclarr', JSON.stringify(g77.unrelated));
+  ok(g77.cluster.filter(c => /DevEnvRescueFailed/.test(c)).length === 2, 'the two DevEnvRescueFailed alerts (no namespace) are listed, not blocking, for a leaf target', JSON.stringify(g77.cluster));
+  // #4710: kube-prometheus-stack in observability
+  const g10 = gate(A, 'kubernetes/main/apps/observability/kube-prometheus-stack');
+  ok(g10.blockers.length === 0, '#4710 (kube-prometheus-stack) is not blocked by PVEVMNotOnboot', g10.blockers.join(' | '));
+  ok(g10.unrelated.some(u => /PVEVMNotOnboot \(pod=prometheus-pve-exporter-[^)]+\) belongs to observability\/prometheus-pve-exporter/.test(u)), 'PVEVMNotOnboot is traced to the exporter that raised it', JSON.stringify(g10.unrelated));
+  // the alert's own app is still blocked by it
+  ok(gate([pve], 'kubernetes/main/apps/observability/prometheus-pve-exporter').blockers.some(b => /PVEVMNotOnboot .* belongs to observability\/prometheus-pve-exporter, the target/.test(b)), "an alert blocks the app it belongs to (the exporter's own update)");
+  ok(gate([media], 'kubernetes/main/apps/media/recyclarr').blockers.length === 1, "recyclarr's failed Job blocks recyclarr's own update");
+  // fail closed: every case the lane cannot tell
+  const noJob = { ...media, job_name: 'gone-42' };
+  ok(gate([noJob], 'kubernetes/main/apps/media/plex-hw-canary').blockers.some(b => /job_name=gone-42\) cannot be traced/.test(b)), 'fail closed: a job_name with no Job, pod or CronJob blocks');
+  ok(gate([media], 'kubernetes/main/apps/media/plex-hw-canary', [], facts({ media: { jobs: null } })).blockers.some(b => /cannot be traced/.test(b)), 'fail closed: Jobs unreadable -> the job_name alert blocks');
+  const gcJob = { ...media, job_name: 'recyclarr-29999999' };
+  ok(gate([gcJob], 'kubernetes/main/apps/media/plex-hw-canary').blockers.length === 0, 'a Job already removed by its history limit is traced through its CronJob name');
+  ok(gate([{ alertname: 'X', namespace: 'media', severity: 'critical' }], 'kubernetes/main/apps/media/plex-hw-canary').blockers.some(b => /X names no workload \(namespace fallback\)/.test(b)), 'fail closed: an alert naming no workload blocks every target in its namespace');
+  const own = { alertname: 'Y', namespace: 'media', cronjob: 'plex-hw-canary', job: 'kube-state-metrics', pod: 'kube-state-metrics-6dd4fbf594-cwtvg' };
+  ok(gate([own], 'kubernetes/main/apps/media/plex-hw-canary').blockers.some(b => /belongs to media\/plex-hw-canary, the target/.test(b)), "an alert on the target's own CronJob blocks it");
+  ok(gate([{ alertname: 'Z', namespace: 'media', pod: 'nope-0' }], 'kubernetes/main/apps/media/plex-hw-canary').blockers.some(b => /pod=nope-0\) cannot be traced/.test(b)), 'fail closed: a pod that is not there blocks');
+  const ksm = { alertname: 'KsmOnly', namespace: 'observability', job: 'kube-state-metrics', pod: 'kube-state-metrics-6dd4fbf594-cwtvg' };
+  ok(gate([ksm], 'kubernetes/main/apps/observability/prometheus-pve-exporter').blockers.some(b => /KsmOnly names no workload/.test(b)), "fail closed: kube-state-metrics' own pod label is the scraper, not a workload (namespace fallback)");
+  ok(gate([{ ...ksm, persistentvolumeclaim: 'storage-loki-0' }], 'kubernetes/main/apps/observability/prometheus-pve-exporter').blockers.some(b => /persistentvolumeclaim=storage-loki-0\) cannot be traced/.test(b)), 'fail closed: a claim no running pod mounts blocks');
+  ok(gate([{ alertname: 'D', namespace: 'observability', deployment: 'prometheus-pve-exporter' }], 'kubernetes/main/apps/observability/kube-prometheus-stack').unrelated.some(u => /deployment=prometheus-pve-exporter\) belongs to observability\/prometheus-pve-exporter/.test(u)), 'a deployment label is resolved through its ReplicaSet-owned pods');
+  // Flux alerts carry exported_namespace and the object, not namespace
+  const fx1 = { alertname: 'FluxReconciliationFailure', customresource_kind: 'Kustomization', exported_namespace: 'media', name: 'plex-hw-canary' };
+  ok(gate([fx1], 'kubernetes/main/apps/media/plex-hw-canary').blockers.some(b => /Kustomization media\/plex-hw-canary\) belongs to media\/plex-hw-canary/.test(b)), "a Flux failure of the target's own Kustomization blocks it");
+  ok(gate([{ ...fx1, name: 'recyclarr' }], 'kubernetes/main/apps/media/plex-hw-canary').blockers.length === 0, "a Flux failure of another Kustomization in the namespace does not");
+  ok(gate([{ ...fx1, customresource_kind: 'OCIRepository', name: 'app-template' }], 'kubernetes/main/apps/media/plex-hw-canary').blockers.some(b => /names no workload/.test(b)), 'fail closed: a failing Flux source in the namespace blocks every target there');
+  ok(gate([{ ...fx1, name: 'no-such-ks' }], 'kubernetes/main/apps/media/plex-hw-canary').blockers.some(b => /cannot be traced/.test(b)), 'fail closed: a Flux alert for a Kustomization the tick cannot see blocks');
+  // a dependency's alert blocks; the 06:30Z H7 Flux alert reaches no target outside dev-env-system
+  const Kd = { items: gx.kustomizations.map(k => k.metadata.name === 'plex-hw-canary' ? { ...k, spec: { ...k.spec, dependsOn: [{ name: 'recyclarr', namespace: 'media' }] } } : k) };
+  const sd = N.fluxScope(N.kustomizationsFor('kubernetes/main/apps/media/plex-hw-canary', Kd), Kd, HR);
+  ok(N.alertGate([media], sd, [], facts(), Kd, HR, AS).blockers.some(b => /media\/recyclarr, the target or its dependsOn chain/.test(b)), "an alert in the target's dependsOn chain blocks");
+  // R5 decision: an alert with no namespace label blocks a cluster-wide target only
+  const g07 = gate(A, 'kubernetes/main/apps/storage/ceph-csi/gasha01-rbd', ['csi']);
+  ok(g07.blockers.filter(b => /DevEnvRescueFailed has no namespace label and the target is cluster-wide \(csi\)/.test(b)).length === 2 && !g07.blockers.some(b => /FluxReconciliationFailure/.test(b)), 'cluster-wide target (ceph-csi): each alert with no namespace label blocks; the H7 Flux alert (exported_namespace dev-env-system) does not', g07.blockers.join(' | '));
+}
+
 // ── 4. the real tick against recording stubs ────────────────────────────────
 const NOW = '2026-11-02T07:00:00Z'; // 02:00 New York, inside the merge window
 const tmp = mkdtempSync(join(tmpdir(), 'lane-night-'));
@@ -190,8 +248,8 @@ try {
   const toGh = f => ({
     number: f.number, headRefOid: f.head_sha, headRefName: f.branch, title: f.title, author: { login: f.author }, isDraft: f.is_draft,
     labels: f.labels.map(name => ({ name })), files: f.files.map(path => ({ path })), changedFiles: f.files.length,
-    commits: f.commits.map(c => ({ oid: c.sha, authors: c.authors.map(login => ({ login })) })),
-    statusCheckRollup: f.checks.map(c => ({ __typename: 'CheckRun', workflowName: c.workflow, name: c.name, status: c.status, conclusion: c.conclusion, completedAt: c.completed_at })),
+    commits: f.commits.map(c => ({ oid: c.sha, authors: c.authors.map(login => ({ login })), ...(c.sha === f.head_sha && f.head_committed_at ? { committedDate: f.head_committed_at } : {}) })),
+    statusCheckRollup: f.checks.map(c => ({ __typename: 'CheckRun', workflowName: c.workflow, name: c.name, status: c.status, conclusion: c.conclusion, completedAt: c.completed_at, ...(c.started_at ? { startedAt: c.started_at } : {}) })),
     body: '| Package | Update | Change |\n|---|---|---|\n' + f.packages.map(p => `| ${p.name} | ${p.update || ''} | \`${p.from}\` → \`${p.to}\` |`).join('\n') + '\n',
   });
   const ready = v => ({ conditions: [{ type: 'Ready', status: v ? 'True' : 'False' }] });
@@ -212,7 +270,7 @@ try {
     'backups.postgresql.cnpg.io': { items: [] }, 'scheduledbackups.postgresql.cnpg.io': { items: [] },
     'cephclusters.ceph.rook.io': { items: [{ status: { ceph: { health: 'HEALTH_OK' } } }] },
     'pods@database': { items: [{ metadata: { namespace: 'database', name: 'mosquitto-0', labels: { 'app.kubernetes.io/instance': 'mosquitto' } }, spec: { volumes: [{ name: 'data', persistentVolumeClaim: { claimName: 'data-mosquitto-0' } }] } }] },
-    pods: { items: [] }, cronjobs: { items: [] },
+    pods: { items: [] }, cronjobs: { items: [] }, jobs: { items: [] },
   });
   const stub = `#!/usr/bin/env node
 const fs = require('fs'); const path = require('path');
@@ -226,6 +284,7 @@ if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'list') { if (w.failList) fa
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'view') out(w.prs[argv[2]]);
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/commits\\/[0-9a-f]{40}$/.test(a))) { const sha = argv.find(a => /\\/commits\\//.test(a)).split('/').pop(); const n = Object.keys(w.prs).find(k => w.prs[k].headRefOid === sha); if (w.diffs?.[n] === 'FAIL') fail(); out(w.diffs?.[n] ?? ''); }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => a.includes('contents/.renovate/holds.json5'))) out({ content: w.holds });
+if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/commits\\?sha=main&/.test(a))) { const q = new URLSearchParams(argv.find(a => /\\/commits\\?/.test(a)).split('?')[1]); const v = (w.mainCommits || {})[q.get('path')]; if (v === 'FAIL') fail(); out((v || []).map(c => ({ sha: c.sha, commit: { committer: { date: c.at } } }))); }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /issues\\/\\d+\\/comments/.test(a))) { const n = argv.find(a => /issues\\/\\d+\\/comments/.test(a)).match(/issues\\/(\\d+)/)[1]; out([w.comments[n] || []]); }
 if (cmd === 'kubectl' && argv[0] === 'get') { const ns = argv[argv.indexOf('-n') + 1]; const v = w.k8s[argv[1] + '@' + ns] ?? w.k8s[argv[1]]; if (v === 'FAIL' || v === undefined) fail(); out(v === 'GARBAGE' ? 'not json' : v); }
 if (cmd === 'kubectl' && argv[0] === 'apply' && w.failApply) fail();
@@ -331,6 +390,69 @@ process.exit(0);
     ok(blk(await tick(w4), 4670).includes('Flux NotReady in scope: Kustomization volsync-system/volsync'), 'a NotReady dependency blocks through the tick');
     const w5 = baseWorld([4477]); w5.k8s['kustomizations.kustomize.toolkit.fluxcd.io'].items.splice(1, 1);
     ok(blk(await tick(w5), 4477).includes('target-unmapped: no Kustomization applies kubernetes/main/apps/media/plex-hw-canary'), 'a target no Kustomization applies is a blocker');
+  }
+  // OP550 through the real tick, with the objects and alerts of the night of 2026-11-10
+  const nightWorld = nums => {
+    const w = baseWorld(nums);
+    const ksl = w.k8s['kustomizations.kustomize.toolkit.fluxcd.io'].items;
+    for (const k of gx.kustomizations) if (!ksl.some(x => x.metadata.name === k.metadata.name && x.metadata.namespace === k.metadata.namespace)) ksl.push(k);
+    w.k8s['helmreleases.helm.toolkit.fluxcd.io'].items.push(...gx.helmreleases);
+    for (const [ns, v] of Object.entries(gx.namespaces)) for (const [kind, items] of Object.entries(v)) w.k8s[`${kind}@${ns}`] = { items };
+    return w;
+  };
+  {
+    // R5: the recyclarr alert no longer holds #4477; PVEVMNotOnboot does not hold #4710
+    prom = { code: 200, body: { status: 'success', data: { result: gx.alerts_20261110T0630Z.map(metric => ({ metric })) } } };
+    const r = await tick(nightWorld([4477]));
+    ok(r.rec(4477).lane === 'LANE-A' && !/critical alert/.test(blk(r, 4477)) && r.summary.would_merge?.pr === 4477, "tick: #4477 is not blocked by recyclarr's MediaAutomationJobFailed", blk(r, 4477));
+    ok((r.rec(4477).gates.alerts_not_blocking?.unrelated || []).some(u => /MediaAutomationJobFailed \(job_name=recyclarr-29903670\) belongs to media\/recyclarr/.test(u)), 'tick: the record lists the alert as not blocking, with its owner', JSON.stringify(r.rec(4477).gates.alerts_not_blocking));
+    ok((r.summary.baseline?.critical_alerts || []).some(a => a === 'MediaAutomationJobFailed @ media job_name=recyclarr-29903670') && r.summary.baseline.critical_alerts.some(a => a === 'FluxReconciliationFailure @ dev-env-system'), 'tick: summary.baseline.critical_alerts names each alert, its namespace and subject', JSON.stringify(r.summary.baseline?.critical_alerts));
+    ok(r.calls.some(c => c.cmd === 'kubectl' && c.argv[1] === 'jobs' && c.argv.includes('media')), 'tick: Jobs of the target namespace are read (kubectl get, a read)');
+    const w2 = nightWorld([4710]);
+    const v10 = w2.prs[4710];
+    v10.labels = v10.labels.filter(l => l.name !== 'type/major').concat([{ name: 'type/minor' }]);
+    v10.title = v10.title.replace('!:', ':');
+    v10.body = v10.body.replace('| major |', '| minor |');
+    const r2 = await tick(w2);
+    ok(r2.rec(4710).lane === 'LANE-A' && !/critical alert/.test(blk(r2, 4710)), 'tick: #4710 (as if approved, so lane A) is not blocked by PVEVMNotOnboot', `${r2.rec(4710).lane}/${r2.rec(4710).class}: ${blk(r2, 4710)}`);
+    // fail closed through the tick: the recyclarr Job unreadable
+    const w3 = nightWorld([4477]); w3.k8s['jobs@media'] = 'FAIL';
+    ok(/MediaAutomationJobFailed \(job_name=recyclarr-29903670\) cannot be traced/.test(blk(await tick(w3), 4477)), 'tick: Jobs unreadable -> the job_name alert blocks (fail closed)');
+    prom = { code: 200, body: { status: 'success', data: { result: [] } } };
+  }
+  {
+    // R7: #4334's old head, checked 2026-11-08T04:27Z, after #4372 changed scripts/comfyui/Dockerfile on main
+    const old = { ...fact(4334), head_committed_at: gx.pr4334_old_head.committed_at };
+    const w = baseWorld([4334]); w.prs[4334] = toGh(old); w.mainCommits = gx.main_commits_20261110T0010Z;
+    const r = await tick(w);
+    ok(/checks predate main: scripts\/comfyui\/Dockerfile changed by a5ccd7c2 at 2026-11-10T00:00:50Z, after the head's checks \(2026-11-08T04:27:45\.000Z\); needs a Renovate rebase first/.test(blk(r, 4334)) && r.summary.would_merge === null, "tick: #4334's old head reads stale (main changed one of its files after its checks)", blk(r, 4334));
+    ok((r.rec(4334).checks?.main_newer || []).length === 1 && r.rec(4334).checks.reference_time === '2026-11-08T04:27:45.000Z', 'tick: the record carries checks.main_newer and checks.reference_time', JSON.stringify(r.rec(4334).checks));
+    ok(r.calls.some(c => c.cmd === 'gh' && c.argv[0] === 'api' && c.argv.includes(`repos/thaynes43/haynes-ops/commits?sha=main&path=${encodeURIComponent('scripts/comfyui/Dockerfile')}&since=${encodeURIComponent('2026-11-08T04:27:45.000Z')}&per_page=10`)), 'tick: main is read per file with gh api GET commits?sha=main&path&since');
+    const w2 = baseWorld([4334]); w2.prs[4334] = toGh(gx.prs[4334]); w2.mainCommits = gx.main_commits_20261110T0010Z;
+    const r2 = await tick(w2);
+    ok(blk(r2, 4334) === '' && r2.summary.would_merge?.pr === 4334, "tick: #4334's rebased head (2417f4fa, after #4372) is not stale", blk(r2, 4334));
+    const w3 = baseWorld([4334]); w3.prs[4334] = toGh(gx.prs[4334]); w3.mainCommits = { 'scripts/comfyui/Dockerfile': 'FAIL' };
+    const r3 = await tick(w3);
+    ok(/unreadable: main commits since the head's checks for scripts\/comfyui\/Dockerfile/.test(blk(r3, 4334)) && r3.summary.would_merge === null, 'tick: a failed read of main blocks (fail closed)', blk(r3, 4334));
+  }
+  {
+    // R8: #4770 (the actions-runner pin in the shared arc/dind component) maps to its Kustomizations
+    const w = nightWorld([4770]); w.prs[4770] = toGh(gx.prs[4770]);
+    const r = await tick(w);
+    const want = ['kubernetes/main/apps/arc-runners/demo-console/app', 'kubernetes/main/apps/arc-runners/haynes-swarm/app', 'kubernetes/main/apps/arc-runners/sigmaphiomicron-com/app', 'kubernetes/main/apps/arc-runners/sigoalumni-org/app', 'kubernetes/main/apps/arc-runners/sigo-alumni'];
+    ok(r.rec(4770).lane === 'LANE-A' && want.every(t => r.rec(4770).targets.includes(t)) && !/target-unmapped/.test(blk(r, 4770)), 'tick: #4770 maps kubernetes/shared/components/arc/dind to the four runner pools that include it', `${r.rec(4770).lane} ${JSON.stringify(r.rec(4770).targets)} | ${blk(r, 4770)}`);
+    ok(blk(r, 4770) === '' && r.summary.would_merge?.pr === 4770, 'tick: with every gate green #4770 would be picked', blk(r, 4770));
+    ok(r.rec(4770).via_components?.length === 4, 'tick: the record lists the component and its consumers (via_components)', JSON.stringify(r.rec(4770).via_components));
+    // with no map entry the component path stays the target: target-unmapped (fail closed)
+    const noMap = structuredClone(rules); noMap.shared_components.entries = noMap.shared_components.entries.filter(e => e.path !== 'kubernetes/shared/components/arc/dind');
+    writeFileSync(join(tmp, 'rules-nomap.json'), JSON.stringify(noMap));
+    const r2 = await tick(w, { UPGRADE_RULES: join(tmp, 'rules-nomap.json') });
+    ok(blk(r2, 4770).includes('target-unmapped: no Kustomization applies kubernetes/shared/components/arc') && r2.summary.would_merge === null, 'tick: a component missing from the map is target-unmapped (fail closed)', blk(r2, 4770));
+  }
+  {
+    // R10: #4607 (ceph-csi-rbd) is lane B by rule, whatever the shepherd's vet said
+    const r = await tick(baseWorld([4607]));
+    ok(r.rec(4607).lane === 'LANE-B-AGENT' && r.rec(4607).rules.includes('ceph-csi-chart') && r.rec(4607).rules.includes('ceph-csi-apps'), 'tick: #4607 is LANE-B-AGENT by the ceph-csi rules', `${r.rec(4607).lane} ${JSON.stringify(r.rec(4607).rules)}`);
   }
   // pause, write failure, a failed read of GitHub, no --write-state
   {
