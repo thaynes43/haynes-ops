@@ -4,11 +4,15 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main 83428207d7662a079ddcdcfe3a3484442040d115 (merge of PR #1036),
-# verified byte for byte (SHA-256 a0fb4c59a0110351e7f95f952544d81150b28aec80dec21d03f34b907a4db1da
+# Source: dev-env main 83a125e6eb1129181048d79ed11e371c9c98f8cc (merge of PR #1077),
+# verified byte for byte (SHA-256 0b08575b88a7400c0083ebffb237b2d77fde1db7f483bf17a98dcfb596205ca6
 # below this header). Added by 2958e1a06384 (PR #1027, DESIGN-060 7.1, OpenProject #526):
-# the first caller contract. Schema only. This directory declares no CallerPolicy object
-# and no ServiceAccount.
+# the first caller contract. Changed by 66201204c557 (PR #1079, DESIGN-064 6.4,
+# OpenProject #756): spec.summon, the contract of a summoning caller (its ServiceAccount,
+# limits, and the sessions it may start with their brief templates). The first caller's
+# seven fields are no longer required by the schema alone; a rule requires them when
+# summon is absent. Schema only. This directory declares no CallerPolicy object and no
+# ServiceAccount, and at this copy no pinned operator reads spec.summon.
 #
 # Keep it in step with the operator: copy a changed file here before (or with) the pin
 # that writes its new fields.
@@ -32,8 +36,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          CallerPolicy is the first D-36 caller contract (DESIGN-060 7.1). Only the
-          dev-env-system/meatball object is read. It admits no other caller or rights.
+          CallerPolicy is one caller's contract (DESIGN-060 7.1, DESIGN-064 6.4).
+          The front-door shape is Meatball's seven fields, all required together and
+          unchanged. The summon shape is spec.summon. An object has exactly one.
         properties:
           apiVersion:
             description: |-
@@ -54,8 +59,9 @@ spec:
             type: object
           spec:
             description: |-
-              CallerPolicySpec may tighten the first caller's bounds, never widen them.
-              Effort and route rights are fixed by the API, not configurable policy fields.
+              CallerPolicySpec is exactly one shape. The seven front-door fields have no
+              defaults and are all present together; effort and route rights for that
+              shape stay fixed by the API. A summon entry names its own effort.
             properties:
               maxConcurrent:
                 format: int32
@@ -98,21 +104,337 @@ spec:
                 maxLength: 3
                 type: string
               serviceAccount:
+                description: |-
+                  ServiceAccount, with Mode, Profile, Models, MaxConcurrent, MaxTimeout
+                  and MaxWorkers, is the front-door shape. All seven are set together, or
+                  none are, when spec.summon is set.
                 enum:
                 - dev-env-system/dev-env-meatball
                 maxLength: 128
                 type: string
-            required:
-            - maxConcurrent
-            - maxTimeout
-            - maxWorkers
-            - mode
-            - models
-            - profile
-            - serviceAccount
+              summon:
+                description: Summon is the contract for one summoning caller (DESIGN-064
+                  6.4).
+                properties:
+                  limits:
+                    description: |-
+                      CallerPolicySummonLimits are the caller's pools, queues and hourly creates
+                      (DESIGN-064 5.9, 6.4). Queued and QueuedUrgent default to 4 when omitted.
+                      Escalations is set exactly when an escalation entry exists.
+                    properties:
+                      concurrent:
+                        description: |-
+                          Concurrent counts admitted, unreleased sessions of every entry except
+                          the escalation entry.
+                        format: int32
+                        maximum: 4
+                        minimum: 1
+                        type: integer
+                      createsPerHour:
+                        format: int32
+                        maximum: 30
+                        minimum: 1
+                        type: integer
+                      escalations:
+                        description: |-
+                          Escalations counts admitted, unreleased escalations, the platform's
+                          filings included.
+                        format: int32
+                        maximum: 4
+                        minimum: 1
+                        type: integer
+                      queued:
+                        default: 4
+                        description: |-
+                          Queued counts Queued sessions of priority normal and bulk. 0 refuses
+                          that create. The design default is 4.
+                        format: int32
+                        maximum: 16
+                        minimum: 0
+                        type: integer
+                      queuedUrgent:
+                        default: 4
+                        description: |-
+                          QueuedUrgent bounds Queued sessions of priority urgent, counted per
+                          pool. It is never 0. The design default is 4.
+                        format: int32
+                        maximum: 16
+                        minimum: 1
+                        type: integer
+                    required:
+                    - concurrent
+                    - createsPerHour
+                    type: object
+                  serviceAccount:
+                    description: |-
+                      ServiceAccount is <namespace>/<name>. The namespace is not dev-agents,
+                      dev-env-system or dev-tools.
+                    maxLength: 128
+                    minLength: 3
+                    pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?/[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
+                    type: string
+                    x-kubernetes-validations:
+                    - message: summon service account namespace is not dev-agents,
+                        dev-env-system or dev-tools
+                      rule: '!self.matches(''^(dev-agents|dev-env-system|dev-tools)/'')'
+                  sessions:
+                    description: Sessions holds one to six entries. Each (kind, lane)
+                      pair appears once.
+                    items:
+                      description: |-
+                        CallerPolicySummonSession is one lane a caller may start. The brief template
+                        is fixed text; the API renders it and does not substitute into it (5.6).
+                        Remediation and curation are task; escalation and upgrade are remote.
+                        Effort uses the AgentSession effort pattern, ^[a-z]+$, not a closed enum.
+                        Omitted staleAfter on a remote upgrade entry means the design default of
+                        180m; a structural default would land on every entry. maxHold's design
+                        defaults are 20m for remediation and 12h for curation; the schema requires
+                        the field there and bounds the duration.
+                      properties:
+                        brief:
+                          description: |-
+                            CallerPolicySummonBrief is the fixed template and the data field names a
+                            create may send (DESIGN-064 5.6). The template has no substitution syntax
+                            in this schema; the renderer copies it verbatim.
+                          properties:
+                            fields:
+                              description: Fields names the data keys a create may
+                                send. Zero to eight, each unique.
+                              items:
+                                maxLength: 32
+                                minLength: 1
+                                pattern: ^[a-z][a-z0-9_]{0,31}$
+                                type: string
+                              maxItems: 8
+                              type: array
+                              x-kubernetes-list-type: set
+                            template:
+                              maxLength: 8192
+                              minLength: 1
+                              type: string
+                          required:
+                          - template
+                          type: object
+                        effort:
+                          description: |-
+                            Effort is the AgentSession effort pattern. The API checks which level
+                            the model takes; this schema does not.
+                          maxLength: 32
+                          minLength: 1
+                          pattern: ^[a-z]+$
+                          type: string
+                        kind:
+                          description: 'SummonKind is the mode a summon entry starts:
+                            task or remote.'
+                          enum:
+                          - task
+                          - remote
+                          maxLength: 6
+                          type: string
+                        lane:
+                          description: |-
+                            Lane groups summoned sessions (DESIGN-001 3.7). remediation, upgrade and
+                            curation are single-flight; escalation is a label only.
+                          enum:
+                          - remediation
+                          - upgrade
+                          - curation
+                          - escalation
+                          maxLength: 11
+                          type: string
+                        maxHold:
+                          description: |-
+                            MaxHold is how long a Queued session may wait, at most 24h. Required
+                            for remediation and curation. Not allowed for upgrade or escalation.
+                          maxLength: 32
+                          type: string
+                          x-kubernetes-validations:
+                          - message: maxHold must be a positive Go duration at most
+                              24h
+                            rule: duration(self) > duration('0s') && duration(self)
+                              <= duration('24h')
+                        maxTurns:
+                          description: MaxTurns is task only. 0 means no cap.
+                          format: int32
+                          maximum: 500
+                          minimum: 0
+                          type: integer
+                        model:
+                          description: |-
+                            CallerPolicySummonModel is the entry's default Claude model and a different
+                            fallback. Both are full ids. An alias cannot match.
+                          properties:
+                            default:
+                              maxLength: 64
+                              minLength: 1
+                              pattern: ^claude-[a-z]+(-[0-9]+)+$
+                              type: string
+                            fallback:
+                              maxLength: 64
+                              minLength: 1
+                              pattern: ^claude-[a-z]+(-[0-9]+)+$
+                              type: string
+                          required:
+                          - default
+                          - fallback
+                          type: object
+                          x-kubernetes-validations:
+                          - message: model fallback must differ from the default
+                            rule: self.default != self.fallback
+                        namePrefixes:
+                          description: |-
+                            NamePrefixes are DNS label prefixes ending in '-'. One to four, each at
+                            most 32 characters. None may start with esc-rem-. An upgrade prefix
+                            starts with wo- and does not start with wo-cigar-curate-.
+                          items:
+                            maxLength: 32
+                            minLength: 2
+                            pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?-$
+                            type: string
+                          maxItems: 4
+                          minItems: 1
+                          type: array
+                          x-kubernetes-list-type: set
+                        onUnreported:
+                          description: |-
+                            SummonOnUnreported is the outcome written when a summoned session does not
+                            report (DESIGN-064 6.4).
+                          enum:
+                          - escalated
+                          - failed
+                          maxLength: 9
+                          type: string
+                        priority:
+                          description: SummonPriority is the admission priority of
+                            a summon entry (DESIGN-064 5.9).
+                          enum:
+                          - urgent
+                          - normal
+                          - bulk
+                          maxLength: 6
+                          type: string
+                        profile:
+                          description: Profile is ops only, until another summoned
+                            profile is designed.
+                          enum:
+                          - ops
+                          maxLength: 32
+                          type: string
+                        repo:
+                          description: Repo is the session's repository. The request
+                            cannot name another.
+                          maxLength: 100
+                          minLength: 1
+                          pattern: ^[A-Za-z0-9_.-]+$
+                          type: string
+                          x-kubernetes-validations:
+                          - message: repo is a repository name, not a path
+                            rule: self != '.' && self != '..'
+                        staleAfter:
+                          description: |-
+                            StaleAfter is a remote upgrade entry only, at most 24h. Omitted means
+                            the design default of 180m when that entry is the one that applies.
+                          maxLength: 32
+                          type: string
+                          x-kubernetes-validations:
+                          - message: staleAfter must be a positive Go duration at
+                              most 24h
+                            rule: duration(self) > duration('0s') && duration(self)
+                              <= duration('24h')
+                        timeout:
+                          description: Timeout is task only, required there, and at
+                            most 4h.
+                          maxLength: 32
+                          type: string
+                          x-kubernetes-validations:
+                          - message: timeout must be a positive Go duration at most
+                              4h
+                            rule: duration(self) > duration('0s') && duration(self)
+                              <= duration('4h')
+                      required:
+                      - brief
+                      - effort
+                      - kind
+                      - lane
+                      - model
+                      - namePrefixes
+                      - onUnreported
+                      - priority
+                      - profile
+                      - repo
+                      type: object
+                      x-kubernetes-validations:
+                      - message: remediation and curation are task; escalation and
+                          upgrade are remote
+                        rule: (self.lane == 'remediation' && self.kind == 'task')
+                          || (self.lane == 'curation' && self.kind == 'task') || (self.lane
+                          == 'escalation' && self.kind == 'remote') || (self.lane
+                          == 'upgrade' && self.kind == 'remote')
+                      - message: priority urgent is required for lanes remediation
+                          and escalation
+                        rule: '!(self.lane == ''remediation'' || self.lane == ''escalation'')
+                          || self.priority == ''urgent'''
+                      - message: namePrefixes are DNS prefixes for the lane (rem-,
+                          esc-, wo-, wo-cigar-curate-), an upgrade prefix does not
+                          start with wo-cigar-curate-, and none start with esc-rem-
+                        rule: self.namePrefixes.all(p, !p.startsWith('esc-rem-'))
+                          && ((self.lane == 'remediation' && self.namePrefixes.all(p,
+                          p.startsWith('rem-'))) || (self.lane == 'escalation' &&
+                          self.namePrefixes.all(p, p.startsWith('esc-'))) || (self.lane
+                          == 'upgrade' && self.namePrefixes.all(p, p.startsWith('wo-')
+                          && !p.startsWith('wo-cigar-curate-'))) || (self.lane ==
+                          'curation' && self.namePrefixes.all(p, p.startsWith('wo-cigar-curate-'))))
+                      - message: timeout is required for a task entry and not allowed
+                          for a remote entry
+                        rule: (self.kind == 'task') == has(self.timeout)
+                      - message: maxTurns is for a task entry only
+                        rule: self.kind == 'task' || !has(self.maxTurns)
+                      - message: staleAfter is for a remote upgrade entry only
+                        rule: '!has(self.staleAfter) || (self.kind == ''remote'' &&
+                          self.lane == ''upgrade'')'
+                      - message: maxHold is required for remediation and curation
+                          and not allowed for upgrade or escalation
+                        rule: (self.lane == 'remediation' || self.lane == 'curation')
+                          == has(self.maxHold)
+                      - message: onUnreported is escalated for remediation and failed
+                          for every other lane
+                        rule: 'self.lane == ''remediation'' ? self.onUnreported ==
+                          ''escalated'' : self.onUnreported == ''failed'''
+                    maxItems: 6
+                    minItems: 1
+                    type: array
+                required:
+                - limits
+                - serviceAccount
+                - sessions
+                type: object
+                x-kubernetes-validations:
+                - message: (kind, lane) is unique
+                  rule: self.sessions.all(a, self.sessions.exists_one(b, a.kind ==
+                    b.kind && a.lane == b.lane))
+                - message: limits.escalations is required exactly when the policy
+                    has an escalation entry
+                  rule: has(self.limits.escalations) == self.sessions.exists(s, s.lane
+                    == 'escalation')
+                - message: a remediation entry requires an escalation entry
+                  rule: '!self.sessions.exists(s, s.lane == ''remediation'') || self.sessions.exists(s,
+                    s.lane == ''escalation'')'
             type: object
+            x-kubernetes-validations:
+            - message: exactly one of the front-door shape (serviceAccount, mode,
+                profile, models, maxConcurrent, maxTimeout, maxWorkers) and summon
+              rule: (has(self.serviceAccount) && has(self.mode) && has(self.profile)
+                && has(self.models) && has(self.maxConcurrent) && has(self.maxTimeout)
+                && has(self.maxWorkers) && !has(self.summon)) || (!has(self.serviceAccount)
+                && !has(self.mode) && !has(self.profile) && !has(self.models) && !has(self.maxConcurrent)
+                && !has(self.maxTimeout) && !has(self.maxWorkers) && has(self.summon))
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: metadata.name must be the summon service account with the slash
+            replaced by a dot
+          rule: '!has(self.spec.summon) || self.metadata.name == self.spec.summon.serviceAccount.replace(''/'',
+            ''.'')'
     served: true
     storage: true
