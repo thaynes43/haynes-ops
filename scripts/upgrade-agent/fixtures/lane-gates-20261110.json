@@ -422,6 +422,34 @@
      }
     ]
    }
+  },
+  {
+   "metadata": {
+    "name": "external-secrets-stores",
+    "namespace": "external-secrets"
+   },
+   "spec": {
+    "path": "./kubernetes/main/apps/external-secrets/external-secrets/stores",
+    "targetNamespace": "external-secrets",
+    "dependsOn": [
+     {
+      "name": "external-secrets",
+      "namespace": "external-secrets"
+     },
+     {
+      "name": "onepassword-connect",
+      "namespace": "flux-system"
+     }
+    ]
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ]
+   }
   }
  ],
  "helmreleases": [

@@ -163,8 +163,13 @@ Proxmox VM, would likewise have held #4710 (kube-prometheus-stack) in `observabi
 For each critical alert, the tick now does this:
 
 1. **Namespace.** It takes the `namespace` label, or else `exported_namespace` (Flux
-   alerts carry the object's namespace there). An alert outside the target's namespaces
-   does not block, as before.
+   alerts carry the object's namespace there).
+   - An alert in a namespace of the target's `dependsOn` chain (each Kustomization's own
+     namespace and its `targetNamespace`) blocks only when it traces to a chain
+     Kustomization, such as a Flux failure of `volsync-system/volsync` for mosquitto.
+     Anything else there is listed under `gates.alerts_not_blocking.unrelated`; the
+     namespace fallback does not apply there. This was added after the review of PR 4825.
+   - An alert in any other namespace does not block, as before.
 2. **Subject.** The first label present names the subject: `job_name`, `cronjob`,
    `deployment`, `statefulset`, `daemonset`, `pod`, `persistentvolumeclaim`, then `app`,
    `app_kubernetes_io_name` or `app_kubernetes_io_instance`. Flux alerts name the object

@@ -230,6 +230,14 @@ ok(threw, 'runReadOnly throws before running a refused command');
   const Kd = { items: gx.kustomizations.map(k => k.metadata.name === 'plex-hw-canary' ? { ...k, spec: { ...k.spec, dependsOn: [{ name: 'recyclarr', namespace: 'media' }] } } : k) };
   const sd = N.fluxScope(N.kustomizationsFor('kubernetes/main/apps/media/plex-hw-canary', Kd), Kd, HR);
   ok(N.alertGate([media], sd, [], facts(), Kd, HR, AS).blockers.some(b => /media\/recyclarr, the target or its dependsOn chain/.test(b)), "an alert in the target's dependsOn chain blocks");
+  // a dependency in another namespace (plex-hw-canary dependsOn external-secrets/external-secrets-stores, live)
+  const s77d = target('kubernetes/main/apps/media/plex-hw-canary');
+  ok(s77d.chain.includes('external-secrets/external-secrets-stores') && !s77d.namespaces.includes('external-secrets'), 'fixture: plex-hw-canary depends on a Kustomization in another namespace');
+  const fxDep = { alertname: 'FluxReconciliationFailure', customresource_kind: 'Kustomization', exported_namespace: 'external-secrets', name: 'external-secrets-stores' };
+  ok(gate([fxDep], 'kubernetes/main/apps/media/plex-hw-canary').blockers.some(b => /critical alert firing in external-secrets: FluxReconciliationFailure \(Kustomization external-secrets\/external-secrets-stores\) belongs to external-secrets\/external-secrets-stores, in the target's dependsOn chain/.test(b)), "an alert on a dependency in another namespace blocks (review finding on PR 4825)");
+  ok(gate([{ ...fxDep, name: 'external-secrets' }], 'kubernetes/main/apps/media/plex-hw-canary').blockers.some(b => /Kustomization external-secrets\/external-secrets\) belongs to external-secrets\/external-secrets, in the target's dependsOn chain/.test(b)), 'a Flux alert on a chain Kustomization blocks even when the tick lists no such object');
+  const depOther = gate([{ alertname: 'W', namespace: 'external-secrets' }, { ...fxDep, name: 'not-in-the-chain' }], 'kubernetes/main/apps/media/plex-hw-canary');
+  ok(depOther.blockers.length === 0 && depOther.unrelated.length === 2 && depOther.unrelated.every(u => /a dependency's namespace/.test(u)), "in a dependency's namespace, an alert outside the chain or naming no workload is listed, not blocking (no namespace fallback there)", JSON.stringify(depOther));
   // R5 decision: an alert with no namespace label blocks a cluster-wide target only
   const g07 = gate(A, 'kubernetes/main/apps/storage/ceph-csi/gasha01-rbd', ['csi']);
   ok(g07.blockers.filter(b => /DevEnvRescueFailed has no namespace label and the target is cluster-wide \(csi\)/.test(b)).length === 2 && !g07.blockers.some(b => /FluxReconciliationFailure/.test(b)), 'cluster-wide target (ceph-csi): each alert with no namespace label blocks; the H7 Flux alert (exported_namespace dev-env-system) does not', g07.blockers.join(' | '));
@@ -367,6 +375,10 @@ process.exit(0);
     prom = { code: 200, body: { status: 'success', data: { result: [{ metric: { alertname: 'X', namespace: 'media' } }] } } };
     const r2 = await tick(baseWorld([4477, 4670]));
     ok(blk(r2, 4477).includes('critical alert firing in media') && blk(r2, 4670) === '', 'a critical alert blocks only the target in its namespace', `${blk(r2, 4477)} || ${blk(r2, 4670)}`);
+    // a Flux failure of mosquitto's dependency volsync-system/volsync blocks #4670 only
+    prom = { code: 200, body: { status: 'success', data: { result: [{ metric: { alertname: 'FluxReconciliationFailure', customresource_kind: 'Kustomization', exported_namespace: 'volsync-system', name: 'volsync' } }] } } };
+    const r3 = await tick(baseWorld([4477, 4670]));
+    ok(/critical alert firing in volsync-system: FluxReconciliationFailure \(Kustomization volsync-system\/volsync\) belongs to volsync-system\/volsync, in the target's dependsOn chain/.test(blk(r3, 4670)) && blk(r3, 4477) === '', "tick: an alert on a dependency in another namespace blocks the dependent target only", `${blk(r3, 4670)} || ${blk(r3, 4477)}`);
     prom = { code: 200, body: { status: 'success', data: { result: [] } } };
   }
   {

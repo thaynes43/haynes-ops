@@ -254,17 +254,40 @@ export function alertSubject(metric, f, ks, hr, scope) {
 export function alertGate(alerts, scope, clusterWideIds, facts, ks, hr, alertScope) {
   const out = { blockers: [], unrelated: [], cluster: [] };
   const chain = new Set(scope.chain);
+  // the namespaces of the dependsOn chain (each Kustomization's own and its targetNamespace):
+  // an alert there blocks when it traces to a chain Kustomization (a Flux failure of volsync,
+  // say); anything else there is listed, never a namespace fallback (as before R5)
+  const chainNs = new Set();
+  for (const id of scope.chain) {
+    const [n, nm] = id.split('/');
+    chainNs.add(n);
+    const k = (ks?.items || []).find(x => x.metadata?.namespace === n && x.metadata?.name === nm);
+    if (k?.spec?.targetNamespace) chainNs.add(k.spec.targetNamespace);
+  }
+  // a Flux alert names a chain Kustomization by its id even when the tick lists no such object
+  const fo = alertScope.flux_object || {};
+  const withChainFlux = (s, m) => {
+    const id = !m.namespace && m[fo.kind_label] === 'Kustomization' && m[fo.name_label] ? `${m[fo.namespace_label]}/${m[fo.name_label]}` : null;
+    return !s.owner && id && chain.has(id) ? { ...s, owner: id } : s;
+  };
   for (const m of alerts) {
     const name = m.alertname || '(unnamed)';
-    const nss = [m.namespace, m[alertScope.flux_object?.namespace_label]].filter(Boolean);
+    const nss = [m.namespace, m[fo.namespace_label]].filter(Boolean);
     if (!nss.length) {
       if (clusterWideIds.length) out.blockers.push(`critical alert ${name} has no namespace label and the target is cluster-wide (${clusterWideIds.join(', ')})`);
       else out.cluster.push(`${name}: no namespace label; the target is not cluster-wide`);
       continue;
     }
     const ns = nss.find(n => scope.namespaces.includes(n));
-    if (!ns) continue;
-    const s = alertSubject(m, facts(ns), ks, hr, alertScope);
+    if (!ns) {
+      const dep = nss.find(n => chainNs.has(n));
+      if (!dep) continue;
+      const d = withChainFlux(alertSubject(m, facts(dep), ks, hr, alertScope), m);
+      if (d.owner && chain.has(d.owner)) out.blockers.push(`critical alert firing in ${dep}: ${name} (${d.by}) belongs to ${d.owner}, in the target's dependsOn chain`);
+      else out.unrelated.push(`${name} (${d.by || 'no workload'}) in ${dep}, a dependency's namespace: ${d.owner ? `belongs to ${d.owner}` : 'not traced'}, outside the dependsOn chain`);
+      continue;
+    }
+    const s = withChainFlux(alertSubject(m, facts(ns), ks, hr, alertScope), m);
     if (!s.by) out.blockers.push(`critical alert firing in ${ns}: ${name} names no workload (namespace fallback)`);
     else if (!s.owner) out.blockers.push(`critical alert firing in ${ns}: ${name} (${s.by}) cannot be traced to a Kustomization (fail closed)`);
     else if (chain.has(s.owner)) out.blockers.push(`critical alert firing in ${ns}: ${name} (${s.by}) belongs to ${s.owner}, the target or its dependsOn chain`);
