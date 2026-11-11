@@ -293,8 +293,13 @@ fail('stub: unexpected call ' + cmd + ' ' + argv.join(' '));
   // a stale lock is taken over by its lease
   world({ lock: lockOf({ holder: 'upgrade-night/crashed/9', phase: 'taken', expires_at: '2026-11-11T15:55:00Z' }) });
   const tx = take();
-  ok(tx.taken && tx.before.state === 'expired' && lockNow().data.took_over_from === 'upgrade-night/crashed/9' && lockNow().data.holder === 'upgrade-night/test/1', 'a lock past its expiry is taken over, naming the crashed holder');
+  ok(tx.taken && tx.before.state === 'expired' && lockNow().data.took_over_from === 'upgrade-night/crashed/9' && lockNow().data.took_over_phase === 'taken' && lockNow().data.holder === 'upgrade-night/test/1', 'a lock past its expiry is taken over, naming the crashed holder and its phase');
   M.releaseLock(tx.held, { now: NOW, env });
+  world({ lock: lockOf({ holder: 'upgrade-night/merged/4', phase: 'merging', expires_at: '2026-11-11T15:00:00Z' }) });
+  const tm = take();
+  ok(tm.taken && lockNow().data.took_over_phase === 'merging', 'round 2, finding 1: taking over an expired merging lease records took_over_phase merging');
+  M.releaseLock(tm.held, { now: NOW, env });
+  ok(lockNow().data.phase === 'released' && lockNow().data.last_took_over_phase === 'merging' && lockNow().data.last_took_over_from === 'upgrade-night/merged/4', 'round 2, finding 1: the release keeps last_took_over_phase, so a merge left unverified stays visible', JSON.stringify(lockNow().data));
   world({ cmFail: true });
   const tu = take();
   ok(!tu.taken && tu.before.state === 'unreadable' && !calls().some(c => ['create', 'replace'].includes(c.argv[0])), 'an unreadable lock is never written');
@@ -444,15 +449,16 @@ M.laneMergeStep({ mode: 'live', subject: { pr: 3915, head: '${HEAD}', class: 'no
   ok(killed.signal === 'SIGKILL' && lockNow()?.data.holder === 'child-merge' && lockNow().data.phase === 'merging' && lockNow().data.expires_at === '2026-11-11T20:00:00.000Z', 'finding 3: SIGKILL during the merge call leaves the lock in phase merging with the 4h lease', `${JSON.stringify(killed)} ${JSON.stringify(lockNow()?.data)}`);
 
   // ── 5. the hand-run CLI ─────────────────────────────────────────────────────────
-  // --merge refuses UPGRADE_NIGHT_NOW, so it runs with the clock pinned by the test-only preload
+  // The CLI refuses --merge on any test clock (UPGRADE_NIGHT_NOW, FAKE_NOW, a replaced
+  // Date.now), so a real merge through the CLI is tested only for those refusals; the merge
+  // path runs in process through handRun() with an explicit clock (hand() below).
   const FAKE_CLOCK = join(ROOT, 'scripts/upgrade-agent/test-fake-clock.mjs');
-  const cli = (args, w = {}, { keepNow = false } = {}) => {
+  const cli = (args, w = {}, { pre = [], extra = {} } = {}) => {
     world(w);
-    const pin = args.includes('--merge') && !keepNow;
-    const e = pin ? { ...env, FAKE_NOW: new Date(NOW).toISOString() } : { ...env, UPGRADE_NIGHT_NOW: new Date(NOW).toISOString() };
-    const r = spawnSync(process.execPath, [...(pin ? ['--import', FAKE_CLOCK] : []), join(RES, 'night-merge.mjs'), ...args], { env: e, encoding: 'utf8', timeout: 30000 });
+    const r = spawnSync(process.execPath, [...pre, join(RES, 'night-merge.mjs'), ...args], { env: { ...env, UPGRADE_NIGHT_NOW: new Date(NOW).toISOString(), ...extra }, encoding: 'utf8', timeout: 30000 });
     return { ...r, calls: calls(), writes: calls().filter(c => !L.isReadOnlyCommand(c.cmd, c.argv)) };
   };
+  const hand = (w = {}) => { world(w); const r = M.handRun({ pr: 3915, head: HEAD, merge: true }, { rules, run, env, now: NOW }); return { r, calls: calls() }; };
   const CHECK = ['--pr', '3915', '--head', HEAD, '--check-only'], MERGE = ['--pr', '3915', '--head', HEAD, '--merge'];
   const c1 = cli(CHECK);
   ok(c1.status === 0 && /^merge step \(hand --check-only\) #3915 head a7174f4e: WOULD-MERGE$/m.test(c1.stdout) && /merge call: not made \(--check-only\)/.test(c1.stdout) && c1.writes.length === 0, '--check-only on PR 3915 as read 2026-11-11: WOULD-MERGE, exit 0, nothing written', c1.stdout + c1.stderr);
@@ -464,13 +470,13 @@ M.laneMergeStep({ mode: 'live', subject: { pr: 3915, head: '${HEAD}', class: 'no
   ok(c3.status === 1 && /refused: the change lock is held by upgrade-night\/x\/1/.test(c3.stdout) && c3.writes.length === 0, '--check-only refuses while the lock is held', c3.stdout);
   const c4 = cli(CHECK, { cms: [{ metadata: { name: 'upgrade-lane-state', resourceVersion: '3' }, data: { pause: 'tom' } }] });
   ok(c4.status === 1 && /refused: paused at the start: data\.pause="tom"/.test(c4.stdout), '--check-only refuses while the lane is paused', c4.stdout);
-  const c5 = cli(MERGE);
+  const c5 = hand();
   const m5 = c5.calls.filter(c => c.cmd === 'gh' && c.argv[1] === 'merge');
-  ok(c5.status === 0 && /: MERGED$/m.test(c5.stdout) && m5.length === 1 && JSON.stringify(m5[0].argv) === JSON.stringify(M.mergeArgv(M.REPO, 3915, HEAD)) && !c5.calls.some(c => c.cmd === 'kubectl' && c.argv[0] !== 'get'), '--merge on a clean verdict: one pinned squash merge, verified; the lock is not written', c5.stdout + c5.stderr);
-  const c6 = cli(MERGE, behind);
-  ok(c6.status === 1 && /merge call: not made \(refused\)/.test(c6.stdout) && !c6.calls.some(c => c.argv[1] === 'merge'), '--merge on a refused verdict: no merge call, exit 1', c6.stdout);
-  const c7 = cli(MERGE, { mergeExit: true });
-  ok(c7.status === 3 && /: MERGE-FAILED$/m.test(c7.stdout), '--merge whose call fails with the PR still open: exit 3', c7.stdout);
+  ok(c5.r.verdict === 'merged' && m5.length === 1 && JSON.stringify(m5[0].argv) === JSON.stringify(M.mergeArgv(M.REPO, 3915, HEAD)) && !c5.calls.some(c => c.cmd === 'kubectl' && c.argv[0] !== 'get'), '--merge on a clean verdict: one pinned squash merge, verified; the lock is not written', JSON.stringify(c5.r.refusals));
+  const c6 = hand(behind);
+  ok(c6.r.verdict === 'refused' && c6.r.merge_call === 'not made (refused)' && !c6.calls.some(c => c.argv[1] === 'merge'), '--merge on a refused verdict: no merge call', JSON.stringify(c6.r.refusals));
+  const c7 = hand({ mergeExit: true });
+  ok(c7.r.verdict === 'merge-failed', '--merge whose call fails with the PR still open: merge-failed', c7.r.verdict);
   // finding 4: the hand run classifies the PR as the lane does and refuses anything but LANE-A
   ok(/^  lane: LANE-A \(no-cluster-effect\): /m.test(c1.stdout) && c1.calls.some(c => c.cmd === 'gh' && c.argv.some(a => a.includes('contents/.renovate/holds.json5'))) && c1.calls.some(c => c.cmd === 'gh' && c.argv.some(a => /issues\/3915\/comments/.test(a))), 'finding 4: --check-only prints the lane, from the classifier with holds and comments read', c1.stdout);
   const withView = f => ({ view: (() => { const v = structuredClone(fx.view); f(v); return v; })() });
@@ -483,14 +489,20 @@ M.laneMergeStep({ mode: 'live', subject: { pr: 3915, head: '${HEAD}', class: 'no
   ok(k3.status === 1 && /refused: lane EXCLUDED/.test(k3.stdout), 'finding 4: a PR touching an excluded path is refused', k3.stdout);
   const k4 = cli(CHECK, { holdsFail: true });
   ok(k4.status === 1 && /refused: unreadable: \.renovate\/holds\.json5 on main/.test(k4.stdout), 'finding 4: unreadable holds refuse (fail closed)', k4.stdout);
-  const k5 = cli(MERGE, major);
-  ok(k5.status === 1 && !k5.calls.some(c => c.argv[1] === 'merge') && /refused: lane LANE-B-OWNER/.test(k5.stdout), 'finding 4: --merge on a major update makes no merge call', k5.stdout);
+  const k5 = hand(major);
+  ok(k5.r.verdict === 'refused' && !k5.calls.some(c => c.argv[1] === 'merge') && has(k5.r.refusals, /^lane LANE-B-OWNER/), 'finding 4: --merge on a major update makes no merge call', JSON.stringify(k5.r.refusals));
   // finding 1, hand path: a pause that appears between the first read and the merge call
-  const k6 = cli(MERGE, { pauseFromRead: 2 });
-  ok(k6.status === 1 && /refused: paused just before the merge call: data\.pause="set mid-run"/.test(k6.stdout) && !k6.calls.some(c => c.argv[1] === 'merge'), 'finding 1: --merge re-reads the pause just before the call and refuses', k6.stdout);
-  // finding 6: --merge never runs on a pinned clock
-  const k7 = cli(MERGE, {}, { keepNow: true });
+  const k6 = hand({ pauseFromRead: 2 });
+  ok(k6.r.verdict === 'refused' && has(k6.r.refusals, /^paused just before the merge call: data\.pause="set mid-run"$/) && !k6.calls.some(c => c.argv[1] === 'merge'), 'finding 1: --merge re-reads the pause just before the call and refuses', JSON.stringify(k6.r.refusals));
+  // finding 6 and round 2, finding 3: --merge never runs on a test clock
+  const k7 = cli(MERGE);
   ok(k7.status === 2 && /--merge refuses a pinned clock \(UPGRADE_NIGHT_NOW is set\)/.test(k7.stderr) && k7.calls.length === 0, 'finding 6: --merge with UPGRADE_NIGHT_NOW set exits 2 before any call', `${k7.status} ${k7.stderr}`);
+  const k8 = cli(MERGE, {}, { pre: ['--import', FAKE_CLOCK], extra: { UPGRADE_NIGHT_NOW: '', FAKE_NOW: new Date(NOW).toISOString() } });
+  ok(k8.status === 2 && /--merge refuses a pinned clock \(FAKE_NOW is set\)/.test(k8.stderr) && k8.calls.length === 0, 'round 2, finding 3: --merge with the selftest clock preload (FAKE_NOW) exits 2 before any call', `${k8.status} ${k8.stderr}`);
+  const k9 = cli(MERGE, {}, { extra: { UPGRADE_NIGHT_NOW: '', NODE_OPTIONS: '--import=data:text/javascript,Date.now=()=>1794400000000' } });
+  ok(k9.status === 2 && /--merge refuses a pinned clock \(Date\.now is not the native clock\)/.test(k9.stderr) && k9.calls.length === 0, 'round 2, finding 3: --merge with any replaced Date.now (here through NODE_OPTIONS) exits 2 before any call', `${k9.status} ${k9.stderr}`);
+  const k10 = cli([...CHECK], {}, { pre: ['--import', FAKE_CLOCK], extra: { UPGRADE_NIGHT_NOW: '', FAKE_NOW: new Date(NOW).toISOString() } });
+  ok(k10.status === 0 && /WOULD-MERGE/.test(k10.stdout), '--check-only still runs on the preload (it changes nothing)', k10.stdout + k10.stderr);
   const c8 = cli([...CHECK, '--json']);
   let j8 = null; try { j8 = JSON.parse(c8.stdout); } catch {}
   ok(c8.status === 0 && j8?.verdict === 'would-merge' && j8.ok === true && j8.facts?.reference_time === '2026-11-10T00:10:58.000Z', '--json prints the verdict as JSON', c8.stdout.slice(0, 300));

@@ -57,9 +57,11 @@ if (!MODES.includes(MODE) || LIVE.unknown.length) {
   console.error(`upgrade-night: REFUSED: ${what}; nothing was read or changed.`);
   process.exit(3);
 }
-// UPGRADE_NIGHT_NOW pins the clock for the dry-run selftest. Live mode never runs on it.
-if (MODE === 'live' && process.env.UPGRADE_NIGHT_NOW) {
-  console.error('upgrade-night: REFUSED: UPGRADE_NIGHT_NOW is set (a test clock) in live mode; nothing was read or changed.');
+// UPGRADE_NIGHT_NOW pins the clock for a local read-only run. Live mode never runs on it,
+// and neither does a run that writes (--write-state): a lock taken at a pinned future time
+// would carry that time's expiry and could block live ticks and hand runs until then.
+if (process.env.UPGRADE_NIGHT_NOW && (MODE === 'live' || process.argv.includes('--write-state'))) {
+  console.error(`upgrade-night: REFUSED: UPGRADE_NIGHT_NOW is set (a test clock) ${MODE === 'live' ? 'in live mode' : 'with --write-state'}; nothing was read or changed.`);
   process.exit(3);
 }
 
@@ -345,7 +347,8 @@ export function stateEvidence(k, hr, rs, pods, cronjobs) {
 // ── the tick ─────────────────────────────────────────────────────────────────
 async function tick() {
   const rules = L.loadRules(process.env.UPGRADE_RULES || join(HERE, 'upgrade-rules.json'));
-  // UPGRADE_NIGHT_NOW (ISO time) pins the clock for the selftest; the CronJob never sets it.
+  // UPGRADE_NIGHT_NOW (ISO time) pins the clock for a local read-only run (refused above with
+  // --write-state or in live mode); the CronJob never sets it.
   const pinned = Date.parse(process.env.UPGRADE_NIGHT_NOW || '');
   const now = Number.isFinite(pinned) ? pinned : Date.now();
   const clock = () => (Number.isFinite(pinned) ? pinned : Date.now());
@@ -492,7 +495,7 @@ async function tick() {
   const table = L.formatTable(records);
   log(`upgrade-night ${MODE}: ${records.length} open Renovate PRs; ${JSON.stringify(counts)}`);
   const lk = step.lock;
-  log(`upgrade-night ${MODE}: change lock ${lk.configmap}: ${lk.outcome} (before: ${lk.before?.state ?? 'not read'}${lk.before?.holder ? ` by ${lk.before.holder}` : ''})${lk.taken_at ? ` taken_at=${lk.taken_at} expires_at=${lk.expires_at}` : ''}${lk.released_at ? ` released_at=${lk.released_at}` : ''}${lk.why ? `; ${lk.why}` : ''}`);
+  log(`upgrade-night ${MODE}: change lock ${lk.configmap}: ${lk.outcome} (before: ${lk.before?.state ?? 'not read'}${lk.before?.holder ? ` by ${lk.before.holder}` : ''}${lk.took_over_from ? `; took over ${lk.took_over_from}, phase ${lk.took_over_phase || 'unknown'}` : ''})${lk.taken_at ? ` taken_at=${lk.taken_at} expires_at=${lk.expires_at}` : ''}${lk.released_at ? ` released_at=${lk.released_at}` : ''}${lk.why ? `; ${lk.why}` : ''}`);
   const refusals = [...(verdict.pr_refusals || []), ...(verdict.lane_refusals || [])];
   const stepLine = subject ? `#${subject.pr} ${String(subject.head).slice(0, 8)} (${subject.class}${subject.chosen ? '' : ', not chosen'}): ${String(verdict.verdict).toUpperCase()}${refusals.length ? `: ${refusals.join(' | ')}` : ''}; merge call: ${verdict.merge_call || 'none'}` : `not run (${verdict.why})`;
   log(`upgrade-night ${MODE}: merge step ${stepLine}`);

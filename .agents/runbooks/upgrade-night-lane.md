@@ -328,8 +328,11 @@ Two env vars on the `upgrade-night` container, both in git:
 - `scripts/upgrade-agent/lane-night-dryrun-selftest.mjs` fails if git ships anything but
   `dryrun`, an empty allowlist and the token below. Story 556 changes that test together
   with the switch.
-- Live mode also refuses (exit 3, before a read) when `UPGRADE_NIGHT_NOW` is set. That
-  variable pins the clock for the dry-run selftest only.
+- Live mode, and any run with `--write-state`, refuses (exit 3, before a read) when
+  `UPGRADE_NIGHT_NOW` is set. A lock taken at a pinned future time would carry that
+  time's expiry. The variable is for a local read-only run. The selftests pin the clock
+  with a test-only preload (`scripts/upgrade-agent/test-fake-clock.mjs`), which the
+  CronJob never loads (a selftest checks its env and command).
 
 **The token.** The init container requests
 `{"contents":"write","pull_requests":"write","checks":"read"}`, the shepherd's rights,
@@ -419,8 +422,8 @@ needs.
 | `phase` | `taken`, `merging` (written just before the merge call), `merged-awaiting-verification`, `merge-unknown` or `released` |
 | `purpose`, `mode`, `pr`, `head` | what the holder is doing |
 | `taken_at`, `expires_at`, `lease_seconds` | the lease |
-| `took_over_from` | the holder of an expired lease this take replaced |
-| `last_holder`, `last_purpose`, `released_at`, `last_note` | after a release |
+| `took_over_from`, `took_over_phase` | the holder of an expired lease this take replaced, and its phase. A `merging` or `merge-unknown` phase means a merge may have happened that nobody verified |
+| `last_holder`, `last_purpose`, `released_at`, `last_note`, `last_took_over_from`, `last_took_over_phase` | after a release; the take-over fields stay visible |
 
 - **Free:** no object, or `holder` empty. **Expired:** `expires_at` has passed; the
   next taker takes it over. **Held:** anything else.
@@ -506,7 +509,8 @@ It also differs from the lane in three ways:
 - It does not take the lock: a session pod cannot write ConfigMaps in `upgrade-agent`,
   and other actors honour the lock from story 551.
 - It uses the caller's own `gh` identity and reads no token file.
-- `--merge` refuses a pinned clock (`UPGRADE_NIGHT_NOW` set, exit 2).
+- `--merge` refuses any test clock (exit 2): `UPGRADE_NIGHT_NOW` set, `FAKE_NOW` set, or
+  a `Date.now` that is not the native one.
 
 ```bash
 # from the repository root of an up-to-date worktree
@@ -649,7 +653,7 @@ merge step:
 |---|---|
 | `summary.token_permissions` | `names` (for example `checks:read`, `contents:write`, `pull_requests:write`), `can_merge`, `why` |
 | `summary.live_classes` | the allowlist this tick read (git ships `[]`) |
-| `summary.change_lock` | `outcome` (`taken-and-released`, `not-taken`, `held after merge …`), `before.state` (`absent`, `free`, `expired`, `held`, `unreadable`), `holder`, `taken_at`, `expires_at`, `released_at`, `why` |
+| `summary.change_lock` | `outcome` (`taken-and-released`, `not-taken`, `held after merge …`), `before.state` (`absent`, `free`, `expired`, `held`, `unreadable`), `holder`, `taken_at`, `expires_at`, `released_at`, `took_over_from` and `took_over_phase` (an expired lease taken over), `why` |
 | `summary.merge_step` | `pr`, `head`, `class`, `chosen`, `mode`, `verdict` (`not-run`, `refused`, `would-merge`, `merged`, `merge-failed`, `merge-unknown`), `pr_refusals`, `lane_refusals`, `pr_ready`, `merge_call`, `facts` (`reference_time`, `main_newer`, `behind_main`) |
 | `summary.owed_work` | the post-merge hook; `built: false` |
 | `records[].last_attempt` | `verdict`, `pr_refusals`, `lane_refusals`, `merge_call` for that PR |
@@ -720,7 +724,7 @@ The tick uses these exit codes:
 | 0 | The tick finished or was paused. Also when it failed but recorded the failure: it writes `data.error` (and `summary.error`) to `upgrade-lane-state`. This includes a state over the 768 KiB budget, which is caught before the write; the small error record still lands. |
 | 2 | The state write itself failed: the server-side apply was refused. The log carries `ERROR upgrade-night: STATE WRITE FAILED`. The ConfigMap cannot record its own write failure, so a Failed pod is the only signal. |
 | 1 | The tick failed and its error record could not be written either. |
-| 3 | Refused before any read: an unknown `UPGRADE_NIGHT_MODE`, an unknown class in `UPGRADE_NIGHT_LIVE_CLASSES`, or `UPGRADE_NIGHT_NOW` set in live mode. |
+| 3 | Refused before any read: an unknown `UPGRADE_NIGHT_MODE`, an unknown class in `UPGRADE_NIGHT_LIVE_CLASSES`, or `UPGRADE_NIGHT_NOW` set in live mode or with `--write-state`. |
 
 - A tick that fails after it took the change lock releases it on the way out (see
   [The change lock](#the-change-lock)). A pod killed outright leaves it to its

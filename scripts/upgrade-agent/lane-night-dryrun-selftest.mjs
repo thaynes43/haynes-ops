@@ -111,6 +111,7 @@ ok(!/--admin|--auto\b|'--force'/.test(merge.replace(/BYPASS_FLAGS = Object\.free
   ok(M.tokenPermissions(perms[0]).can_merge === true && M.tokenPermissions(perms[0]).why === null, 'the merge step accepts exactly that token');
   const deadline = [...hrl.matchAll(/activeDeadlineSeconds: (\d+)/g)];
   ok(deadline.length === 1 && hrl.indexOf('activeDeadlineSeconds') > hrl.indexOf('      upgrade-night:') && Number(deadline[0][1]) <= rules.night.change_lock.lease_seconds && Number(deadline[0][1]) < 900, "helmrelease: only upgrade-night has activeDeadlineSeconds, at most the lock's lease and under the 15-minute period", JSON.stringify(deadline.map(m => m[1])));
+  ok(!/NODE_OPTIONS|--import|FAKE_NOW|UPGRADE_NIGHT_NOW|test-fake-clock/.test(nightCtl), 'helmrelease: the upgrade-night controller sets no test clock (UPGRADE_NIGHT_NOW, FAKE_NOW, NODE_OPTIONS or --import)');
   ok(/> \/creds\/gh_token_permissions/.test(nightCtl) && !/gh_token_permissions/.test(hrl.slice(0, hrl.indexOf('      upgrade-night:'))), 'helmrelease: only the upgrade-night mint-token records its permission names');
 }
 
@@ -413,17 +414,18 @@ process.exit(0);
     PROMETHEUS_URL: `http://127.0.0.1:${server.address().port}`, UPGRADE_NIGHT_NOW: NOW, UPGRADE_NIGHT_MODE: 'dryrun' };
   const calls = () => (existsSync(logFile) ? readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : []);
   const isSsa = x => x.cmd === 'kubectl' && JSON.stringify(x.argv) === JSON.stringify(SSA);
-  // Live mode refuses UPGRADE_NIGHT_NOW, so a live tick runs with it unset and its clock
-  // pinned by the test-only preload (FAKE_NOW, default NOW); keepNow tests that refusal.
+  // A tick refuses UPGRADE_NIGHT_NOW in live mode and with --write-state, so every tick
+  // here runs with it unset and its clock pinned by the test-only preload (FAKE_NOW,
+  // default NOW); keepNow passes UPGRADE_NIGHT_NOW through to test those refusals.
   const FAKE_CLOCK = join(ROOT, 'scripts/upgrade-agent/test-fake-clock.mjs');
   const tick = (world, extraEnv = {}, args = ['--write-state'], { keepNow = false } = {}) => new Promise(resolve => {
     for (const f of [logFile, mergedFile, lockFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`]) rmSync(f, { force: true });
     if (world.lock) writeFileSync(lockFile, JSON.stringify(world.lock));
     writeFileSync(join(tmp, 'world.json'), JSON.stringify(world));
     const e = { ...env, ...extraEnv };
-    const live = e.UPGRADE_NIGHT_MODE === 'live' && !keepNow;
-    if (live) { e.FAKE_NOW = e.FAKE_NOW || e.UPGRADE_NIGHT_NOW || NOW; delete e.UPGRADE_NIGHT_NOW; }
-    const p = spawn(process.execPath, [...(live ? ['--import', FAKE_CLOCK] : []), join(RES, 'run-night.mjs'), ...args], { env: e });
+    const pin = !keepNow;
+    if (pin) { e.FAKE_NOW = e.FAKE_NOW || e.UPGRADE_NIGHT_NOW || NOW; delete e.UPGRADE_NIGHT_NOW; }
+    const p = spawn(process.execPath, [...(pin ? ['--import', FAKE_CLOCK] : []), join(RES, 'run-night.mjs'), ...args], { env: e });
     let stdout = '', stderr = '';
     p.stdout.on('data', d => { stdout += d; }); p.stderr.on('data', d => { stderr += d; });
     const timer = setTimeout(() => p.kill(), 60000);
@@ -730,6 +732,22 @@ process.exit(0);
     // finding 6: live mode refuses a pinned clock
     const r6 = await tick(baseWorld([4662]), LIVE, ['--write-state'], { keepNow: true });
     ok(r6.status === 3 && /REFUSED: UPGRADE_NIGHT_NOW is set \(a test clock\) in live mode/.test(r6.stderr) && r6.calls.length === 0, 'finding 6: live mode with UPGRADE_NIGHT_NOW set exits 3 before any command', `exit ${r6.status} ${r6.calls.length} calls`);
+  }
+
+  // ── second round of the independent review (LOW findings) ─────────────────────
+  {
+    // 1: taking over an expired merging or merge-unknown lock records that phase, and the
+    // release keeps it, so a merge left unknown stays visible
+    const wt = baseWorld([4662]);
+    wt.lock = { apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'upgrade-change-lock', namespace: 'upgrade-agent', resourceVersion: '77' }, data: { holder: 'upgrade-night/old/3', phase: 'merge-unknown', expires_at: '2026-11-02T06:00:00Z' } };
+    const rt = await tick(wt);
+    ok(rt.summary.change_lock?.took_over_phase === 'merge-unknown' && rt.summary.change_lock?.took_over_from === 'upgrade-night/old/3' && JSON.parse(rt.lockWrites[0].stdin).data.took_over_phase === 'merge-unknown', 'round 2, finding 1: the take over an expired merge-unknown lock records took_over_phase, in the lock and in upgrade-lane-state', JSON.stringify(rt.summary.change_lock));
+    ok(rt.lock?.data?.phase === 'released' && rt.lock.data.last_took_over_phase === 'merge-unknown' && rt.lock.data.last_took_over_from === 'upgrade-night/old/3' && /took over upgrade-night\/old\/3, phase merge-unknown/.test(rt.stderr), 'round 2, finding 1: after the release the lock still says a merge-unknown lease was taken over, and the log says so', JSON.stringify(rt.lock?.data));
+    // 2: UPGRADE_NIGHT_NOW is refused with --write-state (dry-run too); a local read-only run keeps it
+    const r2 = await tick(baseWorld([4477]), {}, ['--write-state'], { keepNow: true });
+    ok(r2.status === 3 && /REFUSED: UPGRADE_NIGHT_NOW is set \(a test clock\) with --write-state/.test(r2.stderr) && r2.calls.length === 0, 'round 2, finding 2: dry-run with --write-state and UPGRADE_NIGHT_NOW exits 3 before any command', `exit ${r2.status} ${r2.calls.length} calls`);
+    const r2l = await tick(baseWorld([4477]), {}, [], { keepNow: true });
+    ok(r2l.status === 0 && r2l.writes.length === 0 && r2l.calls.length > 0, 'round 2, finding 2: a local read-only run may still pin UPGRADE_NIGHT_NOW');
   }
 
   // pause, write failure, a failed read of GitHub, no --write-state

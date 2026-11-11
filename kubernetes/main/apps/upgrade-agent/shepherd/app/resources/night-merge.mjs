@@ -379,7 +379,9 @@ export function takeLock({ holder, purpose, mode, pr, head, now, leaseSeconds, r
   const data = {
     schema: LOCK_SCHEMA, holder, purpose, mode, phase: 'taken', pr: pr ? String(pr) : '', head: head || '',
     taken_at: iso(now), expires_at: iso(now + leaseSeconds * 1000), lease_seconds: String(leaseSeconds),
-    ...(before.state === 'expired' ? { took_over_from: before.holder, took_over_expired_at: before.expires_at } : {}),
+    // an expired lease taken over keeps what it was doing: a merging or merge-unknown
+    // phase means a merge may have happened that nobody verified
+    ...(before.state === 'expired' ? { took_over_from: before.holder, took_over_phase: before.phase || '', took_over_expired_at: before.expires_at } : {}),
   };
   const verb = before.state === 'absent' ? 'create' : 'replace';
   const w = writeLock(verb, lockManifest(data, before.state === 'absent' ? null : before.rv), env);
@@ -393,7 +395,8 @@ export function takeLock({ holder, purpose, mode, pr, head, now, leaseSeconds, r
 export function releaseLock(held, { now, env, note }) {
   if (!held || held.released) return { released: !!held?.released };
   if (!held.rv) return { released: false, why: `no resourceVersion came back from the take; the lease frees the lock at ${held.data.expires_at}` };
-  const data = { schema: LOCK_SCHEMA, holder: '', phase: 'released', last_holder: held.holder, last_purpose: held.data.purpose || '', last_taken_at: held.data.taken_at, released_at: iso(now), ...(note ? { last_note: note } : {}) };
+  const data = { schema: LOCK_SCHEMA, holder: '', phase: 'released', last_holder: held.holder, last_purpose: held.data.purpose || '', last_taken_at: held.data.taken_at, released_at: iso(now), ...(note ? { last_note: note } : {}),
+    ...(held.data.took_over_from ? { last_took_over_from: held.data.took_over_from, last_took_over_phase: held.data.took_over_phase || '' } : {}) };
   const w = writeLock('replace', lockManifest(data, held.rv), env || held.env);
   if (w.ok) { held.released = true; held.rv = w.rv; if (HELD === held) HELD = null; }
   return { released: w.ok, released_at: w.ok ? data.released_at : null, why: w.ok ? null : `the release was not written (${w.detail}); the lease frees the lock at ${held.data.expires_at}` };
@@ -490,7 +493,7 @@ export function laneMergeStep({ mode, subject, rules, run, env, clock, liveClass
     const t0 = clock();
     take = takeLock({ holder, purpose: subject ? `${mode === 'live' ? 'merge step' : 'dry-run exercise'}: #${subject.pr} ${short(subject.head)}` : `${mode} exercise: no candidate`, mode, pr: subject?.pr, head: subject?.head, now: t0, leaseSeconds: cfg.lease_seconds, run, env });
     out.lock.before = { state: take.before.state, holder: take.before.holder || null, expires_at: take.before.expires_at || null };
-    if (take.taken) { held = take.held; out.lock = { ...out.lock, outcome: 'taken', holder, taken_at: held.data.taken_at, expires_at: held.data.expires_at, ...(take.before.state === 'expired' ? { took_over_from: take.before.holder } : {}) }; }
+    if (take.taken) { held = take.held; out.lock = { ...out.lock, outcome: 'taken', holder, taken_at: held.data.taken_at, expires_at: held.data.expires_at, ...(take.before.state === 'expired' ? { took_over_from: take.before.holder, took_over_phase: take.before.phase || null } : {}) }; }
     else out.lock.why = take.why;
   } else {
     const s = lockStatus(readNamedConfigMap(LOCK.name, run), clock());
@@ -609,7 +612,9 @@ async function main(argv) {
   const opt = parseCli(argv);
   if (opt.error) { console.error(`night-merge: ${opt.error}\n${USAGE}`); return 2; }
   // UPGRADE_NIGHT_NOW pins the clock for a read-only check; a real merge never runs on it.
-  if (opt.merge && process.env.UPGRADE_NIGHT_NOW) { console.error(`night-merge: --merge refuses a pinned clock (UPGRADE_NIGHT_NOW is set)\n${USAGE}`); return 2; }
+  // ...nor on the selftests' preload (FAKE_NOW) or any other replaced Date.now.
+  const pinned = process.env.UPGRADE_NIGHT_NOW ? 'UPGRADE_NIGHT_NOW is set' : process.env.FAKE_NOW ? 'FAKE_NOW is set' : !/\[native code\]/.test(Function.prototype.toString.call(Date.now)) ? 'Date.now is not the native clock' : null;
+  if (opt.merge && pinned) { console.error(`night-merge: --merge refuses a pinned clock (${pinned})\n${USAGE}`); return 2; }
   const rules = L.loadRules(process.env.UPGRADE_RULES || join(dirname(fileURLToPath(import.meta.url)), 'upgrade-rules.json'));
   const now = Date.parse(process.env.UPGRADE_NIGHT_NOW || '') || Date.now();
   // gh uses the caller's own identity; this CLI reads no token file.
