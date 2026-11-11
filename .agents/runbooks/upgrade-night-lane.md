@@ -1,12 +1,20 @@
-# Nightly upgrade lane (dry-run, OP512 steps 1 and 2)
+# Nightly upgrade lane (OP512; dry-run in git)
 
 The nightly lane will merge low-risk Renovate updates one at a time at night, after the
 backups, with a health check after each one. Tom asked for upgrades to be 100% agent
 driven (OP512, comment 6168). The design is OP512 comment 6193
 (<https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/512>).
 
-**Status: dry-run only.** The lane classifies updates and records what it would do. It
+**Status: dry-run in git.** The lane classifies updates and records what it would do. It
 merges nothing, comments on nothing and labels nothing.
+
+**Story 752 added** a live mode behind the switch, the merge step, the change lock and a
+token that can merge
+(<https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/752>). Live
+mode merges only a class named in an allowlist, and git ships that allowlist empty with
+`UPGRADE_NIGHT_MODE: dryrun`, so the lane still merges nothing. Each dry-run tick takes
+and releases the lock and records the merge step's verdict. See
+[Live mode, the merge step and the change lock](#live-mode-the-merge-step-and-the-change-lock-story-752).
 
 **Step 2 (OP512 rollout step 2) added**, with no change to anything that merges:
 
@@ -37,10 +45,15 @@ CronJob `upgrade-shepherd-upgrade-night` in namespace `upgrade-agent`. Its contr
 - Schedule `*/15 1-5 * * *`, America/New_York (01:00 to 05:45).
 - It uses the shepherd's image, ServiceAccount and egress policy. No LLM runs, and no
   Anthropic credential is mounted.
-- The init container mints a **read-only** GitHub token (contents, pull requests and
-  checks, all read).
-- `run-night.mjs` refuses any `UPGRADE_NIGHT_MODE` except `dryrun` and exits 3 before
-  reading anything.
+- The init container mints a GitHub token with the shepherd's rights: contents and pull
+  requests write, checks read (Tom's ruling Q-548-02, 2026-11-11, recorded on story 752).
+  It also writes the permission JSON it sent to GitHub to `/creds/gh_token_permissions`,
+  and each tick logs those names. The token itself is never logged.
+- The token can merge, so the dry-run guarantee rests on the code: dry-run never reaches
+  a GitHub write call. The selftests check this statically and against stub binaries.
+- `run-night.mjs` accepts `UPGRADE_NIGHT_MODE` `dryrun` or `live` and nothing else. It
+  also refuses a class name in `UPGRADE_NIGHT_LIVE_CLASSES` that does not exist. Either
+  refusal exits 3 before reading anything.
 - When a tick fails, see [When a tick fails](#when-a-tick-fails) below.
 
 The code is in the same `resources/` directory as the shepherd and is mounted from the
@@ -50,7 +63,8 @@ The code is in the same `resources/` directory as the shepherd and is mounted fr
 |---|---|
 | `lane-classify.mjs` | Puts one PR in a lane from its facts. It is a pure function, with a read-only CLI around it. |
 | `upgrade-rules.json` | The registry: path classes, the check map, our own images, per-package rules and CNPG clients. |
-| `run-night.mjs` | One tick: classify the PRs, check the gates, choose one PR and write the state. |
+| `run-night.mjs` | One tick: classify the PRs, check the gates, choose one PR, run the merge step under the change lock and write the state. |
+| `night-merge.mjs` | The merge step, the change lock and the hand-run CLI (story 752). |
 
 ## Lanes
 
@@ -137,13 +151,13 @@ critical alerts from Prometheus, main's commits to the PR's files and each work 
   alert that did not block is listed under `records[].gates.alerts_not_blocking`.
 - **Work orders:** none may be `claimed`.
 - **Merge window:** 01:30 to 04:45 New York.
-- **Change lock (`upgrade-change-lock`): not implemented until the live step.** Nothing
-  takes this lock yet, so it is not a protection. The tick reports it as
-  `change_lock: not-implemented`.
+- **Change lock (`upgrade-change-lock`):** taken by the merge step after the gates, not a
+  gate of its own. See
+  [The change lock](#the-change-lock). Nothing else honours it until story 551.
 
 Of the PRs that pass every gate, the tick picks one. It prefers no cluster effect, then
-delayed, then stateless, then stateful, then the lowest PR number. In this step it only
-records the choice.
+delayed, then stateless, then stateful, then the lowest PR number. In live mode it
+prefers a PR whose class is allowlisted. The merge step then runs on that PR.
 
 ## Gate rules from story 550 (R5, R7, R8, R10)
 
@@ -295,6 +309,248 @@ The package rule `ceph-csi-chart` matches `/^ceph-csi-/`, and the path rule
   create, resume or attach is in flight. That check is lane-B work (piece 2). The night
   lane only records the rule.
 
+## Live mode, the merge step and the change lock (story 752)
+
+### The switch
+
+Two env vars on the `upgrade-night` container, both in git:
+
+| Variable | Git ships | Meaning |
+|---|---|---|
+| `UPGRADE_NIGHT_MODE` | `dryrun` | `dryrun` or `live`. Anything else exits 3 before a read. |
+| `UPGRADE_NIGHT_LIVE_CLASSES` | `""` | Lane-A classes live mode may merge, comma-separated: `no-cluster-effect`, `delayed-cluster-change`, `cluster-change`, `immediate-cluster-change`. An unknown name exits 3 before a read. |
+
+- Live mode with an empty allowlist merges nothing. The merge step still runs on the
+  chosen PR and refuses it with `class <c> is not in the live allowlist
+  (UPGRADE_NIGHT_LIVE_CLASSES: empty)`.
+- Switching a class live is story 556. Do not name a class before verification (story
+  553) is built: see [After a merge](#after-a-merge).
+- `scripts/upgrade-agent/lane-night-dryrun-selftest.mjs` fails if git ships anything but
+  `dryrun`, an empty allowlist and the token below. Story 556 changes that test together
+  with the switch.
+- Live mode, and any run with `--write-state`, refuses (exit 3, before a read) when
+  `UPGRADE_NIGHT_NOW` is set. A lock taken at a pinned future time would carry that
+  time's expiry. The variable is for a local read-only run. The selftests pin the clock
+  with a test-only preload (`scripts/upgrade-agent/test-fake-clock.mjs`), which the
+  CronJob never loads (a selftest checks its env and command).
+
+**The token.** The init container requests
+`{"contents":"write","pull_requests":"write","checks":"read"}`, the shepherd's rights,
+by Tom's ruling Q-548-02. GitHub mints exactly the requested permissions or refuses the
+mint. The tick reads the request back from `/creds/gh_token_permissions` and logs the
+names. The merge step refuses a token that cannot merge (no contents or pull requests
+write), a token wider than those three, and a file it cannot read.
+
+### Why Node
+
+The merge step is a port of the preflight in `scripts/upgrade-agent/deliver_reviewed_pr.py`
+and the handoff's `preflight.py` to Node (`night-merge.mjs`). The shepherd image is
+`node:24-slim` and has no Python. Adding Python means an image change, and the lane's
+code would then span two languages.
+
+### The merge step
+
+**Which PR.** In live mode, the PR the tick chose. In dry-run, the chosen PR, or, when
+the tick chose none, the nearest lane-A candidate in pick order. So every dry-run night
+records a verdict. The record then says `chosen: false`, and the first lane refusal names
+the gate blockers.
+
+**What it reads afresh**, right before the merge and under the lock:
+
+- `gh pr view` with state, draft flag, head and head branch, base, whether it comes
+  from another repository, author, mergeability, files, commits and every check and
+  commit status on the head;
+- the REST commit list (`repos/<repo>/pulls/<n>/commits`): each commit's author and
+  committer accounts and its signature;
+- story 550's R7 through the same three functions
+  (`checksReferenceTime`, `mainCommitsTouching`, `checksPredateMain`);
+- for each changed file, the newest commit on main that touches it
+  (`commits?sha=main&path=<file>&per_page=1`), and whether the head contains it
+  (`compare/<head>...<sha>`: `ahead_by` 0 means it does).
+
+**It refuses** (fail closed: a read it cannot make is a refusal named `unreadable: …`):
+
+| Refusal | Why |
+|---|---|
+| not open, a draft, base not `main`, a commit not Renovate's alone | as in the handoff preflight |
+| `opened by … not the Renovate app`, `a pull request from another repository`, `head branch … is not under renovate/` | the author must be the Renovate app as gh reports it (`app/renovate`, `is_bot` true), from this repository, on a `renovate/` branch |
+| `commit … is not the Renovate app's (…)` | every REST commit authored by `renovate[bot]` (type `Bot`, id 29139614), committed by `web-flow` with a valid signature, as GitHub makes Renovate's commits. Read live on 2026-11-11 for every open Renovate PR |
+| `head moved: …` | the head is not the one the tick chose; the merge is pinned to it anyway |
+| `GitHub reads it … not MERGEABLE`, `merge state …` | `CLEAN`, `HAS_HOOKS` and `UNSTABLE` pass; the check scan below decides on non-required checks |
+| `commit status <context> is pending (PENDING)` or `(EXPECTED)` | **gap 1.** The handoff preflight read a pending status as complete |
+| `check still running: …`, `check failed: …` | any check run on the head, newest attempt counted. `Claude Review (advisory)` is never a gate |
+| `required check not SUCCESS: …` | `Flux Local - Success` and `Diff Scope - Success`, literals as in `deliver_reviewed_pr.py` |
+| `expected check …` | every check the check map expects for the files, as in the classifier |
+| `checks predate main: …` | **gap 2.** R7, reused, not rewritten |
+| `head is behind main: <file> changed by <sha> …` | **gap 3.** "Require branches to be up to date" is off for main, so GitHub would merge it |
+| `the change lock …`, `paused before the lock take: …` | see below |
+| `class … not in the live allowlist`, `the token …` | the lane's own conditions (listed apart as `lane_refusals`) |
+
+**Just before the merge call** (live mode only) it checks again, and refuses on any of:
+
+| Refusal | Why |
+|---|---|
+| `the change lock has …s of lease left, under 240s` | not merging on a lease that may lapse |
+| `the merge window is closed at the merge call (now HH:MM)` | the tick's window gate was judged at its start; a stalled tick must not merge after 04:45 |
+| `the tick's gates are …s old at the merge call, over 300s` | `max_gate_age_seconds`: the backups, alerts and Flux baseline were read at the tick's start |
+| `paused just before the merge call: …`, or the pause unreadable | a pause set while the step read the PR stops the merge |
+| `the change lock could not be moved to phase merging` | the post-merge hold must be written before the call |
+
+**The merge call** is `gh pr merge <n> --repo thaynes43/haynes-ops --squash
+--match-head-commit <head>`. It never carries `--admin`, `--auto` or a force flag;
+`checkMergeArgv` refuses them, and GitHub refuses the merge if the head moved.
+
+- The call is made only in live mode, with a clean verdict, after the checks above.
+- Before it, the lock moves to phase `merging` with the 4-hour post-merge lease. A kill,
+  a timeout or a lost reply during the call therefore cannot leave only the short lease.
+- `callMerge` throws for any other mode before it starts a process.
+- After the call, a read checks that the PR is `MERGED` at that head.
+
+**Timeouts.** Every read through `runReadOnly` is killed after 120 seconds and counts as
+a failed read. The Job has `activeDeadlineSeconds: 600`, equal to the lock's lease and
+under the 15-minute period, so a tick is dead before a lease it took can expire.
+
+### The change lock
+
+ConfigMap `upgrade-agent/upgrade-change-lock`. It is runtime state, not Flux-managed. The
+ServiceAccount's Role `upgrade-shepherd-spend` already allows the create and update it
+needs.
+
+| `data` key | Meaning |
+|---|---|
+| `holder` | `upgrade-night/<pod>/<random>`; empty when free |
+| `phase` | `taken`, `merging` (written just before the merge call), `merged-awaiting-verification`, `merge-unknown` or `released` |
+| `purpose`, `mode`, `pr`, `head` | what the holder is doing |
+| `taken_at`, `expires_at`, `lease_seconds` | the lease |
+| `took_over_from`, `took_over_phase` | the holder of an expired lease this take replaced, and its phase. A `merging` or `merge-unknown` phase means a merge may have happened that nobody verified |
+| `last_holder`, `last_purpose`, `released_at`, `last_note`, `last_took_over_from`, `last_took_over_phase` | after a release; the take-over fields stay visible |
+
+- **Free:** no object, or `holder` empty. **Expired:** `expires_at` has passed; the
+  next taker takes it over. **Held:** anything else.
+- **Take.** A create when the object is absent, else a replace at the
+  `resourceVersion` just read. A second taker fails with `AlreadyExists` or `Conflict`
+  and holds nothing.
+- **Lease.** 600 seconds, shorter than the 15-minute tick: a crashed tick blocks at most
+  the next one. The values are `night.change_lock` in `upgrade-rules.json`.
+- **When.** Every tick run with `--write-state` takes it after the gates, before the
+  merge step's reads, and releases it before the state write. This happens in dry-run
+  too, and with no candidate, so the mechanism runs every night. A local run (no
+  `--write-state`) never takes it, so it never merges.
+- **Release on every exit path:** `finally`, plus an exit handler and a SIGTERM handler
+  for a process that ends while holding it. A SIGKILL leaves it to the lease. A release
+  is also a replace at the `resourceVersion`, so it never overwrites a new holder.
+- **Never released once a merge may have happened:** from the `merging` write on, every
+  exit path keeps the lock with the 4-hour lease.
+- **Fails closed:** an unreadable lock, a holder with no readable `expires_at`, or a
+  take the API refuses means no take and no merge. A lock with an unreadable expiry
+  stays held until a person clears it.
+
+To read it (story 551 will make the shepherd and hand runs do this):
+
+```bash
+kubectl -n upgrade-agent get cm upgrade-change-lock -o jsonpath='{.data.holder} {.data.phase} {.data.expires_at}'; echo
+```
+
+To clear a lock left with an unreadable expiry (a person, after checking that no tick
+runs): `kubectl -n upgrade-agent delete cm upgrade-change-lock`.
+
+### After a merge
+
+Verification after a merge is story 553 and is **not built**. A live merge therefore
+keeps the lock, phase `merged-awaiting-verification`, for `post_merge_lease_seconds`
+(4 hours). Until it expires no tick merges, so the lane merges at most once a night.
+`owedWork()` in `night-merge.mjs` is the hook where stories 553, 753 and 754 run the
+verification and revert a merge owes; today it records `built: false` and runs nothing.
+
+The outcome of the call:
+
+- **`merged`**: the PR reads `MERGED` at the head. The lock keeps the 4-hour hold.
+- **`merge-failed`**: the call returned a real non-zero exit and the PR still reads
+  `OPEN`. The lock is released.
+- **`merge-unknown`**: anything else, including a call with no exit status (timed out
+  or killed) even when the PR reads `OPEN`. GitHub may have merged, so it is treated as a
+  merge: phase `merge-unknown`, the 4-hour hold kept.
+
+### Pause and suspend in live mode
+
+- **`data.pause`** on `upgrade-lane-state` stops new merges and new lock takes.
+  - A tick reads it at its start, again just before the lock take, and again just before
+    the merge call. A pause set at any point before the call stops that tick's merge. A
+    pause it cannot read refuses.
+  - The hand run reads it at its start and, with `--merge`, again just before the call.
+  - Verification and reverts already owed for a merge would carry on through the
+    `owedWork()` hook. They are not built yet.
+- **`suspend: true`** on the controller in git stops every tick, including that owed
+  work. Use pause unless you mean that.
+
+### The hand run (rehearsal)
+
+`night-merge.mjs` is also a CLI for one named PR. **A real `--merge` needs the owner's
+yes for that PR**; the CLI reads no approval.
+
+What it checks:
+
+- **the classifier**, on the same facts the tick gathers. The PR must be `LANE-A`:
+  holds in `.renovate/holds.json5`, majors and prereleases, package rules (ceph-csi,
+  for one), path classes and excluded paths, and a current-head vet `HOLD` all refuse.
+  `--check-only` prints the lane and the reason;
+- the merge step's preflight, as above;
+- the lock and the pause. It refuses while either is set, and re-reads the pause just
+  before a merge call.
+
+What it skips, because only the tick knows it:
+
+- the merge window;
+- the class allowlist;
+- the tick's gates (backups, the Flux baseline, critical alerts, work orders).
+
+It also differs from the lane in three ways:
+
+- It does not take the lock: a session pod cannot write ConfigMaps in `upgrade-agent`,
+  and other actors honour the lock from story 551.
+- It uses the caller's own `gh` identity and reads no token file.
+- `--merge` refuses any test clock (exit 2): `UPGRADE_NIGHT_NOW` set, `FAKE_NOW` set, or
+  a `Date.now` that is not the native one.
+
+```bash
+# from the repository root of an up-to-date worktree
+PR=3915
+HEAD_SHA=$(gh pr view "$PR" -R thaynes43/haynes-ops --json headRefOid -q .headRefOid)
+# 1. check only: prints the verdict, changes nothing (exit 0 = would merge, 1 = refused)
+node kubernetes/main/apps/upgrade-agent/shepherd/app/resources/night-merge.mjs --pr "$PR" --head "$HEAD_SHA" --check-only
+# 2. the real run, only after the owner's yes: merges once at that head if the verdict is clean
+node kubernetes/main/apps/upgrade-agent/shepherd/app/resources/night-merge.mjs --pr "$PR" --head "$HEAD_SHA" --merge
+```
+
+Exit 0 means merged (or, with `--check-only`, would merge). Exit 1 means refused and
+nothing merged. Exit 2 is a usage error. Exit 3 means the merge call failed or its
+outcome could not be verified. `--json` prints the verdict as JSON. On 2026-11-11 the
+check-only run read PR 3915 at `a7174f4e` as **would merge**:
+
+- main was 94 commits ahead of the head, but no main commit had touched its two files
+  (`scripts/tests/dev-env-archive-guard/go.mod`, `go.sum`) since its base;
+- its checks ran at 2026-11-10T00:11Z, inside the 7-day limit.
+
+So the rules above do not refuse it without a refresh.
+
+### Known limits of the merge step
+
+- R7 and the behind-main rule look at the PR's own files. A check can also depend on
+  other files: the archive-guard workflow that PR 3915 needs also watches Kyverno policy
+  files. A main change to such a file after the checks does not make them stale here.
+- The behind-main rule assumes main is linear. It is today: squash merges only. With
+  merge commits, a newer commit to the file could be contained while an older one is
+  not.
+- The hand run does not take the lock.
+- `/creds/gh_token_permissions` records the permissions the init container requested,
+  not the ones GitHub granted. GitHub mints exactly the request or refuses it, so the two
+  agree on a successful mint. Recording the grant itself needs `github-app-token.sh`
+  (baked into the image) to print the response's `.permissions`, which is outside this
+  story's files.
+- `renovate_pr_authors` is now `["app/renovate"]` alone. The plain `renovate` and
+  `renovate[bot]` logins were dropped. No PR open on 2026-11-11 changes lane, and no
+  fixture changes.
+
 ## What step 2 records
 
 - **`fingerprint`** names the change, not the commit. It is `sha256:` over each file
@@ -320,9 +576,9 @@ The package rule `ceph-csi-chart` matches `/^ceph-csi-/`, and the path rule
     (d91793d3 to ea9bbac8) were byte-identical; the rebase of #4336 (c90af518 to
     da0449f2) changed one line. These three pairs are the fixture
     `scripts/upgrade-agent/fixtures/lane-rebase-pairs-20261110.json`.
-  - Step 2 only records the value. Using it, for example to carry Tom's approving review
-    or a vet decline across a rebase, needs a single Renovate commit and an equal
-    fingerprint, and comes in a later step.
+  - Step 2 only records the value. Using it, for example to carry a vet decline across a
+    rebase, needs a single Renovate commit and an equal fingerprint, and comes in a later
+    step. Piece 1 reads no approval (saga 547, comment 6922), so it never carries one.
 - **`cluster_effect_wait`** appears on a source PR for one of our own images whose
   digest pin Renovate auto-merges (`own_image_pin_wait` in `upgrade-rules.json`). The
   cluster changes only when Renovate's next hosted run opens the pin PR, and those runs
@@ -386,8 +642,38 @@ kubectl -n upgrade-agent logs job/<latest upgrade-shepherd-upgrade-night job>
 ```
 
 `summary.would_merge` is the PR the lane would have merged on that tick. `why_none` says
-why there was no such PR. Each record follows schema `haynes.upgrade-lane/v1`. In this
-step, `preapproval`, `schedule` and `last_attempt` are empty.
+why there was no such PR. Each record follows schema `haynes.upgrade-lane/v1`.
+`preapproval` and `schedule` are empty: piece 1 reads no approval (saga 547, comment
+6922). `last_attempt` is set on the merge step's PR only.
+
+What story 752 adds to the state, and how a dry-run night shows the lock and the
+merge step:
+
+| Field | What it holds |
+|---|---|
+| `summary.token_permissions` | `names` (for example `checks:read`, `contents:write`, `pull_requests:write`), `can_merge`, `why` |
+| `summary.live_classes` | the allowlist this tick read (git ships `[]`) |
+| `summary.change_lock` | `outcome` (`taken-and-released`, `not-taken`, `held after merge …`), `before.state` (`absent`, `free`, `expired`, `held`, `unreadable`), `holder`, `taken_at`, `expires_at`, `released_at`, `took_over_from` and `took_over_phase` (an expired lease taken over), `why` |
+| `summary.merge_step` | `pr`, `head`, `class`, `chosen`, `mode`, `verdict` (`not-run`, `refused`, `would-merge`, `merged`, `merge-failed`, `merge-unknown`), `pr_refusals`, `lane_refusals`, `pr_ready`, `merge_call`, `facts` (`reference_time`, `main_newer`, `behind_main`) |
+| `summary.owed_work` | the post-merge hook; `built: false` |
+| `records[].last_attempt` | `verdict`, `pr_refusals`, `lane_refusals`, `merge_call` for that PR |
+
+Log lines of each tick (stderr, in this order):
+
+```text
+upgrade-night dryrun: token permissions: checks:read, contents:write, pull_requests:write (as requested by mint-token, /creds/gh_token_permissions); can merge
+upgrade-night dryrun: change lock upgrade-agent/upgrade-change-lock: taken-and-released (before: absent) taken_at=… expires_at=… released_at=…
+upgrade-night dryrun: merge step #<pr> <head8> (<class>): REFUSED: class <class> is not in the live allowlist (UPGRADE_NIGHT_LIVE_CLASSES: empty); merge call: not reached (dry-run)
+```
+
+On a dry-run night with git's settings, a clean PR reads `REFUSED` for its class alone,
+with `pr_ready: true`. Any other refusal is about the PR. `merge call` always reads
+`not reached (dry-run)`.
+
+```bash
+kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.summary}' \
+  | jq '{token_permissions, change_lock, merge_step: (.merge_step | del(.facts))}'
+```
 
 Where each story 550 rule shows in the state:
 
@@ -403,12 +689,15 @@ kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.records}'
   | jq '.[] | select(.lane=="LANE-A") | {pr, blockers: .gates.blockers, not_blocking: .gates.alerts_not_blocking, main_newer: .checks.main_newer, via: .via_components}'
 ```
 
-To run it by hand (read-only, writes nothing; gh must be logged in):
+To run it by hand (read-only, writes nothing; gh must be logged in). Without
+`--write-state` the tick takes no lock and so can never merge:
 
 ```bash
 node kubernetes/main/apps/upgrade-agent/shepherd/app/resources/lane-classify.mjs     # the table
 node kubernetes/main/apps/upgrade-agent/shepherd/app/resources/run-night.mjs         # tick, no --write-state
 ```
+
+For one PR, use the [hand run](#the-hand-run-rehearsal) with `--check-only`.
 
 ## Kill switch
 
@@ -421,8 +710,10 @@ node kubernetes/main/apps/upgrade-agent/shepherd/app/resources/run-night.mjs    
   ```
 
   While `data.pause` is non-empty, each tick logs that it is paused and does nothing else.
-  It reads nothing from GitHub and writes nothing. To resume, remove the key. The
-  server-side apply never removes a key that another field manager set.
+  It reads nothing from GitHub, takes no lock, merges nothing and writes nothing. To
+  resume, remove the key. The server-side apply never removes a key that another field
+  manager set. For what pause leaves running in live mode, see
+  [Pause and suspend in live mode](#pause-and-suspend-in-live-mode).
 
 ## When a tick fails
 
@@ -433,6 +724,15 @@ The tick uses these exit codes:
 | 0 | The tick finished or was paused. Also when it failed but recorded the failure: it writes `data.error` (and `summary.error`) to `upgrade-lane-state`. This includes a state over the 768 KiB budget, which is caught before the write; the small error record still lands. |
 | 2 | The state write itself failed: the server-side apply was refused. The log carries `ERROR upgrade-night: STATE WRITE FAILED`. The ConfigMap cannot record its own write failure, so a Failed pod is the only signal. |
 | 1 | The tick failed and its error record could not be written either. |
+| 3 | Refused before any read: an unknown `UPGRADE_NIGHT_MODE`, an unknown class in `UPGRADE_NIGHT_LIVE_CLASSES`, or `UPGRADE_NIGHT_NOW` set in live mode or with `--write-state`. |
+
+- A tick that fails after it took the change lock releases it on the way out (see
+  [The change lock](#the-change-lock)). A pod killed outright leaves it to its
+  600-second lease. Once the lock reads `merging`, nothing releases it before its
+  4-hour lease.
+- A tick still running at 600 seconds is killed by the Job's `activeDeadlineSeconds`.
+  Its Job fails (`DeadlineExceeded`) and counts as a Failed pod, as below. Ticks take
+  about 25 seconds today.
 
 **How the gate and triage treat a Failed `upgrade-night` pod** (read from
 `health-gate/app/resources/coordination-lib.sh`, which this PR does not change):
@@ -455,7 +755,7 @@ attribution can call it an upgrade regression whenever a merge touched the app's
 in its 3-hour lookback (the library's own description of that behavior). That
 is acceptable for a write failure, which needs a person.
 
-Before the live step, a later change should decide how a Failed `upgrade-night` pod is
+Before the first live night, story 754 decides how a Failed `upgrade-night` pod is
 classified. One option is a covering alert plus the failure-is-the-alert annotation;
 another is an explicit exclusion in `coordination-lib.sh`. That library is mounted in
 dev-env-ops, so merge such a change only when no work order is claimed.
@@ -487,8 +787,13 @@ dev-env-ops, so merge such a change only when no work order is claimed.
 
 ```bash
 node scripts/upgrade-agent/lane-classify-selftest.mjs      # lanes, drift (workflows and shared components), own images, the 27 reviewed PRs, R7/R8/R10
-node scripts/upgrade-agent/lane-night-dryrun-selftest.mjs  # the dry-run guarantee, the gates, R5 and R7/R8 through the tick
+node scripts/upgrade-agent/lane-night-dryrun-selftest.mjs  # the dry-run guarantee, the gates, R5 and R7/R8, the merge step and the lock through the tick
+node scripts/upgrade-agent/lane-merge-step-selftest.mjs    # the merge step's refusals, the lock's states and exit paths, the hand-run CLI
 ```
+
+`lane-merge-step-selftest.mjs` reads
+`scripts/upgrade-agent/fixtures/merge-step-pr3915-20261111.json`, PR 3915 as the merge
+step's reads saw it on 2026-11-11.
 
 Since step 2 these run in CI as `Upgrade Agent Selftests` on pull requests and pushes to
 main that touch the shepherd app (`kubernetes/main/apps/upgrade-agent/shepherd/app/**`),
@@ -496,7 +801,7 @@ the two shared shell sources the selftests execute (`coordination-lib.sh`,
 `respond.sh`), `scripts/upgrade-agent/**`, any workflow file (for the drift test) or
 `.renovate/**`. The workflow runs, one at a time:
 
-- the two lane selftests above, plus `node --check` and `jq .` on the shipped files;
+- the three lane selftests above, plus `node --check` and `jq .` on the shipped files;
 - the shell selftests: `coordination-sig`, `held-audit`, `shepherd-verdict`,
   `stale-corpse` and `triage-claim` (`scripts/upgrade-agent/*-selftest.sh`);
 - the delivery helper's offline suite:
@@ -518,7 +823,10 @@ node scripts/pr-disposition-test.cjs                        # the labeler truth 
    pre-filter, and the one-retry rule for stalled checks.
 4. Coordination with triage and the gate: ownership of a regression signature, the
    morning digest and the orphan page.
-5. The first live merge: one class, one merge a night, a stateless leaf. Then stateful
-   targets and our own images. That step adds a live mode, a write-capable token, the
-   verify-and-revert loop and the change lock.
+5. The first live merge: one class, one merge a night, a stateless leaf (story 556).
+   Then stateful targets and our own images. Story 752 built the live mode, the
+   write-capable token, the merge step and the change lock. Still to come: verification
+   after a merge (story 553), revert by pull request (story 753), failure handling and a
+   revert owed while paused (story 754), and the shepherd and hand runs honouring the
+   lock (story 551).
 6. Lane B: work orders, an ask phase and a scheduled phase.

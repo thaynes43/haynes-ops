@@ -540,12 +540,16 @@ export function isReadOnlyCommand(cmd, argv) {
   return false;
 }
 
-export function runReadOnly(cmd, argv, { env = process.env, allowFail = false } = {}) {
+// Every read has a deadline (story 752): a stalled gh or kubectl is killed and counts as a
+// failed read, so a tick cannot hang on one and act much later on stale facts.
+export const READ_TIMEOUT_MS = 120e3;
+export function runReadOnly(cmd, argv, { env = process.env, allowFail = false, timeoutMs = READ_TIMEOUT_MS } = {}) {
   if (!isReadOnlyCommand(cmd, argv)) throw new Error(`refused non-read command: ${cmd} ${argv.slice(0, 3).join(' ')}`);
-  const r = spawnSync(cmd, argv, { encoding: 'utf8', env, maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync(cmd, argv, { encoding: 'utf8', env, maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs, killSignal: 'SIGKILL' });
   if (r.status !== 0) {
     if (allowFail) return null;
-    throw new Error(`${cmd} ${argv.slice(0, 3).join(' ')} failed (exit ${r.status}): ${String(r.stderr || r.error || '').slice(0, 300)}`);
+    const why = r.status === null ? `timed out or killed after ${timeoutMs}ms (${r.signal || r.error?.code || 'no exit status'})` : `exit ${r.status}`;
+    throw new Error(`${cmd} ${argv.slice(0, 3).join(' ')} failed (${why}): ${String(r.stderr || r.error || '').slice(0, 300)}`);
   }
   return r.stdout;
 }

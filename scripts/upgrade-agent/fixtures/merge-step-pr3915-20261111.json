@@ -1,0 +1,196 @@
+{
+  "note": "PR 3915 (kubernetes monorepo v0.36.6, scripts/tests/dev-env-archive-guard) as the night-merge.mjs reads saw it on 2026-11-11, captured read-only for lane-merge-step-selftest.mjs. Main was 94 commits ahead of the head, but main had no commit to the two files after the head base; the merge step read it as ready. Second capture (same head, same day): the author identity, branch, title, labels, body, the REST commit list (author, committer, signature) and the issue comments, for the hand run classifier and the identity checks.",
+  "captured_at": "2026-11-11T16:19:04.370Z",
+  "head": "a7174f4ef958dbfdaf15e8533beffe2c8dde2822",
+  "main_ahead_of_head": 94,
+  "view": {
+    "author": {
+      "login": "app/renovate",
+      "is_bot": true
+    },
+    "baseRefName": "main",
+    "changedFiles": 2,
+    "commits": [
+      {
+        "oid": "a7174f4ef958dbfdaf15e8533beffe2c8dde2822",
+        "committedDate": "2026-11-10T00:10:58Z",
+        "authors": [
+          {
+            "login": "renovate[bot]"
+          }
+        ]
+      }
+    ],
+    "files": [
+      {
+        "path": "scripts/tests/dev-env-archive-guard/go.mod"
+      },
+      {
+        "path": "scripts/tests/dev-env-archive-guard/go.sum"
+      }
+    ],
+    "headRefOid": "a7174f4ef958dbfdaf15e8533beffe2c8dde2822",
+    "isDraft": false,
+    "mergeStateStatus": "CLEAN",
+    "mergeable": "MERGEABLE",
+    "number": 3915,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Claude Code Review",
+        "name": "Claude Review (advisory)",
+        "status": "COMPLETED",
+        "conclusion": "SKIPPED",
+        "startedAt": "2026-11-10T00:11:04Z",
+        "completedAt": "2026-11-10T00:11:04Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Diff Scope",
+        "name": "Diff Scope - Success",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-10T00:11:07Z",
+        "completedAt": "2026-11-10T00:11:14Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Flux Local",
+        "name": "Flux Local - Filter",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-10T00:11:06Z",
+        "completedAt": "2026-11-10T00:11:10Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "dev-env archive guard source tests",
+        "name": "Archive Guard Source - Success",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-10T00:11:07Z",
+        "completedAt": "2026-11-10T00:18:44Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Flux Local",
+        "name": "Flux Local - external-dns annotation prefix",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-10T00:11:06Z",
+        "completedAt": "2026-11-10T00:11:11Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Flux Local",
+        "name": "Flux Local - Test (${{ matrix.cluster }})",
+        "status": "COMPLETED",
+        "conclusion": "SKIPPED",
+        "startedAt": "2026-11-10T00:11:10Z",
+        "completedAt": "2026-11-10T00:11:10Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Flux Local",
+        "name": "Flux Local - Diff (${{ matrix.cluster }}/${{ matrix.resource }})",
+        "status": "COMPLETED",
+        "conclusion": "SKIPPED",
+        "startedAt": "2026-11-10T00:11:10Z",
+        "completedAt": "2026-11-10T00:11:10Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Flux Local",
+        "name": "Flux Local - Portal OIDC guard",
+        "status": "COMPLETED",
+        "conclusion": "SKIPPED",
+        "startedAt": "2026-11-10T00:11:10Z",
+        "completedAt": "2026-11-10T00:11:10Z"
+      },
+      {
+        "__typename": "CheckRun",
+        "workflowName": "Flux Local",
+        "name": "Flux Local - Success",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "startedAt": "2026-11-10T00:11:14Z",
+        "completedAt": "2026-11-10T00:11:16Z"
+      }
+    ],
+    "isCrossRepository": false,
+    "headRefName": "renovate/kubernetes-monorepo",
+    "title": "fix(deps): update kubernetes monorepo to v0.36.6",
+    "labels": [
+      {
+        "name": "type/minor"
+      },
+      {
+        "name": "disposition:manual-only"
+      }
+    ],
+    "body": "This PR contains the following updates:\n\n| Package | Change | [Age](https://docs.renovatebot.com/merge-confidence/) | [Confidence](https://docs.renovatebot.com/merge-confidence/) |\n|---|---|---|---|\n| [k8s.io/api](https://redirect.github.com/kubernetes/api) | `v0.36.3` → `v0.36.6` | ![age](https://developer.mend.io/api/mc/badges/age/go/k8s.io%2fapi/v0.36.6?slim=true) | ![confidence](https://developer.mend.io/api/mc/badges/confidence/go/k8s.io%2fapi/v0.36.3/v0.36.6?slim=true) |\n| [k8s.io/apimachinery](https://redirect.github.com/kubernetes/apimachinery) | `v0.36.3` → `v0.36.6` | ![age](https://developer.mend.io/api/mc/badges/age/go/k8s.io%2fapimachinery/v0.36.6?slim=true) | ![confidence](https://developer.mend.io/api/mc/badges/confidence/go/k8s.io%2fapimachinery/v0.36.3/v0.36.6?slim=true) |\n| [k8s.io/apiserver](https://redirect.github.com/kubernetes/apiserver) | `v0.36.3` → `v0.36.6` | ![age](https://developer.mend.io/api/mc/badges/age/go/k8s.io%2fapiserver/v0.36.6?slim=true) | ![confidence](https://developer.mend.io/api/mc/badges/confidence/go/k8s.io%2fapiserver/v0.36.3/v0.36.6?slim=true) |\n\n---\n\n### Release Notes\n\n<details>\n<summary>kubernetes/api (k8s.io/api)</summary>\n\n### [`v0.36.6`](https://redirect.github.com/kubernetes/api/compare/v0.36.5...v0.36.6)\n\n[Compare Source](https://redirect.github.com/kubernetes/api/compare/v0.36.5...v0.36.6)\n\n### [`v0.36.5`](https://redirect.github.com/kubernetes/api/compare/v0.36.4...v0.36.5)\n\n[Compare Source](https://redirect.github.com/kubernetes/api/compare/v0.36.4...v0.36.5)\n\n### [`v0.36.4`](https://redirect.github.com/kubernetes/api/compare/v0.36.3...v0.36.4)\n\n[Compare Source](https://redirect.github.com/kubernetes/api/compare/v0.36.3...v0.36.4)\n\n</details>\n\n<details>\n<summary>kubernetes/apimachinery (k8s.io/apimachinery)</summary>\n\n### [`v0.36.6`](https://redirect.github.com/kubernetes/apimachinery/compare/v0.36.5...v0.36.6)\n\n[Compare Source](https://redirect.github.com/kubernetes/apimachinery/compare/v0.36.5...v0.36.6)\n\n### [`v0.36.5`](https://redirect.github.com/kubernetes/apimachinery/compare/v0.36.4...v0.36.5)\n\n[Compare Source](https://redirect.github.com/kubernetes/apimachinery/compare/v0.36.4...v0.36.5)\n\n### [`v0.36.4`](https://redirect.github.com/kubernetes/apimachinery/compare/v0.36.3...v0.36.4)\n\n[Compare Source](https://redirect.github.com/kubernetes/apimachinery/compare/v0.36.3...v0.36.4)\n\n</details>\n\n<details>\n<summary>kubernetes/apiserver (k8s.io/apiserver)</summary>\n\n### [`v0.36.6`](https://redirect.github.com/kubernetes/apiserver/compare/v0.36.5...v0.36.6)\n\n[Compare Source](https://redirect.github.com/kubernetes/apiserver/compare/v0.36.5...v0.36.6)\n\n### [`v0.36.5`](https://redirect.github.com/kubernetes/apiserver/compare/v0.36.4...v0.36.5)\n\n[Compare Source](https://redirect.github.com/kubernetes/apiserver/compare/v0.36.4...v0.36.5)\n\n### [`v0.36.4`](https://redirect.github.com/kubernetes/apiserver/compare/v0.36.3...v0.36.4)\n\n[Compare Source](https://redirect.github.com/kubernetes/apiserver/compare/v0.36.3...v0.36.4)\n\n</details>\n\n---\n\n### Configuration\n\n📅 **Schedule**: (in timezone America/New_York)\n\n- Branch creation\n  - \"after 10pm,before 6am\"\n- Automerge\n  - At any time (no schedule defined)\n\n🚦 **Automerge**: Disabled by config. Please merge this manually once you are satisfied.\n\n♻ **Rebasing**: Whenever PR becomes conflicted, or you tick the rebase/retry checkbox.\n\n🔕 **Ignore**: Close this PR and you won't be reminded about these updates again.\n\n---\n\n - [ ] <!-- rebase-check -->If you want to rebase/retry this PR, check this box\n\n---\n\nThis PR was generated by [Mend Renovate](https://mend.io/renovate/). View the [repository job log](https://developer.mend.io/github/thaynes43/haynes-ops).\n<!--renovate-debug:eyJjcmVhdGVkSW5WZXIiOiI0NC4xNTUuMiIsInVwZGF0ZWRJblZlciI6IjQ0LjIyOC4wIiwidGFyZ2V0QnJhbmNoIjoibWFpbiIsImxhYmVscyI6WyJ0eXBlL3BhdGNoIl19-->\n"
+  },
+  "main_newest": {
+    "scripts/tests/dev-env-archive-guard/go.mod": [
+      {
+        "sha": "17fa8fd2c48f5f5296ebf050c671d72a9799f50c",
+        "at": "2026-10-23T05:08:55Z"
+      }
+    ],
+    "scripts/tests/dev-env-archive-guard/go.sum": [
+      {
+        "sha": "17fa8fd2c48f5f5296ebf050c671d72a9799f50c",
+        "at": "2026-10-23T05:08:55Z"
+      }
+    ]
+  },
+  "compare": {
+    "17fa8fd2c48f5f5296ebf050c671d72a9799f50c": {
+      "status": "behind",
+      "ahead_by": 0,
+      "behind_by": 421
+    }
+  },
+  "pr_commits": [
+    {
+      "sha": "a7174f4ef958dbfdaf15e8533beffe2c8dde2822",
+      "author": {
+        "login": "renovate[bot]",
+        "type": "Bot",
+        "id": 29139614
+      },
+      "committer": {
+        "login": "web-flow",
+        "type": "User",
+        "id": 19864447
+      },
+      "commit": {
+        "verification": {
+          "verified": true,
+          "reason": "valid"
+        }
+      }
+    }
+  ],
+  "comments": [
+    {
+      "user": {
+        "login": "renovate[bot]"
+      },
+      "body": "### ℹ️ Artifact update notice\n\n##### File name: scripts/tests/dev-env-archive-guard/go.mod\n\nIn order to perform the update(s) described in the table above, Renovate ran the `go get` command, which resulted in the following additional change(s):\n\n\n- 1 additional dependency was updated\n\n\nDetails:\n\n\n| **Package**             | **Change**             |\n| :---------------------- | :--------------------"
+    },
+    {
+      "user": {
+        "login": "haynes-dev-bot[bot]"
+      },
+      "body": "HOLD: this independent Kubernetes0.37.1 bump is incompatible with the real Kyverno1.19.x evaluator (compile fails runtime.Object vs admission.LazyObject). Upstream Kyverno1.19.2 pins0.36.3; #4213 retains that graph and preserves every guard assertion. Do not handpatch vendor code or weaken fixtures to force this independent library update.\n\nEvidence and per-PR automation ownership are recorded in "
+    },
+    {
+      "user": {
+        "login": "haynes-dev-bot[bot]"
+      },
+      "body": "Story181 refreshed exact failure at head6d4863b083774664c8266f787e9bbc78bfbb94de, Archive Guard Source run40001332472/job120577882311. Kyverno1.19.2 pkg/admissionpolicy/mutate.go:346 assigns runtime.Object into admission.VersionedAttributes.VersionedObject, which k8s/apiserver0.37.1 changed to concrete admission.LazyObject. The compile failure precedes local fixtures.\n\nA bounded import-boundary re"
+    }
+  ]
+}

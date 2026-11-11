@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// run-night.mjs — the upgrade-night tick (OP512 rollout step 1: DRY-RUN ONLY).
+// run-night.mjs — the upgrade-night tick (OP512; git ships dry-run, live mode is story 752's switch).
 //
 // Design: OP512 comment 6193, "Lane A" and "Rollout order" step 1
 // (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/512).
@@ -21,25 +21,47 @@
 // commits per file); a shared component maps to the Kustomizations that include it (R8,
 // in lane-classify.mjs); ceph-csi is lane B by rule (R10, upgrade-rules.json).
 //
-// DRY-RUN GUARANTEE. This build has no live mode. Any UPGRADE_NIGHT_MODE other than
-// "dryrun" is refused before any read. Every command goes through runReadOnly()
-// (gh pr list/view, gh api GET, kubectl get); the only write is writeLaneState(),
-// which server-side-applies one ConfigMap named upgrade-lane-state in upgrade-agent
-// and only when --write-state is passed (the CronJob passes it; a local run does
-// not). The minted GitHub token is read-only as well (see the CronJob's mint-token
-// env). scripts/upgrade-agent/lane-night-dryrun-selftest.mjs fails if any mutating
-// gh/git/kubectl verb appears on this path.
+// MODES (story 752, https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/752).
+// UPGRADE_NIGHT_MODE is "dryrun" (what git ships) or "live"; anything else, or an
+// UPGRADE_NIGHT_LIVE_CLASSES naming a class that does not exist, is refused before any
+// read. Live mode merges only a PR whose class is in UPGRADE_NIGHT_LIVE_CLASSES, which is
+// empty by default, so live mode with no class merges nothing. The merge step and the
+// change lock live in night-merge.mjs.
+//
+// DRY-RUN GUARANTEE. In dry-run nothing reaches the merge call: night-merge.mjs's
+// callMerge() throws unless its mode is live, and laneMergeStep() calls it only in live
+// mode. Every read goes through runReadOnly() (gh pr list/view, gh api GET, kubectl get).
+// The writes are writeLaneState() here (server-side apply of ConfigMap
+// upgrade-agent/upgrade-lane-state) and, in night-merge.mjs, the take and release of
+// ConfigMap upgrade-agent/upgrade-change-lock (create, or replace at a resourceVersion);
+// both only with --write-state (the CronJob passes it; a local run does not). The minted
+// GitHub token can merge (contents and pull_requests write, checks read: Tom's ruling
+// Q-548-02), so the guarantee rests on dry-run never reaching a GitHub write call, not on
+// the token; each tick logs the token's permission names, never the token.
+// scripts/upgrade-agent/lane-night-dryrun-selftest.mjs and lane-merge-step-selftest.mjs
+// check this.
 import { spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as L from './lane-classify.mjs';
+import * as M from './night-merge.mjs';
 
+const MODES = ['dryrun', 'live'];
 const MODE = process.env.UPGRADE_NIGHT_MODE || 'dryrun';
-if (MODE !== 'dryrun') {
-  // REFUSAL — step 1 implements no live mode. Merging, reverting, commenting and
-  // labelling arrive in later rollout steps, each in its own reviewed PR.
-  console.error(`upgrade-night: REFUSED: UPGRADE_NIGHT_MODE=${MODE}. This build implements dry-run only (OP512 step 1); nothing was read or changed.`);
+const LIVE = M.parseLiveClasses(process.env.UPGRADE_NIGHT_LIVE_CLASSES);
+if (!MODES.includes(MODE) || LIVE.unknown.length) {
+  // REFUSAL before any read: a mistyped switch must not run as something else.
+  const what = !MODES.includes(MODE) ? `UPGRADE_NIGHT_MODE=${MODE} (only dryrun or live)` : `UPGRADE_NIGHT_LIVE_CLASSES names unknown classes ${LIVE.unknown.join(', ')} (known: ${M.LANE_A_CLASSES.join(', ')})`;
+  console.error(`upgrade-night: REFUSED: ${what}; nothing was read or changed.`);
+  process.exit(3);
+}
+// UPGRADE_NIGHT_NOW pins the clock for a local read-only run. Live mode never runs on it,
+// and neither does a run that writes (--write-state): a lock taken at a pinned future time
+// would carry that time's expiry and could block live ticks and hand runs until then.
+if (process.env.UPGRADE_NIGHT_NOW && (MODE === 'live' || process.argv.includes('--write-state'))) {
+  console.error(`upgrade-night: REFUSED: UPGRADE_NIGHT_NOW is set (a test clock) ${MODE === 'live' ? 'in live mode' : 'with --write-state'}; nothing was read or changed.`);
   process.exit(3);
 }
 
@@ -55,6 +77,10 @@ const log = (...a) => console.error(new Date().toISOString(), ...a);
 const childEnv = { ...process.env };
 const tokenFile = process.env.GH_TOKEN_FILE || '/creds/gh_token';
 if (existsSync(tokenFile)) childEnv.GH_TOKEN = readFileSync(tokenFile, 'utf8').trim();
+// The permission JSON the initContainer sent to GitHub with the mint (names and levels
+// only; GitHub mints exactly those or refuses). Unreadable = cannot merge.
+const permFile = process.env.GH_TOKEN_PERMISSIONS_FILE || '/creds/gh_token_permissions';
+const tokenPerms = () => M.tokenPermissions(existsSync(permFile) ? readFileSync(permFile, 'utf8') : null);
 const run = (cmd, argv, o = {}) => L.runReadOnly(cmd, argv, { env: childEnv, ...o });
 // null = unreadable (the command failed, or the output is not a list). Never [] on error.
 const kget = (args) => {
@@ -321,14 +347,26 @@ export function stateEvidence(k, hr, rs, pods, cronjobs) {
 // ── the tick ─────────────────────────────────────────────────────────────────
 async function tick() {
   const rules = L.loadRules(process.env.UPGRADE_RULES || join(HERE, 'upgrade-rules.json'));
-  // UPGRADE_NIGHT_NOW (ISO time) pins the clock for the selftest; the CronJob never sets it.
-  const now = Date.parse(process.env.UPGRADE_NIGHT_NOW || '') || Date.now();
+  // UPGRADE_NIGHT_NOW (ISO time) pins the clock for a local read-only run (refused above with
+  // --write-state or in live mode); the CronJob never sets it.
+  const pinned = Date.parse(process.env.UPGRADE_NIGHT_NOW || '');
+  const now = Number.isFinite(pinned) ? pinned : Date.now();
+  const clock = () => (Number.isFinite(pinned) ? pinned : Date.now());
   const night = rules.night;
   const maxAge = night.backup_rule.max_age_hours * 3600e3;
+  const token = tokenPerms();
+  log(`upgrade-night ${MODE}: token permissions: ${token.readable ? token.names.join(', ') : 'unreadable'} (as requested by mint-token, ${permFile}); ${token.can_merge ? 'can merge' : `cannot merge: ${token.why}`}`);
+  if (MODE === 'live') log(`upgrade-night live: class allowlist: ${LIVE.classes.length ? LIVE.classes.join(', ') : 'empty, so this tick merges nothing'}`);
   const cms = kget(['configmaps', '-n', night.namespace]);
   const cm = name => (cms?.items || []).find(c => c.metadata?.name === name) || null;
   const pause = cm(night.state_configmap)?.data?.pause;
-  if (pause) { log(`upgrade-night: PAUSED by ${night.state_configmap} data.pause=${JSON.stringify(String(pause).slice(0, 80))}; nothing read or written`); return 0; }
+  if (pause) {
+    // Pause stops new merges and new lock takes. Work already owed for a merge the lane
+    // made (verify, revert) carries on through this hook; it is not built yet.
+    const owed = M.owedWork({ mode: MODE, paused: true });
+    log(`upgrade-night: PAUSED by ${night.state_configmap} data.pause=${JSON.stringify(String(pause).slice(0, 80))}; no merge, no lock take, nothing read from GitHub or written; owed work: ${owed.note}`);
+    return 0;
+  }
 
   const holdRules = L.fetchHoldRules(REPO, run);
   const nums = L.listRenovatePrs(REPO, rules, run);
@@ -417,9 +455,26 @@ async function tick() {
 
   const fluxWarnings = cluster ? [...(cf.ks?.items || []).filter(isNotReady).map(k => `Kustomization ${ksId(k)}`), ...(cf.hr?.items || []).filter(isNotReady).map(h => `HelmRelease ${h.metadata.namespace}/${h.metadata.name}`)].filter(x => !flagged.has(x)) : [];
   const effOrder = { none: 0, delayed: 1, immediate: 2 };
-  const eligible = lanes.filter(r => r.gates.would_be_eligible)
-    .sort((a, b) => (effOrder[a.cluster_effect] - effOrder[b.cluster_effect]) || (a.backup.stateful - b.backup.stateful) || (a.pr - b.pr));
-  const pick = eligible[0] || null;
+  const order = (a, b) => (effOrder[a.cluster_effect] - effOrder[b.cluster_effect]) || (a.backup.stateful - b.backup.stateful) || (a.pr - b.pr);
+  const eligible = lanes.filter(r => r.gates.would_be_eligible).sort(order);
+  // Live mode prefers a PR of an allowlisted class; with none, the first eligible PR goes
+  // to the merge step, which refuses it for its class (so the refusal is recorded).
+  const pick = (MODE === 'live' ? eligible.find(r => LIVE.classes.includes(r.class)) : null) || eligible[0] || null;
+  // Dry-run exercises the merge step on the nearest lane-A candidate when the tick chose
+  // none, so every night records a verdict. Live mode runs it on the chosen PR only.
+  const nearest = !pick && MODE === 'dryrun' ? [...lanes].sort(order)[0] || null : null;
+  const subjectRec = pick || nearest;
+  const subject = subjectRec ? { pr: subjectRec.pr, head: subjectRec.head, class: subjectRec.class, chosen: !!pick } : null;
+
+  // THE MERGE STEP AND THE CHANGE LOCK (night-merge.mjs). With --write-state the lock is
+  // taken before the step's reads and released before this returns, except after a live
+  // merge, when it stays held through verification (story 553: not built; the post-merge
+  // lease is the hold). Dry-run never reaches the merge call.
+  const holder = `upgrade-night/${process.env.HOSTNAME || 'local'}/${randomBytes(4).toString('hex')}`;
+  const windowOpen = t => inWindow(t, night.timezone, night.merge_window_local.first, night.merge_window_local.last);
+  const step = M.laneMergeStep({ mode: MODE, subject, rules, run, env: childEnv, clock, liveClasses: LIVE.classes, token, holder, takeAllowed: WRITE_STATE, windowOpen, tickStartedAt: now });
+  const verdict = step.verdict || { verdict: 'not-run' };
+
   const counts = Object.fromEntries(L.LANES.map(l => [l, records.filter(r => r.lane === l).length]));
   const summary = {
     mode: MODE, at: new Date(now).toISOString(), repo: REPO, window: { ...win, tz: night.timezone },
@@ -427,18 +482,28 @@ async function tick() {
     baseline: { ceph: cluster ? ceph : 'not needed', alerts_read: cluster ? alertNs !== null : 'not needed', critical_alert_namespaces: alertNs ?? [],
       critical_alerts: (alerts || []).map(m => `${m.alertname || '(unnamed)'} @ ${nsOf(m)}${(alertScope.subject_labels || []).filter(k => m[k]).slice(0, 1).map(k => ` ${k}=${m[k]}`).join('')}`).slice(0, 40),
       flux_warnings: fluxWarnings },
-    change_lock: 'not-implemented', work_orders_claimed: claimed, counts, lane_a_candidates: lanes.map(r => r.pr),
-    would_merge: pick ? { pr: pick.pr, head: pick.head, class: pick.class, reason: 'DRY-RUN: nothing was merged' } : null,
+    token_permissions: { names: token.names, can_merge: token.can_merge, why: token.why },
+    live_classes: LIVE.classes,
+    change_lock: step.lock, merge_step: verdict, owed_work: step.owed || M.owedWork({ mode: MODE, paused: false }),
+    work_orders_claimed: claimed, counts, lane_a_candidates: lanes.map(r => r.pr),
+    would_merge: pick ? { pr: pick.pr, head: pick.head, class: pick.class, reason: MODE === 'live' ? `LIVE: merge step ${verdict.verdict}` : 'DRY-RUN: nothing was merged' } : null,
     why_none: pick ? null : (lanes.length ? 'every lane-A candidate has a blocker (see records[].gates.blockers)' : 'no lane-A candidate'),
   };
   for (const r of records) { r.updated = summary.at; r.preapproval = {}; r.schedule = {}; r.last_attempt = {}; }
+  if (subjectRec) subjectRec.last_attempt = { at: summary.at, mode: MODE, chosen: subject.chosen, verdict: verdict.verdict, pr_refusals: verdict.pr_refusals || [], lane_refusals: verdict.lane_refusals || [], merge_call: verdict.merge_call || null };
 
   const table = L.formatTable(records);
   log(`upgrade-night ${MODE}: ${records.length} open Renovate PRs; ${JSON.stringify(counts)}`);
+  const lk = step.lock;
+  log(`upgrade-night ${MODE}: change lock ${lk.configmap}: ${lk.outcome} (before: ${lk.before?.state ?? 'not read'}${lk.before?.holder ? ` by ${lk.before.holder}` : ''}${lk.took_over_from ? `; took over ${lk.took_over_from}, phase ${lk.took_over_phase || 'unknown'}` : ''})${lk.taken_at ? ` taken_at=${lk.taken_at} expires_at=${lk.expires_at}` : ''}${lk.released_at ? ` released_at=${lk.released_at}` : ''}${lk.why ? `; ${lk.why}` : ''}`);
+  const refusals = [...(verdict.pr_refusals || []), ...(verdict.lane_refusals || [])];
+  const stepLine = subject ? `#${subject.pr} ${String(subject.head).slice(0, 8)} (${subject.class}${subject.chosen ? '' : ', not chosen'}): ${String(verdict.verdict).toUpperCase()}${refusals.length ? `: ${refusals.join(' | ')}` : ''}; merge call: ${verdict.merge_call || 'none'}` : `not run (${verdict.why})`;
+  log(`upgrade-night ${MODE}: merge step ${stepLine}`);
   process.stdout.write(table + '\n');
   for (const r of lanes) process.stdout.write(`#${r.pr} gates: ${r.gates.blockers.length ? r.gates.blockers.join(' | ') : 'all pass'}\n`);
   if (fluxWarnings.length) process.stdout.write(`warning: Flux NotReady outside every candidate's scope: ${fluxWarnings.join(', ')}\n`);
-  process.stdout.write(`change lock: not-implemented (planned for the live step)\n`);
+  process.stdout.write(`change lock: ${lk.outcome}\n`);
+  process.stdout.write(`merge step: ${stepLine}\n`);
   process.stdout.write(`would merge this tick: ${pick ? `#${pick.pr} (${pick.class})` : `none (${summary.why_none})`}\n`);
 
   if (!WRITE_STATE) { log('state not written (no --write-state); this was a local run'); return 0; }
