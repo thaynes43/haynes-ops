@@ -142,11 +142,12 @@
       ]
     },
     "resolved": {
-      "meaning": "A person settled an escalated item: it is healthy at the new version (done), back on the old one (reverted), or no longer applies (closed).",
-      "used_by": ["554"],
+      "meaning": "A person settled an item: an escalated one is healthy at the new version (done), back on the old one (reverted), or no longer applies (closed); a reverted one is released because the revert was not the version's fault (needed) or no longer applies (closed). Only a person releases a remembered version.",
+      "used_by": ["554", "753"],
       "requires": ["attempt", "reason"],
       "edges": [
-        { "from": ["escalated"], "to": ["done", "reverted", "closed"], "actors": ["hand", "person"] }
+        { "from": ["escalated"], "to": ["done", "reverted", "closed"], "actors": ["hand", "person"] },
+        { "from": ["reverted"], "to": ["needed", "closed"], "actors": ["person"] }
       ]
     },
     "drill-cleared": {

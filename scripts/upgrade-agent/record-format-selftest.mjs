@@ -129,7 +129,9 @@ const NON_RESERVED_EVENTS = Object.keys(M.events).filter(e => !M.reserved.events
   ok(into('in_progress').every(e => same(e.from, ['needed'])), 'safety: an attempt starts only from needed');
   ok(into('in_progress').filter(e => e.actors.includes('lane')).every(e => same(e.lanes, ['A-night'])), 'safety: the lane starts a merge only for lane A-night');
   ok(edges.filter(e => e.name === 'merged' && e.actors.includes('lane')).every(e => same(e.from, ['in_progress'])), 'safety: the lane records a merge only after its merge step started');
-  ok(edges.filter(e => e.from.includes('reverted')).every(e => ['drill-cleared', 'resolved'].includes(e.name)), 'safety: only drill-cleared or a person leaves reverted');
+  const outOfReverted = edges.filter(e => e.from.includes('reverted')).map(e => `${e.name}:${[...e.actors].sort().join('+')}`).sort();
+  ok(same(outOfReverted, ['drill-cleared:hand+lane', 'resolved:person']), 'safety: exactly drill-cleared (a drill) and resolved by a person leave reverted', outOfReverted.join(', '));
+  ok(M.events['drill-cleared'].requires.includes('drill'), 'safety: drill-cleared requires drill true');
   ok(edges.filter(e => e.from.includes('held')).every(e => e.actors.every(a => a !== 'lane') || e.name === 'observed' || e.name === 'closed'), 'safety: the lane takes no action on a held item');
 }
 

@@ -167,6 +167,7 @@ When an edge applies to the lane, it can also limit which lanes the item may be 
 | `recovery-failed` | reverted_unverified to escalated | lane, hand | attempt, class, reason | 753, 554 |
 | `escalated` | merged_unverified, awaiting_pin, failed, reverting to escalated | lane | attempt, class, reason | 553, 753, 754 |
 | `resolved` | escalated to done, reverted or closed | hand, person | attempt, reason | 554 |
+| `resolved` | reverted to needed or closed (releases a remembered version, for example after a revert that was not the version's fault) | person only | attempt, reason | 753 |
 | `drill-cleared` | reverted to needed, only when the current attempt is a drill | lane, hand | attempt, drill | 753 |
 
 **Attempts.** An attempt opens with `merge-attempted`, with a `merged` that someone else
@@ -184,7 +185,8 @@ leave it out.
 
 - An attempt starts only from `needed`. The lane may start one only for lane `A-night`.
 - The lane can record a merge only after its merge step has started.
-- Only `drill-cleared` or a person's `resolved` can take an item out of `reverted`.
+- Exactly two edges take an item out of `reverted`: `drill-cleared` (lane or hand, only
+  for a drill) and `resolved` (a person only).
 - `drill-cleared` is refused unless the attempt was a drill, so a real revert stays
   remembered.
 - The lane takes no action on a held item.
