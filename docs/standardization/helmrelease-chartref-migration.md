@@ -66,7 +66,6 @@ The following `HelmRelease` files currently use `spec.chart.spec.chart: app-temp
 - `kubernetes/main/apps/downloads/ytdl-sub/peloton-config-manager/helmrelease.yaml`
 - `kubernetes/main/apps/storage/storage-util/rsync-scans/app/helmrelease.yaml`
 - `kubernetes/main/apps/storage/storage-util/rsync-photos/app/helmrelease.yaml`
-- `kubernetes/main/apps/storage/storage-util/rsync-music/app/helmrelease.yaml`
 - `kubernetes/main/apps/observability/kromgo/app/helmrelease.yaml`
 - `kubernetes/main/apps/observability/gatus/app/helmrelease.yaml`
 - `kubernetes/main/apps/home-automation/zwave/app/helmrelease.yaml`
