@@ -22,9 +22,12 @@
 # After it is live, from inside the home network:
 # 1. The pod is Ready.
 # 2. POST https://dev-env-frontdoor.haynesops.com/mcp with no bearer returns 401.
-# 3. tools/list with the bearer lists eleven tools. standing_authority
+# 3. tools/list with the bearer lists fifteen tools. standing_authority
 #    returns the text of ConfigMap dev-env-frontdoor-authority, or one fixed
 #    sentence while that ConfigMap does not exist.
+# 4. parent_waiting answers "notes: none" or a list. It needs the operator at
+#    sha-7cc86a8 or a later commit; an older operator refuses this caller on
+#    the parent-note routes and the tool says so.
 #
 # The operator that reads CallerPolicy must already be image sha-a1d40ea or a
 # later commit. Flux Ready on dev-env-operator does not prove that. Check the
@@ -86,7 +89,15 @@ spec:
           # carries PR #1051's tool annotations and standing_authority).
           # Publish run 42891358881, job Publish (frontdoor), step Verify the
           # signature: this digest, keyless, by publish.yml on main.
-          image: ghcr.io/thaynes43/dev-env-frontdoor:sha-50d13f0@sha256:97dfd6818e20ce92f4c4bcb8094bf8ba90bbde87cd3b3698e5fd1215d5eef9fb
+          # dev-env 7cc86a8 (PR #1061, OP687): four more tools. parent_waiting,
+          # parent_read, parent_answer and parent_send let this caller list, read
+          # and answer notes from sessions it started, and send one message to
+          # such a session. They call the operator's parent-note routes as this
+          # pod's ServiceAccount; no new Kubernetes right, Secret or mount.
+          # Publish run 42952959258, job Publish (frontdoor), step Verify the signature:
+          # this digest, keyless, by publish.yml on main. Previous image, and the
+          # rollback target: sha-50d13f0@sha256:97dfd6818e20ce92f4c4bcb8094bf8ba90bbde87cd3b3698e5fd1215d5eef9fb
+          image: ghcr.io/thaynes43/dev-env-frontdoor:sha-7cc86a8@sha256:61cd9b2feba29ca8a97015b70884606d8158ac36d0e61fd6f9b0c2978c011d55
           imagePullPolicy: IfNotPresent
           args:
             - --listen=:8080

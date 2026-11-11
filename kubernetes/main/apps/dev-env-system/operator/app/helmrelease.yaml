@@ -298,8 +298,18 @@ spec:
               # (haynes-ops#4799). At most 8 held waits per session on each of the two replicas.
               # No flag, CRD or permission change in this pin.
               # Previous pin sha-e8a3eba@sha256:838914471b46053af33a6c89cfec44f73362bd299643ce1b8cd5180834055f0f
-              # (haynes-ops#4798); rollback target for the operator alone.
-              tag: sha-a9f5d56@sha256:9c058a3ea1434d32169ce7ce11c442857cf1a87fccf78cac88681b401778fa75
+              # (haynes-ops#4798).
+              # dev-env main 7cc86a80 (dev-env#1061, #1065; publish 42952959258's operator job signed and
+              # verified this digest). One change in the running operator since sha-a9f5d56: a
+              # CallerPolicy caller (the Meatball front door) may list, read and answer the parent
+              # notes that sessions it started addressed to it, and send one plain message to such a
+              # session (DESIGN-062 slice 4, OP687), behind the same --enable-parent-notes flag. It
+              # gets no wait and no other caller's notes. A wrong method or an unknown subpath on a
+              # parent-note route now names the route template, not the raw path. #1065 adds a
+              # package nothing calls yet. No flag, CRD, CallerPolicy or permission change in this pin.
+              # Previous pin sha-a9f5d56@sha256:9c058a3ea1434d32169ce7ce11c442857cf1a87fccf78cac88681b401778fa75
+              # (haynes-ops#4800); rollback target for the operator alone.
+              tag: sha-7cc86a8@sha256:69c8175e05f4e63db896bdc0ca68b31c57cc5149832ef4dcbe4e09c95a932b0f
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
