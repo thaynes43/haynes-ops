@@ -1,6 +1,6 @@
 {
  "captured": "2026-11-11, 15:17Z to 15:36Z (alerts: Prometheus history for 2026-11-10T06:30Z)",
- "source": "Read-only. alerts_20261110T0630Z: Prometheus ALERTS{alertstate=\"firing\",severity=\"critical\"} at 2026-11-10T06:30:00Z (the first tick inside the merge window), through the Grafana MCP server. kustomizations, helmreleases and namespaces: kubectl get on 2026-11-11, trimmed to the fields the tick reads; the recyclarr Job recyclarr-29903670 that the alert names was still kept by its failed-jobs history, and the exporter pod in PVEVMNotOnboot was still running. prs: gh pr view at their last head (#4770 at 3987a9e8, the head the 06:45Z tick saw; #4334 at its rebased head 2417f4fa). main_commits_20261110T0010Z: gh api GET repos/thaynes43/haynes-ops/commits?sha=main&path=<file>&since=2026-10-26T00:00:00Z&until=2026-11-10T00:10:00Z, the commits that existed at 2026-11-10T00:10Z, after #4372 merged and before the rebased #4334 merged.",
+ "source": "Read-only. alerts_20261110T0630Z: Prometheus ALERTS{alertstate=\"firing\",severity=\"critical\"} at 2026-11-10T06:30:00Z (the first tick inside the merge window), through the Grafana MCP server, with the instance (scrape address) label left out. kustomizations, helmreleases and namespaces: kubectl get on 2026-11-11, trimmed to the fields the tick reads; the recyclarr Job recyclarr-29903670 that the alert names was still kept by its failed-jobs history, and the exporter pod in PVEVMNotOnboot was still running. prs: gh pr view at their last head (#4770 at 3987a9e8, the head the 06:45Z tick saw; #4334 at its rebased head 2417f4fa). main_commits_20261110T0010Z: gh api GET repos/thaynes43/haynes-ops/commits?sha=main&path=<file>&since=2026-10-26T00:00:00Z&until=2026-11-10T00:10:00Z, the commits that existed at 2026-11-10T00:10Z, after #4372 merged and before the rebased #4334 merged.",
  "alerts_20261110T0630Z": [
   {
    "alertname": "DevEnvRescueFailed",
@@ -28,7 +28,6 @@
    "condition": "true",
    "container": "kube-state-metrics",
    "endpoint": "http",
-   "instance": "10.42.5.39:8080",
    "job": "kube-state-metrics",
    "job_name": "recyclarr-29903670",
    "kubernetes_node": "talosw03",
@@ -42,7 +41,6 @@
    "alertstate": "firing",
    "endpoint": "metrics",
    "id": "qemu/103",
-   "instance": "10.42.3.65:9221",
    "job": "prometheus-pve-exporter",
    "name": "talosw01",
    "namespace": "observability",
