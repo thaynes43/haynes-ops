@@ -326,21 +326,33 @@ spec:
               readOnlyRootFilesystem: true
               capabilities:
                 drop: ["ALL"]
-      # ── Nightly upgrade lane, OP512 rollout step 1: DRY-RUN ONLY ────────────────
+      # ── Nightly upgrade lane (OP512), DRY-RUN in git ─────────────────────────────
       # Deterministic (no LLM, no Anthropic credential). Every 15 min from 01:00 to
       # 05:45 New York it classifies the open Renovate PRs (lane-classify.mjs), works
-      # out which ONE it would merge, and writes that to ConfigMap upgrade-lane-state
-      # and the log. run-night.mjs has no live mode: any UPGRADE_NIGHT_MODE but dryrun
-      # exits 3 before a read, and its only write is that ConfigMap
-      # (scripts/upgrade-agent/lane-night-dryrun-selftest.mjs). The minted token below
-      # is read-only as well. Runbook: .agents/runbooks/upgrade-night-lane.md.
-      # Kill switch: suspend: true here (git). Design: OP512 comment 6193.
+      # out which ONE it would merge, runs the merge step's preflight on it while it
+      # holds ConfigMap upgrade-change-lock (night-merge.mjs, story 752), releases the
+      # lock, and writes the result to ConfigMap upgrade-lane-state and the log.
+      # Live mode exists behind UPGRADE_NIGHT_MODE=live and merges only a class named
+      # in UPGRADE_NIGHT_LIVE_CLASSES, which is empty: switching a class live is story
+      # 556. Any other mode, or an unknown class, exits 3 before a read. Dry-run never
+      # reaches the merge call (scripts/upgrade-agent/lane-night-dryrun-selftest.mjs,
+      # lane-merge-step-selftest.mjs). The minted token below carries the shepherd's
+      # rights (contents and pull_requests write, checks read; ruling Q-548-02); each
+      # tick logs the permission names, never the token.
+      # Runbook: .agents/runbooks/upgrade-night-lane.md.
+      # Kill switch: suspend: true here (git), or data.pause on upgrade-lane-state.
+      # Design: OP512 comment 6193.
       upgrade-night:
         type: cronjob
         cronjob:
           suspend: false
           schedule: "*/15 1-5 * * *"
           timeZone: America/New_York
+          # A tick takes about 25s. The deadline equals the change lock's lease (600s,
+          # night.change_lock in upgrade-rules.json) and is under the 15-minute period:
+          # the Job is dead before a lease it took can expire, so no tick acts on a lapsed
+          # lock, and a stuck tick never meets the next one (story 752).
+          activeDeadlineSeconds: 600
           concurrencyPolicy: Forbid
           backoffLimit: 0
           successfulJobsHistory: 3
@@ -352,14 +364,20 @@ spec:
             image:
               repository: ghcr.io/thaynes43/upgrade-shepherd
               tag: 0.1.0@sha256:00f573827c2506e48ea7b5eb4739b1f9d4496d4b1f413cb2f2bde627181b060f
+            # Also records the permission JSON it sent to GitHub (names and levels, no
+            # secret) next to the token, so each tick can log them and the merge step
+            # can refuse a token that cannot merge (story 752).
             command:
               - /bin/bash
               - -c
-              - /opt/upgrade-shepherd/github-app-token.sh > /creds/gh_token && chmod 0400 /creds/gh_token
+              - /opt/upgrade-shepherd/github-app-token.sh > /creds/gh_token && chmod 0400 /creds/gh_token && printf '%s' "${GITHUB_BOT_TOKEN_PERMISSIONS}" > /creds/gh_token_permissions && chmod 0444 /creds/gh_token_permissions
             env:
-              # READ-ONLY token: the dry-run reads PRs, checks, comments and
-              # holds.json5. GitHub refuses a merge, comment or label with it.
-              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"read","pull_requests":"read","checks":"read"}'
+              # The shepherd's rights (Tom's ruling Q-548-02, 2026-11-11: "Both now"):
+              # a merge needs contents and pull_requests write. Git still ships dryrun
+              # with an empty class allowlist, so the lane merges nothing, and dry-run
+              # never reaches the merge call (lane-night-dryrun-selftest.mjs). The merge
+              # step refuses a token with less, or with more, than these three.
+              GITHUB_BOT_TOKEN_PERMISSIONS: '{"contents":"write","pull_requests":"write","checks":"read"}'
             envFrom:
               - secretRef:
                   name: upgrade-shepherd-bot-secret
@@ -376,6 +394,9 @@ spec:
             command: ["/usr/local/bin/node", "/opt/shepherd/run-night.mjs", "--write-state"]
             env:
               UPGRADE_NIGHT_MODE: dryrun
+              # Lane-A classes live mode may merge (comma-separated). Empty: live mode
+              # would merge nothing. Story 556 names the first class.
+              UPGRADE_NIGHT_LIVE_CLASSES: ""
             resources:
               requests:
                 cpu: 50m

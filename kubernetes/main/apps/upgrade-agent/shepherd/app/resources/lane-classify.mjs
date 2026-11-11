@@ -18,6 +18,7 @@
 //   labels: [name],                       // type/major|minor|patch|digest, ...
 //   files: [path],
 //   commits: [{ sha, authors: [login|null] }],
+//   head_committed_at: ISO | null,            // the head commit's date (R7, OP550)
 //   packages: [{ name, update, from, to }],   // the Renovate body table
 //   checks: [{ workflow, name, status, conclusion, completed_at }],   // head commit
 //   vet_markers: [{ author, sha, verdict }],  // '<!-- shepherd-vet sha=… -->' comments
@@ -226,7 +227,8 @@ export function expectedChecks(paths, rules) {
 
 const FAIL = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR']);
 export function evaluateChecks(expected, runs, now, maxAgeDays) {
-  const res = { expected: [], missing: [], failing: [], pending: [], stale: [] };
+  const res = { expected: [], missing: [], failing: [], pending: [], stale: [], ran_at: null };
+  let first = Infinity;
   for (const e of expected) {
     const label = `${e.workflow} / ${e.check}`;
     res.expected.push(label);
@@ -234,6 +236,9 @@ export function evaluateChecks(expected, runs, now, maxAgeDays) {
     if (!mine.length) { res.missing.push(label); continue; }
     // the newest attempt counts (a re-run supersedes the failed one)
     const r = mine.reduce((a, b) => (String(b.completed_at || b.started_at || '') > String(a.completed_at || a.started_at || '') ? b : a));
+    // R7: when the head's checks ran (the earliest start, else completion, of the counted attempts)
+    const t = Date.parse(r.started_at || r.completed_at || '');
+    if (Number.isFinite(t) && t < first) first = t;
     if (r.status && r.status !== 'COMPLETED') { res.pending.push(`${label} (${r.status})`); continue; }
     if (r.conclusion === 'SUCCESS') {
       const t = Date.parse(r.completed_at || '');
@@ -243,7 +248,91 @@ export function evaluateChecks(expected, runs, now, maxAgeDays) {
     if (FAIL.has(r.conclusion)) res.failing.push(`${label} (${r.conclusion})`);
     else res.missing.push(`${label} (${r.conclusion || 'no conclusion'})`); // SKIPPED/NEUTRAL: not a pass
   }
+  if (Number.isFinite(first)) res.ran_at = new Date(first).toISOString();
   return res;
+}
+
+// ── shared components (R8, OP550) ───────────────────────────────────────────────
+// A file under kubernetes/shared/components/ has no Kustomization of its own: it reaches
+// the cluster through every kustomization.yaml that lists the component. The registry
+// keeps that list (shared_components in upgrade-rules.json); the classifier selftest
+// rebuilds it from the repository and fails when the two differ. A changed file maps to
+// the deepest component directory that contains it. No entry, or an entry with no
+// consumer, maps to nothing, so the raw path stays the target and the tick reports it as
+// target-unmapped (fail closed).
+export function componentFor(path, rules) {
+  let best = null;
+  for (const e of rules.shared_components?.entries || []) {
+    if ((path === e.path || path.startsWith(e.path + '/')) && (!best || e.path.length > best.path.length)) best = e;
+  }
+  return best;
+}
+// A consumer directory is itself the target: the tick maps it to the Kustomizations whose
+// spec.path is that directory or below it, so a namespace-level consumer
+// (kubernetes/main/apps/frontend) counts every Kustomization of that namespace.
+// The consumers of every changed shared-component file, as pseudo-paths
+// (<consumer>/kustomization.yaml) so that path classes, path rules and the cluster-wide
+// list judge the directories the change really reaches.
+export function componentReach(files, rules) {
+  const via = [];
+  for (const p of files) {
+    if (!p.startsWith('kubernetes/shared/components/')) continue;
+    const e = componentFor(p, rules);
+    for (const c of e?.consumers || []) via.push({ component: e.path, consumer: c, path: `${c}/kustomization.yaml` });
+  }
+  return { via };
+}
+
+// ── cluster-wide targets (R5, OP550) ────────────────────────────────────────────
+// Changes that reach every namespace (Flux, the CNI, DNS, Ceph and the CSI drivers,
+// admission, multus, the shared app-template). The tick lets a firing critical alert with
+// no namespace label block these, because it cannot show that such an alert is unrelated.
+export function clusterWide(paths, rules) {
+  return (rules.cluster_wide_targets || []).filter(t => paths.some(p => anyGlob(p, t.globs))).map(t => t.id);
+}
+
+// ── stale checks against main (R7, OP550) ───────────────────────────────────────
+// A pull_request check tests the PR merged onto main as main stood when the check was
+// triggered; a re-run reuses that merge commit. "Require branches to be up to date" is
+// off for main (2026-11-11: PR 3915 92 commits behind with green required checks reads
+// CLEAN, and five PRs merged on 2026-11-10 by the non-admin bot were 11 to 80 commits
+// behind), so GitHub merges a head whose checks never saw a later change to the same
+// files (#4334 on 2026-11-10). The reference time is the earliest of the head commit's
+// date and the start of each expected check's newest attempt; with neither readable the
+// rule cannot be evaluated (fail closed). The merge step (story 752) calls the same two
+// functions below.
+export function checksReferenceTime(headCommittedAt, ranAt) {
+  const ts = [headCommittedAt, ranAt].map(x => Date.parse(x || '')).filter(Number.isFinite);
+  return ts.length ? new Date(Math.min(...ts)).toISOString() : null;
+}
+// READ-ONLY: the newest commits on main that touch each path since `sinceIso`
+// (gh api GET repos/<repo>/commits?sha=main&path=…&since=…). A failed or unparseable read
+// puts the path in `unreadable`, never in an empty list.
+export function mainCommitsTouching(repo, paths, sinceIso, run = runReadOnly) {
+  const byPath = {}, unreadable = [];
+  for (const p of paths) {
+    if (!sinceIso || p.startsWith('<')) { unreadable.push(p); continue; }
+    let out = null;
+    try { out = run('gh', ['api', `repos/${repo}/commits?sha=main&path=${encodeURIComponent(p)}&since=${encodeURIComponent(sinceIso)}&per_page=10`], { allowFail: true }); } catch { out = null; }
+    let list = null;
+    try { list = JSON.parse(out); } catch { list = null; }
+    if (!Array.isArray(list)) { unreadable.push(p); continue; }
+    byPath[p] = list.map(c => ({ sha: c.sha, at: c.commit?.committer?.date || null }));
+  }
+  return { byPath, unreadable };
+}
+// PURE: which main commits are newer than the reference time. `since` is inclusive on
+// GitHub's side, so the comparison here is strict. A commit with no readable date counts
+// as newer (fail closed).
+export function checksPredateMain(referenceTime, paths, main) {
+  const t = Date.parse(referenceTime || '');
+  if (!Number.isFinite(t)) return { newer: [], unreadable: ["the time the head's checks ran"] };
+  const newer = [];
+  for (const p of paths) for (const c of main?.byPath?.[p] || []) {
+    const at = Date.parse(c.at || '');
+    if (!Number.isFinite(at) || at > t) newer.push({ path: p, sha: c.sha, at: c.at });
+  }
+  return { newer, unreadable: [...(main?.unreadable || [])] };
 }
 
 // ── cluster effect of the changed paths ──────────────────────────────────────
@@ -255,6 +344,14 @@ export function clusterEffect(paths, rules) {
   for (const p of paths) {
     let m;
     if ((m = /^(kubernetes\/[^/]+\/apps\/[^/]+\/[^/]+)\//.exec(p))) { targets.add(m[1]); bump('immediate'); continue; }
+    if (p.startsWith('kubernetes/shared/components/')) {
+      // R8: the apps that include the component; with no mapped consumer the component
+      // directory itself stays the target (unmapped, so the tick blocks it).
+      const e = componentFor(p, rules);
+      if (e && (e.consumers || []).length) for (const c of e.consumers) targets.add(c);
+      else targets.add(e ? e.path : p.split('/').slice(0, 4).join('/'));
+      bump('immediate'); continue;
+    }
     if ((m = /^(kubernetes\/[^/]+\/(?:flux|bootstrap))\//.exec(p)) || (m = /^(kubernetes\/shared\/[^/]+\/[^/]+)/.exec(p))) { targets.add(m[1]); bump('immediate'); continue; }
     if (p.startsWith('kubernetes/')) { targets.add(p); bump('immediate'); continue; }
     const img = rules.own_images.find(o => anyGlob(p, o.source_globs));
@@ -303,10 +400,16 @@ export function classify(facts, rules, opts = {}) {
   if (!/^[0-9a-f]{40}$/.test(facts.head_sha || '')) add('BLOCKED', 'facts-incomplete', 'head SHA unavailable');
   if (!files.length) add('BLOCKED', 'facts-incomplete', 'no changed files reported');
 
-  // 1. paths
+  // 1. paths, including the directories a changed shared component reaches (R8): an
+  //    app-template bump that reaches dev-env-system is the v2 coordinator's, as if the
+  //    PR had touched that directory itself.
+  const reach = componentReach(files, rules);
+  const scopePaths = [...files, ...reach.via.map(v => v.path)];
   for (const pc of rules.path_classes) {
     const hit = files.filter(p => anyGlob(p, pc.globs));
-    if (hit.length) add(pc.lane, pc.class, `${pc.reason} (${hit[0]}${hit.length > 1 ? ` +${hit.length - 1}` : ''})`, pc.id);
+    if (hit.length) { add(pc.lane, pc.class, `${pc.reason} (${hit[0]}${hit.length > 1 ? ` +${hit.length - 1}` : ''})`, pc.id); continue; }
+    const via = reach.via.filter(v => anyGlob(v.path, pc.globs));
+    if (via.length) add(pc.lane, pc.class, `${pc.reason} (via shared component ${via[0].component} in ${via[0].consumer}${via.length > 1 ? ` +${via.length - 1}` : ''})`, pc.id);
   }
   // 2. commits: every commit authored by Renovate only
   const commits = facts.commits || [];
@@ -325,9 +428,10 @@ export function classify(facts, rules, opts = {}) {
   if (!(facts.packages || []).length) add('LANE-B-AGENT', 'package-unknown', 'no package table in the PR body; the update cannot be checked against holds and rules');
   // 4. holds
   for (const h of holdMatches(facts, opts.holdRules)) add('LANE-B-OWNER', 'hold', `${h.package}: ${h.why} — ${h.title}`, h.id);
-  // 5. per-package rules
+  // 5. per-package rules (path matches see the shared-component consumers too)
+  const ruleFacts = reach.via.length ? { ...facts, files: scopePaths } : facts;
   for (const r of rules.package_rules) {
-    const hit = packageRuleHits(facts, r, types);
+    const hit = packageRuleHits(ruleFacts, r, types);
     if (!hit) continue;
     if (r.needs === 'owner') { add('LANE-B-OWNER', 'rule-owner', `${r.id}: ${r.reason}`, r.id); continue; }
     if (r.needs === 'agent') { add('LANE-B-AGENT', 'rule-agent', `${r.id}: ${r.reason}`, r.id); continue; }
@@ -353,6 +457,8 @@ export function classify(facts, rules, opts = {}) {
   const unval = cm.unvalidated.filter(p => !p.startsWith('kubernetes/'));
   if (unval.length) add('LANE-B-AGENT', 'no-pr-validation', `no PR-triggered validation for ${unval.join(', ')}`);
   const ev = evaluateChecks(cm.expected, facts.checks, now, rules.check_max_age_days);
+  // R7: the time main is compared with (the tick reads main; see checksPredateMain)
+  ev.reference_time = checksReferenceTime(facts.head_committed_at, ev.ran_at);
   if (ev.failing.length) add('BLOCKED', 'check-failing', `failing: ${ev.failing.join('; ')}`);
   if (ev.missing.length || ev.pending.length) add('BLOCKED', 'checks-incomplete', `waiting for: ${[...ev.pending, ...ev.missing].join('; ')}`);
   // 8. cluster effect
@@ -391,7 +497,13 @@ export function classify(facts, rules, opts = {}) {
     rules: ruleIds,
     findings: findings.map(f => `${f.lane}/${f.class}: ${f.reason}`),
     checks: ev,
+    files: [...files],
+    head_committed_at: facts.head_committed_at ?? null,
     cluster_effect: ce.effect, targets: ce.targets, own_images: ce.own_images,
+    // R8: shared components this PR changes, and the consumer directories they reach
+    via_components: [...new Set(reach.via.map(v => `${v.component} -> ${v.consumer}`))],
+    // R5: a change that reaches every namespace (cluster_wide_targets in upgrade-rules.json)
+    cluster_wide: clusterWide(scopePaths, rules),
     cluster_effect_wait: wait,
   };
 }
@@ -428,12 +540,16 @@ export function isReadOnlyCommand(cmd, argv) {
   return false;
 }
 
-export function runReadOnly(cmd, argv, { env = process.env, allowFail = false } = {}) {
+// Every read has a deadline (story 752): a stalled gh or kubectl is killed and counts as a
+// failed read, so a tick cannot hang on one and act much later on stale facts.
+export const READ_TIMEOUT_MS = 120e3;
+export function runReadOnly(cmd, argv, { env = process.env, allowFail = false, timeoutMs = READ_TIMEOUT_MS } = {}) {
   if (!isReadOnlyCommand(cmd, argv)) throw new Error(`refused non-read command: ${cmd} ${argv.slice(0, 3).join(' ')}`);
-  const r = spawnSync(cmd, argv, { encoding: 'utf8', env, maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync(cmd, argv, { encoding: 'utf8', env, maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs, killSignal: 'SIGKILL' });
   if (r.status !== 0) {
     if (allowFail) return null;
-    throw new Error(`${cmd} ${argv.slice(0, 3).join(' ')} failed (exit ${r.status}): ${String(r.stderr || r.error || '').slice(0, 300)}`);
+    const why = r.status === null ? `timed out or killed after ${timeoutMs}ms (${r.signal || r.error?.code || 'no exit status'})` : `exit ${r.status}`;
+    throw new Error(`${cmd} ${argv.slice(0, 3).join(' ')} failed (${why}): ${String(r.stderr || r.error || '').slice(0, 300)}`);
   }
   return r.stdout;
 }
@@ -498,6 +614,8 @@ export function gatherFacts(repo, number, run = runReadOnly) {
     labels: (v.labels || []).map(l => l.name),
     files: files.length === v.changedFiles ? files : [...files, ...(v.changedFiles > files.length ? ['<file list truncated>'] : [])],
     commits: (v.commits || []).map(c => ({ sha: c.oid, authors: (c.authors || []).map(a => a.login || null) })),
+    // R7: when the head commit was made (the earliest its checks can have seen main)
+    head_committed_at: (v.commits || []).find(c => c.oid === v.headRefOid)?.committedDate || null,
     packages: parsePackageTable(v.body),
     checks: (v.statusCheckRollup || []).filter(c => c.__typename === 'CheckRun').map(c => ({
       workflow: c.workflowName, name: c.name, status: c.status, conclusion: c.conclusion, completed_at: c.completedAt, started_at: c.startedAt })),
