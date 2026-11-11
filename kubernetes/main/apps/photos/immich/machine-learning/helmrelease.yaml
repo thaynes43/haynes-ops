@@ -89,7 +89,7 @@ spec:
               # Renovate's docker versioning treats the suffix as part of the
               # version's compatibility, so it only ever proposes other -cuda tags,
               # and the immich monorepo group still bumps it with the server.
-              tag: v3.3.6-cuda@sha256:2c2721c54c5e245b095eea3eb0cda743d112a3f537555b39e2e9a112879a50c1
+              tag: v3.4.0-cuda@sha256:f00e50f07095073db6de22f4032c8552dd42f84838549ae9f6add6f083012d35
             env:
               TZ: America/New_York
               IMMICH_MEDIA_LOCATION: /usr/src/app/upload
