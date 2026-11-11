@@ -4,6 +4,22 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 # Every object names its namespace. The IngressRoute is in dev, where
 # certificate-haynesops is reflected. The OpenProject allow is in frontend.
+#
+# authority.txt is Tom's standing instruction for the front door's caller
+# (dev-env DESIGN-060, the standing_authority tool, OpenProject #546). The
+# process re-reads the mounted file on every call, so a change here reaches the
+# tool without a restart once the kubelet refreshes the volume. Change it only
+# by a pull request Tom approves. It holds no secret. The server refuses a file
+# over 4096 bytes or one with a control character other than newline and tab.
+configMapGenerator:
+  - name: dev-env-frontdoor-authority
+    namespace: dev-env-system
+    files:
+      - authority.txt
+generatorOptions:
+  # The Deployment mounts the ConfigMap by name, and a new hash would restart
+  # the pod for a text change the process already re-reads.
+  disableNameSuffixHash: true
 resources:
   - ./serviceaccount.yaml
   - ./externalsecret-token.yaml
