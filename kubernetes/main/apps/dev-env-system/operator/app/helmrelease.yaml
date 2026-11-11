@@ -316,8 +316,19 @@ spec:
               # API's thread route passes them on with their sentences. No flag, CRD or permission
               # change in this pin.
               # Previous pin sha-7cc86a8@sha256:69c8175e05f4e63db896bdc0ca68b31c57cc5149832ef4dcbe4e09c95a932b0f
-              # (haynes-ops#4801); rollback target for the operator alone.
-              tag: sha-3f55155@sha256:c656bbc24d80c1c77cf67ac8b8019b94b8f6a29f7a1d3ee370de549ec3991ed6
+              # (haynes-ops#4801).
+              # dev-env main 5ffdada5 (dev-env#1060, #1071, #1070; publish 42987967402's operator job
+              # signed and verified this digest). In the running operator since sha-3f55155:
+              # - dev-env#1070 (OP699, DESIGN-063 slice 2): the routes that choose a paired Codex
+              #   host, switched on below by --enable-codex-host-select.
+              # - dev-env#1060 (OP688): retention rules for parent notes. Inert: the retention pass
+              #   needs --enable-coordination-retention, which is not set.
+              # No CRD or permission change: the lease is an annotation on an AgentSession, which
+              # the operator already patches.
+              # Previous pin sha-3f55155@sha256:c656bbc24d80c1c77cf67ac8b8019b94b8f6a29f7a1d3ee370de549ec3991ed6
+              # (haynes-ops#4814); rollback target for the operator alone, after removing the two
+              # --codex-host flags below, which that image does not know.
+              tag: sha-5ffdada@sha256:e3a92fe0c8de786979f83bfb682062cd0fcb47f0e013dcdb10485c5562700b51
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
@@ -536,6 +547,24 @@ spec:
               # comes with its own change). Answers, waits, Meatball and the wake line are later
               # slices. Rollback: remove this line; stored notes stay hidden from every other route.
               - '--enable-parent-notes=true'
+              # OP699, DESIGN-063 slice 2 (Tom, 2026-11-10: "Why do we keep adding new sessions
+              # instead of using existing paired ones"). POST /v1/codex-hosts/select answers which
+              # paired Codex host a caller should use before another is created; ?check=true writes
+              # nothing; without it a use writes one 15-minute lease annotation on the chosen
+              # session, and POST /v1/codex-hosts/release removes the caller's own. No host is
+              # resumed or created by these routes in this slice. A session may ask only for its own
+              # profile. Caps stay at their defaults: one running host per profile, two in all.
+              # The commands that call the routes arrive with the next agent image; until then only
+              # a hand-run agent-run reaches them.
+              # Rollback: remove these two lines; the routes are then not registered.
+              - '--enable-codex-host-select=true'
+              # Hosts selection must never choose, whatever state they are in. The operator
+              # refuses to start with the flag above unless this one is given. The first name is
+              # Tom's working Codex host: it is Running and paired, and this list is what keeps a
+              # thread from being started on it. The other three are sessions no agent touches
+              # (they are not Codex hosts; listed so the rule is in one place). Add a host here
+              # before it is used for work that must not be shared.
+              - '--codex-host-hands-off=haynes-ops-1109-115326,dev-env-1027-111645,dev-env-1104-010332,dev-env-1027-010058'
               # OP497: GET /v1/portal/question-audit, one page of question and reply metadata for
               # project dev-env and one live session. No question text. Requires the portal reader,
               # durable inbox and inbox questions above, and every project here must already be in
