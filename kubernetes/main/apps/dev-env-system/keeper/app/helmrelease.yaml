@@ -3,7 +3,9 @@
 # dev-env-keeper (DESIGN-001 3.1, D-38, D-52; KICKOFF 8.9): the one holder of rotating
 # credentials. Plan 01's keeper mints the haynes-dev-bot installation token every 40
 # minutes (or at two thirds of its life) and merges it into dev-agents/dev-env-gh-token,
-# which session pods mount at /creds.
+# which session pods mount at /creds. Since dev-env DESIGN-064 6.2 (OpenProject 736) it
+# also mints the haynes-ops-bot installation token, on the same schedule, into
+# dev-agents/dev-env-ops-gh-token, which only profile `ops` mounts at /creds.
 #
 # ONE OWNER PER CREDENTIAL: one replica, Recreate, and the Lease
 # dev-env-keeper.dev-env.haynesops.com in this namespace. Never raise replicas or switch
@@ -49,7 +51,10 @@ spec:
           app:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
-              # Source 3a46b8a0e5a797ec9e16567b28d4fe38df8ef24c (dev-env#885: attempt-fenced Claude refresh, durable unsent-attempt marker in the existing journal Secret, third lease fence; no new RBAC); publish.yml run 41897753199 signed and verified keyless (Sign the image, Verify the signature: success).
+              # Source 1ae9c7ca2c0595157ab93bab74ff8640b3896ad7 (dev-env#1078: a second App token loop for the ops bot, DESIGN-064 6.2, OpenProject 736); publish.yml run 43120605930 signed and verified keyless (Sign the image, Verify the signature: success); digest re-checked on ghcr by tag.
+              # Keeper-path changes since 3a46b8a: in internal/keeper and cmd/dev-env-keeper, #1078 only (and one test-only commit, #1015). In packages the keeper imports: internal/reminders (#917: a Reminder with spec.projection is calendar-only, never pages, and the scheduler takes its events down at its retention end; no Reminder had spec.projection when this pin was written) and internal/asks (#1037, #1041: the grant Ask kind; nothing creates one while the broker runs without --enable-grant-asks). Flags added below: the ops token loop.
+              # Rollback: tag sha-3a46b8a@sha256:7a19d78c1c6ff5bd736f7c793ea7f66fe21277e86d2d79fa5317af9fce8ae203 (publish.yml run 41897753199) AND remove the two ops flags below: an older keeper does not know them and would not start. The github-ops-bot mount may stay.
+              # Was source 3a46b8a0e5a797ec9e16567b28d4fe38df8ef24c (dev-env#885: attempt-fenced Claude refresh, durable unsent-attempt marker in the existing journal Secret, third lease fence; no new RBAC); publish.yml run 41897753199 signed and verified keyless (Sign the image, Verify the signature: success).
               # Keeper-path changes since 4deca6e: #885; #898 (internal/reminders shared schedule, used by the live reminder scheduler); #687 (ask notifications, default off: the keeper's --enable-ask-notifications was NOT set by this pin). No keeper flag changes. The flag is set below since OpenProject #264, with the pin unchanged.
               # Rollback: tag sha-4deca6e@sha256:b478e768681294b3090e84c39982960f414a08a93b45f93a11c72c4175a17386 (v2.53.0, publish.yml run 40638019892).
               # Was source 4deca6e615beab468920bdd2b24b4ca299ab8464 (v2.53.0, release dev-env#601); publish.yml run 40638019892 signed and verified keyless (Sign the image, Verify the signature: success); digest re-checked on ghcr by tag.
@@ -67,7 +72,7 @@ spec:
               # 617ed15 (verified), so the helper images keep their pins.
               # Previously source 585692bbe730b0c7d435496d304cffb2276a0d6f (v2.34.0), run 39302323514.
               # The broker pin is separate and unchanged.
-              tag: sha-3a46b8a@sha256:7a19d78c1c6ff5bd736f7c793ea7f66fe21277e86d2d79fa5317af9fce8ae203
+              tag: sha-1ae9c7c@sha256:89f151a003dfdfb1517298c2c2fa8c4ab62e03d73e76fca635e37e630674def3
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:
@@ -126,6 +131,27 @@ spec:
               - --ask-notify-window=07:00-00:00
               - --ask-notify-timezone=America/New_York
               - --ask-notify-state-configmap=dev-env-keeper-ask-notifications
+              # The ops bot's token (dev-env DESIGN-064 6.2, OpenProject 736, dev-env#1078): a second
+              # mint loop for the haynes-ops-bot App, on the dev bot loop's schedule and Lease. It
+              # reads the App's files from /etc/dev-env-keeper/github-ops-bot (the mount below) at
+              # every mint and merges the token into dev-agents/dev-env-ops-gh-token (key gh_token),
+              # which only profile `ops` mounts. Role dev-env-keeper already may patch that Secret
+              # (rbac/app/keeper.yaml); secrets/app/keeper-secrets.yaml creates it empty. Defaults
+              # kept: --ops-github-app-dir, --ops-gh-token-secret and --ops-gh-token-permissions
+              # (v1's set: contents, pull requests and issues write, checks read).
+              # The repository list is required with the flag and limits the token to these names.
+              # They are the two repositories v1's own record says the installation covers
+              # (upgrade-agent/dev-env-ops/app/resources/publish-report.sh, probed from that pod on
+              # 2026-08-31 and 2026-09-06). Adding a name or a permission is a question for Tom
+              # (DESIGN-064 Q-09). The keeper holding this App's key is his decision of 2026-11-11
+              # (gate T-1): the same bot with the same rights.
+              # Before any request the loop refuses when its App could be the dev bot's App (the
+              # same issuer, key or installation). With the flag on, the keeper is ready only when
+              # both tokens are minted, so a refused ops mint shows as NotReady. A normal mint logs
+              # the granted permissions it asked for and permissionsDropped 1 (GitHub's metadata).
+              # Rollback: remove these two lines; the mount, the Secret and the ExternalSecret can stay.
+              - --enable-ops-gh-token=true
+              - --ops-gh-token-repositories=haynes-ops,cigar-journal
             # Other flags retain the defaults: plan 01's names (--secret-namespace dev-agents,
             # --gh-token-secret dev-env-gh-token, --github-app-dir
             # /etc/dev-env-keeper/github-dev-bot, the Lease in POD_NAMESPACE, v1's
@@ -274,6 +300,19 @@ spec:
           dev-env-keeper:
             app:
               - path: /etc/dev-env-keeper/github-dev-bot
+                readOnly: true
+      # The haynes-ops-bot App (the same four files), from ExternalSecret
+      # dev-env-keeper-github-ops-bot (secrets/app/externalsecret-keeper.yaml), read at every
+      # ops mint. Only the keeper's app container mounts it. Not optional on purpose: with
+      # the ops flag on, a keeper without these files could never be ready.
+      github-ops-bot:
+        type: secret
+        name: dev-env-keeper-github-ops-bot
+        defaultMode: 0440
+        advancedMounts:
+          dev-env-keeper:
+            app:
+              - path: /etc/dev-env-keeper/github-ops-bot
                 readOnly: true
       # Keeper-only D-69/D-72 input. The default --ssh-ca-dir reads these two keys.
       # Minting is switched on by --enable-proxmox-grants above (Q-110-08); the pair
