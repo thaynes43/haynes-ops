@@ -414,13 +414,16 @@ export function releaseLock(held, { now, env, note }) {
 
 // BEFORE the merge call: the lock moves to phase "merging" with the post-merge lease, so a
 // kill, a timeout or a lost reply during the call cannot leave only the short lease
-// behind. If this write fails the lane does not merge.
+// behind. If this write fails the lane does not merge. held.merged (the exit handler then
+// keeps the lock) is set by the caller immediately before the call, not here: an exit
+// between this write and the call releases the lock (story 551, S4). A SIGKILL there
+// leaves the merging phase to its lease: no handler runs.
 export function beginMerge(held, { now, env, leaseSeconds }) {
   if (!held?.rv) return { ok: false, why: 'the change lock has no known resourceVersion; not merging on it' };
   const data = { ...held.data, phase: 'merging', expires_at: iso(now + leaseSeconds * 1000), lease_seconds: String(leaseSeconds), merge_started_at: iso(now) };
   const w = writeLock('replace', lockManifest(data, held.rv), env || held.env);
   if (!w.ok || !w.rv) return { ok: false, why: `the change lock could not be moved to phase merging (${w.ok ? 'no resourceVersion came back' : w.detail}); not merging` };
-  held.rv = w.rv; held.data = data; held.merged = true; // from here the exit handler keeps the lock
+  held.rv = w.rv; held.data = data;
   return { ok: true };
 }
 
@@ -488,14 +491,37 @@ export function settleScope(rec, ks, hr) {
   const mine = targets.flatMap(t => L.kustomizationsFor(t, ks));
   const sc = L.fluxScope(mine, ks, hr);
   const byId = new Map((ks.items || []).map(k => [L.ksId(k), k]));
-  return { targets, own: mine.map(L.ksId), chain: sc.chain, namespaces: sc.namespaces,
-    chain_paths: sc.chain.map(id => ({ id, path: dirOf(byId.get(id)) })).filter(x => x.path), missing: sc.chain.filter(id => !byId.has(id)) };
+  // the Kustomizations that apply T's own (their Flux labels), up to the root: 183 of 186
+  // are applied by flux-system/cluster-apps, which is in no chain (story 551, S1)
+  const appliers = [], missing = sc.chain.filter(id => !byId.has(id));
+  const queue = mine.map(L.ksId);
+  for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+    const l = byId.get(id)?.metadata?.labels || {};
+    if (!l['kustomize.toolkit.fluxcd.io/name']) continue;
+    const up = `${l['kustomize.toolkit.fluxcd.io/namespace'] || byId.get(id).metadata.namespace}/${l['kustomize.toolkit.fluxcd.io/name']}`;
+    if (appliers.includes(up) || up === id) continue;
+    appliers.push(up);
+    if (!byId.has(up)) missing.push(up); else queue.push(up);
+  }
+  const ownIds = new Set(mine.map(L.ksId));
+  const ownHr = (hr.items || []).filter(h => { const l = h.metadata?.labels || {}; return ownIds.has(`${l['kustomize.toolkit.fluxcd.io/namespace'] || h.metadata?.namespace}/${l['kustomize.toolkit.fluxcd.io/name']}`); }).map(h => `${h.metadata.namespace}/${h.metadata.name}`);
+  return { targets, own: [...ownIds], own_hr: ownHr, chain: sc.chain, appliers, namespaces: sc.namespaces,
+    chain_paths: sc.chain.map(id => ({ id, path: dirOf(byId.get(id)) })).filter(x => x.path), missing: [...new Set(missing)] };
 }
 
 // Which parts of a scope one changed path reaches: T's paths, its chain, a cluster-wide
 // part, directly or through a shared component that includes it (R8, componentReach).
 export function scopeHits(path, scope, rules) {
   const hits = [];
+  // a file directly under kubernetes/main/apps/<dir>/ (namespace.yaml, the namespace's
+  // kustomization.yaml listing its apps) reaches every target and chain path in <dir>
+  // (story 551, S1); a file directly under kubernetes/main/apps/ is the flux part's
+  // (cluster_wide_targets), as is kubernetes/main/flux/apps.yaml, which defines cluster-apps
+  const nsFile = /^(kubernetes\/main\/apps\/[^/]+)\/[^/]+$/.exec(path);
+  if (nsFile) {
+    for (const t of scope?.targets || []) if (under(t, nsFile[1])) hits.push({ path, part: 'namespace', name: `${nsFile[1]} (for target ${t})` });
+    for (const c of scope?.chain_paths || []) if (under(c.path, nsFile[1])) hits.push({ path, part: 'namespace', name: `${nsFile[1]} (for chain ${c.id})` });
+  }
   const reach = [path, ...L.componentReach([path], rules).via.map(v => v.consumer)];
   for (const p of reach) {
     const via = p === path ? '' : ` (via ${p})`;
@@ -556,7 +582,7 @@ export function otherChanges(range, scope, rules, { exclude = [] } = {}) {
 // broken, not settling (the baseline gate judges it by scope): Flux's retry loop, Stalled,
 // a failure at the current revision and generation, or waiting on a failing dependency.
 export function fluxSettleState(o, ctx = {}) {
-  if (o?.spec?.suspend === true) return { state: 'settled', why: 'suspended' };
+  if (o?.spec?.suspend === true) return { state: 'settled', suspended: true, why: 'suspended' };
   const cs = o?.status?.conditions;
   if (!Array.isArray(cs)) return { state: 'progressing', why: 'no status conditions' };
   const ready = cs.find(c => c?.type === 'Ready');
@@ -584,6 +610,9 @@ export function fluxSettleState(o, ctx = {}) {
       const st = deps.map(id => ({ id, s: ctx.dep(id) }));
       const bad = st.find(x => x.s?.state === 'failing');
       if (bad) return { state: 'failing', why: `NotReady (DependencyNotReady), waiting on ${bad.id}, which is failing` };
+      // stuck, not mid-change: nothing moves until someone resumes the dependency (S2)
+      const off = st.find(x => x.s?.suspended);
+      if (off) return { state: 'failing', why: `NotReady (DependencyNotReady), waiting on ${off.id}, which is suspended` };
       const gone = st.find(x => !x.s);
       return { state: 'progressing', why: gone ? `NotReady (DependencyNotReady), waiting on ${gone.id}, which does not exist` : `NotReady (DependencyNotReady), waiting on ${st.filter(x => x.s.state !== 'settled').map(x => x.id).join(', ') || 'a dependency that just settled'}` };
     }
@@ -663,13 +692,18 @@ export function settleVerdict(f, scope, rules) {
   if (!f.ks || !f.hr || !f.source) { out.settled = false; return out; }
   const st = fluxStates(f);
   // F2: T's chain has applied the source revision and is settled; T's namespaces' HelmReleases settled
-  for (const id of scope.missing || []) add(`F2 Kustomization ${id} in the target's dependsOn chain does not exist`);
-  for (const id of scope.chain || []) {
-    const k = st.byId.get(id); if (!k) continue;
+  for (const id of scope.missing || []) add(`F2 Kustomization ${id} in the target's dependsOn chain or applying it does not exist`);
+  // S2: a suspended object of T's own scope, its chain or its appliers: a merge would not apply
+  for (const id of [...new Set([...(scope.chain || []), ...(scope.appliers || [])])]) if (st.byId.get(id)?.spec?.suspend === true) add(`F2 Kustomization ${id} is suspended: a lane merge to the target would not apply until someone resumes it`);
+  for (const id of scope.own_hr || []) if ((f.hr.items || []).find(h => `${h.metadata.namespace}/${h.metadata.name}` === id)?.spec?.suspend === true) add(`F2 HelmRelease ${id} is suspended: a lane merge to the target would not apply until someone resumes it`);
+  for (const id of [...new Set([...(scope.chain || []), ...(scope.appliers || [])])]) {
+    const k = st.byId.get(id); if (!k || k.spec?.suspend === true) continue;
     const s = st.ksState(id);
-    if (s.state === 'failing') { out.failing_not_settling.push(`Kustomization ${id}: ${s.why}`); continue; }
-    if (s.state === 'progressing') { out.unsettled.push(`Kustomization ${id}: ${s.why}`); continue; }
-    if (k.spec?.suspend !== true && st.ofSource(k) && k.status?.lastAppliedRevision !== rev) out.unsettled.push(`Kustomization ${id}: has not applied ${short(revisionSha(rev))} (applied ${short(revisionSha(k.status?.lastAppliedRevision) || k.status?.lastAppliedRevision || 'nothing')})`);
+    const applier = (scope.appliers || []).includes(id) && !(scope.chain || []).includes(id);
+    // a failing applier has not applied the revision, and no baseline gate watches it (S1)
+    if (s.state === 'failing') { if (applier) out.unsettled.push(`Kustomization ${id} (applies the target): ${s.why}`); else out.failing_not_settling.push(`Kustomization ${id}: ${s.why}`); continue; }
+    if (s.state === 'progressing') { out.unsettled.push(`Kustomization ${id}${applier ? ' (applies the target)' : ''}: ${s.why}`); continue; }
+    if (st.ofSource(k) && k.status?.lastAppliedRevision !== rev) out.unsettled.push(`Kustomization ${id}${applier ? ' (applies the target)' : ''}: has not applied ${short(revisionSha(rev))} (applied ${short(revisionSha(k.status?.lastAppliedRevision) || k.status?.lastAppliedRevision || 'nothing')})`);
   }
   for (const [id, s] of st.hrState) {
     if (!(scope.namespaces || []).includes(id.split('/')[0])) continue;
@@ -716,8 +750,9 @@ export const settleBrief = s => ({ applicable: s.applicable, settled: s.settled,
 // (no Complete or Failed condition): every Job of CronJob upgrade-shepherd (or carrying
 // its controller label: a summon made from it), and a Job of upgrade-shepherd-triage while
 // upgrade-remediation-state holds a claimed, unfinished remediation (attempted 1, result
-// none). The lane's own Jobs and the other upgrade-agent CronJobs (alert-responder, whose
-// LLM has no Bash; the health gate; dev-env-ops-curation-order) cannot merge. Any other
+// none). The lane's own Jobs and the other upgrade-agent CronJobs cannot merge: the
+// alert-responder's LLM has read-only Bash (kubectl get/describe, flux get, grep, cat, git
+// log/show and its query scripts, no gh), the health gate and dev-env-ops-curation-order. Any other
 // unfinished Job is unknown and counts as one that can (fail closed).
 export const SHEPHERD_JOBS = Object.freeze({
   namespace: 'upgrade-agent',
@@ -730,6 +765,11 @@ const jobFinished = j => (j?.status?.conditions || []).some(c => ['Complete', 'F
 const jobIs = (j, list) => { const o = (j?.metadata?.ownerReferences || []).find(r => r.kind === 'CronJob')?.name; const c = j?.metadata?.labels?.['app.kubernetes.io/controller']; return list.some(x => x.cronjob === o || (o === undefined && c && x.controller === c)); };
 // PURE. jobs = kubectl get jobs -n upgrade-agent (null = unreadable); remediation = the
 // remediation-state read (readNamedConfigMap result; null = unreadable).
+// Known limit (story 551, S5): any claim with attempted 1 and result none counts, not only
+// the active triage Job's. The claim carries no time or Job identity to tell a stale one
+// (a crashed remediate) from a live one, so this stays fail closed; it holds only the
+// ticks that overlap a triage Job, and clears when triage records a result or the entry
+// ages out (STATE_TTL_HOURS after its first_seen).
 export function mergingJobs(jobs, remediation) {
   if (!Array.isArray(jobs?.items)) return { readable: false, active: [], why: 'unreadable: Jobs in upgrade-agent (F4)' };
   const claimed = !remediation ? null : Object.entries(remediation.cm?.data || {}).filter(([, v]) => { try { const e = JSON.parse(v); return String(e.attempted) === '1' && (e.result ?? 'none') === 'none'; } catch { return false; } }).map(([k]) => k);
@@ -867,12 +907,12 @@ export function laneMergeStep({ mode, subject, rules, run, env, clock, liveClass
     const jobs1 = readMergingJobs(run);
     v.shepherd_jobs_at_merge_call = jobs1;
     if (!jobs1.readable || jobs1.active.length) {
-      held.merged = false;
       v.yielded = 'yielded-to-shepherd';
       v.lane_refusals.push(`F4 at the merge call: ${jobs1.why}; yielded-to-shepherd, the next tick tries again`);
       v.merge_call = 'not made (yielded)'; out.verdict = v; return out;
     }
-    // held.merged is now true: whatever happens next, the lock keeps the post-merge lease
+    // from here, whatever happens next, the lock keeps the post-merge lease (S4: set only now)
+    held.merged = true;
     const call = callMerge({ repo: REPO, pr: subject.pr, head: subject.head, mode, verdict: { ok: v.pr_refusals.length === 0 && v.lane_refusals.length === 0, pr: v.pr, head: v.head }, lockHeld: true, env });
     const after = verifyMerged(REPO, subject.pr, subject.head, run);
     v.merge_call = call.argv + (call.exit === 0 ? ' (exit 0)' : ` (exit ${call.exit}: ${call.detail})`);

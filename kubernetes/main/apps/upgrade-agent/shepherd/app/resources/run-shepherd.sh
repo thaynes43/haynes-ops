@@ -411,15 +411,13 @@ automerge_decide() {
 # a PR that is still unmerged. Returns 0 = merged, 1 = not merged.
 automerge_complete() {
   local pr="$1" sha="$2" waited="$3" out merged_at
-  # story 551: the lock is read again right before this merge call. A stand-aside here
-  # strands the PR: its vet marker stops the next run re-vetting it and no later fallback
-  # watches it, so it escalates on a stable signature (review finding R4).
+  # story 551: the lock is read again right before this merge call. A stand-aside returns 2
+  # and the watch keeps the PR: the next poll asks again (a failed lock read is often
+  # transient), and only a stand-aside that still holds at the watch's deadline escalates
+  # (automerge_strand_escalate; review findings R4 and S3).
   if ! shepherd_may_merge; then
-    log "automerge-fallback: STAND-ASIDE: #$pr is CLEAN and green but the fallback does not merge it: ${MERGE_STAND_ASIDE_WHY:-unknown}. Its queued GitHub auto-merge is left as it is; escalating, as nothing will retry it."
-    ESCALATE_SIG="shepherd-automerge-stood-aside|pr=${pr}|sha=${sha}" shepherd_escalate \
-      "auto-merge stranded: #${pr} is CLEAN with every check green and auto-merge queued, GitHub has not merged it, and the launcher's fallback stood aside for the night lane (${MERGE_STAND_ASIDE_WHY:-unknown}); its vet marker keeps later runs from retrying it" \
-      || log "escalate.sh could not file the esc-shepherd entry (best-effort; run outcome unchanged)"
-    return 1
+    log "automerge-fallback: STAND-ASIDE: #$pr is CLEAN and green but the fallback does not merge it now: ${MERGE_STAND_ASIDE_WHY:-unknown}. Its queued GitHub auto-merge is left as it is; the watch asks again."
+    return 2
   fi
   log "automerge-fallback: #$pr has been CLEAN with every check green for ${waited}s and GitHub has not merged it — merging it (plain squash, pinned to ${sha:0:10}, no --admin)."
   if out="$(gh pr merge "$pr" -R "$REPO" --squash --delete-branch --match-head-commit "$sha" 2>&1)"; then
@@ -439,10 +437,20 @@ automerge_complete() {
   return 1
 }
 
+# $1 = PR, $2 = head SHA, $3 = why. The fallback stood aside for this PR until the watch
+# ended. Its vet marker stops the next run re-vetting it and no later fallback watches it,
+# so nothing would retry it: escalate on a stable signature (review findings R4 and S3).
+automerge_strand_escalate() {
+  log "automerge-fallback: STAND-ASIDE still held at the end of the watch for #$1 (${3:-unknown}); escalating, as nothing will retry it."
+  ESCALATE_SIG="shepherd-automerge-stood-aside|pr=${1}|sha=${2}" shepherd_escalate \
+    "auto-merge stranded: #${1} is CLEAN with every check green and auto-merge queued, GitHub has not merged it, and the launcher's fallback stood aside for the night lane until its watch ended (${3:-unknown}); its vet marker keeps later runs from retrying it" \
+    || log "escalate.sh could not file the esc-shepherd entry (best-effort; run outcome unchanged)"
+}
+
 # $1 = RUN_START_ISO. Best-effort: gh failures only log, and it always returns 0.
 automerge_fallback() {
-  local since="$1" list prs pr view verdict sha key t t0 deadline still waits
-  local -A ready_since=()
+  local since="$1" list prs pr view verdict sha key t t0 deadline still waits crc
+  local -A ready_since=() stood=()
   list="$(gh pr list -R "$REPO" --state open --limit 200 --json number,autoMergeRequest 2>/dev/null)" || {
     log "automerge-fallback: gh pr list failed — cannot watch for a stalled auto-merge this run."; return 0; }
   prs="$(printf '%s' "$list" | automerge_candidates "$since" | tr '\n' ' ')"
@@ -456,6 +464,7 @@ automerge_fallback() {
     still=""; waits=""
     t="$(epoch_now)"
     for pr in $prs; do
+      unset "stood[$pr]"   # only the latest poll's outcome counts at the deadline (S3)
       view="$(gh pr view "$pr" -R "$REPO" --json state,isDraft,mergedAt,mergeStateStatus,autoMergeRequest,headRefOid,statusCheckRollup 2>/dev/null)" || {
         still="$still $pr"; waits="$waits #$pr(gh-view-failed)"; continue; }
       verdict="$(printf '%s' "$view" | automerge_decide)"
@@ -468,7 +477,11 @@ automerge_fallback() {
           [ -n "${ready_since[$key]:-}" ] || ready_since[$key]="$t"
           t0="${ready_since[$key]}"
           if [ $(( t - t0 )) -ge "$AUTOMERGE_GRACE_S" ]; then
-            automerge_complete "$pr" "$sha" "$(( t - t0 ))" || true
+            automerge_complete "$pr" "$sha" "$(( t - t0 ))" && crc=0 || crc=$?
+            if [ "$crc" -eq 2 ]; then
+              stood[$pr]="${sha}"$'\t'"${MERGE_STAND_ASIDE_WHY:-unknown}"
+              still="$still $pr"; waits="$waits #$pr(stand-aside)"
+            fi
           else
             still="$still $pr"
           fi ;;
@@ -479,6 +492,10 @@ automerge_fallback() {
     [ -n "${prs// /}" ] || break
     if [ "$(epoch_now)" -ge "$deadline" ]; then
       log "automerge-fallback: watch over; still queued:${prs} —${waits:- ready but inside the grace window} — left to GitHub auto-merge (their checks completed after it was enabled, which is the event that fires it)."
+      for pr in $prs; do
+        [ -n "${stood[$pr]:-}" ] || continue
+        automerge_strand_escalate "$pr" "${stood[$pr]%%$'\t'*}" "${stood[$pr]#*$'\t'}"
+      done
       break
     fi
     sleep "$AUTOMERGE_POLL_S"

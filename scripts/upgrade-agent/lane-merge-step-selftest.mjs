@@ -346,6 +346,72 @@ const inst = id => sx.instants.find(i => i.id === id);
   ok(/an unknown Job in upgrade-agent; it may merge/.test(J([job('file-photo-backlog-order', null, undefined)]).why || ''), 'F4: an unknown unfinished Job counts as able to merge (fail closed)');
   ok(!M.mergingJobs(null, remCm({})).readable && /unreadable: Jobs in upgrade-agent/.test(M.mergingJobs(null, remCm({})).why), 'F4: unreadable Jobs fail closed');
 
+  // S1: namespace-level files, the apps root, and the Kustomizations that apply the target.
+  // Labels as live: 183 of 186 Kustomizations are applied by flux-system/cluster-apps
+  // (path ./kubernetes/main/apps), which flux-system/cluster applies.
+  {
+    const REV1 = `main@sha1:${'d'.repeat(40)}`, base1 = 'd'.repeat(40);
+    const lab = (name, ns = 'flux-system') => ({ 'kustomize.toolkit.fluxcd.io/name': name, 'kustomize.toolkit.fluxcd.io/namespace': ns });
+    const K1 = (ns, name, path, labels = {}, extra = {}) => ({ metadata: { namespace: ns, name, generation: 1, labels }, spec: { path: `./${path}`, sourceRef: { kind: 'GitRepository', name: 'haynes-ops', namespace: 'flux-system' }, ...(extra.spec || {}) },
+      status: { observedGeneration: 1, lastAttemptedRevision: extra.applied ?? REV1, lastAppliedRevision: extra.applied ?? REV1, conditions: extra.conditions ?? [{ type: 'Ready', status: 'True' }] } });
+    const world1 = (over = {}) => ({ items: [
+      K1('flux-system', 'cluster', 'kubernetes/main/flux', lab('cluster'), over.cluster),
+      K1('flux-system', 'cluster-apps', 'kubernetes/main/apps', lab('cluster'), over['cluster-apps']),
+      K1('network', 'ns-apps', 'kubernetes/main/apps/network/apps', lab('cluster-apps'), over['ns-apps']),
+      K1('network', 'traefik-external', 'kubernetes/main/apps/network/traefik/traefik-external/app', lab('ns-apps', 'network'), over.traefik),
+      K1('media', 'plex-hw-canary', 'kubernetes/main/apps/media/plex-hw-canary/app', lab('cluster-apps'), over.plex),
+      K1('kube-system', 'cilium', 'kubernetes/main/apps/kube-system/cilium/app', lab('cluster-apps'), over.cilium),
+      K1('kube-system', 'off', 'kubernetes/main/apps/kube-system/off/app', lab('cluster-apps'), over.off),
+    ] });
+    const hr1 = (over = {}) => ({ items: [
+      { metadata: { namespace: 'network', name: 'traefik', generation: 1, labels: lab('traefik-external', 'network') }, spec: { ...(over.traefikHr || {}) }, status: { observedGeneration: 1, conditions: [{ type: 'Ready', status: 'True' }] } },
+      { metadata: { namespace: 'media', name: 'plex-hw-canary', generation: 1, labels: lab('plex-hw-canary', 'media') }, spec: {}, status: { observedGeneration: 1, conditions: [{ type: 'Ready', status: 'True' }] } },
+    ] });
+    const src1 = { metadata: { namespace: 'flux-system', name: 'haynes-ops', generation: 1 }, status: { observedGeneration: 1, artifact: { revision: REV1 }, conditions: [{ type: 'Ready', status: 'True' }] } };
+    const C2 = 'e'.repeat(40);
+    const range1 = files => ({ base: base1, head: 'main', complete: true, commits: files ? [{ sha: C2, parents: [base1], at: '2026-11-11T15:00:00.000Z', subject: 'chore: a namespace-level change (#4900)', pr: 4900, author: 'haynes-dev-bot[bot]', committer: 'web-flow', files }] : [] });
+    const facts1 = (files, ksOver = {}, hrOver = {}) => ({ cfg: sc, source: src1, ks: world1(ksOver), hr: hr1(hrOver), range: range1(files) });
+    const T_IN = { cluster_effect: 'immediate', targets: ['kubernetes/main/apps/network/traefik'] }, T_OUT = { cluster_effect: 'immediate', targets: ['kubernetes/main/apps/media/plex-hw-canary'] };
+    const v1 = (rec, f) => M.settleVerdict(f, M.settleScope(rec, f.ks, f.hr), rules);
+    const sIn = M.settleScope(T_IN, world1(), hr1());
+    ok(JSON.stringify(sIn.appliers) === JSON.stringify(['network/ns-apps', 'flux-system/cluster-apps', 'flux-system/cluster']) && JSON.stringify(sIn.own_hr) === '["network/traefik"]', "S1: the target's appliers come from the Flux labels of its Kustomizations, up to the root (not a hard-coded cluster-apps)", JSON.stringify(sIn));
+    ok(v1(T_IN, facts1(null)).settled && v1(T_OUT, facts1(null)).settled, 'S1: with nothing unapplied both targets are settled');
+    for (const f of ['kubernetes/main/apps/network/namespace.yaml', 'kubernetes/main/apps/network/kustomization.yaml']) {
+      const vi = v1(T_IN, facts1([f])), vo = v1(T_OUT, facts1([f]));
+      ok(!vi.settled && vi.blockers.some(b => /^F1 .*reaches namespace kubernetes\/main\/apps\/network \(for target kubernetes\/main\/apps\/network\/traefik\)/.test(b)) && vo.settled, `S1: ${f} reaches every target in network (traefik waits) and no other (plex-hw-canary does not)`, `${vi.blockers.join(' | ')} || ${vo.blockers.join(' | ')}`);
+      const oc = M.otherChanges(range1([f]), sIn, rules);
+      ok(oc.changes.length === 1 && oc.changes[0].matched.some(m => m.part === 'namespace') && M.otherChanges(range1([f]), M.settleScope(T_OUT, world1(), hr1()), rules).changes.length === 0, `S1: otherChanges sees ${f.split('/').pop()} for a network target and not for a media one`);
+    }
+    const root = 'kubernetes/main/apps/kustomization.yaml';
+    ok([T_IN, T_OUT].every(r => v1(r, facts1([root])).blockers.some(b => /^F1 .*reaches cluster-wide flux: eeeeeeee/.test(b))), 'S1: kubernetes/main/apps/kustomization.yaml (the apps root) is cluster-wide: every target waits', v1(T_OUT, facts1([root])).blockers.join(' | '));
+    ok(M.otherChanges(range1([root]), M.settleScope(T_OUT, world1(), hr1()), rules).changes[0]?.matched.some(m => m.part === 'cluster-wide' && m.name === 'flux'), 'S1: otherChanges reports the apps root as cluster-wide flux');
+    ok([T_IN, T_OUT].every(r => v1(r, facts1(['kubernetes/main/flux/apps.yaml'])).blockers.some(b => /cluster-wide flux/.test(b))), 'S1: kubernetes/main/flux/apps.yaml, which defines cluster-apps, is cluster-wide flux (already)');
+    ok(v1(T_IN, facts1(['kubernetes/main/apps/network/traefik-forward-auth/app/x.yaml'])).settled && v1(T_IN, facts1(['kubernetes/main/apps/networking/namespace.yaml'])).settled, 'S1: a sibling app directory, or another namespace directory sharing a prefix, does not reach traefik');
+    const nsApplier = v1(T_IN, facts1(null, { 'ns-apps': { applied: `main@sha1:${'0'.repeat(40)}` } }));
+    ok(!nsApplier.settled && nsApplier.blockers.some(b => /^F2 the target is not settled: Kustomization network\/ns-apps \(applies the target\): has not applied dddddddd/.test(b)) && v1(T_OUT, facts1(null, { 'ns-apps': { applied: `main@sha1:${'0'.repeat(40)}` } })).settled, 'S1: an applying Kustomization that has not applied the revision holds its targets (F2), not others', nsApplier.blockers.join(' | '));
+    const apFail = v1(T_IN, facts1(null, { 'ns-apps': { conditions: [{ type: 'Ready', status: 'False', reason: 'BuildFailed' }, { type: 'Reconciling', status: 'True', reason: 'ProgressingWithRetry' }] } }));
+    ok(!apFail.settled && apFail.blockers.some(b => /network\/ns-apps \(applies the target\): NotReady \(BuildFailed\), in Flux's retry loop/.test(b)), 'S1: a failing applier holds its targets: it has not applied the revision and no baseline gate watches it');
+    const apCa = v1(T_OUT, facts1(null, { 'cluster-apps': { conditions: [{ type: 'Ready', status: 'Unknown', reason: 'Progressing' }] } }));
+    ok(!apCa.settled && apCa.blockers.some(b => /flux-system\/cluster-apps \(applies the target\): Ready Unknown/.test(b)) && apCa.blockers.some(b => /^F3 .*flux: Kustomization flux-system\/cluster-apps/.test(b)), 'S1: cluster-apps in flight holds every target, through F2 (applier) and F3 (the flux part now includes the apps root)', apCa.blockers.join(' | '));
+    const miss = M.settleScope(T_IN, { items: world1().items.filter(k => k.metadata.name !== 'ns-apps') }, hr1());
+    ok(miss.missing.includes('network/ns-apps') && M.settleVerdict(facts1(null), miss, rules).blockers.some(b => /^F2 Kustomization network\/ns-apps in the target's dependsOn chain or applying it does not exist$/.test(b)), 'S1: an applier named by the labels that does not exist fails closed');
+
+    // S2: suspended in the target's own scope, its chain or its appliers blocks; elsewhere not
+    for (const [name, over, re] of [
+      ['its own Kustomization', { traefik: { spec: { suspend: true } } }, /^F2 Kustomization network\/traefik-external is suspended: a lane merge to the target would not apply until someone resumes it$/],
+      ['its applier', { 'ns-apps': { spec: { suspend: true } } }, /^F2 Kustomization network\/ns-apps is suspended: a lane merge/],
+    ]) { const v = v1(T_IN, facts1(null, over)); ok(!v.settled && v.blockers.some(b => re.test(b)), `S2: a suspended ${name} blocks: a merge would not apply`, v.blockers.join(' | ')); }
+    const vHr = v1(T_IN, facts1(null, {}, { traefikHr: { suspend: true } }));
+    ok(!vHr.settled && vHr.blockers.some(b => /^F2 HelmRelease network\/traefik is suspended: a lane merge to the target would not apply/.test(b)), 'S2: a suspended HelmRelease of the target blocks', vHr.blockers.join(' | '));
+    ok(v1(T_IN, facts1(null, { off: { spec: { suspend: true } } })).settled, 'S2: a suspended object elsewhere does not hold the target');
+    const chainOff = { items: [...world1().items.map(k => k.metadata.name === 'plex-hw-canary' ? { ...k, spec: { ...k.spec, dependsOn: [{ name: 'off', namespace: 'kube-system' }] } } : k.metadata.name === 'off' ? { ...k, spec: { ...k.spec, suspend: true } } : k)] };
+    const vco = M.settleVerdict({ ...facts1(null), ks: chainOff }, M.settleScope(T_OUT, chainOff, hr1()), rules);
+    ok(!vco.settled && vco.blockers.some(b => /^F2 Kustomization kube-system\/off is suspended/.test(b)), "S2: a suspended Kustomization in the target's dependsOn chain blocks", vco.blockers.join(' | '));
+    const stuck = { items: world1().items.map(k => k.metadata.name === 'cilium' ? { ...k, spec: { ...k.spec, dependsOn: [{ name: 'off', namespace: 'kube-system' }] }, status: { ...k.status, conditions: [{ type: 'Ready', status: 'False', reason: 'DependencyNotReady' }] } } : k.metadata.name === 'off' ? { ...k, spec: { ...k.spec, suspend: true } } : k) };
+    const vst = M.settleVerdict({ ...facts1(null), ks: stuck }, M.settleScope(T_OUT, stuck, hr1()), rules);
+    ok(vst.settled && vst.failing_not_settling.some(x => /cilium: Kustomization kube-system\/cilium: NotReady \(DependencyNotReady\), waiting on kube-system\/off, which is suspended/.test(x)), 'S2: a cluster-wide Kustomization stuck behind a suspended dependency is failing, not mid-change: F3 does not hold every candidate on it', JSON.stringify(vst));
+  }
+
   // R7: the shared lock states, read by the lane's lockStatus (the shepherd reads the same file)
   const ls = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/change-lock-states.json'), 'utf8'));
   ok(ls.cases.length >= 20, 'the shared lock fixture has every phase, expired, no expiry, malformed and an offset timestamp');
@@ -603,6 +669,10 @@ const t = M.takeLock({ holder: 'child', purpose: 'exit test', mode: 'live', now:
 if (!t.taken) { console.log('NOT TAKEN ' + t.why); process.exit(9); }`;
   const ex = child(`${prelude}\nprocess.exit(5);`);
   ok(ex.status === 5 && lockNow()?.data.holder === '' && /released on process exit/.test(lockNow()?.data.last_note || ''), 'a process that exits while holding the lock releases it', `${ex.status} ${ex.stdout}${ex.stderr} ${JSON.stringify(lockNow()?.data)}`);
+  // S4: an exit between the merging write and the merge call releases the lock (held.merged
+  // is set immediately before the call, not by beginMerge)
+  const exm = child(`${prelude}\nconst b = M.beginMerge(t.held, { now: Date.now(), env: process.env, leaseSeconds: 14400 });\nif (!b.ok) { console.log('BEGIN FAILED ' + b.why); process.exit(8); }\nprocess.exit(6);`);
+  ok(exm.status === 6 && lockNow()?.data.holder === '' && lockNow().data.phase === 'released' && /released on process exit/.test(lockNow()?.data.last_note || '') && calls().some(c => c.argv[0] === 'replace' && /"phase":"merging"/.test(c.stdin)), 'S4: an exit after the merging write but before the merge call releases the lock (no 4h hold without a call)', `${exm.status} ${exm.stdout}${exm.stderr} ${JSON.stringify(lockNow()?.data)}`);
   const th = child(`${prelude}\nthrow new Error('uncaught');`);
   ok(th.status !== 0 && lockNow()?.data.holder === '', 'an uncaught exception after a take releases the lock', `${th.status} ${JSON.stringify(lockNow()?.data)}`);
   const hm = child(`${prelude}\nM.holdAfterMerge(t.held, { now: Date.now(), env: process.env, leaseSeconds: 14400, merged: { merge_commit: 'f'.repeat(40) } });\nprocess.exit(0);`);

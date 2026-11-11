@@ -1155,9 +1155,10 @@
       "globs": [
         "kubernetes/main/flux/**",
         "kubernetes/main/bootstrap/**",
-        "kubernetes/main/apps/flux-system/**"
+        "kubernetes/main/apps/flux-system/**",
+        "kubernetes/main/apps/*"
       ],
-      "reason": "Flux itself and its bootstrap: every Kustomization depends on it"
+      "reason": "Flux itself, its bootstrap and the apps root (files directly under kubernetes/main/apps, applied by flux-system/cluster-apps, which kubernetes/main/flux/apps.yaml defines): every Kustomization depends on it"
     },
     {
       "id": "cilium",

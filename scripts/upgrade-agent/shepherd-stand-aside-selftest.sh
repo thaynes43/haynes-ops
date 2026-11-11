@@ -22,14 +22,15 @@
 #      are byte-identical; otherwise exactly MERGE_TOOLS leave the allowlist (auto and
 #      remediate) and a MERGE STAND-ASIDE rule is added; dryrun and shepherd modes are
 #      untouched and read nothing;
-#   4. the stall fallback: no `gh pr merge` while standing aside, an escalation on a
-#      stable signature for the merge it strands (review finding R4), and no merge when
-#      the check itself is missing (fail closed);
+#   4. the stall fallback: no `gh pr merge` while standing aside; the PR stays in the
+#      watch, a transient lock-read failure merges on the next poll, and only a stand-aside
+#      still holding at the deadline escalates, on a stable signature (review findings R4
+#      and S3); no merge when the check itself is missing (fail closed);
 #   5. wiring and the handshake order: the shepherd's Job exists before it reads the lock
 #      (and triage claims a remediation before it starts run-shepherd.sh); no clock rule
 #      is left (no window, no time-of-day).
 # The functions are EXTRACTED from the shipped script, never copied. Stubbed: log,
-# epoch_now, kubectl, gh, shepherd_escalate.
+# epoch_now, sleep (a fake clock), kubectl, gh, shepherd_escalate.
 #
 # Usage: scripts/upgrade-agent/shepherd-stand-aside-selftest.sh
 # Requires: bash 4+, jq. No cluster or GitHub access.
@@ -48,13 +49,14 @@ extract() {  # $1=file $2=function name — its definition through the first col
     inside && /^}$/ { exit }
   ' "$1"
 }
-for fn in merge_gate_decide change_lock_read shepherd_may_merge drop_merge_tools automerge_complete; do
+for fn in merge_gate_decide change_lock_read shepherd_may_merge drop_merge_tools automerge_complete \
+          automerge_strand_escalate automerge_candidates automerge_decide automerge_fallback; do
   body="$(extract "$RUN" "$fn")"
   case "$body" in *"$fn() {"*"}") ;; *) echo "FATAL: could not extract $fn() from $RUN"; exit 1 ;; esac
   eval "$body" || { echo "FATAL: extracted $fn() does not parse"; exit 1; }
 done
-defaults="$(grep -E '^(CHANGE_LOCK_NS|CHANGE_LOCK_CM|MERGE_STAND_ASIDE_WHY)=' "$RUN")"
-[ "$(printf '%s\n' "$defaults" | wc -l)" -eq 3 ] || { echo "FATAL: shipped stand-aside defaults not found in $RUN"; exit 1; }
+defaults="$(grep -E '^(CHANGE_LOCK_NS|CHANGE_LOCK_CM|MERGE_STAND_ASIDE_WHY|AUTOMERGE_GRACE_S|AUTOMERGE_WATCH_S|AUTOMERGE_POLL_S|SHEPHERD_BOT_LOGIN|REQUIRED_CHECKS_JSON)=' "$RUN")"
+[ "$(printf '%s\n' "$defaults" | wc -l)" -eq 8 ] || { echo "FATAL: shipped stand-aside and fallback defaults not found in $RUN"; exit 1; }
 eval "$defaults"
 REPO="thaynes43/haynes-ops"
 
@@ -94,9 +96,13 @@ if [ "${got%% *}" != "merge" ]; then ok "garbage input never yields merge"; else
 
 # ── 2. shepherd_may_merge, with kubectl stubbed ──
 KUBECTL_MODE=absent
+# seq <modes…>: each lock read takes the next mode, the last one repeats. A file, because
+# change_lock_read calls kubectl inside a command substitution (a subshell).
+seq_modes() { printf '%s\n' "$@" > "$T/seq"; }
 kubectl() {
   printf '%s\n' "$*" >> "$T/kubectl"
   local exp; exp="$(date -u -d "@$((FAKE_NOW + 600))" +%FT%T.000Z)"
+  if [ -s "$T/seq" ]; then KUBECTL_MODE="$(head -1 "$T/seq")"; [ "$(wc -l < "$T/seq")" -gt 1 ] && sed -i 1d "$T/seq"; fi
   case "$KUBECTL_MODE" in
     absent)    echo 'Error from server (NotFound): configmaps "upgrade-change-lock" not found' >&2; return 1 ;;
     forbidden) echo 'Error from server (Forbidden): configmaps "upgrade-change-lock" is forbidden' >&2; return 1 ;;
@@ -173,25 +179,41 @@ done
 # ── 4. the stall fallback ──
 gh() {
   case "$1 $2" in
-    "pr merge") printf '%s\n' "$*" >> "$T/merges"; return 0 ;;
-    "pr view") printf '{"mergedAt":null}'; return 0 ;;
+    "pr list") printf '%s' "$LIST_JSON"; return 0 ;;
+    "pr merge") printf '%s\n' "$*" >> "$T/merges"; : > "$T/merged.$3"; return 0 ;;
+    "pr view")
+      if [ -f "$T/merged.$3" ]; then printf '{"state":"MERGED","mergedAt":"2026-11-11T09:10:00Z"}'; return 0; fi
+      case " $* " in *" --json mergedAt "*) printf '{"mergedAt":null}'; return 0 ;; esac
+      jq -nc '{state: "OPEN", isDraft: false, mergedAt: null, mergeStateStatus: "CLEAN", headRefOid: "aaa111", autoMergeRequest: {mergeMethod: "SQUASH"},
+        statusCheckRollup: [{__typename: "CheckRun", name: "Flux Local - Success", status: "COMPLETED", conclusion: "SUCCESS"}, {__typename: "CheckRun", name: "Diff Scope - Success", status: "COMPLETED", conclusion: "SUCCESS"}]}'; return 0 ;;
   esac
 }
+sleep() { FAKE_NOW=$((FAKE_NOW + $1)); }
 shepherd_escalate() { printf '%s\t%s\n' "${ESCALATE_SIG:-<text-sig>}" "$1" >> "$T/esc"; }
 merges() { [ -s "$T/merges" ] && wc -l < "$T/merges" | tr -d ' ' || echo 0; }
-rm -f "$T/merges" "$T/esc"; FAKE_NOW="$(at 2026-11-11T09:00:00Z)"; KUBECTL_MODE=taken
+fresh() { rm -f "$T"/merges "$T"/esc "$T"/merged.* "$T/seq"; : > "$T/log"; FAKE_NOW="$(at 2026-11-11T09:00:00Z)"; }
+fresh; KUBECTL_MODE=taken
 automerge_complete 3280 aaa111 130; rc=$?
 expect "fallback, a tick's taken lock: merges as before (rc 0, one call, no escalation)" "$rc $(merges) $([ -s "$T/esc" ] && echo esc || echo none)" "0 1 none"
-rm -f "$T/merges" "$T/esc"; KUBECTL_MODE=merging; : > "$T/log"
+fresh; KUBECTL_MODE=merging
 automerge_complete 3280 aaa111 130; rc=$?
-expect "fallback, lock merging: no gh pr merge, rc 1" "$rc $(merges)" "1 0"
-expect "  ... and it escalates the stranded merge on a stable signature (R4)" "$(cut -f1 "$T/esc" 2>/dev/null)" "shepherd-automerge-stood-aside|pr=3280|sha=aaa111"
-like "  ... naming why" "$(cut -f2 "$T/esc" 2>/dev/null)" "auto-merge stranded: #3280 *stood aside for the night lane (a lane change is in progress*"
+expect "fallback, lock merging: no gh pr merge, rc 2 (the watch keeps the PR), no escalation yet (S3)" "$rc $(merges) $([ -s "$T/esc" ] && echo esc || echo none)" "2 0 none"
 like "  ... and it logs the stand-aside" "$(grep -c '^automerge-fallback: STAND-ASIDE: #3280' "$T/log")" "1"
-rm -f "$T/merges" "$T/esc"; KUBECTL_MODE=forbidden
-automerge_complete 3280 aaa111 130
-expect "fallback with the lock unreadable: no gh pr merge, escalated" "$(merges) $(cut -f1 "$T/esc" 2>/dev/null)" "0 shepherd-automerge-stood-aside|pr=3280|sha=aaa111"
-rm -f "$T/merges"; KUBECTL_MODE=absent
+# the whole watch: one PR whose auto-merge this run enabled, CLEAN and green from the start
+LIST_JSON="$(jq -nc '[{number: 3280, autoMergeRequest: {enabledAt: "2026-11-11T09:00:30Z", enabledBy: {login: "haynes-ops-bot"}, mergeMethod: "SQUASH"}}]')"
+fresh; seq_modes forbidden absent
+automerge_fallback "2026-11-11T09:00:00Z"
+expect "S3 transient: a lock read that fails once, then reads free: the next poll merges, no escalation" "$(merges) $([ -s "$T/esc" ] && echo esc || echo none)" "1 none"
+fresh; seq_modes merging
+automerge_fallback "2026-11-11T09:00:00Z"
+expect "S3 persistent: a stand-aside that holds through the watch: no merge, one escalation at the deadline" "$(merges) $(wc -l < "$T/esc" 2>/dev/null | tr -d ' ')" "0 1"
+expect "  ... on the stable signature (R4)" "$(cut -f1 "$T/esc" 2>/dev/null)" "shepherd-automerge-stood-aside|pr=3280|sha=aaa111"
+like "  ... naming why" "$(cut -f2 "$T/esc" 2>/dev/null)" "auto-merge stranded: #3280 *until its watch ended (a lane change is in progress*"
+if [ "$FAKE_NOW" -ge $(( $(at 2026-11-11T09:00:00Z) + AUTOMERGE_WATCH_S )) ]; then ok "  ... only after the ${AUTOMERGE_WATCH_S}s watch"; else bad "  ... only after the ${AUTOMERGE_WATCH_S}s watch" "ended at +$((FAKE_NOW - $(at 2026-11-11T09:00:00Z)))s"; fi
+fresh; seq_modes forbidden
+automerge_fallback "2026-11-11T09:00:00Z"
+expect "S3: a lock that stays unreadable through the watch escalates once" "$(merges) $(cut -f1 "$T/esc" 2>/dev/null)" "0 shepherd-automerge-stood-aside|pr=3280|sha=aaa111"
+fresh; KUBECTL_MODE=absent
 unset -f shepherd_may_merge
 automerge_complete 3280 aaa111 130 2>/dev/null
 expect "fallback with the check missing: no gh pr merge (fail closed)" "$(merges)" "0"

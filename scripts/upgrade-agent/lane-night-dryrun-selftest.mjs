@@ -622,7 +622,7 @@ process.exit(0);
     ok(blk(r, 4770) === '' && r.summary.would_merge?.pr === 4770, 'tick: with every gate green #4770 would be picked', blk(r, 4770));
     const wmiss = nightWorld([4770]); wmiss.prs[4770] = toGh(gx.prs[4770]);
     wmiss.k8s['kustomizations.kustomize.toolkit.fluxcd.io'].items = wmiss.k8s['kustomizations.kustomize.toolkit.fluxcd.io'].items.filter(k => !(k.metadata.namespace === 'arc-systems' && k.metadata.name === 'arc-controller'));
-    ok(/settle gate: F2 Kustomization arc-systems\/arc-controller in the target's dependsOn chain does not exist/.test(blk(await tick(wmiss), 4770)), "tick: a Kustomization missing from the target's dependsOn chain fails closed (F2)");
+    ok(/settle gate: F2 Kustomization arc-systems\/arc-controller in the target's dependsOn chain or applying it does not exist/.test(blk(await tick(wmiss), 4770)), "tick: a Kustomization missing from the target's dependsOn chain fails closed (F2)");
     ok(r.rec(4770).via_components?.length === 4, 'tick: the record lists the component and its consumers (via_components)', JSON.stringify(r.rec(4770).via_components));
     // with no map entry the component path stays the target: target-unmapped (fail closed)
     const noMap = structuredClone(rules); noMap.shared_components.entries = noMap.shared_components.entries.filter(e => e.path !== 'kubernetes/shared/components/arc/dind');

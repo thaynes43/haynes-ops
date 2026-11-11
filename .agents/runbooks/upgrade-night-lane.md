@@ -669,6 +669,11 @@ the cluster now and is not judged (`records[].gates.settle.applicable: false`).
   the consumers that include it (R8).
 - **T's chain:** `kustomizationsFor` and `fluxScope` (now in `lane-classify.mjs`) give T's
   Kustomizations, their `dependsOn` chain and their namespaces.
+- **T's appliers:** the Kustomizations that apply T's own, found from their
+  `kustomize.toolkit.fluxcd.io/name` and `/namespace` labels, up to the root. Live, 183 of
+  186 Kustomizations are applied by `flux-system/cluster-apps` (path `./kubernetes/main/apps`,
+  no `wait`), which `flux-system/cluster` applies. Nothing names `cluster-apps` in the code
+  (review finding S1).
 - **A cluster-wide part:** an entry of `cluster_wide_targets`, which R5 uses. Its Flux
   objects are the Kustomizations whose `spec.path` falls under its globs, and the
   HelmReleases those Kustomizations applied (their Flux labels).
@@ -679,6 +684,11 @@ The facts:
   `flux-system/haynes-ops`) with main's head (`compare/<source sha>...main`). Then read
   each commit in between (`commits/<sha>`, its files). No commit may change T's paths, a
   path of T's chain, or a cluster-wide part, directly or through a shared component.
+  - A file directly under `kubernetes/main/apps/<dir>/` (`namespace.yaml`, the
+    namespace's `kustomization.yaml`) reaches every target and chain path in `<dir>`.
+  - A file directly under `kubernetes/main/apps/` is the apps root. It belongs to the
+    cluster-wide part `flux`, whose globs now include `kubernetes/main/apps/*`. The part
+    already covered `kubernetes/main/flux/apps.yaml`, which defines `cluster-apps` (S1).
   - A change to another app does not hold T.
   - It fails closed on an unreadable compare, a source revision not on main's history,
     more than `max_unapplied_commits` (50), a commit list shorter than `ahead_by`, or a
@@ -687,8 +697,13 @@ The facts:
   - Each Kustomization of T's chain has applied the source revision
     (`status.lastAppliedRevision`, not only attempted it), is Ready at its generation and
     is not reconciling.
+  - So has each applier, and it is settled. A failing applier holds T too: it has not
+    applied the revision, and no baseline gate watches it (S1).
   - Each HelmRelease of T's namespaces is settled.
-  - A Kustomization of the chain that does not exist fails closed.
+  - A suspended Kustomization of T, of its chain or among its appliers, or a suspended
+    HelmRelease of T, holds T: a merge would not apply until someone resumes it. The
+    blocker names the object (S2). A suspended object elsewhere holds nothing.
+  - A Kustomization of the chain or an applier that does not exist fails closed.
 - **F3. No cluster-wide part is mid-change.** No Kustomization or HelmRelease of a
   cluster-wide part is progressing or has not applied the revision. The source is checked
   too: mid-fetch, or failing.
@@ -701,7 +716,8 @@ is read:
   current revision.
 - **Failing, not settling:** Flux's retry loop (`ProgressingWithRetry`), `Stalled`, a
   failure at the current generation and revision, or `DependencyNotReady` behind a failing
-  dependency (review finding R3).
+  dependency (review finding R3). Also `DependencyNotReady` behind a suspended one: it is
+  stuck, not mid-change, so F3 does not hold every candidate on it (S2).
 - A failing object is listed under `failing_not_settling`, and the baseline gate judges it
   by scope.
 - `DependencyNotReady` behind a dependency that is in flight (multus rolling) is
@@ -715,7 +731,7 @@ have not finished (no Complete or Failed condition) count as follows:
 |---|---|
 | a Job of CronJob `upgrade-shepherd`, or carrying its controller label (a summon) | yes |
 | a Job of `upgrade-shepherd-triage` | only while `upgrade-remediation-state` holds a claimed, unfinished remediation (`attempted` 1, `result` none), because remediate runs inside the triage Job; an unreadable state counts as yes |
-| the lane's own Jobs, `alert-responder` (its LLM has no Bash), `upgrade-health-gate`, `dev-env-ops-curation-order` | no |
+| the lane's own Jobs, `alert-responder` (its LLM has read-only Bash: `kubectl get` and `describe`, `flux get`, `grep`, `cat`, `git log` and `show`, and its query scripts; no `gh`), `upgrade-health-gate`, `dev-env-ops-curation-order` | no |
 | any other unfinished Job | yes (unknown, fail closed) |
 
 The order makes the handshake safe:
@@ -726,6 +742,10 @@ The order makes the handshake safe:
 - So at least one side sees the other. If the lane sees a Job, it yields: it releases the
   lock with the note `yielded-to-shepherd`, makes no merge call, and the next tick tries
   again.
+- The exit handler keeps the lock only from immediately before the merge call
+  (`held.merged`, S4). An exit or SIGTERM between the `merging` write and the call
+  releases it. A SIGKILL there leaves the `merging` phase to its 4-hour lease, because no
+  handler runs.
 
 **Where it is checked:**
 
@@ -779,18 +799,21 @@ readers are tested on them (review finding R7).
   on a stand-aside, `Bash(gh pr merge:*)` leaves `--allowedTools`. The operating rules
   gain a `MERGE STAND-ASIDE` rule: do everything else, and end with `DEFER: #<N> waits
   for the night lane to finish its change …` and no vet marker.
-- **The stall fallback** asks again just before its own `gh pr merge`. If it stands
-  aside, it escalates on the signature `shepherd-automerge-stood-aside|pr=<n>|sha=<sha>`,
-  because the PR's vet marker keeps later runs from retrying it (review finding R4).
+- **The stall fallback** asks again just before its own `gh pr merge`. A stand-aside
+  keeps the PR in the watch, and the next poll asks again: a lock read that failed once
+  merges on the next poll. Only a stand-aside that still holds at the watch's deadline
+  escalates, on the signature `shepherd-automerge-stood-aside|pr=<n>|sha=<sha>`. It
+  escalates because the PR's vet marker keeps later runs from retrying it (review findings
+  R4 and S3).
 - **Unchanged otherwise.** When the answer is yes, `ALLOWED` and `SAFETY_PROMPT` are
   byte-identical to before (pinned by `shepherd-stand-aside-selftest.sh`).
 
 What it does not cover:
 
 - **Queued auto-merges.** A GitHub auto-merge the shepherd queued before the lane's change
-  can still fire later, whenever its checks pass. That is the same case as Renovate's
-  merges: no lock binds GitHub. The verifier's `otherChanges` reports it as another
-  change.
+  can still fire later, whenever its checks pass, and F4 does not cover it: no Job is
+  running by then. That is the same case as Renovate's merges, because no lock binds
+  GitHub. The verifier's `otherChanges` reports it as another change.
 - **The REST merge endpoint.** The LLM keeps `gh api repos/*` for release-note reads, and
   that pattern also admits GitHub's REST merge endpoint. Only the rule forbids it. This
   predates story 551; a follow-up story will add a GET-only wrapper.
@@ -861,6 +884,23 @@ kubectl -n upgrade-agent logs job/<latest upgrade-shepherd job> | grep -i 'stand
   settle gate does not hold other targets.
 - **Unknown Jobs.** An unknown unfinished Job in `upgrade-agent` holds the lane (F4, fail
   closed) until it finishes.
+- **A stale remediation claim (S5, not fixed).** F4 counts any claim in
+  `upgrade-remediation-state` with `attempted` 1 and `result` none, not only the active
+  triage Job's.
+  - A crashed remediate leaves such a claim behind. While its regression persists, every
+    triage run (:00 and :30) then holds the lane's ticks that overlap it, for about 17
+    seconds each.
+  - The claim carries no time or Job identity that ties it to a run: `triage.sh` writes
+    `class`, `attempted`, `result`, `note`, and `first_seen`, which is when the signature
+    was first seen. So the lane cannot tell a stale claim from a live one. It stays fail
+    closed, and the hold is bounded.
+  - What clears it: triage recording a result, a person editing the entry, or the entry
+    aging out 24 hours after its `first_seen` (`STATE_TTL_HOURS`) on the next state write.
+- **GitHub auto-merges are not covered by F4.** A merge queued earlier through GitHub
+  auto-merge, by the shepherd or Renovate, lands whenever its checks pass, Job or no Job.
+- **SIGKILL in the merge window.** A SIGKILL between the `merging` write and the merge
+  call leaves the `merging` phase for its 4-hour lease, with no merge made. The shepherd
+  stands aside for that time (S4).
 
 ## What step 2 records
 
