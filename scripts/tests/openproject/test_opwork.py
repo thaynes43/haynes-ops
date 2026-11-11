@@ -1168,6 +1168,7 @@ class MoveTests(Base):
         self.assertIn("moved (read back): #10 Story [Ungroomed] parent=#8 (was #5)", out)
         self.assertIn("MOVE DONE, NOTE NOT RECORDED", err)
         self.assertIn("Saved locally:", err)
+        self.assertNotIn("`comment 10`", err)  # it may have been sent: flush decides, no second way to post it
         self.assertEqual(self.fake.parent_changes, [(10, 8)])
         self.assertEqual(self.run_cli("move", "10", "--parent", "8")[1].startswith("already under #8"), True)  # a re-run does not move it again
 
@@ -1179,6 +1180,17 @@ class MoveTests(Base):
         self.assertIn("moved (read back): #10 Story [Ungroomed] parent=#8 (was #5)", out)
         self.assertIn("MOVE DONE, NOTE NOT RECORDED", err)
         self.assertIn("The local save also failed", err)
+        self.assertNotIn("`comment 10`", err)  # do not repost
+
+    def test_a_note_the_tracker_refused_can_be_posted_by_hand(self):
+        original = self.fake.handle
+        self.fake.handle = lambda m, u, p: (403, {"message": "denied"}) if m == "POST" and u.path.endswith("/activities") else original(m, u, p)
+        code, out, err = self.run_cli("move", "10", "--parent", "8")
+        self.assertEqual(code, 6, err)
+        self.assertIn("moved (read back): #10", out)
+        self.assertIn("MOVE DONE, NOTE NOT RECORDED", err)
+        self.assertIn("add it with `comment 10`", err)
+        self.assertNotIn("Saved locally", err)
 
     def test_a_tracker_that_rejects_the_parent_change_is_reported_and_nothing_else_is_written(self):
         original = self.fake.handle

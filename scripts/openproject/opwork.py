@@ -747,14 +747,14 @@ def cmd_move(t, a, session):
     try:
         t.comment(a.id, note, session)
     except (Fail, t.unavailable) as error:  # the second step: the item stays moved, the note is reported and kept
-        saved = ""
+        saved = " The tracker refused it, so nothing was sent: add it with `comment %d`." % a.id  # no token: a clean refusal, safe to post by hand
         if getattr(error, "token", None) and getattr(error, "body", None):
             try:
                 path, _ = save_pending("note", error.token, wp=a.id, session=session, text=note, body=error.body, **posted_fields(error))
                 saved = " Saved locally: %s (`flush` posts it unless it already landed)." % path
             except LocalWriteFail as saving:  # a failing local save must not hide that the move is done
                 saved = " The local save also failed: %s." % saving
-        failure = Fail("MOVE DONE, NOTE NOT RECORDED: #%d is under #%d (read back). The note about the move failed (%s).%s Add it with `comment %d`." % (a.id, a.parent, error, saved, a.id), 6)
+        failure = Fail("MOVE DONE, NOTE NOT RECORDED: #%d is under #%d (read back). The note about the move failed (%s).%s" % (a.id, a.parent, error, saved), 6)
         failure.output = result
         raise failure from error
     return result + "\nnote recorded on #%d (read back)" % a.id
