@@ -9,6 +9,5 @@ resources:
   # Pre Flux-Kustomizations
   - ./namespace.yaml
   # Flux-Kustomizations
-  - ./rsync-music/ks.yaml
   - ./rsync-photos/ks.yaml
   - ./rsync-scans/ks.yaml
