@@ -289,7 +289,17 @@ spec:
               # Previous pin sha-4118ac8@sha256:3f867cf2e45c140f2672168d4c001fde5f814d1706cccd18131f28713f81f198
               # (haynes-ops#4790); rollback target for the operator alone, after removing
               # --enable-parent-notes, which that image does not know.
-              tag: sha-e8a3eba@sha256:838914471b46053af33a6c89cfec44f73362bd299643ce1b8cd5180834055f0f
+              # dev-env main a9f5d56e (release 2.101.1; publish 42946444888's operator job signed and
+              # verified this digest). One change in the running operator since sha-e8a3eba: parent
+              # notes gain the answer and the held wait (DESIGN-062 slice 3, OP686): POST
+              # /v1/parent-notes/{name}/answer for the note's recipient and GET .../wait for its
+              # sender, behind the same --enable-parent-notes flag. The wait holds one watch on the
+              # reply; Role dev-env-durable-inbox has watch on inboxmessages for that
+              # (haynes-ops#4799). At most 8 held waits per session on each of the two replicas.
+              # No flag, CRD or permission change in this pin.
+              # Previous pin sha-e8a3eba@sha256:838914471b46053af33a6c89cfec44f73362bd299643ce1b8cd5180834055f0f
+              # (haynes-ops#4798); rollback target for the operator alone.
+              tag: sha-a9f5d56@sha256:9c058a3ea1434d32169ce7ce11c442857cf1a87fccf78cac88681b401778fa75
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
