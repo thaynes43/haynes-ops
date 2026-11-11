@@ -328,7 +328,21 @@ spec:
               # Previous pin sha-3f55155@sha256:c656bbc24d80c1c77cf67ac8b8019b94b8f6a29f7a1d3ee370de549ec3991ed6
               # (haynes-ops#4814); rollback target for the operator alone, after removing the two
               # --codex-host flags below, which that image does not know.
-              tag: sha-5ffdada@sha256:e3a92fe0c8de786979f83bfb682062cd0fcb47f0e013dcdb10485c5562700b51
+              # dev-env main fc895515 (release 2.104.0; publish 43053918951's operator job signed and
+              # verified this digest). Two changes in the running operator since sha-5ffdada, both
+              # behind --enable-parent-notes, which is already on:
+              # - GET /v1/parent-notes/wait: a session holds one read until a note addressed to it is
+              #   stored (OP708, dev-env#1074, ADR-024). It answers the note's name, child and kind,
+              #   never its text, and writes nothing. It shares the limit of eight held reads per
+              #   session with the existing parent wait.
+              # - The check that runs before a parent-note answer is stricter: it also proves, from
+              #   a live read, that a named coordinator is still admitted. It applies to parent read,
+              #   parent list and parent wait too. An independent review traced that it refuses no
+              #   caller that is still admitted.
+              # No flag, CRD or permission change in this pin.
+              # Previous pin sha-5ffdada@sha256:e3a92fe0c8de786979f83bfb682062cd0fcb47f0e013dcdb10485c5562700b51
+              # (haynes-ops#4816); rollback target for the operator alone.
+              tag: sha-fc89551@sha256:3041808df766298d7c576b5b49abfbb7b844e06cc3b59f8bb55f0f91ea559eae
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
