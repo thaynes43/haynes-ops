@@ -1130,7 +1130,7 @@
     },
     "change_lock": {
       "configmap": "upgrade-change-lock",
-      "status": "implemented (story 752); the shepherd stands aside while it is held (story 551, run-shepherd.sh shepherd_may_merge); a hand run refuses while it is held",
+      "status": "implemented (story 752); the shepherd stands aside while it shows a lane change in progress (phase merging, merged-awaiting-verification or merge-unknown; story 551, run-shepherd.sh shepherd_may_merge); a hand run refuses while it is held",
       "lease_seconds": 600,
       "post_merge_lease_seconds": 14400,
       "min_lease_left_seconds": 240,
@@ -1138,15 +1138,13 @@
       "note": "ConfigMap upgrade-agent/upgrade-change-lock. Free when absent or data.holder is empty; expired when data.expires_at has passed; otherwise held. Every tick run with --write-state takes it (create, or replace at the resourceVersion it read) before the merge step's reads and releases it before it ends. The lease (600s) is shorter than the 15-minute tick, so a crashed tick costs at most the next one. After a live merge it stays held, phase merged-awaiting-verification, for post_merge_lease_seconds (4h): verification is not built (story 553), so the lane merges at most once a night. The lane does not merge with less than min_lease_left_seconds of lease left. An unreadable lock, or a holder with no readable expires_at, fails closed."
     },
     "settle_gate": {
-      "minutes": 30,
-      "watched_path": "kubernetes",
-      "history_per_page": 20,
       "flux_source": {
         "kind": "GitRepository",
         "namespace": "flux-system",
         "name": "haynes-ops"
       },
-      "note": "Story 551 (R6). No lane merge while any of these holds: main's newest commit to kubernetes/** (any author: Renovate, the shepherd, a person) is less than `minutes` old, by the later of its committer and author dates; a commit on main inside that window has other than one parent (a path-filtered history can hide what a merge commit changed); GitRepository flux_source has not fetched that commit, or a Kustomization of that source has not attempted its revision; any Kustomization or HelmRelease (or the source) is progressing: no Ready condition, Ready Unknown, Reconciling other than ProgressingWithRetry, a generation not yet observed, or NotReady for less than `minutes` outside Flux's retry loop. A NotReady object in Flux's retry loop (Reconciling ProgressingWithRetry, which rewrites lastTransitionTime on every retry), or NotReady for longer than `minutes`, is failing, not settling; the baseline gate judges it by scope. Read at the tick's start (a blocker on every lane-A candidate), in the merge step, again just before a live merge call, and by the hand run. Every read fails closed. night-merge.mjs settleConfig() refuses minutes under 30."
+      "max_unapplied_commits": 50,
+      "note": "Story 551 (R6), facts not clocks (Tom's ruling Q-548-04, 2026-11-11). For a lane-A candidate with an immediate cluster effect, target T in its Flux scope (lane-classify.mjs kustomizationsFor + fluxScope: its Kustomizations, their dependsOn chain, their namespaces) and the cluster-wide parts (cluster_wide_targets): F1 no commit between flux_source's revision and main's head changes T's paths, a path of its chain, or a cluster-wide part (directly or through a shared component, R8); more than max_unapplied_commits, a diverged base or an unreadable commit fails closed. F2 each Kustomization of T's chain has applied (not only attempted) the source revision, is Ready at its generation and not reconciling, and the HelmReleases of T's namespaces are settled. F3 no Kustomization or HelmRelease of a cluster-wide part, nor the source, is progressing. An object in Flux's retry loop, Stalled, failed at its current generation and revision, or DependencyNotReady behind a failing dependency is failing, not settling: the baseline gate judges it by scope. F4 at the merge step and after the merging write: no unfinished Job that can merge (night-merge.mjs SHEPHERD_JOBS). Every read fails closed and names what failed."
     },
     "baseline_rule": "Blockers: a NotReady Kustomization that applies the target, is in its dependsOn chain, or targets its namespace; a NotReady HelmRelease in its namespace; a firing critical alert that belongs to the target (alert_scope: in its namespace and resolved to the target or its chain, unresolvable, or naming no workload), and for a cluster-wide target any critical alert with no namespace; Ceph HEALTH_ERR or unknown. Every other NotReady Flux object is reported as a warning, and every alert that did not block is listed with the reason.",
     "pause": "A non-empty data.pause on ConfigMap upgrade-lane-state stops every tick before any GitHub read: no merge and no lock take. The merge step reads it again just before it takes the lock, so a pause set during a tick stops that tick's merge. Verification and reverts already owed for a merge the lane made carry on through a hook (stories 553, 753, 754; not built). suspend: true on the upgrade-night controller stops every tick, owed work included."

@@ -291,6 +291,34 @@ export function clusterWide(paths, rules) {
   return (rules.cluster_wide_targets || []).filter(t => paths.some(p => anyGlob(p, t.globs))).map(t => t.id);
 }
 
+// ── a target's Flux scope (moved from run-night.mjs for story 551) ─────────────────
+// The Kustomizations whose spec.path is the target directory or below it, their dependsOn
+// chain and their namespaces: the baseline gate's scope (R5), and the settle gate's.
+export const ksId = k => `${k.metadata.namespace}/${k.metadata.name}`;
+export function kustomizationsFor(target, ks) {
+  return (ks?.items || []).filter(k => {
+    const p = String(k.spec?.path || '').replace(/^\.\//, '').replace(/\/$/, '');
+    return p === target || p.startsWith(target + '/');
+  });
+}
+export const isNotReady = o => !o.spec?.suspend && !(o.status?.conditions || []).some(c => c.type === 'Ready' && c.status === 'True');
+// Blocking = NotReady and (the target, in its dependsOn chain, or in its namespace).
+export function fluxScope(mine, ks, hr) {
+  const byId = new Map((ks?.items || []).map(k => [ksId(k), k]));
+  const chain = new Set(), queue = mine.map(ksId);
+  while (queue.length) {
+    const id = queue.shift();
+    if (chain.has(id)) continue;
+    chain.add(id);
+    for (const d of byId.get(id)?.spec?.dependsOn || []) queue.push(`${d.namespace || id.split('/')[0]}/${d.name}`);
+  }
+  const nss = new Set(mine.map(k => k.spec?.targetNamespace || k.metadata.namespace));
+  const blocking = [];
+  for (const k of ks?.items || []) if (isNotReady(k) && (chain.has(ksId(k)) || nss.has(k.spec?.targetNamespace || k.metadata.namespace))) blocking.push(`Kustomization ${ksId(k)}`);
+  for (const h of hr?.items || []) if (isNotReady(h) && nss.has(h.metadata.namespace)) blocking.push(`HelmRelease ${h.metadata.namespace}/${h.metadata.name}`);
+  return { namespaces: [...nss], chain: [...chain], blocking };
+}
+
 // ── stale checks against main (R7, OP550) ───────────────────────────────────────
 // A pull_request check tests the PR merged onto main as main stood when the check was
 // triggered; a re-run reuses that merge commit. "Require branches to be up to date" is

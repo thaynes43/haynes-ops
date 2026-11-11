@@ -18,18 +18,19 @@ and releases the lock and records the merge step's verdict. See
 
 **Story 551 added** one merger at a time
 (<https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/551>), still
-dry-run:
+dry-run. It works on facts, not clocks (Tom's ruling Q-548-04): no actor reads another
+actor's schedule.
 
-- a settle gate: no lane merge within 30 minutes of any merge to main that changed
-  `kubernetes/**`, before Flux took that change up, or while any Kustomization or
-  HelmRelease is progressing;
-- the shepherd stands aside while the change lock is held and inside the lane's window;
-- a PR on the shepherd's ramp is the shepherd's, never the lane's;
-- the hand run also runs the settle gate.
+- **Settle gate:** no lane merge while main has a change Flux has not applied that reaches
+  the candidate's target, its chain or a cluster-wide part. It also waits while the target
+  has not applied Flux's revision or is not settled, or while a cluster-wide part is
+  mid-change.
+- **F4:** no lane merge while a shepherd Job that can merge is running.
+- **The shepherd:** stands aside while the change lock shows a lane change in progress.
+- **One owner:** a PR on the shepherd's ramp is the shepherd's, never the lane's.
+- **Hand runs:** they run the settle gate and F4 too.
 
-It also records how Renovate's own merges land against its schedule, and the options for
-keeping them out of the window. Changing Renovate's configuration waits for Tom. See
-[One merger at a time](#one-merger-at-a-time-story-551).
+Renovate is not changed. See [One merger at a time](#one-merger-at-a-time-story-551).
 
 **Step 2 (OP512 rollout step 2) added**, with no change to anything that merges:
 
@@ -165,13 +166,14 @@ critical alerts from Prometheus, main's commits to the PR's files and each work 
   Every other NotReady Flux object is listed under `summary.baseline.flux_warnings`. Every
   alert that did not block is listed under `records[].gates.alerts_not_blocking`.
 - **Work orders:** none may be `claimed`.
-- **Settle gate (story 551):** cluster-wide, so it blocks every candidate. The blocker
-  starts `settle gate:`. See [The settle gate](#the-settle-gate).
+- **Settle gate (story 551):** facts about the candidate's target (F1 to F3), for a
+  candidate with an immediate cluster effect. The blocker starts `settle gate:`. See
+  [The settle gate](#the-settle-gate).
 - **Merge window:** 01:30 to 04:45 New York.
 - **Change lock (`upgrade-change-lock`):** taken by the merge step after the gates, not a
   gate of its own. See
   [The change lock](#the-change-lock). Since story 551 the shepherd stands aside while it
-  is held, and a hand run refuses.
+  shows a lane change in progress, and a hand run refuses while it is held.
 
 Of the PRs that pass every gate, the tick picks one. It prefers no cluster effect, then
 delayed, then stateless, then stateful, then the lowest PR number. In live mode it
@@ -411,7 +413,8 @@ the gate blockers.
 | `the change lock has …s of lease left, under 240s` | not merging on a lease that may lapse |
 | `the merge window is closed at the merge call (now HH:MM)` | the tick's window gate was judged at its start; a stalled tick must not merge after 04:45 |
 | `the tick's gates are …s old at the merge call, over 300s` | `max_gate_age_seconds`: the backups, alerts and Flux baseline were read at the tick's start |
-| `settle gate at the merge call: …` | the settle gate read again (story 551): another actor may have merged while the step read the PR |
+| `settle gate at the merge call: …` | the settle gate read again (story 551), before the freshness checks: another actor's change may have reached main while the step read the PR |
+| `F4 at the merge call: …; yielded-to-shepherd` | read after the `merging` write: a shepherd Job that can merge started meanwhile. The lock is released with the note `yielded-to-shepherd`, and the next tick tries again |
 | `paused just before the merge call: …`, or the pause unreadable | a pause set while the step read the PR stops the merge |
 | `the change lock could not be moved to phase merging` | the post-merge hold must be written before the call |
 
@@ -516,8 +519,8 @@ What it checks:
 - the merge step's preflight, as above;
 - the lock and the pause. It refuses while either is set, and re-reads the pause just
   before a merge call;
-- the settle gate (story 551), at its start and, with `--merge`, again just before the
-  call. Its refusals start `settle gate:` and `settle gate just before the merge call:`.
+- the settle gate and F4 (story 551), at its start and, with `--merge`, again just before
+  the call. Their refusals start `settle gate:` and `F4`, and `… just before the merge call:`.
 
 What it skips, because only the tick knows it:
 
@@ -576,11 +579,21 @@ So the rules above do not refuse it without a refresh.
 
 ## One merger at a time (story 551)
 
-Rule R6 of the 2026-11-10 comparison: only one actor merges cluster changes at a time.
-On 2026-11-10 the shepherd merged #4760 (cni-plugins for multus) at 05:01:56Z and #4761
-(dragonfly-operator) at 05:02:06Z. Renovate's auto-merge followed with #4767 at 05:03:25Z,
-and multus was mid-rollout until 05:36:43Z. Four actors merge to main: Renovate (through
-GitHub's auto-merge), the shepherd, the lane and people (hand runs and sessions).
+Rule R6 of the 2026-11-10 comparison: only one actor merges a change that reaches the
+same target, or a cluster-wide part, while another actor's change there is still in
+flight. On 2026-11-10 the shepherd merged #4760 (cni-plugins for multus) at 05:01:56Z
+and #4761 (dragonfly-operator) at 05:02:06Z. Renovate's auto-merge followed with #4767 at
+05:03:25Z, and multus was mid-rollout until 05:36:43Z. Four actors merge to main: Renovate
+(through GitHub's auto-merge), the shepherd, the lane and people (hand runs and sessions).
+
+**The ruling (Tom, 2026-11-11, Q-548-04, comment 7135 on story 551): facts, not clocks.**
+
+- Renovate is not changed: no schedule change and no auto-merge change.
+- No actor has to know another actor's schedule. Every check reads the state at the
+  moment the lane or the shepherd acts.
+- Two updates to different apps do not interfere. What matters is another change landing
+  on the same app, or on a cluster-wide part, while the lane checks its own update, and
+  the lane can see that from what changed.
 
 ### How Renovate's merges land (established 2026-11-11, read-only)
 
@@ -644,112 +657,150 @@ So nothing in Renovate's configuration bounds when GitHub merges. The merge fire
 whenever the required checks pass after auto-merge was enabled: at PR creation, and again
 after each rebase. Confidence: high (documentation plus #4711, #4712 and #4642).
 
-### Options for Renovate's merges (Tom decides; nothing here changes Renovate)
-
-| Option | What it does | Cost |
-|---|---|---|
-| A. The lane only waits (the settle gate, built here) | No Renovate change. The lane waits 30 minutes after any merge. | Renovate keeps merging inside the window (6 of 15 nights). The settle gate cannot stop a merge that lands after the lane's merge call. Each lane merge is a push to main, which starts a Renovate run that can open and auto-merge PRs within minutes, during the lane's verification. |
-| B. Renovate stops opening and refreshing PRs before the window | `schedule` 22:00 to 01:00 New York, `updateNotScheduled: false`. Keep `platformAutomerge`. | Renovate opens PRs for 3 hours a night instead of 8. A conflicted PR waits for the next evening, and so does a digest pin that follows a lane merge of our own image. A PR whose checks finish late, or are re-run in the window, still merges when they pass: GitHub's auto-merge has no clock. |
-| C. Renovate merges by itself, outside the window | `platformAutomerge: false`, `automergeSchedule` outside 01:30 to 04:45. | Merges wait for Renovate's hosted runs (they follow pushes to main; a 52-minute gap was seen on 2026-11-10) and land one per run. This repository has not used Renovate-driven PR merges (its old deadlock was in branch mode). |
-| D. Verification treats another merge as contamination (story 553) | Any other merge to `kubernetes/**` between a lane merge and the end of its soak makes the verification inconclusive: extend the soak, or hold the lane and report. | Prevents nothing. With A alone it would fire often. |
-
-**Recommendation: B, with A and D as the backstops.** Keep GitHub's auto-merge, and have
-Renovate stop opening and refreshing PRs at 01:00 New York. The lane keeps the settle
-gate, and story 553's verification counts any other merge during its soak as
-contaminating. Renovate stays fast in the evening and its routine merges leave the
-01:30 to 04:45 window. The cost is a shorter nightly window for new PRs and next-evening
-delivery for conflicted PRs and our own digest pins. Confidence that B empties the window:
-medium. The documented behaviour supports it, but a late or re-run check can still fire a
-queued auto-merge there.
-
 ### The settle gate
 
-`settleVerdict()` in `night-merge.mjs`, configured by `night.settle_gate` in
-`upgrade-rules.json`. No lane merge while any of these holds:
+`settleVerdict()` in `night-merge.mjs`, per candidate with an immediate cluster effect. A
+candidate with no immediate cluster effect (no-cluster-effect, delayed) changes nothing in
+the cluster now and is not judged (`records[].gates.settle.applicable: false`).
 
-1. **A recent merge.** Main's newest commit to `kubernetes/**` is less than 30 minutes
-   old, whoever merged it. Its time is the later of its committer and author dates
-   (`gh api repos/<repo>/commits?sha=main&path=kubernetes&per_page=20`).
-2. **A merge commit in the window.** A commit on main inside the 30 minutes with other
-   than one parent. A path-filtered history can hide what a merge commit changed, so the
-   gate waits (`gh api repos/<repo>/commits?sha=main&per_page=20`; twenty commits all
-   inside the window are unreadable).
-3. **Flux has not taken it up.** GitRepository `flux-system/haynes-ops` does not contain
-   that commit yet (`compare/<source sha>...<commit>`), or a Kustomization of that source
-   has not attempted the source's revision (`status.lastAttemptedRevision`). This closes
-   the gap after the 30 minutes: on 2026-11-10, multus started to roll only at about
-   05:33, 31 minutes after #4761.
-4. **Flux is progressing.** Any Kustomization or HelmRelease, cluster-wide, or the source
-   itself: no Ready condition, Ready `Unknown`, `Reconciling` with any reason but
-   `ProgressingWithRetry`, a generation not observed yet, or NotReady for less than 30
-   minutes. An object in Flux's retry loop (Ready False with `Reconciling`
-   `ProgressingWithRetry`), or NotReady for longer, is failing, not settling. It is listed
-   under `failing_not_settling`, and the baseline gate judges it by the target's scope. The
-   retry loop rewrites `lastTransitionTime` on every retry: `dev-env-h7-metadata-audit`
-   showed a transition 5 minutes old on 2026-11-11 although it has failed for days, so
-   counting it as progressing would hold the lane every night. A suspended object is
-   settled.
+**Scope.** The gate reuses the scope the baseline gate already has, nothing new:
 
-Every read fails closed (`settle gate: unreadable: …`). `settleConfig()` refuses a window
-under 30 minutes.
+- **The target T:** `records[].targets`, the app directories, and for a shared component
+  the consumers that include it (R8).
+- **T's chain:** `kustomizationsFor` and `fluxScope` (now in `lane-classify.mjs`) give T's
+  Kustomizations, their `dependsOn` chain and their namespaces.
+- **A cluster-wide part:** an entry of `cluster_wide_targets`, which R5 uses. Its Flux
+  objects are the Kustomizations whose `spec.path` falls under its globs, and the
+  HelmReleases those Kustomizations applied (their Flux labels).
 
-Where it is checked:
+The facts:
 
-- at the tick's start, once, as a blocker on every lane-A candidate;
-- in the merge step, in both modes (a lane refusal, so `pr_ready` stays about the PR);
-- in live mode again just before the merge call, after the window and gate-age checks
-  and before the pause re-read and the `merging` write;
-- by the hand run at its start and, with `--merge`, just before the call.
+- **F1. Nothing unapplied reaches T.** Compare Flux's source revision (GitRepository
+  `flux-system/haynes-ops`) with main's head (`compare/<source sha>...main`). Then read
+  each commit in between (`commits/<sha>`, its files). No commit may change T's paths, a
+  path of T's chain, or a cluster-wide part, directly or through a shared component.
+  - A change to another app does not hold T.
+  - It fails closed on an unreadable compare, a source revision not on main's history,
+    more than `max_unapplied_commits` (50), a commit list shorter than `ahead_by`, or a
+    commit with 300 or more files.
+- **F2. T has applied the revision and is settled.**
+  - Each Kustomization of T's chain has applied the source revision
+    (`status.lastAppliedRevision`, not only attempted it), is Ready at its generation and
+    is not reconciling.
+  - Each HelmRelease of T's namespaces is settled.
+  - A Kustomization of the chain that does not exist fails closed.
+- **F3. No cluster-wide part is mid-change.** No Kustomization or HelmRelease of a
+  cluster-wide part is progressing or has not applied the revision. The source is checked
+  too: mid-fetch, or failing.
 
-The fixture `scripts/upgrade-agent/fixtures/settle-20261110.json` holds main as GitHub
-listed it after #4767, and the Flux objects rebuilt from Prometheus
-(`gotk_resource_info`) around multus's roll. The lane waits at 05:15Z (11 minutes after
-#4767), at 05:32:30Z (the counterfactual without #4767: only rule 3 holds), at 05:34Z and
-at 05:36:30Z (multus rolling), and may merge at 05:40Z had nothing else merged (the
-hand-run merged at 05:37:03Z).
+Progressing and failing are read from conditions and generations only; no transition time
+is read:
+
+- **Progressing:** no Ready condition; Ready `Unknown`; `Reconciling` with any reason but
+  `ProgressingWithRetry`; a generation not observed yet; or NotReady before attempting the
+  current revision.
+- **Failing, not settling:** Flux's retry loop (`ProgressingWithRetry`), `Stalled`, a
+  failure at the current generation and revision, or `DependencyNotReady` behind a failing
+  dependency (review finding R3).
+- A failing object is listed under `failing_not_settling`, and the baseline gate judges it
+  by scope.
+- `DependencyNotReady` behind a dependency that is in flight (multus rolling) is
+  progressing.
+
+**F4. No shepherd Job that can merge is running.** It is read in the merge step (both
+modes), and in live mode again after the `merging` write. Jobs in `upgrade-agent` that
+have not finished (no Complete or Failed condition) count as follows:
+
+| Job | Can merge? |
+|---|---|
+| a Job of CronJob `upgrade-shepherd`, or carrying its controller label (a summon) | yes |
+| a Job of `upgrade-shepherd-triage` | only while `upgrade-remediation-state` holds a claimed, unfinished remediation (`attempted` 1, `result` none), because remediate runs inside the triage Job; an unreadable state counts as yes |
+| the lane's own Jobs, `alert-responder` (its LLM has no Bash), `upgrade-health-gate`, `dev-env-ops-curation-order` | no |
+| any other unfinished Job | yes (unknown, fail closed) |
+
+The order makes the handshake safe:
+
+- The shepherd's Job exists before `run-shepherd.sh` reads the lock. Triage writes its
+  claim before it starts `run-shepherd.sh`.
+- The lane writes `merging` before it reads the Jobs.
+- So at least one side sees the other. If the lane sees a Job, it yields: it releases the
+  lock with the note `yielded-to-shepherd`, makes no merge call, and the next tick tries
+  again.
+
+**Where it is checked:**
+
+- at the tick's start (one read, judged per candidate);
+- in the merge step, in both modes;
+- in live mode just before the call. The fact reads come first, then the freshness checks
+  (lease, window, gate age), then the pause, the `merging` write, F4 and the call
+  (review finding R5).
+- by the hand run, at its start and before `--merge`.
+
+**The fixture.** `scripts/upgrade-agent/fixtures/settle-20261110.json` holds main's
+compares and commit files as GitHub lists them, plus the Flux objects. The objects are
+rebuilt from Prometheus around multus's roll; the chains are as read live. It judges
+three targets:
+
+| Instant | plex-hw-canary (none of the three merges) | ytdl-sub (#4767) | home-assistant (depends on multus) |
+|---|---|---|---|
+| 05:15Z: #4760, #4761 and #4767 not fetched | waits: F1, cluster-wide multus (#4760) | waits: F1, multus and its own target (#4767) | waits: F1, multus and its chain |
+| 05:32:30Z: counterfactual without #4767 | waits: F1, multus | waits: F1, multus | waits: F1, multus |
+| 05:34Z and 05:36:30Z: multus rolling | waits: F3, multus | waits: F3, multus | waits: F2 (DependencyNotReady on multus) and F3 |
+| 05:40Z: counterfactual, nothing else merged | may merge | may merge | may merge |
+| hypothetical: only #4767 not fetched | may merge | waits: F1, #4767 | may merge |
+
+In the real night #4767 was never the only commit Flux had not fetched, which is why that
+last row is hypothetical.
+
+**For the verifier (stories 553 and 753).** `otherChanges(range, scope, rules, { exclude
+})` is a pure function over `readCommitRange(repo, base, head, run)`. It returns the other
+changes on main to T's paths, its chain or a cluster-wide part: SHA, time, subject, PR,
+author, committer and which paths matched which part. On the fixture: after #4760 and
+#4761, #4767 touches the ytdl-sub target only. Dry-run records nothing new with it.
 
 ### The shepherd stands aside
 
 `run-shepherd.sh` decides in the launcher, not in a prompt. `shepherd_may_merge` reads the
-lock (`kubectl -n upgrade-agent get configmap upgrade-change-lock`) and the window from
-`upgrade-rules.json`. New York time comes from Node's ICU, not the image's tzdata. It
-returns yes only when the lock is free, absent or expired and the window is closed. A
-held lock, a holder without a readable expiry, a failed read and a window it cannot
-compute are all a stand-aside.
+lock (`kubectl -n upgrade-agent get configmap upgrade-change-lock`) and nothing else: no
+window and no time of day.
+
+| Lock | Shepherd |
+|---|---|
+| absent, free (empty holder), expired | merges |
+| held in phase `taken` (a tick's bookkeeping, about 25 seconds even in dry-run) | merges, and logs that it read it |
+| held in phase `merging`, `merged-awaiting-verification` or `merge-unknown` (a lane change in progress) | stands aside |
+| held in an unknown or missing phase, with an expiry its jq cannot parse (it reads `…Z` only, not offsets), or unreadable | stands aside (fail closed) |
+
+The lane's own `lockStatus()` and the hand runs are unchanged: they refuse any held lock.
+`scripts/upgrade-agent/fixtures/change-lock-states.json` holds 20 lock states, and both
+readers are tested on them (review finding R7).
 
 - **Before the LLM turn** (MODE `auto` and `remediate`, the modes with `gh pr merge`):
   on a stand-aside, `Bash(gh pr merge:*)` leaves `--allowedTools`. The operating rules
   gain a `MERGE STAND-ASIDE` rule: do everything else, and end with `DEFER: #<N> waits
-  for the night lane …` and no vet marker, so a later run merges it.
-- **The stall fallback** asks again just before its own `gh pr merge`, and skips with a
-  `STAND-ASIDE` line.
+  for the night lane to finish its change …` and no vet marker.
+- **The stall fallback** asks again just before its own `gh pr merge`. If it stands
+  aside, it escalates on the signature `shepherd-automerge-stood-aside|pr=<n>|sha=<sha>`,
+  because the PR's vet marker keeps later runs from retrying it (review finding R4).
 - **Unchanged otherwise.** When the answer is yes, `ALLOWED` and `SAFETY_PROMPT` are
-  byte-identical to before (pinned by `shepherd-stand-aside-selftest.sh`). The
-  pre-filter, vet, PR authoring, comments, work orders, the orphan report and the DEFER
-  tracking run as before. Dryrun and shepherd modes read nothing new.
-- **Its runs.** Of the shepherd's runs (00, 04, 08, 12, 16 and 20 New York), the 04:00
-  run stands aside every night. After a live lane merge, the 08:00 run also stands aside
-  while the 4-hour post-merge hold lasts.
+  byte-identical to before (pinned by `shepherd-stand-aside-selftest.sh`).
 
 What it does not cover:
 
-- A GitHub auto-merge the shepherd queued before the window still fires when its checks
-  pass. The shepherd's last run before the window starts at 00:00, so such a merge lands
-  in the window only if its checks take more than an hour. The lane's settle gate covers
-  it.
-- The LLM keeps `gh api repos/*` for release-note reads, and that pattern also admits a
-  REST merge call. The rule forbids it. This gap predates story 551; closing it needs a
-  GET-only wrapper.
-- A remediate run while the lock is held, or inside the window, opens its fix PR but does
-  not merge it, either itself or by queuing `--auto`. Triage then reads the run as pending.
-  After a live lane merge the lock stays held for 4 hours (phase
-  `merged-awaiting-verification`, until as late as about 08:45 New York). A regression from
-  that merge is most likely in exactly that time, and a shepherd revert of it waits until
-  the hold ends. This is deliberate for now. That hold is the lane's verification window,
-  and reverting the lane's own merge is the lane's job (`owedWork()`, stories 553, 753 and
-  754). A second merger inside it is what story 551 removes. **Decide before live mode
-  (story 556)** whether a remediate revert of the lock's own merged PR may pass. Today no
-  lane merge happens: the lane is dry-run with an empty allowlist.
+- **Queued auto-merges.** A GitHub auto-merge the shepherd queued before the lane's change
+  can still fire later, whenever its checks pass. That is the same case as Renovate's
+  merges: no lock binds GitHub. The verifier's `otherChanges` reports it as another
+  change.
+- **The REST merge endpoint.** The LLM keeps `gh api repos/*` for release-note reads, and
+  that pattern also admits GitHub's REST merge endpoint. Only the rule forbids it. This
+  predates story 551; a follow-up story will add a GET-only wrapper.
+- **Remediate during a lane change.** A remediate run while the lock shows a lane change
+  in progress opens its fix PR but does not merge it, and triage reads the run as pending.
+  After a live lane merge that lasts for the 4-hour `merged-awaiting-verification` hold,
+  exactly when a regression from that merge is likeliest. This is deliberate for now: the
+  hold is the lane's verification window, and reverting the lane's own merge is the lane's
+  job (`owedWork()`, stories 553, 753 and 754). **Decide before live mode (story 556)**
+  whether a remediate revert of the lock's own merged PR may pass.
 
 ### One owner for a PR on the shepherd's ramp
 
@@ -769,38 +820,47 @@ PR `EXCLUDED`. #4780 (traefik) was both LANE-A and on the ramp on 2026-11-10.
 
 ### Hand runs
 
-- A hand run refuses while the lock is held or unreadable: `handRun()` adds
+- A hand run refuses while the lock is held or unreadable, in any phase: `handRun()` adds
   `lockStatus().why` for `held` and `unreadable` before anything else.
-- It cannot take the lock (no ConfigMap write in `upgrade-agent` for a session).
-- It runs the settle gate at its start and before a `--merge` call.
+- It cannot take the lock (no ConfigMap write in `upgrade-agent` for a session), so the
+  lane and the shepherd cannot see it.
+- It runs the settle gate and F4 at its start and before a `--merge` call.
 
 ### What shows it
 
 | Where | What |
 |---|---|
-| Tick log | `upgrade-night <mode>: settle gate: settled (main's newest change to kubernetes/** <sha8> at <t>, <n> min ago; Flux at <sha8>; nothing progressing…)` or `… settle gate: NOT settled: <blockers>` |
-| Tick stdout | `settle gate: settled`, or `settle gate: NOT settled (<n> blockers)` |
-| `summary.settle` | `settled`, `at`, `window_minutes`, `newest_change` (`sha`, `at`, `subject`, `age_minutes`), `source_revision`, `blockers`, `unsettled`, `failing_not_settling` |
-| `summary.merge_step_settle` | the merge step's own read |
-| `summary.merge_step.lane_refusals` | `settle gate: …`; in live mode also `settle gate at the merge call: …`, with `merge_step.settle_at_merge_call` |
-| `records[].gates.blockers` | `settle gate: …` on every lane-A record |
+| Tick log | `upgrade-night <mode>: settle gate: Flux at <sha8>, <n> commit(s) on main not fetched yet; #<pr> settled; #<pr> NOT settled (<blockers>)`, and `upgrade-night <mode>: F4 shepherd Jobs: none that can merge is running` or `… a Job that can merge is running: <job> (…)` |
+| Tick stdout | `settle gate: #<pr> settled, #<pr> NOT settled (<n> blockers)` |
+| `summary.settle` | `source_revision`, `unapplied_complete`, `unapplied_why`, `unapplied_commits` (`sha`, `pr`, `subject`) |
+| `records[].gates.settle` | `applicable`, `settled`, `blockers` (`F1 …`, `F2 …`, `F3 …`), `unapplied` (with the parts each reaches), `unsettled`, `cluster_wide_unsettled`, `failing_not_settling` |
+| `summary.merge_step_settle`, `summary.merge_step_shepherd_jobs` | the merge step's own reads |
+| `summary.merge_step.lane_refusals` | `settle gate: …`, `F4 …`; in live mode also `settle gate at the merge call: …` and `F4 at the merge call: …; yielded-to-shepherd` |
 | `records[].class` | `shepherd-ramp` for a ramp PR |
-| Shepherd log | `stand-aside: not needed: the change lock is free and the night lane window is closed (local HH:MM America/New_York).`, or `STAND-ASIDE: this run merges nothing: <why> (story 551).`, and from the fallback `automerge-fallback: STAND-ASIDE: #<n> is CLEAN and green but the fallback does not merge it: <why>. …` |
-| Hand run | `settle gate: settled …` or `NOT settled …`, and `refused: settle gate: …` |
+| Shepherd log | `stand-aside: not needed: the change lock shows no lane change in progress.`, `stand-aside: not needed: (read the change lock: held by … in phase taken …)`, or `STAND-ASIDE: this run merges nothing: <why> (story 551).`; from the fallback `automerge-fallback: STAND-ASIDE: #<n> …` and an `esc-shepherd` entry |
+| Hand run | `settle gate: settled …`, `NOT settled …` or `not applicable …`, and `refused: settle gate: …` or `refused: F4: …` |
 
 ```bash
-kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.summary}' | jq '.settle | {settled, newest_change, source_revision, blockers}'
+kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.records}' | jq '.[] | select(.lane=="LANE-A") | {pr, settle: .gates.settle | {applicable, settled, blockers}}'
 kubectl -n upgrade-agent logs job/<latest upgrade-shepherd job> | grep -i 'stand-aside'
 ```
 
 ### Known limits of story 551
 
-- Commit dates. A squash merge on GitHub stamps the merge time. A direct push of an old
-  commit would look old; branch protection keeps every bot from pushing to main.
-- The settle gate cannot see a merge that lands after the lane's merge call. That is
-  verification's job (option D).
-- A Kustomization that cannot attempt the current revision (for example one waiting on a
-  broken dependency) holds the lane until it is fixed or suspended.
+- **Workload rollouts.** Flux can report Ready before T's workloads have finished rolling,
+  when a Kustomization does not wait and a HelmRelease's chart does not either. The lane's
+  ServiceAccount (ClusterRole `upgrade-health-gate`) reads pods, but nothing in `apps`, so
+  the gate cannot compare a Deployment's, StatefulSet's or DaemonSet's generation and
+  updated replicas. The missing rule: `apiGroups: ["apps"]`, `resources: ["deployments",
+  "statefulsets", "daemonsets"]`, `verbs: ["get", "list"]` (story 755). No RBAC is added
+  here.
+- **Late merges.** A merge that lands after the lane's merge call is invisible to the
+  gate. The verifier (stories 553 and 753) finds it with `otherChanges`.
+- **Broken dependencies.** A Kustomization of T's chain that waits on a broken dependency
+  is failing, not settling (R3). The baseline gate holds T for it if it is in scope; the
+  settle gate does not hold other targets.
+- **Unknown Jobs.** An unknown unfinished Job in `upgrade-agent` holds the lane (F4, fail
+  closed) until it finishes.
 
 ## What step 2 records
 
@@ -1040,13 +1100,15 @@ dev-env-ops, so merge such a change only when no work order is claimed.
 node scripts/upgrade-agent/lane-classify-selftest.mjs      # lanes, drift (workflows and shared components), own images, the 27 reviewed PRs, R7/R8/R10
 node scripts/upgrade-agent/lane-night-dryrun-selftest.mjs  # the dry-run guarantee, the gates, R5 and R7/R8, the merge step and the lock through the tick
 node scripts/upgrade-agent/lane-merge-step-selftest.mjs    # the merge step's refusals, the lock's states and exit paths, the hand-run CLI, the settle gate
-bash scripts/upgrade-agent/shepherd-stand-aside-selftest.sh  # the shepherd standing aside for the lock and the window (story 551)
+bash scripts/upgrade-agent/shepherd-stand-aside-selftest.sh  # the shepherd standing aside for a lane change in progress (story 551)
 ```
 
 `lane-merge-step-selftest.mjs` reads
 `scripts/upgrade-agent/fixtures/merge-step-pr3915-20261111.json`, PR 3915 as the merge
 step's reads saw it on 2026-11-11. It and `lane-night-dryrun-selftest.mjs` read
-`scripts/upgrade-agent/fixtures/settle-20261110.json` for the settle gate (story 551).
+`scripts/upgrade-agent/fixtures/settle-20261110.json` for the settle gate, and it and
+`shepherd-stand-aside-selftest.sh` read `scripts/upgrade-agent/fixtures/change-lock-states.json`
+(story 551).
 
 Since step 2 these run in CI as `Upgrade Agent Selftests` on pull requests and pushes to
 main that touch the shepherd app (`kubernetes/main/apps/upgrade-agent/shepherd/app/**`),

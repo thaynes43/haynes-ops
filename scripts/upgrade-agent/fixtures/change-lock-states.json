@@ -1,0 +1,371 @@
+{
+ "doc": "Story 551, review finding R7: one set of change-lock states read by both lock readers. lane-merge-step-selftest.mjs checks night-merge.mjs lockStatus() against want_lane (the lane, unchanged by story 551); shepherd-stand-aside-selftest.sh checks run-shepherd.sh merge_gate_decide against want_shepherd. The shepherd stands aside only in a change phase (merging, merged-awaiting-verification, merge-unknown), an unknown or missing phase, an expiry its jq cannot parse (it reads ...Z only), or an unreadable lock. Where the two differ the shepherd is the more careful one, except a lock without a resourceVersion, which only a broken writer makes and which the shepherd does not need.",
+ "now": "2026-11-11T17:00:00Z",
+ "cases": [
+  {
+   "id": "absent",
+   "read": "absent",
+   "want_lane": "absent",
+   "want_shepherd": "merge"
+  },
+  {
+   "id": "unreadable",
+   "read": "unreadable",
+   "want_lane": "unreadable",
+   "want_shepherd": "stand-aside"
+  },
+  {
+   "id": "free",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "",
+     "phase": "released",
+     "released_at": "2026-11-11T16:59:00.000Z"
+    }
+   },
+   "want_lane": "free",
+   "want_shepherd": "merge"
+  },
+  {
+   "id": "free, no data",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {}
+   },
+   "want_lane": "free",
+   "want_shepherd": "merge"
+  },
+  {
+   "id": "taken, a tick's bookkeeping",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "taken",
+     "expires_at": "2026-11-11T17:10:00.000Z"
+    }
+   },
+   "want_lane": "held",
+   "want_shepherd": "merge"
+  },
+  {
+   "id": "merging",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "merging",
+     "expires_at": "2026-11-11T21:00:00.000Z"
+    }
+   },
+   "want_lane": "held",
+   "want_shepherd": "stand-aside"
+  },
+  {
+   "id": "merged-awaiting-verification",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "merged-awaiting-verification",
+     "expires_at": "2026-11-11T21:00:00.000Z"
+    }
+   },
+   "want_lane": "held",
+   "want_shepherd": "stand-aside"
+  },
+  {
+   "id": "merge-unknown",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "merge-unknown",
+     "expires_at": "2026-11-11T21:00:00.000Z"
+    }
+   },
+   "want_lane": "held",
+   "want_shepherd": "stand-aside"
+  },
+  {
+   "id": "unknown phase",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "verifying",
+     "expires_at": "2026-11-11T17:10:00.000Z"
+    }
+   },
+   "want_lane": "held",
+   "want_shepherd": "stand-aside"
+  },
+  {
+   "id": "no phase",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "expires_at": "2026-11-11T17:10:00.000Z"
+    }
+   },
+   "want_lane": "held",
+   "want_shepherd": "stand-aside"
+  },
+  {
+   "id": "released phase with a holder (inconsistent)",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "released",
+     "expires_at": "2026-11-11T17:10:00.000Z"
+    }
+   },
+   "want_lane": "held",
+   "want_shepherd": "stand-aside"
+  },
+  {
+   "id": "merging, expired",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "merging",
+     "expires_at": "2026-11-11T16:50:00.000Z"
+    }
+   },
+   "want_lane": "expired",
+   "want_shepherd": "merge"
+  },
+  {
+   "id": "taken, expired",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "taken",
+     "expires_at": "2026-11-11T16:50:00.000Z"
+    }
+   },
+   "want_lane": "expired",
+   "want_shepherd": "merge"
+  },
+  {
+   "id": "taken, expiring exactly now",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "taken",
+     "expires_at": "2026-11-11T17:00:00Z"
+    }
+   },
+   "want_lane": "expired",
+   "want_shepherd": "merge"
+  },
+  {
+   "id": "held, no expires_at",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "taken"
+    }
+   },
+   "want_lane": "unreadable",
+   "want_shepherd": "stand-aside"
+  },
+  {
+   "id": "held, malformed expires_at",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "taken",
+     "expires_at": "tomorrow"
+    }
+   },
+   "want_lane": "unreadable",
+   "want_shepherd": "stand-aside"
+  },
+  {
+   "id": "taken, offset timestamp in the future (Date.parse reads it, jq does not)",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "taken",
+     "expires_at": "2026-11-11T12:10:00-05:00"
+    }
+   },
+   "want_lane": "held",
+   "want_shepherd": "stand-aside"
+  },
+  {
+   "id": "merging, offset timestamp in the past (lane: expired; shell cannot tell)",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "merging",
+     "expires_at": "2026-11-11T11:50:00-05:00"
+    }
+   },
+   "want_lane": "expired",
+   "want_shepherd": "stand-aside"
+  },
+  {
+   "id": "taken, second-precision Z",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent",
+     "resourceVersion": "41"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "taken",
+     "expires_at": "2026-11-11T17:10:00Z"
+    }
+   },
+   "want_lane": "held",
+   "want_shepherd": "merge"
+  },
+  {
+   "id": "no resourceVersion, taken (the lane fails closed; the shell does not read it)",
+   "read": "cm",
+   "configmap": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+     "name": "upgrade-change-lock",
+     "namespace": "upgrade-agent"
+    },
+    "data": {
+     "holder": "upgrade-night/pod/a1",
+     "phase": "taken",
+     "expires_at": "2026-11-11T17:10:00.000Z"
+    }
+   },
+   "want_lane": "unreadable",
+   "want_shepherd": "merge"
+  }
+ ]
+}

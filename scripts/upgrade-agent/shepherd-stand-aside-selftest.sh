@@ -7,38 +7,39 @@
 #
 # WHY THIS EXISTS
 # ---------------
-# Only one actor may merge cluster changes at a time. The night lane holds ConfigMap
-# upgrade-agent/upgrade-change-lock while it merges and verifies, and merges only from
-# 01:30 to 04:45 New York. The shepherd merges with the same bot: its 04:00 run fell
-# inside that window on 2026-10-31 (#4475, 08:01Z) and 2026-11-06 (#4677, 09:01Z). Each
-# case below pins one part of the rule; removing any guard in run-shepherd.sh fails one:
-#   1. merge_gate_decide (pure): the window, inclusive at both ends, in New York time
-#      across the DST change; the lock free, absent, expired, held, held with a
-#      millisecond expiry as the lane writes it, held with no readable expiry; a lock or
-#      rules file that cannot be read; garbage in;
+# Only one actor may merge cluster changes at a time, on facts, not clocks (Tom's ruling
+# Q-548-04): the shepherd reads no schedule. It stands aside while the night lane's
+# ConfigMap upgrade-agent/upgrade-change-lock shows a lane change in progress (phase
+# merging, merged-awaiting-verification or merge-unknown), and when it cannot read it. A
+# tick's `taken` lock (about 25 seconds, even in dry-run) is bookkeeping, not a change.
+# The lane's side of the handshake (F4: no merge while this Job runs) is tested in
+# lane-merge-step-selftest.mjs. Removing any guard in run-shepherd.sh fails a case here:
+#   1. merge_gate_decide (pure) on the shared lock states
+#      (fixtures/change-lock-states.json, which the lane's lockStatus test reads too);
 #   2. shepherd_may_merge: kubectl NotFound is "absent", any other failure is a
-#      stand-aside; an unreadable rules file or clock is a stand-aside; it returns 0 only
-#      on "merge";
-#   3. the pre-LLM block: with the lock free and the window closed the allowlist and the
-#      operating rules are byte-identical; otherwise exactly MERGE_TOOLS leave the
-#      allowlist (auto and remediate) and a MERGE STAND-ASIDE rule is added; dryrun and
-#      shepherd modes are untouched and read nothing;
-#   4. the stall fallback: no `gh pr merge` while standing aside, and none when the
-#      check itself is missing (fail closed);
-#   5. wiring: the block runs before the first LLM call and the allowlist it edits is
-#      the one passed to claude.
+#      stand-aside; it returns 0 only on "merge" or "merge (<note>)";
+#   3. the pre-LLM block: with no change in progress the allowlist and the operating rules
+#      are byte-identical; otherwise exactly MERGE_TOOLS leave the allowlist (auto and
+#      remediate) and a MERGE STAND-ASIDE rule is added; dryrun and shepherd modes are
+#      untouched and read nothing;
+#   4. the stall fallback: no `gh pr merge` while standing aside, an escalation on a
+#      stable signature for the merge it strands (review finding R4), and no merge when
+#      the check itself is missing (fail closed);
+#   5. wiring and the handshake order: the shepherd's Job exists before it reads the lock
+#      (and triage claims a remediation before it starts run-shepherd.sh); no clock rule
+#      is left (no window, no time-of-day).
 # The functions are EXTRACTED from the shipped script, never copied. Stubbed: log,
-# epoch_now, kubectl, gh.
+# epoch_now, kubectl, gh, shepherd_escalate.
 #
 # Usage: scripts/upgrade-agent/shepherd-stand-aside-selftest.sh
-# Requires: bash 4+, jq, node. No cluster or GitHub access.
+# Requires: bash 4+, jq. No cluster or GitHub access.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RUN="${RUN:-$REPO_ROOT/kubernetes/main/apps/upgrade-agent/shepherd/app/resources/run-shepherd.sh}"
-RULES_FILE="$REPO_ROOT/kubernetes/main/apps/upgrade-agent/shepherd/app/resources/upgrade-rules.json"
+TRIAGE="$REPO_ROOT/kubernetes/main/apps/upgrade-agent/shepherd/app/resources/triage.sh"
+LOCKS="$REPO_ROOT/scripts/upgrade-agent/fixtures/change-lock-states.json"
 command -v jq >/dev/null 2>&1 || { echo "FATAL: jq is required"; exit 1; }
-command -v node >/dev/null 2>&1 || { echo "FATAL: node is required"; exit 1; }
 
 extract() {  # $1=file $2=function name — its definition through the first column-0 '}'
   awk -v fn="$2" '
@@ -47,7 +48,7 @@ extract() {  # $1=file $2=function name — its definition through the first col
     inside && /^}$/ { exit }
   ' "$1"
 }
-for fn in merge_gate_decide change_lock_read lane_local_time shepherd_may_merge drop_merge_tools automerge_complete; do
+for fn in merge_gate_decide change_lock_read shepherd_may_merge drop_merge_tools automerge_complete; do
   body="$(extract "$RUN" "$fn")"
   case "$body" in *"$fn() {"*"}") ;; *) echo "FATAL: could not extract $fn() from $RUN"; exit 1 ;; esac
   eval "$body" || { echo "FATAL: extracted $fn() does not parse"; exit 1; }
@@ -69,82 +70,68 @@ FAKE_NOW=0
 epoch_now() { printf '%s' "$FAKE_NOW"; }
 at() { date -u -d "$1" +%s; }   # ISO -> epoch
 
-# ── 1. merge_gate_decide (pure) ──
-NIGHT="$(jq -c '.night' "$RULES_FILE")"
-expect "the shipped window is 01:30-04:45 America/New_York" "$(printf '%s' "$NIGHT" | jq -r '"\(.merge_window_local.first)-\(.merge_window_local.last) \(.timezone)"')" "01:30-04:45 America/New_York"
-decide() {  # $1=now epoch $2=local HH:MM (or "") $3=lock JSON (null | "unreadable" | object) [$4=rules JSON]
-  jq -nc --argjson now "$1" --arg local "$2" --argjson lock "$3" --argjson rules "${4:-$NIGHT}" \
-    '{now: $now, local: (if $local == "" then null else $local end), rules: $rules, lock: $lock}' | merge_gate_decide
-}
-NOW="$(at 2026-11-11T17:00:00Z)"
-lock() {  # $1=holder $2=expires_at (or "-" for none) $3=phase
+# ── 1. merge_gate_decide on the shared lock states (R7) ──
+NOW="$(jq -r '.now' "$LOCKS")"; FAKE_NOW="$(at "$NOW")"
+n="$(jq '.cases | length' "$LOCKS")"
+[ "$n" -ge 20 ] || { echo "FATAL: the shared lock fixture has $n cases"; exit 1; }
+for i in $(seq 0 $((n - 1))); do
+  id="$(jq -r ".cases[$i].id" "$LOCKS")"; want="$(jq -r ".cases[$i].want_shepherd" "$LOCKS")"
+  lockj="$(jq -c ".cases[$i] | if .read == \"absent\" then null elif .read == \"unreadable\" then \"unreadable\" else .configmap end" "$LOCKS")"
+  got="$(jq -nc --argjson now "$FAKE_NOW" --argjson lock "$lockj" '{now: $now, lock: $lock}' | merge_gate_decide)"
+  expect "lock state '$id' -> $want" "${got%% *}" "$want"
+done
+decide() { jq -nc --argjson now "$FAKE_NOW" --argjson lock "$1" '{now: $now, lock: $lock}' | merge_gate_decide; }
+lock() {  # $1=holder $2=expires_at (or "-" for none) $3=phase (or "-" for none)
   jq -nc --arg h "$1" --arg e "$2" --arg p "${3:-taken}" \
-    '{metadata: {name: "upgrade-change-lock", namespace: "upgrade-agent", resourceVersion: "41"}, data: ({holder: $h, phase: $p} + (if $e == "-" then {} else {expires_at: $e} end))}'
+    '{metadata: {name: "upgrade-change-lock", namespace: "upgrade-agent", resourceVersion: "41"}, data: ({holder: $h} + (if $e == "-" then {} else {expires_at: $e} end) + (if $p == "-" then {} else {phase: $p} end))}'
 }
-expect "no lock ConfigMap, window closed -> merge" "$(decide "$NOW" 12:00 null)" "merge"
-expect "a free lock (empty holder) -> merge" "$(decide "$NOW" 12:00 "$(lock '' 2026-11-11T17:05:00Z released)")" "merge"
-like "a held lock -> stand aside, naming holder, phase and expiry" "$(decide "$NOW" 12:00 "$(lock upgrade-night/pod/ab12 2026-11-11T17:05:00Z merging)")" "stand-aside the change lock is held by upgrade-night/pod/ab12 (merging) until 2026-11-11T17:05:00Z"
-like "a held lock with the lane's millisecond expiry -> stand aside" "$(decide "$NOW" 12:00 "$(lock h 2026-11-11T17:05:00.123Z)")" "stand-aside the change lock is held by h *"
-expect "a lock past its expiry -> merge (the lane takes it over too)" "$(decide "$NOW" 12:00 "$(lock h 2026-11-11T16:59:59.999Z)")" "merge"
-expect "a lock expiring exactly now -> merge (expired, as lockStatus reads it)" "$(decide "$NOW" 12:00 "$(lock h 2026-11-11T17:00:00Z)")" "merge"
-like "a holder with no expires_at -> stand aside" "$(decide "$NOW" 12:00 "$(lock h -)")" "stand-aside *no readable expires_at"
-like "a holder with an unparseable expires_at -> stand aside" "$(decide "$NOW" 12:00 "$(lock h tomorrow)")" "stand-aside *no readable expires_at"
-like "an unreadable lock -> stand aside" "$(decide "$NOW" 12:00 '"unreadable"')" "stand-aside unreadable: ConfigMap upgrade-agent/upgrade-change-lock"
-like "a lock that is not an object -> stand aside" "$(decide "$NOW" 12:00 '[1]')" "stand-aside unreadable*"
-expect "01:29 New York, lock free -> merge" "$(decide "$NOW" 01:29 null)" "merge"
-like "01:30 New York -> stand aside (window start, inclusive)" "$(decide "$NOW" 01:30 null)" "stand-aside inside the night lane merge window (01:30-04:45 America/New_York, now 01:30)"
-like "04:45 New York -> stand aside (window end, inclusive)" "$(decide "$NOW" 04:45 null)" "stand-aside inside the night lane merge window*"
-expect "04:46 New York, lock free -> merge" "$(decide "$NOW" 04:46 null)" "merge"
-like "inside the window even with a free lock -> stand aside" "$(decide "$NOW" 03:00 "$(lock '' -)")" "stand-aside inside*"
-like "no local time (the clock could not be read) -> stand aside" "$(decide "$NOW" "" null)" "stand-aside unreadable: the time in America/New_York"
-like "a malformed local time -> stand aside" "$(decide "$NOW" "4:00" null)" "stand-aside unreadable: the time*"
-like "rules without a window -> stand aside" "$(decide "$NOW" 12:00 null '{"timezone":"America/New_York"}')" "stand-aside unreadable: the night lane merge window*"
-like "no rules at all -> stand aside" "$(decide "$NOW" 12:00 null null)" "stand-aside unreadable: the night lane merge window*"
+like "a change phase names holder, phase and expiry" "$(decide "$(lock upgrade-night/pod/ab12 2026-11-11T21:00:00.000Z merged-awaiting-verification)")" "stand-aside a lane change is in progress: the change lock is held by upgrade-night/pod/ab12 in phase merged-awaiting-verification until 2026-11-11T21:00:00.000Z"
+like "a taken lock is read and noted, not a stand-aside" "$(decide "$(lock upgrade-night/pod/ab12 2026-11-11T17:10:00.000Z taken)")" "merge (read the change lock: held by upgrade-night/pod/ab12 in phase taken until 2026-11-11T17:10:00.000Z, a tick's bookkeeping, not a change in progress)"
+like "an unknown phase names it" "$(decide "$(lock h 2026-11-11T17:10:00Z verifying)")" "stand-aside *unknown phase (verifying)*"
+like "an offset timestamp is one this launcher cannot read" "$(decide "$(lock h 2026-11-11T12:10:00-05:00 taken)")" "stand-aside *no expires_at this launcher can read (2026-11-11T12:10:00-05:00)"
 got="$(printf 'not json' | merge_gate_decide)"
-if [ "$got" != "merge" ]; then ok "garbage input never yields merge"; else bad "garbage input never yields merge" "$got"; fi
+if [ "${got%% *}" != "merge" ]; then ok "garbage input never yields merge"; else bad "garbage input never yields merge" "$got"; fi
 
-# ── 2. shepherd_may_merge, with kubectl stubbed and the real clock conversion ──
+# ── 2. shepherd_may_merge, with kubectl stubbed ──
 KUBECTL_MODE=absent
 kubectl() {
   printf '%s\n' "$*" >> "$T/kubectl"
+  local exp; exp="$(date -u -d "@$((FAKE_NOW + 600))" +%FT%T.000Z)"
   case "$KUBECTL_MODE" in
     absent)    echo 'Error from server (NotFound): configmaps "upgrade-change-lock" not found' >&2; return 1 ;;
     forbidden) echo 'Error from server (Forbidden): configmaps "upgrade-change-lock" is forbidden' >&2; return 1 ;;
     garbage)   printf 'not json'; return 0 ;;
-    held)      lock upgrade-night/pod/cd34 "$(date -u -d "@$((FAKE_NOW + 600))" +%FT%T.000Z)" taken; return 0 ;;
+    taken)     lock upgrade-night/pod/cd34 "$exp" taken; return 0 ;;
+    merging)   lock upgrade-night/pod/cd34 "$exp" merging; return 0 ;;
+    awaiting)  lock upgrade-night/pod/cd34 "$(date -u -d "@$((FAKE_NOW + 14400))" +%FT%T.000Z)" merged-awaiting-verification; return 0 ;;
+    unknown)   lock upgrade-night/pod/cd34 "$exp" -; return 0 ;;
     free)      lock '' - released; return 0 ;;
   esac
 }
-may() {  # $1=ISO time $2=kubectl mode -> "rc why"
-  FAKE_NOW="$(at "$1")"; KUBECTL_MODE="$2"; : > "$T/log"
+may() {  # $1=kubectl mode -> "rc why"
+  FAKE_NOW="$(at 2026-11-11T09:00:00Z)"; KUBECTL_MODE="$1"; : > "$T/log"
   shepherd_may_merge; local rc=$?
   printf '%s %s' "$rc" "$MERGE_STAND_ASIDE_WHY"
 }
-LANE_RULES="$RULES_FILE"
-expect "12:00 New York, no lock -> may merge (rc 0)" "$(may 2026-11-11T17:00:00Z absent)" "0 "
-expect "12:00 New York, free lock -> may merge" "$(may 2026-11-11T17:00:00Z free)" "0 "
-like "12:00 New York, lock held -> stand aside (rc 1)" "$(may 2026-11-11T17:00:00Z held)" "1 the change lock is held by upgrade-night/pod/cd34 (taken) until *"
-like "kubectl refused (Forbidden) -> stand aside" "$(may 2026-11-11T17:00:00Z forbidden)" "1 unreadable: ConfigMap upgrade-agent/upgrade-change-lock"
-like "kubectl printed garbage -> stand aside" "$(may 2026-11-11T17:00:00Z garbage)" "1 unreadable: ConfigMap*"
-like "THE 2026-11-06 CASE: the 04:00 run at 09:01:37Z (#4677) -> stand aside (EST)" "$(may 2026-11-06T09:01:37Z absent)" "1 inside the night lane merge window (01:30-04:45 America/New_York, now 04:01)"
-like "THE 2026-10-31 CASE: the 04:00 run at 08:01:17Z (#4475) -> stand aside (EDT)" "$(may 2026-10-31T08:01:17Z absent)" "1 inside the night lane merge window (01:30-04:45 America/New_York, now 04:01)"
-like "the 2026-11-10 09:00Z run (04:00 New York) -> stand aside" "$(may 2026-11-10T09:00:00Z absent)" "1 inside*now 04:00)"
-expect "the 2026-11-10 05:01Z run (00:01 New York, lock free) -> may merge; the lane's settle gate covers it" "$(may 2026-11-10T05:01:56Z absent)" "0 "
-expect "06:31Z is 01:31 EST, 05:31Z is 01:31 EDT: the window follows New York time" "$(may 2026-11-11T06:31:00Z absent | cut -c1) $(may 2026-10-30T05:31:00Z absent | cut -c1) $(may 2026-11-11T05:31:00Z absent | cut -c1)" "1 1 0"
-FAKE_NOW="$(at 2026-11-11T17:00:00Z)"; KUBECTL_MODE=held; : > "$T/log"; shepherd_may_merge >/dev/null
-like "a stand-aside logs one clear STAND-ASIDE line" "$(grep -c '^STAND-ASIDE: this run merges nothing: the change lock is held by upgrade-night/pod/cd34' "$T/log")" "1"
-LANE_RULES="$T/no-such-rules.json"
-like "an unreadable rules file -> stand aside" "$(may 2026-11-11T17:00:00Z absent)" "1 unreadable: the night lane merge window*"
-printf '{"night": {"timezone": "Mars/Olympus", "merge_window_local": {"first": "01:30", "last": "04:45"}}}' > "$T/bad-tz.json"; LANE_RULES="$T/bad-tz.json"
-like "a zone Node cannot resolve -> stand aside" "$(may 2026-11-11T17:00:00Z absent)" "1 unreadable: the time in Mars/Olympus"
-LANE_RULES="$RULES_FILE"
-saved_lt="$(declare -f lane_local_time)"; lane_local_time() { return 127; }
-like "no node (the local time cannot be computed) -> stand aside" "$(may 2026-11-11T17:00:00Z absent)" "1 unreadable: the time*"
-eval "$saved_lt"
-saved_mgd="$(declare -f merge_gate_decide)"; merge_gate_decide() { printf 'merge-ish'; }
-like "a decision that is not exactly 'merge' -> stand aside" "$(may 2026-11-11T17:00:00Z absent)" "1 unreadable: the stand-aside decision (merge-ish)"
+expect "no lock -> may merge (rc 0)" "$(may absent)" "0 "
+expect "a free lock -> may merge" "$(may free)" "0 "
+expect "THE 04:00 CASE: a tick's taken lock at 09:00Z -> may merge (no coincidence of schedules)" "$(may taken)" "0 "
+like "a merging lock -> stand aside (rc 1)" "$(may merging)" "1 a lane change is in progress: the change lock is held by upgrade-night/pod/cd34 in phase merging until *"
+like "the 4h post-merge hold -> stand aside" "$(may awaiting)" "1 a lane change is in progress: * in phase merged-awaiting-verification *"
+like "a held lock with no phase -> stand aside" "$(may unknown)" "1 the change lock is held by upgrade-night/pod/cd34 in an unknown phase (null)*"
+like "kubectl refused (Forbidden) -> stand aside" "$(may forbidden)" "1 unreadable: ConfigMap upgrade-agent/upgrade-change-lock"
+like "kubectl printed garbage -> stand aside" "$(may garbage)" "1 unreadable: ConfigMap*"
+may taken >/dev/null
+expect "a taken lock is logged as read, not as a stand-aside" "$(grep -c "^stand-aside: not needed: (read the change lock: held by upgrade-night/pod/cd34 in phase taken" "$T/log")" "1"
+may merging >/dev/null
+expect "a stand-aside logs one clear STAND-ASIDE line" "$(grep -c '^STAND-ASIDE: this run merges nothing: a lane change is in progress: the change lock is held by upgrade-night/pod/cd34 in phase merging' "$T/log")" "1"
+saved_mgd="$(declare -f merge_gate_decide)"
+merge_gate_decide() { printf 'merge-ish'; }
+like "a decision that is not exactly 'merge' or 'merge (...)' -> stand aside" "$(may absent)" "1 unreadable: the stand-aside decision (merge-ish)"
+merge_gate_decide() { printf 'merge (but no closing parenthesis'; }
+like "  ... nor a 'merge (' without its closing parenthesis" "$(may absent)" "1 unreadable: the stand-aside decision*"
 eval "$saved_mgd"
-: > "$T/kubectl"; may 2026-11-11T17:00:00Z absent >/dev/null
+: > "$T/kubectl"; may absent >/dev/null
 expect "the lock is read from upgrade-agent/upgrade-change-lock" "$(head -1 "$T/kubectl")" "-n upgrade-agent get configmap upgrade-change-lock -o json"
 
 # ── 3. the pre-LLM block, extracted from the script with the allowlists it builds ──
@@ -152,9 +139,9 @@ tools="$(awk '/^READONLY_TOOLS=\(/ { on = 1 } on { print } /^WORKORDER_TOOLS=\(/
 case "$tools" in *"MERGE_TOOLS=("*"WORKORDER_TOOLS=("*) ;; *) echo "FATAL: tool arrays not found in $RUN"; exit 1 ;; esac
 eval "$tools"
 block="$(awk '/^# ── STAND ASIDE \(story 551\), BEFORE the LLM turn/ { on = 1 } on { print } on && /^esac$/ { exit }' "$RUN")"
-case "$block" in *'MERGE_STOOD_ASIDE=""'*'shepherd_may_merge'*'drop_merge_tools'*'esac') ;; *) echo "FATAL: the stand-aside block was not found in $RUN"; exit 1 ;; esac
-pre_llm() {  # $1=MODE $2=ISO time $3=kubectl mode; sets ALLOWED, SAFETY_PROMPT, MERGE_STOOD_ASIDE
-  MODE="$1"; FAKE_NOW="$(at "$2")"; KUBECTL_MODE="$3"; : > "$T/kubectl"
+case "$block" in *'shepherd_may_merge'*'drop_merge_tools'*'esac') ;; *) echo "FATAL: the stand-aside block was not found in $RUN"; exit 1 ;; esac
+pre_llm() {  # $1=MODE $2=kubectl mode; sets ALLOWED and SAFETY_PROMPT
+  MODE="$1"; FAKE_NOW="$(at 2026-11-11T09:00:00Z)"; KUBECTL_MODE="$2"; : > "$T/kubectl"
   case "$MODE" in
     auto|remediate) ALLOWED=("${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}" "${MERGE_TOOLS[@]}" "${SILENCE_TOOLS[@]}" "${WORKORDER_TOOLS[@]}") ;;
     shepherd) ALLOWED=("${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}") ;;
@@ -166,23 +153,21 @@ pre_llm() {  # $1=MODE $2=ISO time $3=kubectl mode; sets ALLOWED, SAFETY_PROMPT,
 }
 expect "MERGE_TOOLS is exactly gh pr merge" "$(printf '%s|' "${MERGE_TOOLS[@]}")" "Bash(gh pr merge:*)|"
 for m in auto remediate; do
-  pre_llm "$m" 2026-11-11T17:00:00Z absent
-  expect "$m, lock free, window closed: the allowlist is byte-identical" "$(printf '%s\x1f' "${ALLOWED[@]}")" "$BEFORE_ALLOWED"
-  expect "$m, lock free, window closed: the operating rules are unchanged" "$SAFETY_PROMPT" "$BEFORE_PROMPT"
-  expect "$m, lock free, window closed: not stood aside" "${MERGE_STOOD_ASIDE:-}" ""
-  pre_llm "$m" 2026-11-11T17:00:00Z held
+  for free in absent free taken; do
+    pre_llm "$m" "$free"
+    expect "$m, lock $free: the allowlist and the operating rules are byte-identical" "$(printf '%s\x1f' "${ALLOWED[@]}")|$SAFETY_PROMPT" "$BEFORE_ALLOWED|$BEFORE_PROMPT"
+  done
   want="$(printf '%s\x1f' "${READONLY_TOOLS[@]}" "${WRITE_TOOLS[@]}" "${SILENCE_TOOLS[@]}" "${WORKORDER_TOOLS[@]}")"
-  expect "$m, lock held: exactly gh pr merge leaves the allowlist" "$(printf '%s\x1f' "${ALLOWED[@]}")" "$want"
-  like "$m, lock held: the rules gain one MERGE STAND-ASIDE rule naming why" "${SAFETY_PROMPT#"$BEFORE_PROMPT"}" " MERGE STAND-ASIDE (this run only; story 551): the change lock is held by upgrade-night/pod/cd34*DEFER: #<N> waits for the night lane*NO vet marker*"
-  expect "$m, lock held: stood aside" "$MERGE_STOOD_ASIDE" "1"
-  pre_llm "$m" 2026-11-10T09:00:00Z absent
-  case "$(printf '%s\x1f' "${ALLOWED[@]}")" in *"Bash(gh pr merge:*)"*) bad "$m, 04:00 New York: gh pr merge is off the allowlist" "still allowed" ;; *) ok "$m, 04:00 New York: gh pr merge is off the allowlist" ;; esac
-  pre_llm "$m" 2026-11-11T17:00:00Z forbidden
-  case "$(printf '%s\x1f' "${ALLOWED[@]}")" in *"Bash(gh pr merge:*)"*) bad "$m, lock unreadable: gh pr merge is off the allowlist" "still allowed" ;; *) ok "$m, lock unreadable: gh pr merge is off the allowlist" ;; esac
+  for held in merging awaiting unknown forbidden; do
+    pre_llm "$m" "$held"
+    expect "$m, lock $held: exactly gh pr merge leaves the allowlist" "$(printf '%s\x1f' "${ALLOWED[@]}")" "$want"
+  done
+  pre_llm "$m" merging
+  like "$m, lock merging: the rules gain one MERGE STAND-ASIDE rule naming why" "${SAFETY_PROMPT#"$BEFORE_PROMPT"}" " MERGE STAND-ASIDE (this run only; story 551): a lane change is in progress: the change lock is held by upgrade-night/pod/cd34 in phase merging*DEFER: #<N> waits for the night lane to finish its change*NO vet marker*"
 done
 for m in dryrun shepherd; do
-  pre_llm "$m" 2026-11-11T17:00:00Z held
-  expect "$m mode (no merge tools): untouched and nothing read" "$(printf '%s\x1f' "${ALLOWED[@]}")|$SAFETY_PROMPT|${MERGE_STOOD_ASIDE:-}|$(wc -l < "$T/kubectl" | tr -d ' ')" "$BEFORE_ALLOWED|$BEFORE_PROMPT||0"
+  pre_llm "$m" merging
+  expect "$m mode (no merge tools): untouched and nothing read" "$(printf '%s\x1f' "${ALLOWED[@]}")|$SAFETY_PROMPT|$(wc -l < "$T/kubectl" | tr -d ' ')" "$BEFORE_ALLOWED|$BEFORE_PROMPT|0"
 done
 
 # ── 4. the stall fallback ──
@@ -192,34 +177,41 @@ gh() {
     "pr view") printf '{"mergedAt":null}'; return 0 ;;
   esac
 }
-shepherd_escalate() { printf '%s\n' "$1" >> "$T/esc"; }
+shepherd_escalate() { printf '%s\t%s\n' "${ESCALATE_SIG:-<text-sig>}" "$1" >> "$T/esc"; }
 merges() { [ -s "$T/merges" ] && wc -l < "$T/merges" | tr -d ' ' || echo 0; }
-rm -f "$T/merges"; FAKE_NOW="$(at 2026-11-11T17:00:00Z)"; KUBECTL_MODE=absent
+rm -f "$T/merges" "$T/esc"; FAKE_NOW="$(at 2026-11-11T09:00:00Z)"; KUBECTL_MODE=taken
 automerge_complete 3280 aaa111 130; rc=$?
-expect "fallback, lock free, window closed: merges as before (rc 0, one call)" "$rc $(merges)" "0 1"
-rm -f "$T/merges" "$T/esc"; KUBECTL_MODE=held; : > "$T/log"
+expect "fallback, a tick's taken lock: merges as before (rc 0, one call, no escalation)" "$rc $(merges) $([ -s "$T/esc" ] && echo esc || echo none)" "0 1 none"
+rm -f "$T/merges" "$T/esc"; KUBECTL_MODE=merging; : > "$T/log"
 automerge_complete 3280 aaa111 130; rc=$?
-expect "fallback, lock held: no gh pr merge, rc 1, no escalation" "$rc $(merges) $([ -s "$T/esc" ] && echo esc || echo none)" "1 0 none"
+expect "fallback, lock merging: no gh pr merge, rc 1" "$rc $(merges)" "1 0"
+expect "  ... and it escalates the stranded merge on a stable signature (R4)" "$(cut -f1 "$T/esc" 2>/dev/null)" "shepherd-automerge-stood-aside|pr=3280|sha=aaa111"
+like "  ... naming why" "$(cut -f2 "$T/esc" 2>/dev/null)" "auto-merge stranded: #3280 *stood aside for the night lane (a lane change is in progress*"
 like "  ... and it logs the stand-aside" "$(grep -c '^automerge-fallback: STAND-ASIDE: #3280' "$T/log")" "1"
-rm -f "$T/merges"; FAKE_NOW="$(at 2026-11-10T09:05:00Z)"; KUBECTL_MODE=absent
-automerge_complete 3280 aaa111 130 2>/dev/null
-expect "fallback inside the window: no gh pr merge" "$(merges)" "0"
-rm -f "$T/merges"; FAKE_NOW="$(at 2026-11-11T17:00:00Z)"
+rm -f "$T/merges" "$T/esc"; KUBECTL_MODE=forbidden
+automerge_complete 3280 aaa111 130
+expect "fallback with the lock unreadable: no gh pr merge, escalated" "$(merges) $(cut -f1 "$T/esc" 2>/dev/null)" "0 shepherd-automerge-stood-aside|pr=3280|sha=aaa111"
+rm -f "$T/merges"; KUBECTL_MODE=absent
 unset -f shepherd_may_merge
 automerge_complete 3280 aaa111 130 2>/dev/null
 expect "fallback with the check missing: no gh pr merge (fail closed)" "$(merges)" "0"
 
-# ── 5. wiring in the shipped script ──
-line() { grep -nF -- "$1" "$RUN" | head -1 | cut -d: -f1; }
-b="$(line '# ── STAND ASIDE (story 551), BEFORE the LLM turn')"; c="$(line 'run_claude "$OUT_FILE"; rc=$?')"
-if [ -n "$b" ] && [ -n "$c" ] && [ "$b" -lt "$c" ]; then ok "the stand-aside block runs before the first LLM call"; else bad "the stand-aside block runs before the first LLM call" "block line ${b:-none}, call line ${c:-none}"; fi
-s="$(line 'SAFETY_PROMPT="${SAFETY_PROMPT} VET MARKER')"
+# ── 5. wiring, the handshake order, and no clock rule left ──
+line() { grep -nF -- "$1" "$2" | head -1 | cut -d: -f1; }
+b="$(line '# ── STAND ASIDE (story 551), BEFORE the LLM turn' "$RUN")"; c="$(line 'run_claude "$OUT_FILE"; rc=$?' "$RUN")"
+if [ -n "$b" ] && [ -n "$c" ] && [ "$b" -lt "$c" ]; then ok "the lock is read before the first LLM call (so after this Job exists)"; else bad "the lock is read before the first LLM call (so after this Job exists)" "block line ${b:-none}, call line ${c:-none}"; fi
+s="$(line 'SAFETY_PROMPT="${SAFETY_PROMPT} VET MARKER' "$RUN")"
 if [ -n "$s" ] && [ "$s" -lt "$b" ]; then ok "the block comes after the operating rules are built"; else bad "the block comes after the operating rules are built" "vet marker ${s:-none}, block ${b:-none}"; fi
 if grep -qF -- '--allowedTools "${ALLOWED[@]}"' "$RUN"; then ok "claude gets the ALLOWED the block edits"; else bad "claude gets the ALLOWED the block edits" "no --allowedTools \"\${ALLOWED[@]}\""; fi
 ac="$(extract "$RUN" automerge_complete)"
 g="$(printf '%s\n' "$ac" | grep -n 'if ! shepherd_may_merge; then' | head -1 | cut -d: -f1)"; mm="$(printf '%s\n' "$ac" | grep -n 'gh pr merge "\$pr"' | head -1 | cut -d: -f1)"
 if [ -n "$g" ] && [ -n "$mm" ] && [ "$g" -lt "$mm" ]; then ok "automerge_complete asks shepherd_may_merge before its gh pr merge"; else bad "automerge_complete asks shepherd_may_merge before its gh pr merge" "check ${g:-none}, merge ${mm:-none}"; fi
 expect "only one direct gh pr merge call in the launcher (the fallback's)" "$(grep -cE '^\s+if out="\$\(gh pr merge ' "$RUN")" "1"
+cl="$(line 'state_upsert "$SIG" upgrade 1 none' "$TRIAGE")"; rs="$(line '/bin/bash /opt/shepherd/run-shepherd.sh' "$TRIAGE")"
+if [ -n "$cl" ] && [ -n "$rs" ] && [ "$cl" -lt "$rs" ]; then ok "triage claims the remediation (the lane's F4 reads it) before it starts run-shepherd.sh"; else bad "triage claims the remediation before it starts run-shepherd.sh" "claim ${cl:-none}, run ${rs:-none}"; fi
+if grep -qE 'merge_window_local|lane_local_time|Intl\.DateTimeFormat|LANE_RULES|upgrade-rules\.json' "$RUN"; then bad "no clock rule is left in the launcher (ruling Q-548-04)" "$(grep -nE 'merge_window_local|lane_local_time|Intl\.DateTimeFormat|LANE_RULES|upgrade-rules\.json' "$RUN" | head -3)"; else ok "no clock rule is left in the launcher (ruling Q-548-04)"; fi
+if grep -q 'MERGE_STOOD_ASIDE' "$RUN"; then bad "MERGE_STOOD_ASIDE is gone (set and never read)" "still present"; else ok "MERGE_STOOD_ASIDE is gone (set and never read)"; fi
+if grep -qF 'The LLM keeps' "$RUN" && grep -qF 'admits GitHub'"'"'s REST' "$RUN"; then ok "the comment says gh api repos/* still admits a REST merge (R2)"; else bad "the comment says gh api repos/* still admits a REST merge (R2)" "not found"; fi
 
 echo
 if [ "$fails" -eq 0 ]; then echo "shepherd stand-aside selftest: all passed"; else echo "shepherd stand-aside selftest: $fails FAILED"; exit 1; fi

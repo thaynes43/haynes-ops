@@ -15,10 +15,13 @@
 // blocker named "unreadable: <what>", never a pass. A target is stateless only on
 // positive evidence. data.pause on upgrade-lane-state stops the tick (kill switch).
 //
-// STORY 551 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/551):
-// the settle gate (night-merge.mjs settleVerdict) blocks every lane-A candidate within 30
-// minutes of main's newest kubernetes/** commit, before Flux took it up, or while Flux is
-// progressing; the merge step and a live merge call re-read it.
+// STORY 551 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/551),
+// facts, not clocks (Tom's ruling Q-548-04): the settle gate (night-merge.mjs
+// settleVerdict) blocks a candidate with an immediate cluster effect while main has a change
+// Flux has not applied that reaches its target, its dependsOn chain or a cluster-wide part
+// (F1), while its target has not applied the source revision or is not settled (F2), or
+// while a cluster-wide part is mid-change (F3). The merge step and a live merge call re-read
+// it, and add F4 (no shepherd Job that can merge running).
 //
 // OP550 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/550):
 // a critical alert blocks only when it belongs to the target (R5, alertGate); checks are
@@ -174,30 +177,12 @@ export function cnpgFresh(cluster, schedules, backups, now, maxAgeMs) {
 }
 
 // ── Flux objects for a target ───────────────────────────────────────────────
-const ksId = k => `${k.metadata.namespace}/${k.metadata.name}`;
-export function kustomizationsFor(target, ks) {
-  return (ks?.items || []).filter(k => {
-    const p = String(k.spec?.path || '').replace(/^\.\//, '').replace(/\/$/, '');
-    return p === target || p.startsWith(target + '/');
-  });
-}
-const isNotReady = o => !o.spec?.suspend && !(o.status?.conditions || []).some(c => c.type === 'Ready' && c.status === 'True');
-// Blocking = NotReady and (the target, in its dependsOn chain, or in its namespace).
-export function fluxScope(mine, ks, hr) {
-  const byId = new Map((ks?.items || []).map(k => [ksId(k), k]));
-  const chain = new Set(), queue = mine.map(ksId);
-  while (queue.length) {
-    const id = queue.shift();
-    if (chain.has(id)) continue;
-    chain.add(id);
-    for (const d of byId.get(id)?.spec?.dependsOn || []) queue.push(`${d.namespace || id.split('/')[0]}/${d.name}`);
-  }
-  const nss = new Set(mine.map(k => k.spec?.targetNamespace || k.metadata.namespace));
-  const blocking = [];
-  for (const k of ks?.items || []) if (isNotReady(k) && (chain.has(ksId(k)) || nss.has(k.spec?.targetNamespace || k.metadata.namespace))) blocking.push(`Kustomization ${ksId(k)}`);
-  for (const h of hr?.items || []) if (isNotReady(h) && nss.has(h.metadata.namespace)) blocking.push(`HelmRelease ${h.metadata.namespace}/${h.metadata.name}`);
-  return { namespaces: [...nss], chain: [...chain], blocking };
-}
+// The target's Flux scope lives in lane-classify.mjs (story 551: the settle gate in
+// night-merge.mjs reuses it); re-exported here for the tick and its selftest.
+const ksId = L.ksId;
+export const kustomizationsFor = L.kustomizationsFor;
+const isNotReady = L.isNotReady;
+export const fluxScope = L.fluxScope;
 
 // ── critical alerts scoped to the target's workloads (R5, OP550) ─────────────────
 // upgrade-rules.json alert_scope says what blocks. These helpers resolve the subject an
@@ -396,11 +381,11 @@ async function tick() {
   const nsCache = new Map();
   const nsFacts = ns => { if (!nsCache.has(ns)) nsCache.set(ns, { pods: kget(['pods', '-n', ns]), cronjobs: kget(['cronjobs', '-n', ns]), jobs: kget(['jobs', '-n', ns]) }); return nsCache.get(ns); };
   const win = inWindow(now, night.timezone, night.merge_window_local.first, night.merge_window_local.last);
-  // THE SETTLE GATE (story 551): no lane merge within 30 minutes of any merge to main that
-  // changed kubernetes/** (Renovate, the shepherd or a person), before Flux took it up, or
-  // while any Kustomization or HelmRelease is progressing. Read once here for every
-  // lane-A candidate; the merge step reads it again, and live mode once more at the call.
-  const settle = lanes.length ? M.settleCheck({ repo: REPO, rules, run, now }) : null;
+  // THE SETTLE GATE (story 551): facts about each candidate's target, read once here (the
+  // source, every Kustomization and HelmRelease, main's commits Flux has not fetched) and
+  // judged per candidate; the merge step reads it again, and live mode once more at the call.
+  const settleFacts = cluster ? M.readSettleFacts(REPO, rules, run) : null;
+  const scopes = new Map();
   const orders = cm(night.work_orders_configmap);
   const orderBad = [], claimed = [];
   for (const [k, v] of Object.entries(orders?.data || {})) { try { if (JSON.parse(v).status === 'claimed') claimed.push(k); } catch { orderBad.push(k); } }
@@ -458,10 +443,17 @@ async function tick() {
         alertView = { unrelated: g.unrelated, cluster: g.cluster };
       }
     }
-    if (settle) blockers.push(...settle.blockers.map(b => `settle gate: ${b}`));
+    let settleRec = { applicable: false, why: 'no immediate cluster effect: nothing in the cluster changes now' };
+    if (r.cluster_effect === 'immediate') {
+      const sc = M.settleScope(r, cf.ks, cf.hr);
+      scopes.set(r.pr, sc);
+      const sv = M.settleVerdict(settleFacts, sc, rules);
+      blockers.push(...sv.blockers.map(b => `settle gate: ${b}`));
+      settleRec = M.settleBrief(sv);
+    }
     if (!win.open) blockers.push(`outside the merge window (${night.merge_window_local.first}-${night.merge_window_local.last} ${night.timezone}, now ${win.local})`);
     r.backup = { rule: night.backup_rule.text, targets: backup, stateful: backup.length > 0 };
-    r.gates = { namespaces: scope.namespaces, blockers, alerts_not_blocking: alertView, would_be_eligible: blockers.length === 0 };
+    r.gates = { namespaces: scope.namespaces, blockers, alerts_not_blocking: alertView, settle: settleRec, would_be_eligible: blockers.length === 0 };
   }
 
   const fluxWarnings = cluster ? [...(cf.ks?.items || []).filter(isNotReady).map(k => `Kustomization ${ksId(k)}`), ...(cf.hr?.items || []).filter(isNotReady).map(h => `HelmRelease ${h.metadata.namespace}/${h.metadata.name}`)].filter(x => !flagged.has(x)) : [];
@@ -475,7 +467,7 @@ async function tick() {
   // none, so every night records a verdict. Live mode runs it on the chosen PR only.
   const nearest = !pick && MODE === 'dryrun' ? [...lanes].sort(order)[0] || null : null;
   const subjectRec = pick || nearest;
-  const subject = subjectRec ? { pr: subjectRec.pr, head: subjectRec.head, class: subjectRec.class, chosen: !!pick } : null;
+  const subject = subjectRec ? { pr: subjectRec.pr, head: subjectRec.head, class: subjectRec.class, chosen: !!pick, scope: subjectRec.cluster_effect === 'immediate' ? (scopes.get(subjectRec.pr) ?? { unreadable: 'the target scope (not computed)' }) : null } : null;
 
   // THE MERGE STEP AND THE CHANGE LOCK (night-merge.mjs). With --write-state the lock is
   // taken before the step's reads and released before this returns, except after a live
@@ -495,8 +487,9 @@ async function tick() {
       flux_warnings: fluxWarnings },
     token_permissions: { names: token.names, can_merge: token.can_merge, why: token.why },
     live_classes: LIVE.classes,
-    settle: settle ? M.settleBrief(settle) : { settled: null, why: 'not read: no lane-A candidate' },
-    change_lock: step.lock, merge_step: verdict, merge_step_settle: step.settle || null, owed_work: step.owed || M.owedWork({ mode: MODE, paused: false }),
+    settle: settleFacts ? { read: true, source_revision: settleFacts.source?.status?.artifact?.revision ?? null, unapplied_complete: !!settleFacts.range?.complete, unapplied_why: settleFacts.range?.why ?? null,
+      unapplied_commits: (settleFacts.range?.commits || []).map(c => ({ sha: c.sha, pr: c.pr, subject: c.subject })).slice(0, 20) } : { read: false, why: 'no lane-A candidate with an immediate cluster effect' },
+    change_lock: step.lock, merge_step: verdict, merge_step_settle: step.settle || null, merge_step_shepherd_jobs: step.shepherd_jobs || null, owed_work: step.owed || M.owedWork({ mode: MODE, paused: false }),
     work_orders_claimed: claimed, counts, lane_a_candidates: lanes.map(r => r.pr),
     would_merge: pick ? { pr: pick.pr, head: pick.head, class: pick.class, reason: MODE === 'live' ? `LIVE: merge step ${verdict.verdict}` : 'DRY-RUN: nothing was merged' } : null,
     why_none: pick ? null : (lanes.length ? 'every lane-A candidate has a blocker (see records[].gates.blockers)' : 'no lane-A candidate'),
@@ -506,7 +499,9 @@ async function tick() {
 
   const table = L.formatTable(records);
   log(`upgrade-night ${MODE}: ${records.length} open Renovate PRs; ${JSON.stringify(counts)}`);
-  log(`upgrade-night ${MODE}: settle gate: ${settle ? M.settleLine(settle) : 'not read (no lane-A candidate)'}`);
+  const sLine = settleFacts ? `Flux at ${String(M.revisionSha(settleFacts.source?.status?.artifact?.revision) || 'unreadable').slice(0, 8)}, ${settleFacts.range?.complete ? `${settleFacts.range.commits.length} commit(s) on main not fetched yet` : `unapplied commits unreadable (${settleFacts.range?.why || 'no source revision'})`}; ${lanes.filter(r => r.cluster_effect === 'immediate').map(r => `#${r.pr} ${r.gates.settle.settled ? 'settled' : `NOT settled (${r.gates.settle.blockers.join(' | ')})`}`).join('; ')}` : 'not read (no lane-A candidate with an immediate cluster effect)';
+  log(`upgrade-night ${MODE}: settle gate: ${sLine}`);
+  if (step.shepherd_jobs) log(`upgrade-night ${MODE}: F4 shepherd Jobs: ${step.shepherd_jobs.readable ? (step.shepherd_jobs.active.length ? step.shepherd_jobs.why : 'none that can merge is running') : step.shepherd_jobs.why}`);
   const lk = step.lock;
   log(`upgrade-night ${MODE}: change lock ${lk.configmap}: ${lk.outcome} (before: ${lk.before?.state ?? 'not read'}${lk.before?.holder ? ` by ${lk.before.holder}` : ''}${lk.took_over_from ? `; took over ${lk.took_over_from}, phase ${lk.took_over_phase || 'unknown'}` : ''})${lk.taken_at ? ` taken_at=${lk.taken_at} expires_at=${lk.expires_at}` : ''}${lk.released_at ? ` released_at=${lk.released_at}` : ''}${lk.why ? `; ${lk.why}` : ''}`);
   const refusals = [...(verdict.pr_refusals || []), ...(verdict.lane_refusals || [])];
@@ -515,7 +510,7 @@ async function tick() {
   process.stdout.write(table + '\n');
   for (const r of lanes) process.stdout.write(`#${r.pr} gates: ${r.gates.blockers.length ? r.gates.blockers.join(' | ') : 'all pass'}\n`);
   if (fluxWarnings.length) process.stdout.write(`warning: Flux NotReady outside every candidate's scope: ${fluxWarnings.join(', ')}\n`);
-  process.stdout.write(`settle gate: ${settle ? (settle.settled ? 'settled' : `NOT settled (${settle.blockers.length} blocker${settle.blockers.length === 1 ? '' : 's'})`) : 'not read'}\n`);
+  process.stdout.write(`settle gate: ${settleFacts ? lanes.filter(r => r.cluster_effect === 'immediate').map(r => `#${r.pr} ${r.gates.settle.settled ? 'settled' : `NOT settled (${r.gates.settle.blockers.length} blocker${r.gates.settle.blockers.length === 1 ? '' : 's'})`}`).join(', ') : 'not read'}\n`);
   process.stdout.write(`change lock: ${lk.outcome}\n`);
   process.stdout.write(`merge step: ${stepLine}\n`);
   process.stdout.write(`would merge this tick: ${pick ? `#${pick.pr} (${pick.class})` : `none (${summary.why_none})`}\n`);
