@@ -134,7 +134,7 @@
   },
   "agent_lifecycle": {
     "tool": "scripts/openproject/opwork.py (opwork in v2 images)",
-    "rule": "Search first, reference the canonical item, claim it (Execution owner = session), report progress, move status explicitly, create follow-ups search-first under the right Epic related to the originating Story. Tom/Meatball groom scope; routine authorized lifecycle writes are the agent's. No status firewall, approval framework or ledger.",
+    "rule": "Search first, reference the canonical item, claim it (Execution owner = session), report progress, move status explicitly, create follow-ups search-first under the right Epic related to the originating Story, regroup with opwork move (an Epic only under a Saga, a Story only under an Epic). Tom/Meatball groom scope; routine authorized lifecycle writes are the agent's. No status firewall, approval framework or ledger.",
     "completion": "Agents complete when the actual acceptance criteria and existing authorization permit it and the workflow allows it. An explicit hold (Needs answer, Needs approval, a review hold) stays a hold.",
     "tracker_down": "Return a clear error, keep bounded authorized work going, save notes with opwork checkpoint, replay with opwork flush. No daemon or enforcement layer.",
     "uncertain_writes": "Never repeat an uncertain create; success is reported only after a read back."

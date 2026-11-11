@@ -67,7 +67,7 @@ class Fake:
         self.readback = None  # optional callable(wp) that changes only what a GET of one item returns
         self.deny = set()  # statuses denied regardless of the current state
         self.transitions = {}  # optional current-state -> allowed next statuses
-        self.form_checks, self.status_changes = [], []
+        self.form_checks, self.status_changes, self.parent_changes = [], [], []
         self.add(5, "Epic", "Epic five", None)
         self.add(6, "Saga", "Saga six", None)
 
@@ -146,6 +146,10 @@ class Fake:
                 for k, v in payload.get("_links", {}).items():
                     if k == "assignee":
                         wp["_links"][k] = {"href": v["href"]}
+                        continue
+                    if k == "parent":
+                        wp["_links"][k] = {"href": v["href"]}
+                        self.parent_changes.append((i, self.hrefid(v["href"])))
                         continue
                     name = next(n for n, s in STATUSES.items() if s == self.hrefid(v["href"]))
                     wp["_links"][k] = {"href": v["href"], "title": name}
@@ -1012,6 +1016,175 @@ class CreateTests(Base):
         self.fake.add(31, "Story", "unrelated two", 5, key="followup:10:cache")
         code, out, _ = self.run_cli("create", "--epic", "5", "--source-key", "followup:10:cache", "--subject", "x")
         self.assertEqual((code, "#30" in out, "#31" in out, self.posts("/projects/")), (0, True, True, []))
+
+
+class MoveTests(Base):
+    """OP681: `move` changes the parent of an Epic or Story under the work-model grammar."""
+
+    def setUp(self):
+        super().setUp()
+        self.fake.add(7, "Saga", "Saga seven", None)
+        self.fake.add(8, "Epic", "Epic eight", 6)
+        self.fake.add(9, "Epic", "Epic nine", 6)
+        self.story(10, key="story:ten")  # a Story under Epic 5
+        self.fake.add(11, "Story", "Story eleven", 8)
+        self.fake.add(12, "Story", "Orphan story", None)
+        for w in self.fake.wps.values():  # stored items carry their project, which the read back checks
+            w["_links"]["project"] = {"href": "/api/v3/projects/3", "title": "haynes-engineering"}
+        self.base = "https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/"
+
+    def patches(self):
+        return [c for c in self.fake.calls if c[0] == "PATCH"]
+
+    def test_story_moves_from_one_epic_to_another_with_read_back(self):
+        code, out, err = self.run_cli("move", "10", "--parent", "8")
+        self.assertEqual(code, 0, err)
+        self.assertIn("moved (read back): #10 Story [Ungroomed] parent=#8 (was #5) lock=2", out)
+        self.assertEqual(self.fake.parent_changes, [(10, 8)])
+        wp = self.fake.wps[10]
+        self.assertEqual((wp["_links"]["type"]["title"], wp["_links"]["status"]["title"], wp["subject"], wp[op.SOURCE_KEY]), ("Story", "Ungroomed", "Story 10", "story:ten"))
+        self.assertEqual(len(self.patches()), 1)
+
+    def test_epic_moves_from_one_saga_to_another(self):
+        code, out, err = self.run_cli("move", "8", "--parent", "7")
+        self.assertEqual(code, 0, err)
+        self.assertIn("moved (read back): #8 Epic [Ungroomed] parent=#7 (was #6)", out)
+        self.assertEqual(self.fake.parent_changes, [(8, 7)])
+        self.assertEqual(self.fake.wps[11]["_links"]["parent"]["href"], "/api/v3/work_packages/8")  # its Stories stay with it
+
+    def test_a_story_without_a_parent_can_be_given_one(self):
+        code, out, err = self.run_cli("move", "12", "--parent", "5")
+        self.assertEqual(code, 0, err)
+        self.assertIn("parent=#5 (was none)", out)
+        self.assertIn("Moved from no parent to " + self.base + "5 by", self.fake.acts[12][0]["comment"]["raw"])
+
+    def test_story_under_a_saga_is_refused_before_any_write(self):
+        code, _, err = self.run_cli("move", "10", "--parent", "6")
+        self.assertEqual((code, "a Story goes under a Epic, but #6 is a Saga" in err), (1, True), err)
+        self.assertEqual((self.patches(), self.posts(), self.fake.parent_changes), ([], [], []))
+
+    def test_epic_under_an_epic_is_refused_before_any_write(self):
+        code, _, err = self.run_cli("move", "8", "--parent", "9")
+        self.assertEqual((code, "a Epic goes under a Saga, but #9 is a Epic" in err), (1, True), err)
+        self.assertEqual((self.patches(), self.posts(), self.fake.parent_changes), ([], [], []))
+
+    def test_a_saga_cannot_be_moved_and_an_item_cannot_be_its_own_parent(self):
+        code, _, err = self.run_cli("move", "6", "--parent", "7")
+        self.assertEqual((code, "a Saga has no parent and cannot be moved" in err), (1, True), err)
+        code, _, err = self.run_cli("move", "8", "--parent", "8")
+        self.assertEqual((code, "its own parent" in err), (1, True), err)
+        self.assertEqual((self.patches(), self.posts(), self.fake.parent_changes), ([], [], []))
+
+    def test_already_under_that_parent_is_a_no_op(self):
+        code, out, err = self.run_cli("move", "10", "--parent", "5", "--reason", "same place")
+        self.assertEqual(code, 0, err)
+        self.assertIn("already under #5, nothing changed: #10 Story", out)
+        self.assertEqual((self.patches(), self.posts(), self.fake.acts[10], self.fake.wps[10]["lockVersion"]), ([], [], [], 1))
+
+    def test_a_held_item_is_refused_without_force_and_moved_with_it(self):
+        for hold in op.HOLDS:
+            self.fake.wps[10]["_links"]["status"] = {"href": "/api/v3/statuses/%d" % STATUSES[hold], "title": hold}
+            code, _, err = self.run_cli("move", "10", "--parent", "8")
+            self.assertEqual((code, "[%s], an explicit hold" % hold in err), (3, True), err)
+        self.assertEqual((self.patches(), self.fake.parent_changes), ([], []))
+        code, out, err = self.run_cli("move", "10", "--parent", "8", "--force")
+        self.assertEqual(code, 0, err)
+        self.assertIn("moved (read back): #10 Story [Paused] parent=#8 (was #5)", out)
+        self.assertEqual(self.fake.parent_changes, [(10, 8)])
+
+    def test_a_lock_conflict_is_re_read_and_retried_once(self):
+        original = self.fake.handle
+        raced = []
+        def racing(method, url, payload):
+            if method == "PATCH" and not raced:  # another writer saves after our read, before our PATCH
+                raced.append(1)
+                self.fake.wps[10]["lockVersion"] += 1
+            return original(method, url, payload)
+        self.fake.handle = racing
+        code, out, err = self.run_cli("move", "10", "--parent", "8")
+        self.assertEqual(code, 0, err)
+        self.assertEqual([c[0] for c in self.patches()], ["PATCH", "PATCH"])
+        self.assertIn("moved (read back): #10 Story [Ungroomed] parent=#8 (was #5) lock=3", out)
+        self.assertEqual(self.fake.parent_changes, [(10, 8)])
+
+    def test_a_second_conflict_fails_and_overwrites_nothing(self):
+        original = self.fake.handle
+        def racing(method, url, payload):
+            if method == "PATCH":
+                self.fake.wps[10]["lockVersion"] += 1  # it always moves first
+            return original(method, url, payload)
+        self.fake.handle = racing
+        code, out, err = self.run_cli("move", "10", "--parent", "8")
+        self.assertEqual(code, 3)
+        self.assertIn("CONFLICT", err)
+        self.assertEqual(len(self.patches()), 2)  # one retry, no more
+        self.assertEqual((self.fake.parent_changes, self.posts(), self.fake.wps[10]["_links"]["parent"]["href"]), ([], [], "/api/v3/work_packages/5"))
+
+    def test_a_retry_after_a_conflict_still_applies_the_hold_and_no_op_checks(self):
+        original = self.fake.handle
+        def racing(method, url, payload):
+            if method == "PATCH":  # meanwhile the item was put on hold
+                self.fake.wps[10]["lockVersion"] += 1
+                self.fake.wps[10]["_links"]["status"] = {"href": "/api/v3/statuses/%d" % STATUSES["Needs answer"], "title": "Needs answer"}
+            return original(method, url, payload)
+        self.fake.handle = racing
+        code, _, err = self.run_cli("move", "10", "--parent", "8")
+        self.assertEqual((code, "[Needs answer], an explicit hold" in err), (3, True), err)
+        self.assertEqual((len(self.patches()), self.fake.parent_changes), (1, []))
+
+    def test_a_read_back_that_differs_is_not_confirmed_and_writes_no_note(self):
+        self.fake.readback = lambda wp: wp.update(subject="Renamed by someone") if wp["id"] == 10 and wp["_links"]["parent"]["href"].endswith("/8") else None
+        code, out, err = self.run_cli("move", "10", "--parent", "8")
+        self.assertEqual(code, 6, err)
+        self.assertIn("NOT confirmed: #10 Story", out)
+        self.assertNotIn("moved (read back)", out)
+        self.assertIn("subject (changed)", err)
+        self.assertEqual(self.posts("/activities"), [])
+
+    def test_a_parent_that_did_not_change_on_read_back_is_not_confirmed(self):
+        self.fake.readback = lambda wp: wp["_links"].update(parent={"href": "/api/v3/work_packages/5"}) if wp["id"] == 10 else None
+        code, out, err = self.run_cli("move", "10", "--parent", "8")
+        self.assertEqual(code, 6, err)
+        self.assertIn("NOT confirmed: #10", out)
+        self.assertNotIn("moved (read back)", out)
+        self.assertIn("does not show the update", err)
+        self.assertEqual(self.posts("/activities"), [])
+
+    def test_the_note_names_the_old_and_new_parent_the_session_and_the_reason(self):
+        code, out, err = self.run_cli("move", "10", "--parent", "8", "--reason", "regrouped under the delivery epic")
+        self.assertEqual(code, 0, err)
+        self.assertIn("note recorded on #10 (read back)", out)
+        note = self.fake.acts[10][0]["comment"]["raw"]
+        self.assertTrue(note.startswith("**[codex-test | worktree w1 | branch agent/w1]** Moved from " + self.base + "5 to " + self.base + "8 by <codex-test | worktree w1 | branch agent/w1>."), note)
+        self.assertIn("Reason: regrouped under the delivery epic", note)
+        self.assertIn("(opwork:note=", note)
+        self.run_cli("move", "11", "--parent", "9")  # no reason given: no Reason text
+        self.assertNotIn("Reason", self.fake.acts[11][0]["comment"]["raw"])
+
+    def test_a_note_that_cannot_be_recorded_leaves_the_item_moved_and_says_so(self):
+        self.fake.fail["POST /api/v3/work_packages/10/activities"] = "before"
+        code, out, err = self.run_cli("move", "10", "--parent", "8")
+        self.assertEqual(code, 6, err)
+        self.assertIn("moved (read back): #10 Story [Ungroomed] parent=#8 (was #5)", out)
+        self.assertIn("MOVE DONE, NOTE NOT RECORDED", err)
+        self.assertIn("Saved locally:", err)
+        self.assertEqual(self.fake.parent_changes, [(10, 8)])
+        self.assertEqual(self.run_cli("move", "10", "--parent", "8")[1].startswith("already under #8"), True)  # a re-run does not move it again
+
+    def test_a_tracker_that_rejects_the_parent_change_is_reported_and_nothing_else_is_written(self):
+        original = self.fake.handle
+        self.fake.handle = lambda m, u, p: (403, {"message": "You are not authorized to access this resource."}) if m == "PATCH" else original(m, u, p)
+        code, _, err = self.run_cli("move", "10", "--parent", "8")
+        self.assertEqual((code, "PATCH #10 rejected HTTP 403" in err), (1, True), err)
+        self.assertEqual(self.posts(), [])
+
+    def test_the_command_is_registered_and_needs_a_parent(self):
+        with contextlib.redirect_stderr(io.StringIO()) as err, self.assertRaises(SystemExit) as stop:
+            op.build_parser().parse_args(["move", "10"])
+        self.assertEqual(stop.exception.code, 2)
+        self.assertIn("--parent", err.getvalue())
+        args = op.build_parser().parse_args(["move", "10", "--parent", "8", "--reason", "x", "--force"])
+        self.assertEqual((args.id, args.parent, args.reason, args.force, args.fn), (10, 8, "x", True, op.cmd_move))
 
 
 class CheckinTests(Base):
