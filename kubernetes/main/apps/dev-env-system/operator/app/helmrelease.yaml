@@ -342,7 +342,32 @@ spec:
               # No flag, CRD or permission change in this pin.
               # Previous pin sha-5ffdada@sha256:e3a92fe0c8de786979f83bfb682062cd0fcb47f0e013dcdb10485c5562700b51
               # (haynes-ops#4816); rollback target for the operator alone.
-              tag: sha-fc89551@sha256:3041808df766298d7c576b5b49abfbb7b844e06cc3b59f8bb55f0f91ea559eae
+              # dev-env main 5bb6c8a0 (release 2.105.0; publish 43115870879's operator job signed and
+              # verified this digest). One behaviour change in the running operator since sha-fc89551,
+              # dev-env#1077 (OP709, DESIGN-063 rulings M to S), behind --enable-codex-host-select,
+              # which is already on:
+              # - Automatic Codex host selection uses a running paired host whose reported agentd is
+              #   2.102.0 or newer, even when its pod is not on the current templates revision. The
+              #   answer gains the field outdated, which is information only. Before, an agent image
+              #   pin left the pooled host unused until it was suspended and resumed by name.
+              # - A running host's reported facts count only when its present pod reported them. The
+              #   heartbeat route records the authenticated pod's UID in status.agent.podUID, and
+              #   selection needs that UID to be the present pod's with a fresh heartbeat. Until a
+              #   host's pod has sent one heartbeat to this operator, selection answers report with
+              #   remote_unavailable for it.
+              # - Every session's heartbeat: the status patch now always carries the caller pod's
+              #   UID. A pod whose read still holds another pod's UID (a resumed session's first
+              #   heartbeats) patches under the resource version, so a concurrent write refuses
+              #   that heartbeat and agentd sends the next one. Three independent reviews are on
+              #   dev-env#1077.
+              # Needs the AgentSession CRD copy with status.agent.podUID (haynes-ops#4831), which
+              # must be applied before this pin: without the field the API server drops it and no
+              # running host counts as reported. The image also carries dev-env#1079 (OP756): API
+              # types and CRDs only, no runtime code.
+              # No flag or permission change in this pin.
+              # Previous pin sha-fc89551@sha256:3041808df766298d7c576b5b49abfbb7b844e06cc3b59f8bb55f0f91ea559eae
+              # (haynes-ops#4826); rollback target for the operator alone.
+              tag: sha-5bb6c8a@sha256:6aee2d0ac3eb559c98cb27b6b68d0d92480500eb9e1c9aa04907e3938acd6b0c
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
