@@ -69,7 +69,7 @@ const pre = (v, head = HEAD, now = NOW) => M.prRefusals(v, head, rules, now).ref
   ok(has(pre(view(v => { delete v.isDraft; return v; })), /unreadable: whether the PR is a draft/), 'an unreadable draft flag is refused');
   ok(has(pre(view(v => { v.state = 'CLOSED'; return v; })), /not open \(state CLOSED\)/) && has(pre(view(v => { v.state = 'MERGED'; return v; })), /not open \(state MERGED\)/), 'a closed or merged PR is refused');
   ok(has(pre(view(v => { v.baseRefName = 'release'; return v; })), /base is release, not main/), 'a PR not based on main is refused');
-  ok(has(pre(view(v => { v.author = { login: 'thaynes43' }; return v; })), /opened by thaynes43, not Renovate/), 'a PR not opened by Renovate is refused');
+  ok(has(pre(view(v => { v.author = { login: 'thaynes43' }; return v; })), /opened by thaynes43 \(is_bot unknown\), not the Renovate app/), 'a PR not opened by Renovate is refused');
   ok(has(pre(view(v => { v.commits[0].authors.push({ login: 'haynes-dev-bot' }); return v; })), /commit a7174f4e is not Renovate's alone \(renovate\[bot\], haynes-dev-bot\)/), 'a commit with a non-Renovate author is refused');
   ok(has(pre(view(v => { v.commits[0].authors = []; return v; })), /is not Renovate's alone \(no author\)/), 'a commit with no linked author is refused');
   ok(has(pre(view(v => { v.commits = []; return v; })), /unreadable: the PR commits/), 'no commits is refused');
@@ -82,6 +82,32 @@ const pre = (v, head = HEAD, now = NOW) => M.prRefusals(v, head, rules, now).ref
   ok(has(pre(view(v => { v.statusCheckRollup.push({ __typename: 'Mystery' }); return v; })), /a check entry of type Mystery/), 'an unknown check entry is refused');
   ok(has(pre(view(v => { v.statusCheckRollup = null; return v; })), /unreadable: the checks on the head/), 'an unreadable check list is refused');
   ok(has(pre(view(v => { v.files.push({ path: 'docs/notes.md' }); v.changedFiles = 3; return v; })), /no PR validation for docs\/notes\.md/), 'a file no workflow validates is refused');
+  // finding 5 of the independent review: the author is the Renovate app, from this repository, on a renovate/ branch
+  ok(fx.view.author.login === 'app/renovate' && fx.view.author.is_bot === true && fx.view.isCrossRepository === false && fx.view.headRefName === 'renovate/kubernetes-monorepo', 'fixture: gh reported PR 3915 as app/renovate, is_bot, same repository, renovate/ branch (live 2026-11-11)');
+  ok(JSON.stringify(rules.renovate_pr_authors) === '["app/renovate"]', 'renovate_pr_authors is the Renovate app login alone');
+  for (const [name, f, re] of [
+    ['a user named renovate', v => { v.author = { login: 'renovate', is_bot: false }; }, /opened by renovate \(is_bot false\), not the Renovate app/],
+    ['renovate[bot] as a PR author login', v => { v.author = { login: 'renovate[bot]', is_bot: true }; }, /opened by renovate\[bot\] \(is_bot true\), not the Renovate app/],
+    ['app/renovate that is not a bot', v => { v.author = { login: 'app/renovate', is_bot: false }; }, /\(is_bot false\), not the Renovate app/],
+    ['app/renovate with is_bot unreadable', v => { v.author = { login: 'app/renovate' }; }, /\(is_bot unknown\), not the Renovate app/],
+    ['a cross-repository PR', v => { v.isCrossRepository = true; }, /a pull request from another repository/],
+    ['an unreadable cross-repository flag', v => { delete v.isCrossRepository; }, /unreadable: whether the PR comes from another repository/],
+    ['a head branch outside renovate/', v => { v.headRefName = 'feature/renovate-ish'; }, /head branch feature\/renovate-ish is not under renovate\//],
+  ]) ok(has(pre(view(v => { f(v); return v; })), re), `finding 5: ${name} is refused`, pre(view(v => { f(v); return v; })).join(' | '));
+  const cr = (f = c => c) => M.commitRefusals(fx.pr_commits.map(c => f(structuredClone(c))), fx.view);
+  ok(fx.pr_commits.length === 1 && cr().length === 0, "PR 3915's REST commit (renovate[bot], Bot, 29139614, committed by web-flow, signature valid) passes");
+  for (const [name, f, re] of [
+    ['an author of type User', c => { c.author.type = 'User'; return c; }, /author renovate\[bot\]\/User\/29139614/],
+    ['another account id', c => { c.author.id = 1; return c; }, /author renovate\[bot\]\/Bot\/1,/],
+    ['another author login', c => { c.author.login = 'haynes-dev-bot[bot]'; return c; }, /author haynes-dev-bot\[bot\]/],
+    ['no linked author', c => { c.author = null; return c; }, /author none\/\?\/\?/],
+    ['a committer other than web-flow', c => { c.committer.login = 'thaynes43'; return c; }, /committer thaynes43/],
+    ['an unsigned commit', c => { c.commit.verification = { verified: false, reason: 'unsigned' }; return c; }, /signature unsigned/],
+  ]) ok(has(cr(f), re), `finding 5: a commit with ${name} is refused`, cr(f).join(' | '));
+  ok(has(M.commitRefusals(null, fx.view), /^unreadable: the PR commits \(REST\)$/), 'finding 5: an unreadable REST commit list is refused');
+  ok(has(M.commitRefusals([...fx.pr_commits, ...fx.pr_commits], fx.view), /the REST and GraphQL commit lists disagree \(2 and 1\)/), 'finding 5: REST and GraphQL commit lists that disagree are refused');
+  ok(has(M.commitRefusals(Array(100).fill(fx.pr_commits[0]), fx.view), /may be truncated \(100 commits\)/), 'finding 5: 100 commits is refused as possibly truncated');
+  ok(has(M.commitRefusals([{ ...fx.pr_commits[0], sha: 'e'.repeat(40) }], fx.view), /does not end at the head/), 'finding 5: a REST list that does not end at the head is refused');
 }
 
 // ── 2. R7 and the head behind main, through evaluate() with a stub reader ─────────────
@@ -89,6 +115,7 @@ const pre = (v, head = HEAD, now = NOW) => M.prRefusals(v, head, rules, now).ref
 const reader = (w = {}) => (cmd, argv) => {
   if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'view') return w.view === null ? null : JSON.stringify(w.view || fx.view);
   const api = argv.find(a => a.startsWith('repos/')) || '';
+  if (/\/pulls\/\d+\/commits/.test(api)) return w.commits === 'FAIL' ? null : JSON.stringify(w.commits || fx.pr_commits);
   if (/\/compare\//.test(api)) { const s = api.split('...')[1].split('?')[0]; const c = (w.compare || fx.compare)[s]; return c === 'FAIL' || !c ? null : JSON.stringify(c); }
   if (/\/commits\?sha=main&/.test(api)) {
     const q = new URLSearchParams(api.split('?')[1]);
@@ -114,6 +141,7 @@ const GO_MOD = 'scripts/tests/dev-env-archive-guard/go.mod';
   ok(has(evalRef({ newest: { ...nb, [GO_MOD]: 'FAIL' } }).refusals, /unreadable: whether the head contains main's newest commit to scripts\/tests\/dev-env-archive-guard\/go\.mod/), "behind main: a failed read of main's commits fails closed");
   ok(evalRef({ newest: { [GO_MOD]: [], 'scripts/tests/dev-env-archive-guard/go.sum': [] } }).refusals.length === 0, 'behind main: a file main has no commit for (one the PR adds) is not behind');
   ok(has(evalRef({ view: null }).refusals, /^unreadable: the pull request \(gh pr view\)$/), 'an unreadable PR fails closed');
+  ok(has(evalRef({ commits: 'FAIL' }).refusals, /^unreadable: the PR commits \(REST\)$/), 'evaluate() reads the REST commit list and fails closed without it');
   ok(has(evalRef({ view: view(v => { v.commits[0].committedDate = null; v.statusCheckRollup.forEach(c => { c.startedAt = null; c.completedAt = null; }); return v; }) }).refusals, /unreadable: when the head's checks ran/), 'R7: no readable reference time fails closed');
   const b = M.behindMain(['a', 'b', 'c'], { byPath: { a: { sha: 'x', at: 't' }, b: null }, unreadable: [] }, { contains: { x: false }, unreadable: [] });
   ok(b.behind.length === 1 && b.behind[0].path === 'a' && JSON.stringify(b.unreadable) === '["c"]', 'behindMain (pure): behind, a new file, and a path with no answer');
@@ -175,25 +203,40 @@ fs.appendFileSync(process.env.STUB_LOG, JSON.stringify({ cmd, argv, stdin }) + '
 const w = fs.existsSync(process.env.STUB_WORLD) ? JSON.parse(fs.readFileSync(process.env.STUB_WORLD, 'utf8')) : {};
 const out = o => { process.stdout.write(typeof o === 'string' ? o : JSON.stringify(o)); process.exit(0); };
 const fail = (m = 'Error from server (Forbidden)') => { process.stderr.write(m); process.exit(1); };
+const sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const LOCKF = process.env.STUB_LOCK, MERGED = process.env.STUB_MERGED;
 const lock = () => (fs.existsSync(LOCKF) ? JSON.parse(fs.readFileSync(LOCKF, 'utf8')) : null);
 const merged = () => (fs.existsSync(MERGED) ? JSON.parse(fs.readFileSync(MERGED, 'utf8')) : {});
-if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'merge') { if (w.mergeExit) fail('merge refused'); const m = merged(); m[argv[2]] = true; fs.writeFileSync(MERGED, JSON.stringify(m)); out(''); }
+const count = f => { const n = Number(fs.existsSync(LOCKF + f) ? fs.readFileSync(LOCKF + f, 'utf8') : 0) + 1; fs.writeFileSync(LOCKF + f, String(n)); return n; };
+if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'list') { if (w.slowMs) sleep(w.slowMs); out([]); }
+if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'merge') {
+  fs.writeFileSync(LOCKF + '.at-merge', JSON.stringify(lock()));
+  if (w.mergeSleepMs) { sleep(w.mergeSleepMs); process.exit(1); }
+  if (w.mergeKilled) process.kill(process.pid, 'SIGKILL');
+  if (w.mergeExit) fail('merge refused'); const m = merged(); m[argv[2]] = true; fs.writeFileSync(MERGED, JSON.stringify(m)); out('');
+}
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'view') {
   const f = argv[argv.indexOf('--json') + 1] || '';
   if (f.includes('mergedAt')) out(merged()[argv[2]] ? { state: 'MERGED', mergedAt: '2026-11-11T16:00:20Z', headRefOid: w.view.headRefOid, mergeCommit: { oid: 'f'.repeat(40) } } : { state: 'OPEN', mergedAt: null, headRefOid: w.view.headRefOid, mergeCommit: null });
   out(w.view);
 }
 const api = argv.find(a => a.startsWith('repos/')) || '';
+if (cmd === 'gh' && /\\/pulls\\/\\d+\\/commits/.test(api)) out(w.prCommits);
+if (cmd === 'gh' && api.includes('contents/.renovate/holds.json5')) { if (w.holdsFail) fail(); out({ content: w.holds }); }
+if (cmd === 'gh' && /\\/issues\\/\\d+\\/comments/.test(api)) out([w.comments || []]);
+if (cmd === 'gh' && /\\/commits\\/[0-9a-f]{40}$/.test(api)) out('');
 if (cmd === 'gh' && /\\/compare\\//.test(api)) { const c = (w.compare || {})[api.split('...')[1].split('?')[0]]; if (!c) fail(); out(c); }
 if (cmd === 'gh' && /\\/commits\\?sha=main&/.test(api)) { const q = new URLSearchParams(api.split('?')[1]); const v = q.get('since') ? (w.since || {})[q.get('path')] ?? [] : (w.newest || {})[q.get('path')]; if (!v) fail(); out(v.map(c => ({ sha: c.sha, commit: { committer: { date: c.at } } }))); }
 if (cmd === 'kubectl' && argv[0] === 'get') {
   const name = argv[argv.indexOf('--field-selector') + 1].replace('metadata.name=', '');
   if (w.cmFail) fail();
-  out({ items: [...(w.cms || []), ...(lock() ? [lock()] : [])].filter(c => c.metadata.name === name) });
+  let cms = w.cms || [];
+  if (name === 'upgrade-lane-state') { const n = count('.state-reads'); if (w.pauseFromRead && n >= w.pauseFromRead) cms = [...cms, { metadata: { name, resourceVersion: '3' }, data: { pause: 'set mid-run' } }]; }
+  out({ items: [...cms, ...(lock() ? [lock()] : [])].filter(c => c.metadata.name === name) });
 }
 if (cmd === 'kubectl' && (argv[0] === 'create' || argv[0] === 'replace')) {
-  if (w.lockWrite) fail();
+  const n = count('.writes');
+  if (w.lockWrite || w.lockWriteFailAt === n) fail();
   const m = JSON.parse(stdin), cur = lock();
   if (argv[0] === 'create' && cur) fail('Error from server (AlreadyExists): configmaps "upgrade-change-lock" already exists');
   if (argv[0] === 'replace' && !cur) fail('Error from server (NotFound)');
@@ -207,7 +250,13 @@ fail('stub: unexpected call ' + cmd + ' ' + argv.join(' '));
   const env = { PATH: `${bin}:${process.env.PATH}`, HOME: tmp, STUB_LOG: logFile, STUB_WORLD: worldFile, STUB_LOCK: lockFile, STUB_MERGED: mergedFile };
   const calls = () => (existsSync(logFile) ? readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : []);
   const lockNow = () => (existsSync(lockFile) ? JSON.parse(readFileSync(lockFile, 'utf8')) : null);
-  const world = (w = {}) => { for (const f of [logFile, lockFile, mergedFile]) rmSync(f, { force: true }); if (w.lock) writeFileSync(lockFile, JSON.stringify(w.lock)); writeFileSync(worldFile, JSON.stringify({ view: fx.view, newest: fx.main_newest, compare: fx.compare, cms: [], ...w })); };
+  const HOLDS = Buffer.from(readFileSync(join(ROOT, '.renovate/holds.json5'))).toString('base64');
+  const atMerge = () => (existsSync(`${lockFile}.at-merge`) ? JSON.parse(readFileSync(`${lockFile}.at-merge`, 'utf8')) : null);
+  const world = (w = {}) => {
+    for (const f of [logFile, lockFile, mergedFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`, `${lockFile}.writes`]) rmSync(f, { force: true });
+    if (w.lock) writeFileSync(lockFile, JSON.stringify(w.lock));
+    writeFileSync(worldFile, JSON.stringify({ view: fx.view, newest: fx.main_newest, compare: fx.compare, prCommits: fx.pr_commits, comments: fx.comments, holds: HOLDS, cms: [], ...w }));
+  };
   // the read-only runner, as the tick uses it, with the stub binaries on PATH
   const run = (cmd, argv, o = {}) => L.runReadOnly(cmd, argv, { env, ...o });
   const lockOf = (data, rv = '41') => ({ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'upgrade-change-lock', namespace: 'upgrade-agent', resourceVersion: rv }, data });
@@ -263,7 +312,8 @@ fail('stub: unexpected call ' + cmd + ' ' + argv.join(' '));
   ok(/if \(!\['create', 'replace'\]\.includes\(verb\) \|\| manifest\?\.kind !== 'ConfigMap' \|\| m\.name !== LOCK\.name \|\| m\.namespace !== LOCK\.namespace/.test(src) && /\(verb === 'replace' && !m\.resourceVersion\)\) \{\s*throw/.test(src), 'writeLock refuses any verb, kind, name or namespace but the lock, and a replace without a resourceVersion');
 
   // the lane's merge step releases the lock on every exit path
-  const base = { rules, env, clock: () => NOW, liveClasses: [], token: M.tokenPermissions('{"contents":"read"}'), holder: 'upgrade-night/test/lane', takeAllowed: true };
+  const OPEN = () => ({ open: true, local: '02:00' });
+  const base = { rules, env, clock: () => NOW, liveClasses: [], token: M.tokenPermissions('{"contents":"read"}'), holder: 'upgrade-night/test/lane', takeAllowed: true, windowOpen: OPEN, tickStartedAt: NOW };
   const subject = { pr: 3915, head: HEAD, class: 'no-cluster-effect', chosen: true };
   world();
   const s1 = M.laneMergeStep({ ...base, mode: 'dryrun', subject, run });
@@ -287,13 +337,64 @@ fail('stub: unexpected call ' + cmd + ' ' + argv.join(' '));
   ok(s4.verdict.verdict === 'refused' && has(s4.verdict.lane_refusals, /has 200s of lease left, under 240s/) && lockNow().data.holder === '' && !calls().some(c => c.argv[1] === 'merge'), 'live: not merging on a lease about to lapse', JSON.stringify(s4.verdict.lane_refusals));
   world({ cms: [{ metadata: { name: 'upgrade-lane-state', resourceVersion: '3' }, data: { pause: 'tom testing' } }] });
   const s5 = M.laneMergeStep({ ...base, mode: 'live', liveClasses: ['no-cluster-effect'], token: tokW, subject, run });
-  ok(s5.verdict.verdict === 'refused' && has(s5.verdict.pr_refusals, /^paused: data\.pause="tom testing"$/) && !calls().some(c => ['create', 'replace'].includes(c.argv[0]) || c.argv[1] === 'merge'), 'a set pause: no lock take and no merge');
+  ok(s5.verdict.verdict === 'refused' && has(s5.verdict.pr_refusals, /^paused before the lock take: data\.pause="tom testing"$/) && !calls().some(c => ['create', 'replace'].includes(c.argv[0]) || c.argv[1] === 'merge'), 'a set pause: no lock take and no merge');
   world({ cmFail: true });
   const s6 = M.laneMergeStep({ ...base, mode: 'live', liveClasses: ['no-cluster-effect'], token: tokW, subject, run });
   ok(s6.verdict.verdict === 'refused' && has(s6.verdict.pr_refusals, /unreadable: data\.pause/) && !calls().some(c => ['create', 'replace'].includes(c.argv[0]) || c.argv[1] === 'merge'), 'an unreadable pause fails closed: no lock take and no merge');
   world();
   const s7 = M.laneMergeStep({ ...base, mode: 'live', liveClasses: ['no-cluster-effect'], token: tokW, subject, run, takeAllowed: false });
   ok(s7.verdict.verdict === 'refused' && has(s7.verdict.pr_refusals, /no change lock held: a local run \(no --write-state\) never takes it/) && !calls().some(c => ['create', 'replace'].includes(c.argv[0]) || c.argv[1] === 'merge'), 'a local live run never takes the lock and so never merges');
+
+  // the independent review of PR 4827, in process: each guard refuses without help from the others
+  const live = { ...base, mode: 'live', liveClasses: ['no-cluster-effect'], token: tokW, subject };
+  const noMerge = () => !calls().some(c => c.cmd === 'gh' && c.argv[1] === 'merge');
+  // finding 1: pause set while the step reads the PR (the reviewer's probe)
+  world();
+  let pausedNow = false;
+  const probe = (cmd, argv, o) => {
+    if (cmd === 'kubectl' && argv.includes('metadata.name=upgrade-lane-state')) return JSON.stringify({ items: pausedNow ? [{ metadata: { name: 'upgrade-lane-state', resourceVersion: '3' }, data: { pause: 'tom' } }] : [] });
+    if (cmd === 'gh' && argv[1] === 'view' && !argv.join(' ').includes('mergedAt')) pausedNow = true;
+    return run(cmd, argv, o);
+  };
+  const f1 = M.laneMergeStep({ ...live, run: probe });
+  ok(f1.verdict.verdict === 'refused' && has(f1.verdict.pr_refusals, /^paused just before the merge call: data\.pause="tom"$/) && noMerge() && lockNow().data.holder === '', "finding 1: a pause set during the PR read stops the merge (the reviewer's probe); lock released", JSON.stringify(f1.verdict.pr_refusals));
+  // finding 2: the window and the age of the gates, at the merge call
+  world();
+  const f2a = M.laneMergeStep({ ...live, run, windowOpen: () => ({ open: false, local: '05:46' }) });
+  ok(f2a.verdict.verdict === 'refused' && has(f2a.verdict.lane_refusals, /^the merge window is closed at the merge call \(now 05:46\)$/) && noMerge() && lockNow().data.holder === '', 'finding 2: a merge window closed at the call refuses (the stalled 04:45 tick)');
+  world();
+  const f2b = M.laneMergeStep({ ...live, run, windowOpen: undefined });
+  ok(has(f2b.verdict.lane_refusals, /unreadable: whether the merge window is open at the merge call/) && noMerge(), 'finding 2: no window check given refuses (fail closed)');
+  world();
+  const f2c = M.laneMergeStep({ ...live, run, tickStartedAt: NOW - 301e3 });
+  ok(has(f2c.verdict.lane_refusals, /^the tick's gates are 301s old at the merge call, over 300s$/) && noMerge(), "finding 2: gates older than 300s at the call refuse", JSON.stringify(f2c.verdict.lane_refusals));
+  world();
+  const f2d = M.laneMergeStep({ ...live, run, tickStartedAt: undefined });
+  ok(has(f2d.verdict.lane_refusals, /unreadable: when the tick began/) && noMerge(), 'finding 2: an unknown tick start refuses');
+  world();
+  const f2e = M.laneMergeStep({ ...live, run, tickStartedAt: NOW - 299e3 });
+  ok(f2e.verdict.verdict === 'merged', 'finding 2: gates 299s old still merge (the limit is 300s)', JSON.stringify(f2e.verdict.lane_refusals));
+  // finding 3: the post-merge lease is in place before the call; a call with no exit status keeps it
+  world();
+  const f3 = M.laneMergeStep({ ...live, run });
+  ok(f3.verdict.verdict === 'merged' && atMerge()?.data.phase === 'merging' && atMerge().data.expires_at === '2026-11-11T20:00:00.000Z' && atMerge().data.holder === 'upgrade-night/test/lane', 'finding 3: the lock reads phase merging with the 4h lease at the moment of the merge call', JSON.stringify(atMerge()?.data));
+  world({ mergeKilled: true });
+  const f3k = M.laneMergeStep({ ...live, run });
+  ok(f3k.verdict.verdict === 'merge-unknown' && f3k.verdict.merged?.state === 'OPEN' && lockNow().data.holder === 'upgrade-night/test/lane' && lockNow().data.phase === 'merge-unknown' && lockNow().data.expires_at === '2026-11-11T20:00:00.000Z', 'finding 3: a merge call that ends with no exit status is merge-unknown and keeps the 4h hold, even when the PR reads OPEN', `${f3k.verdict.verdict} ${f3k.verdict.merge_call} ${JSON.stringify(lockNow()?.data)}`);
+  ok(M.mergeOutcome({ exit: null }, { state: 'OPEN' }) === 'merge-unknown' && M.mergeOutcome({ exit: 1 }, { state: 'OPEN' }) === 'merge-failed' && M.mergeOutcome({ exit: 1 }, null) === 'merge-unknown' && M.mergeOutcome({ exit: 0 }, { merged: true }) === 'merged' && M.mergeOutcome({ exit: 0 }, { state: 'OPEN' }) === 'merge-unknown', 'mergeOutcome: only a real exit code with the PR open is a failure');
+  world({ lockWriteFailAt: 2 });
+  const f3w = M.laneMergeStep({ ...live, run });
+  ok(f3w.verdict.verdict === 'refused' && has(f3w.verdict.lane_refusals, /could not be moved to phase merging/) && noMerge(), 'finding 3: when the merging phase cannot be written the lane does not merge');
+
+  // finding 2: every read has a deadline
+  world({ slowMs: 5000 });
+  const t0 = Date.now();
+  const slow = L.runReadOnly('gh', ['pr', 'list', '-R', 'x/y'], { env, allowFail: true, timeoutMs: 400 });
+  ok(slow === null && Date.now() - t0 < 3000, 'finding 2: a read that stalls is killed at its deadline and counts as failed', `${slow} after ${Date.now() - t0}ms`);
+  let tmsg = '';
+  try { L.runReadOnly('gh', ['pr', 'list', '-R', 'x/y'], { env, timeoutMs: 400 }); } catch (e) { tmsg = e.message; }
+  ok(/timed out or killed after 400ms \(SIGKILL\)/.test(tmsg), 'finding 2: a stalled read without allowFail throws, naming the timeout', tmsg);
+  ok(L.READ_TIMEOUT_MS === 120e3 && /timeout: timeoutMs, killSignal: 'SIGKILL'/.test(readFileSync(join(RES, 'lane-classify.mjs'), 'utf8')), 'runReadOnly passes a 120s default deadline to spawnSync');
 
   // callMerge refuses before it spawns
   world();
@@ -326,8 +427,32 @@ if (!t.taken) { console.log('NOT TAKEN ' + t.why); process.exit(9); }`;
   });
   ok(sig.code === 143 && lockNow()?.data.holder === '' && /released on process SIGTERM/.test(lockNow()?.data.last_note || ''), 'SIGTERM while holding the lock releases it and exits 143', `${JSON.stringify(sig)} ${JSON.stringify(lockNow()?.data)}`);
 
+  // finding 3: a kill while the merge call runs leaves the 4h hold (the post-merge lease was written first)
+  world({ mergeSleepMs: 8000 });
+  const killed = await new Promise(resolve => {
+    const script = `const M = await import(process.env.M_PATH); const L = await import(process.env.L_PATH);
+const run = (c, a, o = {}) => L.runReadOnly(c, a, { env: process.env, ...o });
+const rules = L.loadRules(process.env.RULES_PATH);
+M.laneMergeStep({ mode: 'live', subject: { pr: 3915, head: '${HEAD}', class: 'no-cluster-effect', chosen: true }, rules, run, env: process.env, clock: () => ${NOW},
+  liveClasses: ['no-cluster-effect'], token: M.tokenPermissions('{"contents":"write","pull_requests":"write","checks":"read"}'), holder: 'child-merge', takeAllowed: true,
+  windowOpen: () => ({ open: true, local: '02:00' }), tickStartedAt: ${NOW} });`;
+    const p = spawn(process.execPath, ['--input-type=module', '-e', script], { env: { ...env, M_PATH: join(RES, 'night-merge.mjs'), L_PATH: join(RES, 'lane-classify.mjs'), RULES_PATH: join(RES, 'upgrade-rules.json') }, detached: true });
+    const stop = setTimeout(() => { try { process.kill(-p.pid, 'SIGKILL'); } catch {} }, 30000);
+    const poll = setInterval(() => { if (existsSync(`${lockFile}.at-merge`)) { clearInterval(poll); try { process.kill(-p.pid, 'SIGKILL'); } catch {} } }, 100);
+    p.on('close', (code, signal) => { clearTimeout(stop); clearInterval(poll); resolve({ code, signal }); });
+  });
+  ok(killed.signal === 'SIGKILL' && lockNow()?.data.holder === 'child-merge' && lockNow().data.phase === 'merging' && lockNow().data.expires_at === '2026-11-11T20:00:00.000Z', 'finding 3: SIGKILL during the merge call leaves the lock in phase merging with the 4h lease', `${JSON.stringify(killed)} ${JSON.stringify(lockNow()?.data)}`);
+
   // ── 5. the hand-run CLI ─────────────────────────────────────────────────────────
-  const cli = (args, w = {}) => { world(w); const r = spawnSync(process.execPath, [join(RES, 'night-merge.mjs'), ...args], { env: { ...env, UPGRADE_NIGHT_NOW: new Date(NOW).toISOString() }, encoding: 'utf8', timeout: 30000 }); return { ...r, calls: calls(), writes: calls().filter(c => !L.isReadOnlyCommand(c.cmd, c.argv)) }; };
+  // --merge refuses UPGRADE_NIGHT_NOW, so it runs with the clock pinned by the test-only preload
+  const FAKE_CLOCK = join(ROOT, 'scripts/upgrade-agent/test-fake-clock.mjs');
+  const cli = (args, w = {}, { keepNow = false } = {}) => {
+    world(w);
+    const pin = args.includes('--merge') && !keepNow;
+    const e = pin ? { ...env, FAKE_NOW: new Date(NOW).toISOString() } : { ...env, UPGRADE_NIGHT_NOW: new Date(NOW).toISOString() };
+    const r = spawnSync(process.execPath, [...(pin ? ['--import', FAKE_CLOCK] : []), join(RES, 'night-merge.mjs'), ...args], { env: e, encoding: 'utf8', timeout: 30000 });
+    return { ...r, calls: calls(), writes: calls().filter(c => !L.isReadOnlyCommand(c.cmd, c.argv)) };
+  };
   const CHECK = ['--pr', '3915', '--head', HEAD, '--check-only'], MERGE = ['--pr', '3915', '--head', HEAD, '--merge'];
   const c1 = cli(CHECK);
   ok(c1.status === 0 && /^merge step \(hand --check-only\) #3915 head a7174f4e: WOULD-MERGE$/m.test(c1.stdout) && /merge call: not made \(--check-only\)/.test(c1.stdout) && c1.writes.length === 0, '--check-only on PR 3915 as read 2026-11-11: WOULD-MERGE, exit 0, nothing written', c1.stdout + c1.stderr);
@@ -338,7 +463,7 @@ if (!t.taken) { console.log('NOT TAKEN ' + t.why); process.exit(9); }`;
   const c3 = cli(CHECK, { lock: lockOf({ holder: 'upgrade-night/x/1', phase: 'taken', expires_at: '2026-11-11T16:08:00Z' }) });
   ok(c3.status === 1 && /refused: the change lock is held by upgrade-night\/x\/1/.test(c3.stdout) && c3.writes.length === 0, '--check-only refuses while the lock is held', c3.stdout);
   const c4 = cli(CHECK, { cms: [{ metadata: { name: 'upgrade-lane-state', resourceVersion: '3' }, data: { pause: 'tom' } }] });
-  ok(c4.status === 1 && /refused: paused: data\.pause="tom"/.test(c4.stdout), '--check-only refuses while the lane is paused', c4.stdout);
+  ok(c4.status === 1 && /refused: paused at the start: data\.pause="tom"/.test(c4.stdout), '--check-only refuses while the lane is paused', c4.stdout);
   const c5 = cli(MERGE);
   const m5 = c5.calls.filter(c => c.cmd === 'gh' && c.argv[1] === 'merge');
   ok(c5.status === 0 && /: MERGED$/m.test(c5.stdout) && m5.length === 1 && JSON.stringify(m5[0].argv) === JSON.stringify(M.mergeArgv(M.REPO, 3915, HEAD)) && !c5.calls.some(c => c.cmd === 'kubectl' && c.argv[0] !== 'get'), '--merge on a clean verdict: one pinned squash merge, verified; the lock is not written', c5.stdout + c5.stderr);
@@ -346,6 +471,26 @@ if (!t.taken) { console.log('NOT TAKEN ' + t.why); process.exit(9); }`;
   ok(c6.status === 1 && /merge call: not made \(refused\)/.test(c6.stdout) && !c6.calls.some(c => c.argv[1] === 'merge'), '--merge on a refused verdict: no merge call, exit 1', c6.stdout);
   const c7 = cli(MERGE, { mergeExit: true });
   ok(c7.status === 3 && /: MERGE-FAILED$/m.test(c7.stdout), '--merge whose call fails with the PR still open: exit 3', c7.stdout);
+  // finding 4: the hand run classifies the PR as the lane does and refuses anything but LANE-A
+  ok(/^  lane: LANE-A \(no-cluster-effect\): /m.test(c1.stdout) && c1.calls.some(c => c.cmd === 'gh' && c.argv.some(a => a.includes('contents/.renovate/holds.json5'))) && c1.calls.some(c => c.cmd === 'gh' && c.argv.some(a => /issues\/3915\/comments/.test(a))), 'finding 4: --check-only prints the lane, from the classifier with holds and comments read', c1.stdout);
+  const withView = f => ({ view: (() => { const v = structuredClone(fx.view); f(v); return v; })() });
+  const major = withView(v => { v.labels = [{ name: 'type/major' }]; });
+  const k1 = cli(CHECK, major);
+  ok(k1.status === 1 && /refused: lane LANE-B-OWNER \(major\): update type major/.test(k1.stdout), 'finding 4: a major update is refused by its lane', k1.stdout);
+  const k2 = cli(CHECK, { comments: [{ user: { login: 'haynes-ops-bot[bot]' }, body: `<!-- shepherd-vet sha=${HEAD} -->\n\nVERDICT: HOLD - needs a person` }] });
+  ok(k2.status === 1 && /refused: lane LANE-B-OWNER \(vet-hold\)/.test(k2.stdout), 'finding 4: a current-head vet HOLD by the trusted bot is refused', k2.stdout);
+  const k3 = cli(CHECK, withView(v => { v.files.push({ path: 'kubernetes/main/apps/dev-env-system/keeper/app/helmrelease.yaml' }); v.changedFiles = 3; }));
+  ok(k3.status === 1 && /refused: lane EXCLUDED/.test(k3.stdout), 'finding 4: a PR touching an excluded path is refused', k3.stdout);
+  const k4 = cli(CHECK, { holdsFail: true });
+  ok(k4.status === 1 && /refused: unreadable: \.renovate\/holds\.json5 on main/.test(k4.stdout), 'finding 4: unreadable holds refuse (fail closed)', k4.stdout);
+  const k5 = cli(MERGE, major);
+  ok(k5.status === 1 && !k5.calls.some(c => c.argv[1] === 'merge') && /refused: lane LANE-B-OWNER/.test(k5.stdout), 'finding 4: --merge on a major update makes no merge call', k5.stdout);
+  // finding 1, hand path: a pause that appears between the first read and the merge call
+  const k6 = cli(MERGE, { pauseFromRead: 2 });
+  ok(k6.status === 1 && /refused: paused just before the merge call: data\.pause="set mid-run"/.test(k6.stdout) && !k6.calls.some(c => c.argv[1] === 'merge'), 'finding 1: --merge re-reads the pause just before the call and refuses', k6.stdout);
+  // finding 6: --merge never runs on a pinned clock
+  const k7 = cli(MERGE, {}, { keepNow: true });
+  ok(k7.status === 2 && /--merge refuses a pinned clock \(UPGRADE_NIGHT_NOW is set\)/.test(k7.stderr) && k7.calls.length === 0, 'finding 6: --merge with UPGRADE_NIGHT_NOW set exits 2 before any call', `${k7.status} ${k7.stderr}`);
   const c8 = cli([...CHECK, '--json']);
   let j8 = null; try { j8 = JSON.parse(c8.stdout); } catch {}
   ok(c8.status === 0 && j8?.verdict === 'would-merge' && j8.ok === true && j8.facts?.reference_time === '2026-11-10T00:10:58.000Z', '--json prints the verdict as JSON', c8.stdout.slice(0, 300));

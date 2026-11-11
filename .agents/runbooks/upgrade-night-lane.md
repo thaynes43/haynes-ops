@@ -328,6 +328,8 @@ Two env vars on the `upgrade-night` container, both in git:
 - `scripts/upgrade-agent/lane-night-dryrun-selftest.mjs` fails if git ships anything but
   `dryrun`, an empty allowlist and the token below. Story 556 changes that test together
   with the switch.
+- Live mode also refuses (exit 3, before a read) when `UPGRADE_NIGHT_NOW` is set. That
+  variable pins the clock for the dry-run selftest only.
 
 **The token.** The init container requests
 `{"contents":"write","pull_requests":"write","checks":"read"}`, the shepherd's rights,
@@ -352,8 +354,11 @@ the gate blockers.
 
 **What it reads afresh**, right before the merge and under the lock:
 
-- `gh pr view` with state, draft flag, head, base, author, mergeability, files, commits
-  and every check and commit status on the head;
+- `gh pr view` with state, draft flag, head and head branch, base, whether it comes
+  from another repository, author, mergeability, files, commits and every check and
+  commit status on the head;
+- the REST commit list (`repos/<repo>/pulls/<n>/commits`): each commit's author and
+  committer accounts and its signature;
 - story 550's R7 through the same three functions
   (`checksReferenceTime`, `mainCommitsTouching`, `checksPredateMain`);
 - for each changed file, the newest commit on main that touches it
@@ -364,7 +369,9 @@ the gate blockers.
 
 | Refusal | Why |
 |---|---|
-| not open, a draft, base not `main`, not opened by Renovate, a commit not Renovate's alone | as in the handoff preflight |
+| not open, a draft, base not `main`, a commit not Renovate's alone | as in the handoff preflight |
+| `opened by … not the Renovate app`, `a pull request from another repository`, `head branch … is not under renovate/` | the author must be the Renovate app as gh reports it (`app/renovate`, `is_bot` true), from this repository, on a `renovate/` branch |
+| `commit … is not the Renovate app's (…)` | every REST commit authored by `renovate[bot]` (type `Bot`, id 29139614), committed by `web-flow` with a valid signature, as GitHub makes Renovate's commits. Read live on 2026-11-11 for every open Renovate PR |
 | `head moved: …` | the head is not the one the tick chose; the merge is pinned to it anyway |
 | `GitHub reads it … not MERGEABLE`, `merge state …` | `CLEAN`, `HAS_HOOKS` and `UNSTABLE` pass; the check scan below decides on non-required checks |
 | `commit status <context> is pending (PENDING)` or `(EXPECTED)` | **gap 1.** The handoff preflight read a pending status as complete |
@@ -373,15 +380,32 @@ the gate blockers.
 | `expected check …` | every check the check map expects for the files, as in the classifier |
 | `checks predate main: …` | **gap 2.** R7, reused, not rewritten |
 | `head is behind main: <file> changed by <sha> …` | **gap 3.** "Require branches to be up to date" is off for main, so GitHub would merge it |
-| `the change lock …`, `paused: …` | see below |
+| `the change lock …`, `paused before the lock take: …` | see below |
 | `class … not in the live allowlist`, `the token …` | the lane's own conditions (listed apart as `lane_refusals`) |
+
+**Just before the merge call** (live mode only) it checks again, and refuses on any of:
+
+| Refusal | Why |
+|---|---|
+| `the change lock has …s of lease left, under 240s` | not merging on a lease that may lapse |
+| `the merge window is closed at the merge call (now HH:MM)` | the tick's window gate was judged at its start; a stalled tick must not merge after 04:45 |
+| `the tick's gates are …s old at the merge call, over 300s` | `max_gate_age_seconds`: the backups, alerts and Flux baseline were read at the tick's start |
+| `paused just before the merge call: …`, or the pause unreadable | a pause set while the step read the PR stops the merge |
+| `the change lock could not be moved to phase merging` | the post-merge hold must be written before the call |
 
 **The merge call** is `gh pr merge <n> --repo thaynes43/haynes-ops --squash
 --match-head-commit <head>`. It never carries `--admin`, `--auto` or a force flag;
-`checkMergeArgv` refuses them, and GitHub refuses the merge if the head moved. The call
-is made only in live mode, with a clean verdict, while the lane holds the lock with at
-least 240 seconds of lease left. `callMerge` throws for any other mode before it starts
-a process. After the call, a read checks that the PR is `MERGED` at that head.
+`checkMergeArgv` refuses them, and GitHub refuses the merge if the head moved.
+
+- The call is made only in live mode, with a clean verdict, after the checks above.
+- Before it, the lock moves to phase `merging` with the 4-hour post-merge lease. A kill,
+  a timeout or a lost reply during the call therefore cannot leave only the short lease.
+- `callMerge` throws for any other mode before it starts a process.
+- After the call, a read checks that the PR is `MERGED` at that head.
+
+**Timeouts.** Every read through `runReadOnly` is killed after 120 seconds and counts as
+a failed read. The Job has `activeDeadlineSeconds: 600`, equal to the lock's lease and
+under the 15-minute period, so a tick is dead before a lease it took can expire.
 
 ### The change lock
 
@@ -392,7 +416,7 @@ needs.
 | `data` key | Meaning |
 |---|---|
 | `holder` | `upgrade-night/<pod>/<random>`; empty when free |
-| `phase` | `taken`, `merged-awaiting-verification` or `released` |
+| `phase` | `taken`, `merging` (written just before the merge call), `merged-awaiting-verification`, `merge-unknown` or `released` |
 | `purpose`, `mode`, `pr`, `head` | what the holder is doing |
 | `taken_at`, `expires_at`, `lease_seconds` | the lease |
 | `took_over_from` | the holder of an expired lease this take replaced |
@@ -412,6 +436,8 @@ needs.
 - **Release on every exit path:** `finally`, plus an exit handler and a SIGTERM handler
   for a process that ends while holding it. A SIGKILL leaves it to the lease. A release
   is also a replace at the `resourceVersion`, so it never overwrites a new holder.
+- **Never released once a merge may have happened:** from the `merging` write on, every
+  exit path keeps the lock with the 4-hour lease.
 - **Fails closed:** an unreadable lock, a holder with no readable `expires_at`, or a
   take the API refuses means no take and no merge. A lock with an unreadable expiry
   stays held until a person clears it.
@@ -433,25 +459,54 @@ keeps the lock, phase `merged-awaiting-verification`, for `post_merge_lease_seco
 `owedWork()` in `night-merge.mjs` is the hook where stories 553, 753 and 754 run the
 verification and revert a merge owes; today it records `built: false` and runs nothing.
 
-A merge call that fails while the PR stays open releases the lock (`merge-failed`). An
-outcome the lane cannot read is treated as a merge (`merge-unknown`): it keeps the lock.
+The outcome of the call:
+
+- **`merged`**: the PR reads `MERGED` at the head. The lock keeps the 4-hour hold.
+- **`merge-failed`**: the call returned a real non-zero exit and the PR still reads
+  `OPEN`. The lock is released.
+- **`merge-unknown`**: anything else, including a call with no exit status (timed out
+  or killed) even when the PR reads `OPEN`. GitHub may have merged, so it is treated as a
+  merge: phase `merge-unknown`, the 4-hour hold kept.
 
 ### Pause and suspend in live mode
 
-- **`data.pause`** on `upgrade-lane-state` stops new merges and new lock takes. The
-  merge step reads it again just before it takes the lock, so a pause set during a tick
-  stops that tick's merge. Verification and reverts already owed for a merge would carry
-  on through the `owedWork()` hook; they are not built yet.
+- **`data.pause`** on `upgrade-lane-state` stops new merges and new lock takes.
+  - A tick reads it at its start, again just before the lock take, and again just before
+    the merge call. A pause set at any point before the call stops that tick's merge. A
+    pause it cannot read refuses.
+  - The hand run reads it at its start and, with `--merge`, again just before the call.
+  - Verification and reverts already owed for a merge would carry on through the
+    `owedWork()` hook. They are not built yet.
 - **`suspend: true`** on the controller in git stops every tick, including that owed
   work. Use pause unless you mean that.
 
 ### The hand run (rehearsal)
 
-`night-merge.mjs` is also a CLI for one named PR. It runs the same preflight and reads
-the lock and the pause. It refuses while either is set, but it does not take the lock:
-a session pod cannot write ConfigMaps in `upgrade-agent`, and other actors honour the
-lock from story 551. It uses the caller's own `gh` identity and reads no token file. It
-checks neither the class allowlist nor the tick's gates (backups, alerts, the window).
+`night-merge.mjs` is also a CLI for one named PR. **A real `--merge` needs the owner's
+yes for that PR**; the CLI reads no approval.
+
+What it checks:
+
+- **the classifier**, on the same facts the tick gathers. The PR must be `LANE-A`:
+  holds in `.renovate/holds.json5`, majors and prereleases, package rules (ceph-csi,
+  for one), path classes and excluded paths, and a current-head vet `HOLD` all refuse.
+  `--check-only` prints the lane and the reason;
+- the merge step's preflight, as above;
+- the lock and the pause. It refuses while either is set, and re-reads the pause just
+  before a merge call.
+
+What it skips, because only the tick knows it:
+
+- the merge window;
+- the class allowlist;
+- the tick's gates (backups, the Flux baseline, critical alerts, work orders).
+
+It also differs from the lane in three ways:
+
+- It does not take the lock: a session pod cannot write ConfigMaps in `upgrade-agent`,
+  and other actors honour the lock from story 551.
+- It uses the caller's own `gh` identity and reads no token file.
+- `--merge` refuses a pinned clock (`UPGRADE_NIGHT_NOW` set, exit 2).
 
 ```bash
 # from the repository root of an up-to-date worktree
@@ -483,6 +538,14 @@ So the rules above do not refuse it without a refresh.
   merge commits, a newer commit to the file could be contained while an older one is
   not.
 - The hand run does not take the lock.
+- `/creds/gh_token_permissions` records the permissions the init container requested,
+  not the ones GitHub granted. GitHub mints exactly the request or refuses it, so the two
+  agree on a successful mint. Recording the grant itself needs `github-app-token.sh`
+  (baked into the image) to print the response's `.permissions`, which is outside this
+  story's files.
+- `renovate_pr_authors` is now `["app/renovate"]` alone. The plain `renovate` and
+  `renovate[bot]` logins were dropped. No PR open on 2026-11-11 changes lane, and no
+  fixture changes.
 
 ## What step 2 records
 
@@ -657,11 +720,15 @@ The tick uses these exit codes:
 | 0 | The tick finished or was paused. Also when it failed but recorded the failure: it writes `data.error` (and `summary.error`) to `upgrade-lane-state`. This includes a state over the 768 KiB budget, which is caught before the write; the small error record still lands. |
 | 2 | The state write itself failed: the server-side apply was refused. The log carries `ERROR upgrade-night: STATE WRITE FAILED`. The ConfigMap cannot record its own write failure, so a Failed pod is the only signal. |
 | 1 | The tick failed and its error record could not be written either. |
-| 3 | Refused before any read: an unknown `UPGRADE_NIGHT_MODE` or an unknown class in `UPGRADE_NIGHT_LIVE_CLASSES`. |
+| 3 | Refused before any read: an unknown `UPGRADE_NIGHT_MODE`, an unknown class in `UPGRADE_NIGHT_LIVE_CLASSES`, or `UPGRADE_NIGHT_NOW` set in live mode. |
 
-A tick that fails after it took the change lock releases it on the way out (see
-[The change lock](#the-change-lock)). A pod killed outright leaves it to its 600-second
-lease.
+- A tick that fails after it took the change lock releases it on the way out (see
+  [The change lock](#the-change-lock)). A pod killed outright leaves it to its
+  600-second lease. Once the lock reads `merging`, nothing releases it before its
+  4-hour lease.
+- A tick still running at 600 seconds is killed by the Job's `activeDeadlineSeconds`.
+  Its Job fails (`DeadlineExceeded`) and counts as a Failed pod, as below. Ticks take
+  about 25 seconds today.
 
 **How the gate and triage treat a Failed `upgrade-night` pod** (read from
 `health-gate/app/resources/coordination-lib.sh`, which this PR does not change):

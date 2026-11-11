@@ -348,6 +348,11 @@ spec:
           suspend: false
           schedule: "*/15 1-5 * * *"
           timeZone: America/New_York
+          # A tick takes about 25s. The deadline equals the change lock's lease (600s,
+          # night.change_lock in upgrade-rules.json) and is under the 15-minute period:
+          # the Job is dead before a lease it took can expire, so no tick acts on a lapsed
+          # lock, and a stuck tick never meets the next one (story 752).
+          activeDeadlineSeconds: 600
           concurrencyPolicy: Forbid
           backoffLimit: 0
           successfulJobsHistory: 3

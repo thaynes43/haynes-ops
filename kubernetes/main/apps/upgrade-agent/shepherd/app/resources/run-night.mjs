@@ -57,6 +57,11 @@ if (!MODES.includes(MODE) || LIVE.unknown.length) {
   console.error(`upgrade-night: REFUSED: ${what}; nothing was read or changed.`);
   process.exit(3);
 }
+// UPGRADE_NIGHT_NOW pins the clock for the dry-run selftest. Live mode never runs on it.
+if (MODE === 'live' && process.env.UPGRADE_NIGHT_NOW) {
+  console.error('upgrade-night: REFUSED: UPGRADE_NIGHT_NOW is set (a test clock) in live mode; nothing was read or changed.');
+  process.exit(3);
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = process.env.UPGRADE_AGENT_REPO || 'thaynes43/haynes-ops';
@@ -463,7 +468,8 @@ async function tick() {
   // merge, when it stays held through verification (story 553: not built; the post-merge
   // lease is the hold). Dry-run never reaches the merge call.
   const holder = `upgrade-night/${process.env.HOSTNAME || 'local'}/${randomBytes(4).toString('hex')}`;
-  const step = M.laneMergeStep({ mode: MODE, subject, rules, run, env: childEnv, clock, liveClasses: LIVE.classes, token, holder, takeAllowed: WRITE_STATE });
+  const windowOpen = t => inWindow(t, night.timezone, night.merge_window_local.first, night.merge_window_local.last);
+  const step = M.laneMergeStep({ mode: MODE, subject, rules, run, env: childEnv, clock, liveClasses: LIVE.classes, token, holder, takeAllowed: WRITE_STATE, windowOpen, tickStartedAt: now });
   const verdict = step.verdict || { verdict: 'not-run' };
 
   const counts = Object.fromEntries(L.LANES.map(l => [l, records.filter(r => r.lane === l).length]));

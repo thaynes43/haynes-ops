@@ -109,6 +109,8 @@ ok(!/--admin|--auto\b|'--force'/.test(merge.replace(/BYPASS_FLAGS = Object\.free
   const shepherdCtl = hrl.slice(hrl.indexOf('      upgrade-shepherd:'), hrl.indexOf('      triage:'));
   ok(perms.length === 1 && perms[0] === '{"contents":"write","pull_requests":"write","checks":"read"}' && shepherdCtl.includes(`GITHUB_BOT_TOKEN_PERMISSIONS: '${perms[0]}'`), "helmrelease: the upgrade-night token has exactly the shepherd's rights: contents and pull_requests write, checks read (ruling Q-548-02)", JSON.stringify(perms));
   ok(M.tokenPermissions(perms[0]).can_merge === true && M.tokenPermissions(perms[0]).why === null, 'the merge step accepts exactly that token');
+  const deadline = [...hrl.matchAll(/activeDeadlineSeconds: (\d+)/g)];
+  ok(deadline.length === 1 && hrl.indexOf('activeDeadlineSeconds') > hrl.indexOf('      upgrade-night:') && Number(deadline[0][1]) <= rules.night.change_lock.lease_seconds && Number(deadline[0][1]) < 900, "helmrelease: only upgrade-night has activeDeadlineSeconds, at most the lock's lease and under the 15-minute period", JSON.stringify(deadline.map(m => m[1])));
   ok(/> \/creds\/gh_token_permissions/.test(nightCtl) && !/gh_token_permissions/.test(hrl.slice(0, hrl.indexOf('      upgrade-night:'))), 'helmrelease: only the upgrade-night mint-token records its permission names');
 }
 
@@ -342,12 +344,21 @@ const lock = () => (fs.existsSync(LOCKF) ? JSON.parse(fs.readFileSync(LOCKF, 'ut
 const merged = () => (fs.existsSync(MERGED) ? JSON.parse(fs.readFileSync(MERGED, 'utf8')) : {});
 const fsel = () => { const i = argv.indexOf('--field-selector'); return i < 0 ? null : argv[i + 1].replace(/^metadata\\.name=/, ''); };
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'list') { if (w.failList) fail(); out(w.list); }
-if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'merge') { if (w.mergeExit) fail('GraphQL: merge refused'); const m = merged(); m[argv[2]] = true; fs.writeFileSync(MERGED, JSON.stringify(m)); out(''); }
+if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'merge') {
+  if (lock()) fs.writeFileSync(LOCKF + '.at-merge', JSON.stringify(lock()));
+  if (w.mergeKilled) process.kill(process.pid, 'SIGKILL');
+  if (w.mergeExit) fail('GraphQL: merge refused'); const m = merged(); m[argv[2]] = true; fs.writeFileSync(MERGED, JSON.stringify(m)); out('');
+}
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'view') {
   const n = argv[2], f = argv[argv.indexOf('--json') + 1] || '', p = w.prs[n];
   if (f.includes('mergedAt')) out(merged()[n] ? { state: 'MERGED', mergedAt: '2026-11-02T07:00:30Z', headRefOid: p.headRefOid, mergeCommit: { oid: 'f'.repeat(40) } } : { state: 'OPEN', mergedAt: null, headRefOid: p.headRefOid, mergeCommit: null });
-  if (f.includes('mergeStateStatus')) { const o = (w.mergeViews || {})[n]; if (o === 'FAIL') fail(); out({ ...p, state: 'OPEN', baseRefName: 'main', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', ...(o || {}) }); }
+  if (f.includes('mergeStateStatus')) { const o = (w.mergeViews || {})[n]; if (o === 'FAIL') fail(); out({ ...p, author: { ...p.author, is_bot: true }, isCrossRepository: false, state: 'OPEN', baseRefName: 'main', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', ...(o || {}) }); }
   out(p);
+}
+if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/pulls\\/\\d+\\/commits/.test(a))) {
+  const n = argv.find(a => /\\/pulls\\//.test(a)).match(/pulls\\/(\\d+)/)[1], o = (w.restCommits || {})[n];
+  if (o === 'FAIL') fail();
+  out(o || w.prs[n].commits.map(c => ({ sha: c.oid, author: { login: 'renovate[bot]', type: 'Bot', id: 29139614 }, committer: { login: 'web-flow', type: 'User', id: 19864447 }, commit: { verification: { verified: true, reason: 'valid' } } })));
 }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/commits\\/[0-9a-f]{40}$/.test(a))) { const sha = argv.find(a => /\\/commits\\//.test(a)).split('/').pop(); const n = Object.keys(w.prs).find(k => w.prs[k].headRefOid === sha); if (w.diffs?.[n] === 'FAIL') fail(); out(w.diffs?.[n] ?? ''); }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => a.includes('contents/.renovate/holds.json5'))) out({ content: w.holds });
@@ -366,7 +377,11 @@ if (cmd === 'kubectl' && argv[0] === 'get') {
     if (base === 'FAIL' || base === undefined) fail();
     if (base === 'GARBAGE') out('not json');
     let items = [...base.items, ...(lock() ? [lock()] : [])];
-    if (name === 'upgrade-lane-state' && w.pauseOnReread) items = [...items.filter(c => c.metadata.name !== name), { metadata: { name, resourceVersion: '9' }, data: { pause: w.pauseOnReread } }];
+    const reads = name === 'upgrade-lane-state' ? Number(fs.existsSync(LOCKF + '.state-reads') ? fs.readFileSync(LOCKF + '.state-reads', 'utf8') : 0) + 1 : 0;
+    if (name === 'upgrade-lane-state') fs.writeFileSync(LOCKF + '.state-reads', String(reads));
+    const pz = w.pauseOnReread || (w.pauseFromRead && reads >= w.pauseFromRead ? w.pauseFromReadValue : null);
+    if (name === 'upgrade-lane-state' && w.pauseFailFromRead && reads >= w.pauseFailFromRead) fail();
+    if (name === 'upgrade-lane-state' && pz) items = [...items.filter(c => c.metadata.name !== name), { metadata: { name, resourceVersion: '9' }, data: { pause: pz } }];
     out({ items: name ? items.filter(c => c.metadata?.name === name) : items });
   }
   const v = w.k8s[argv[1] + '@' + ns] ?? w.k8s[argv[1]]; if (v === 'FAIL' || v === undefined) fail(); out(v === 'GARBAGE' ? 'not json' : v);
@@ -398,11 +413,17 @@ process.exit(0);
     PROMETHEUS_URL: `http://127.0.0.1:${server.address().port}`, UPGRADE_NIGHT_NOW: NOW, UPGRADE_NIGHT_MODE: 'dryrun' };
   const calls = () => (existsSync(logFile) ? readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : []);
   const isSsa = x => x.cmd === 'kubectl' && JSON.stringify(x.argv) === JSON.stringify(SSA);
-  const tick = (world, extraEnv = {}, args = ['--write-state']) => new Promise(resolve => {
-    rmSync(logFile, { force: true }); rmSync(mergedFile, { force: true }); rmSync(lockFile, { force: true });
+  // Live mode refuses UPGRADE_NIGHT_NOW, so a live tick runs with it unset and its clock
+  // pinned by the test-only preload (FAKE_NOW, default NOW); keepNow tests that refusal.
+  const FAKE_CLOCK = join(ROOT, 'scripts/upgrade-agent/test-fake-clock.mjs');
+  const tick = (world, extraEnv = {}, args = ['--write-state'], { keepNow = false } = {}) => new Promise(resolve => {
+    for (const f of [logFile, mergedFile, lockFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`]) rmSync(f, { force: true });
     if (world.lock) writeFileSync(lockFile, JSON.stringify(world.lock));
     writeFileSync(join(tmp, 'world.json'), JSON.stringify(world));
-    const p = spawn(process.execPath, [join(RES, 'run-night.mjs'), ...args], { env: { ...env, ...extraEnv } });
+    const e = { ...env, ...extraEnv };
+    const live = e.UPGRADE_NIGHT_MODE === 'live' && !keepNow;
+    if (live) { e.FAKE_NOW = e.FAKE_NOW || e.UPGRADE_NIGHT_NOW || NOW; delete e.UPGRADE_NIGHT_NOW; }
+    const p = spawn(process.execPath, [...(live ? ['--import', FAKE_CLOCK] : []), join(RES, 'run-night.mjs'), ...args], { env: e });
     let stdout = '', stderr = '';
     p.stdout.on('data', d => { stdout += d; }); p.stderr.on('data', d => { stderr += d; });
     const timer = setTimeout(() => p.kill(), 60000);
@@ -415,7 +436,8 @@ process.exit(0);
       const lockNow = existsSync(lockFile) ? JSON.parse(readFileSync(lockFile, 'utf8')) : null;
       const merges = c.filter(x => x.cmd === 'gh' && x.argv[0] === 'pr' && x.argv[1] === 'merge');
       const lockWrites = w.filter(x => x.cmd === 'kubectl' && ['create', 'replace'].includes(x.argv[0]));
-      resolve({ status, stdout, stderr, calls: c, writes: w, m, recs, summary, lock: lockNow, merges, lockWrites, rec: n => recs.find(r => r.pr === n) || { gates: { blockers: [] } } });
+      const atMerge = existsSync(`${lockFile}.at-merge`) ? JSON.parse(readFileSync(`${lockFile}.at-merge`, 'utf8')) : null;
+      resolve({ status, stdout, stderr, calls: c, writes: w, m, recs, summary, lock: lockNow, atMerge, merges, lockWrites, rec: n => recs.find(r => r.pr === n) || { gates: { blockers: [] } } });
     });
   });
   const blk = (r, n) => (r.rec(n).gates?.blockers || []).join(' | ');
@@ -652,7 +674,7 @@ process.exit(0);
     const wlw = baseWorld([4662]); wlw.lockWrite = true;
     await refusedLive('a lock write the API refuses', wlw, {}, /the change lock was not taken \(create refused: Error from server \(Forbidden\)/, 1);
     const wpz = baseWorld([4662]); wpz.pauseOnReread = 'tom 02:01';
-    const rp = await refusedLive('a pause set during the tick', wpz, {}, /paused: data\.pause="tom 02:01"/, 0);
+    const rp = await refusedLive('a pause set during the tick', wpz, {}, /paused before the lock take: data\.pause="tom 02:01"/, 0);
     ok(rp.summary.change_lock?.why === 'paused (data.pause); no lock taken', 'a pause set during the tick: no lock take', JSON.stringify(rp.summary.change_lock));
     // a stale lock expires by its lease: taken over, then released
     const wx = baseWorld([4662]); wx.lock = lockOf({ holder: 'upgrade-night/crashed/2', phase: 'taken', expires_at: '2026-11-02T06:50:00Z' });
@@ -672,6 +694,42 @@ process.exit(0);
     ok(ro.summary.would_merge === null && ms(ro).chosen === false && ms(ro).pr === 4662 && ms(ro).lane_refusals?.[0]?.startsWith('not chosen by the tick') && /checks predate main/.test(refs(ro)), 'dry-run with no PR chosen: the step runs on the nearest lane-A candidate and records why it is refused', refs(ro));
     const rol = await tick(wo, LIVE);
     ok(ms(rol).verdict === 'not-run' && rol.merges.length === 0, 'live with no PR chosen: the merge step does not run', JSON.stringify(ms(rol)));
+  }
+
+  // ── the independent review of PR 4827: each guard has a test that fails without it ──
+  {
+    const permWrite = join(tmp, 'perm-write.json');
+    const head = fact(4662).head_sha;
+    const LIVE = { UPGRADE_NIGHT_MODE: 'live', UPGRADE_NIGHT_LIVE_CLASSES: 'delayed-cluster-change', GH_TOKEN_PERMISSIONS_FILE: permWrite };
+    const ms = r => r.summary.merge_step || {};
+    const refs = r => [...(ms(r).pr_refusals || []), ...(ms(r).lane_refusals || [])].join(' | ');
+    // finding 1: a pause set after the lock take (here from the second read on) stops the merge
+    const w1 = baseWorld([4662]); w1.pauseFromRead = 2; w1.pauseFromReadValue = 'tom 02:03';
+    const r1 = await tick(w1, LIVE);
+    ok(r1.merges.length === 0 && /paused just before the merge call: data\.pause="tom 02:03"/.test(refs(r1)) && r1.lock?.data?.holder === '' && r1.lockWrites.length === 2, 'finding 1: a pause set after the lock take stops the merge (re-read just before the call); lock released', `merges=${r1.merges.length} ${refs(r1)}`);
+    const w1u = baseWorld([4662]); w1u.pauseFailFromRead = 2;
+    const r1u = await tick(w1u, LIVE);
+    ok(r1u.merges.length === 0 && /unreadable: data\.pause on upgrade-lane-state \(just before the merge call\)/.test(refs(r1u)), 'finding 1: a pause that cannot be read just before the call refuses', refs(r1u));
+    // finding 8: the window, through the tick (the tick's own gate)
+    const r8 = await tick(baseWorld([4662]), { ...LIVE, FAKE_NOW: '2026-11-02T10:00:00Z' });
+    ok(r8.status === 0 && r8.merges.length === 0 && /outside the merge window \(01:30-04:45 America\/New_York, now 05:00\)/.test(r8.rec(4662).gates?.blockers?.join(' ') || '') && ms(r8).verdict === 'not-run', 'finding 8: live, a perfect PR outside the merge window (05:00 New York) is not merged', `${JSON.stringify(r8.rec(4662).gates?.blockers)} ${ms(r8).verdict}`);
+    // finding 3: the post-merge lease is written before the call
+    const r3 = await tick(baseWorld([4662]), LIVE);
+    ok(r3.merges.length === 1 && r3.atMerge?.data?.phase === 'merging' && Date.parse(r3.atMerge.data.expires_at) - Date.parse(NOW) === 14400e3 && r3.atMerge.data.holder === r3.summary.change_lock?.holder, 'finding 3: at the moment of the merge call the lock already holds phase merging with the 4h lease', JSON.stringify(r3.atMerge?.data));
+    const w3 = baseWorld([4662]); w3.mergeKilled = true;
+    const r3k = await tick(w3, LIVE);
+    ok(r3k.merges.length === 1 && ms(r3k).verdict === 'merge-unknown' && /exit null: no exit status \(SIGKILL\)/.test(ms(r3k).merge_call) && r3k.lock?.data?.holder && r3k.lock.data.phase === 'merge-unknown' && Date.parse(r3k.lock.data.expires_at) - Date.parse(NOW) === 14400e3, 'finding 3: a merge call with no exit status (killed) is merge-unknown and keeps the 4h hold, though the PR reads OPEN', `${ms(r3k).verdict} ${ms(r3k).merge_call} ${JSON.stringify(r3k.lock?.data)}`);
+    // finding 5: identity, through the tick
+    const w5 = baseWorld([4662]); w5.mergeViews = { 4662: { author: { login: 'app/renovate', is_bot: false } } };
+    ok(/opened by app\/renovate \(is_bot false\), not the Renovate app/.test(refs(await tick(w5, LIVE))), 'finding 5: a PR author that is not a bot is refused');
+    const w5b = baseWorld([4662]); w5b.mergeViews = { 4662: { isCrossRepository: true } };
+    ok(/a pull request from another repository/.test(refs(await tick(w5b, LIVE))), 'finding 5: a cross-repository PR is refused');
+    const w5c = baseWorld([4662]); w5c.restCommits = { 4662: [{ sha: head, author: { login: 'renovate[bot]', type: 'Bot', id: 29139614 }, committer: { login: 'thaynes43', type: 'User', id: 1 }, commit: { verification: { verified: false, reason: 'unsigned' } } }] };
+    const r5c = await tick(w5c, LIVE);
+    ok(r5c.merges.length === 0 && new RegExp(`commit ${head.slice(0, 8)} is not the Renovate app's \\(author renovate\\[bot\\]/Bot/29139614, committer thaynes43, signature unsigned\\)`).test(refs(r5c)), 'finding 5: a commit Renovate did not commit and sign through GitHub is refused', refs(r5c));
+    // finding 6: live mode refuses a pinned clock
+    const r6 = await tick(baseWorld([4662]), LIVE, ['--write-state'], { keepNow: true });
+    ok(r6.status === 3 && /REFUSED: UPGRADE_NIGHT_NOW is set \(a test clock\) in live mode/.test(r6.stderr) && r6.calls.length === 0, 'finding 6: live mode with UPGRADE_NIGHT_NOW set exits 3 before any command', `exit ${r6.status} ${r6.calls.length} calls`);
   }
 
   // pause, write failure, a failed read of GitHub, no --write-state

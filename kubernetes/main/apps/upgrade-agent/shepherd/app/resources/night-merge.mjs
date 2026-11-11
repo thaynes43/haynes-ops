@@ -9,16 +9,21 @@
 // here rather than run.
 //
 // THE MERGE STEP. One pull request, one head SHA. It reads the PR afresh and refuses
-// unless: it is open, not a draft, based on main and opened by Renovate; every commit is
-// Renovate's; the head is the chosen head; GitHub reads it MERGEABLE; no check on the
+// unless: it is open, not a draft, based on main, opened by the Renovate app (app/renovate,
+// is_bot) from this repository on a renovate/ branch; every commit is the Renovate app's
+// (REST: author renovate[bot], committed by web-flow, signed); the head is the chosen
+// head; GitHub reads it MERGEABLE; no check on the
 // head is running or failing and no commit status is anything but SUCCESS (a PENDING or
 // EXPECTED status is refused: the handoff preflight let it through); the repository's
 // required checks and every check the check map expects concluded SUCCESS; main has not
 // changed one of its files after its checks ran (story 550's R7, the same functions);
 // and the head contains the newest main commit that touches each of its files (a head
 // behind main by such a commit is refused: "require branches to be up to date" is off
-// for main, so GitHub would merge it). The merge is `gh pr merge <n> --squash
-// --match-head-commit <head>`: never --admin, --auto or a force flag.
+// for main, so GitHub would merge it). Just before the call, live mode re-checks the
+// lease, the merge window, the age of the tick's gates (300s) and the pause, then moves the
+// lock to phase "merging" with the post-merge lease. The merge is `gh pr merge <n>
+// --squash --match-head-commit <head>`: never --admin, --auto or a force flag. A call with
+// no exit status is merge-unknown and keeps the hold.
 //
 // THE CHANGE LOCK. ConfigMap upgrade-agent/upgrade-change-lock. data.holder empty or the
 // object absent = free; a holder whose data.expires_at has passed = expired (a crashed
@@ -38,8 +43,10 @@
 //
 // HAND RUN (the rehearsal): node night-merge.mjs --pr <n> --head <sha> --check-only
 // prints the verdict and changes nothing; --merge merges once with the caller's own gh
-// identity when the verdict is clean. A hand run reads the lock and the pause and
-// refuses when either is set, but does not take the lock (story 551).
+// identity when the verdict is clean, and needs the owner's yes. It runs the classifier
+// (the PR must be LANE-A) and the same preflight, reads the lock and the pause and
+// refuses when either is set, but does not take the lock (story 551). It skips the merge
+// window, the class allowlist and the tick's gates. --merge refuses UPGRADE_NIGHT_NOW.
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
@@ -60,8 +67,13 @@ export const LOCK_SCHEMA = 'haynes.upgrade-change-lock/v1';
 // The most a lane token may carry: what a squash merge needs plus the check reads.
 const TOKEN_MAX = Object.freeze({ contents: 'write', pull_requests: 'write', checks: 'read', metadata: 'read' });
 const LEVEL = { read: 1, write: 2, admin: 3 };
+// The Renovate app as GitHub reports it (read live on 2026-11-11 for every open Renovate
+// PR): gh gives the PR author as login app/renovate with is_bot true; the REST commit
+// list gives each commit's author as renovate[bot], type Bot, id 29139614, committed by
+// web-flow with a valid signature. Anything else is refused.
+export const RENOVATE = Object.freeze({ pr_author: 'app/renovate', commit_login: 'renovate[bot]', commit_id: 29139614, committer: 'web-flow', branch_prefix: 'renovate/' });
 const SHA = /^[0-9a-f]{40}$/;
-const VIEW_FIELDS = 'number,state,isDraft,headRefOid,baseRefName,author,mergeable,mergeStateStatus,files,changedFiles,commits,statusCheckRollup';
+const VIEW_FIELDS = 'number,state,isDraft,headRefOid,headRefName,baseRefName,isCrossRepository,author,mergeable,mergeStateStatus,files,changedFiles,commits,statusCheckRollup';
 const FAIL = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'STALE', 'ERROR']);
 const MERGE_STATES_OK = new Set(['CLEAN', 'HAS_HOOKS', 'UNSTABLE']); // UNSTABLE: a non-required check; the scan below decides
 const GH_TIMEOUT_MS = 120e3;
@@ -167,7 +179,9 @@ export function prRefusals(view, expectHead, rules, now) {
   if (view?.state !== 'OPEN') add(`not open (state ${view?.state ?? 'unknown'})`);
   if (view?.isDraft !== false) add(view?.isDraft ? 'a draft' : 'unreadable: whether the PR is a draft');
   if (view?.baseRefName !== 'main') add(`base is ${view?.baseRefName ?? 'unknown'}, not main`);
-  if (!rules.renovate_pr_authors.includes(view?.author?.login)) add(`opened by ${view?.author?.login ?? 'unknown'}, not Renovate`);
+  if (view?.author?.login !== RENOVATE.pr_author || view?.author?.is_bot !== true || !rules.renovate_pr_authors.includes(view?.author?.login)) add(`opened by ${view?.author?.login ?? 'unknown'} (is_bot ${view?.author?.is_bot ?? 'unknown'}), not the Renovate app`);
+  if (view?.isCrossRepository !== false) add(view?.isCrossRepository ? 'a pull request from another repository' : 'unreadable: whether the PR comes from another repository');
+  if (!String(view?.headRefName || '').startsWith(RENOVATE.branch_prefix)) add(`head branch ${view?.headRefName ?? 'unknown'} is not under ${RENOVATE.branch_prefix}`);
   if (!SHA.test(expectHead || '')) add('the chosen head is not a 40-character SHA');
   if (!SHA.test(head || '')) add('unreadable: the PR head SHA');
   else if (SHA.test(expectHead || '') && head !== expectHead) add(`head moved: ${short(head)} is not the chosen head ${short(expectHead)}`);
@@ -230,13 +244,43 @@ export function prRefusals(view, expectHead, rules, now) {
   return { refusals, head, files, truncated, head_committed_at: headCommit?.committedDate || null, ev };
 }
 
-// The whole PR-side preflight: one fresh view, story 550's R7 (the same three exported
-// functions the tick uses) and the behind-main rule.
+// The REST commit list carries what gh pr view does not: each commit's author and
+// committer as GitHub accounts (type and id) and its signature.
+export function readPrCommits(repo, pr, run) {
+  const list = parse(tryRun(run, 'gh', ['api', `repos/${repo}/pulls/${pr}/commits?per_page=100`]));
+  return Array.isArray(list) ? list : null;
+}
+// PURE. Every commit authored by the Renovate app account, committed by web-flow and
+// signed (as GitHub makes Renovate's API commits); the list ends at the head.
+export function commitRefusals(list, view) {
+  if (!list) return ['unreadable: the PR commits (REST)'];
+  const out = [];
+  if (list.length >= 100) out.push(`the commit list may be truncated (${list.length} commits)`);
+  if (Array.isArray(view?.commits) && list.length !== view.commits.length) out.push(`the REST and GraphQL commit lists disagree (${list.length} and ${view.commits.length})`);
+  if (!list.length || list[list.length - 1]?.sha !== view?.headRefOid) out.push('the REST commit list does not end at the head');
+  for (const c of list) {
+    const a = c?.author || {}, k = c?.committer || {}, sig = c?.commit?.verification || {};
+    if (a.login === RENOVATE.commit_login && a.type === 'Bot' && a.id === RENOVATE.commit_id && k.login === RENOVATE.committer && sig.verified === true) continue;
+    out.push(`commit ${short(c?.sha)} is not the Renovate app's (author ${a.login ?? 'none'}/${a.type ?? '?'}/${a.id ?? '?'}, committer ${k.login ?? 'none'}, signature ${sig.verified === true ? 'valid' : sig.reason || 'none'})`);
+  }
+  return out;
+}
+
+// data.pause on the lane state: { pause: string | null }, or null when unreadable.
+export function readPause(rules, run) {
+  const st = readNamedConfigMap(rules.night.state_configmap, run);
+  if (!st) return null;
+  return { pause: st.found && st.cm?.data?.pause ? String(st.cm.data.pause) : null };
+}
+const pauseRefusal = (p, when) => (!p ? `unreadable: data.pause on upgrade-lane-state (${when})` : p.pause ? `paused ${when}: data.pause=${JSON.stringify(p.pause.slice(0, 80))}` : null);
+
+// The whole PR-side preflight: one fresh view, the REST commit identities, story 550's
+// R7 (the same three exported functions the tick uses) and the behind-main rule.
 export function evaluate({ repo, pr, head, rules, now, run }) {
   const view = readMergeView(repo, pr, run);
   if (!view) return { refusals: ['unreadable: the pull request (gh pr view)'], facts: null };
   const p = prRefusals(view, head, rules, now);
-  const refusals = [...p.refusals];
+  const refusals = [...p.refusals, ...commitRefusals(readPrCommits(repo, pr, run), view)];
   const facts = { head: p.head, files: p.files, mergeable: view.mergeable, merge_state: view.mergeStateStatus, reference_time: null, main_newer: [], behind_main: [] };
   if (!p.truncated && SHA.test(p.head || '')) {
     const ref = L.checksReferenceTime(p.head_committed_at, p.ev.ran_at);
@@ -289,9 +333,10 @@ export function lockStatus(read, now) {
 export function lockConfig(rules) {
   const c = rules?.night?.change_lock || {};
   const n = k => Number.isInteger(c[k]) ? c[k] : NaN;
-  const cfg = { lease_seconds: n('lease_seconds'), post_merge_lease_seconds: n('post_merge_lease_seconds'), min_lease_left_seconds: n('min_lease_left_seconds') };
-  const ok = c.configmap === LOCK.name && cfg.lease_seconds >= 60 && cfg.lease_seconds < 900 && cfg.post_merge_lease_seconds >= cfg.lease_seconds && cfg.min_lease_left_seconds > 0 && cfg.min_lease_left_seconds < cfg.lease_seconds;
-  return { ok, ...cfg, why: ok ? null : `night.change_lock in upgrade-rules.json is invalid (configmap must be ${LOCK.name}; 60 <= lease_seconds < 900; post_merge_lease_seconds >= lease_seconds; 0 < min_lease_left_seconds < lease_seconds)` };
+  const cfg = { lease_seconds: n('lease_seconds'), post_merge_lease_seconds: n('post_merge_lease_seconds'), min_lease_left_seconds: n('min_lease_left_seconds'), max_gate_age_seconds: n('max_gate_age_seconds') };
+  const ok = c.configmap === LOCK.name && cfg.lease_seconds >= 60 && cfg.lease_seconds < 900 && cfg.post_merge_lease_seconds >= cfg.lease_seconds && cfg.min_lease_left_seconds > 0 && cfg.min_lease_left_seconds < cfg.lease_seconds
+    && cfg.max_gate_age_seconds > 0 && cfg.max_gate_age_seconds < cfg.lease_seconds;
+  return { ok, ...cfg, why: ok ? null : `night.change_lock in upgrade-rules.json is invalid (configmap must be ${LOCK.name}; 60 <= lease_seconds < 900; post_merge_lease_seconds >= lease_seconds; 0 < min_lease_left_seconds < lease_seconds; 0 < max_gate_age_seconds < lease_seconds)` };
 }
 
 const lockManifest = (data, rv) => ({
@@ -354,13 +399,25 @@ export function releaseLock(held, { now, env, note }) {
   return { released: w.ok, released_at: w.ok ? data.released_at : null, why: w.ok ? null : `the release was not written (${w.detail}); the lease frees the lock at ${held.data.expires_at}` };
 }
 
+// BEFORE the merge call: the lock moves to phase "merging" with the post-merge lease, so a
+// kill, a timeout or a lost reply during the call cannot leave only the short lease
+// behind. If this write fails the lane does not merge.
+export function beginMerge(held, { now, env, leaseSeconds }) {
+  if (!held?.rv) return { ok: false, why: 'the change lock has no known resourceVersion; not merging on it' };
+  const data = { ...held.data, phase: 'merging', expires_at: iso(now + leaseSeconds * 1000), lease_seconds: String(leaseSeconds), merge_started_at: iso(now) };
+  const w = writeLock('replace', lockManifest(data, held.rv), env || held.env);
+  if (!w.ok || !w.rv) return { ok: false, why: `the change lock could not be moved to phase merging (${w.ok ? 'no resourceVersion came back' : w.detail}); not merging` };
+  held.rv = w.rv; held.data = data; held.merged = true; // from here the exit handler keeps the lock
+  return { ok: true };
+}
+
 // After a merge the lock stays held through verification. Verification is not built
 // (story 553), so the lock is held for post_merge_lease_seconds: until then no later tick
 // merges, and the lane makes at most one merge a night.
-export function holdAfterMerge(held, { now, env, leaseSeconds, merged }) {
+export function holdAfterMerge(held, { now, env, leaseSeconds, merged, phase = 'merged-awaiting-verification' }) {
   held.merged = true;
   if (!held.rv) return { held: true, why: `no resourceVersion from the take; the lock keeps its first lease (${held.data.expires_at})` };
-  const data = { ...held.data, phase: 'merged-awaiting-verification', expires_at: iso(now + leaseSeconds * 1000), lease_seconds: String(leaseSeconds), merged_at: iso(now), merge_commit: merged?.merge_commit || '', verification: 'not built (story 553): the lease is the hold' };
+  const data = { ...held.data, phase, expires_at: iso(now + leaseSeconds * 1000), lease_seconds: String(leaseSeconds), merged_at: iso(now), merge_commit: merged?.merge_commit || '', verification: 'not built (story 553): the lease is the hold' };
   const w = writeLock('replace', lockManifest(data, held.rv), env || held.env);
   if (w.ok) { held.rv = w.rv; held.data = data; }
   return { held: true, expires_at: w.ok ? data.expires_at : held.data.expires_at, why: w.ok ? null : `the post-merge hold was not written (${w.detail}); the lock keeps its first lease (${held.data.expires_at})` };
@@ -383,7 +440,15 @@ export function callMerge({ repo, pr, head, mode, verdict, lockHeld, env }) {
   const argv = mergeArgv(repo, pr, head);
   checkMergeArgv(argv, head);
   const r = spawnSync('gh', argv, { encoding: 'utf8', env, timeout: GH_TIMEOUT_MS, input: '' });
-  return { exit: r.status, detail: r.status === 0 ? null : publicDetail(r.stderr || r.error?.message), argv: argv.join(' ') };
+  // exit null = timed out or killed: GitHub may have merged; callers treat it as unknown
+  return { exit: r.status, signal: r.signal || null, detail: r.status === 0 ? null : r.status === null ? `no exit status (${r.signal || r.error?.code || 'killed'})` : publicDetail(r.stderr || r.error?.message), argv: argv.join(' ') };
+}
+// What one merge call ended as: merged (verified), failed (a real exit code and the PR
+// still open at that head) or unknown (anything else, which keeps the post-merge hold).
+export function mergeOutcome(call, after) {
+  if (after?.merged) return 'merged';
+  if (Number.isInteger(call?.exit) && call.exit !== 0 && after?.state === 'OPEN') return 'merge-failed';
+  return 'merge-unknown';
 }
 // After the call: is the PR merged at that head? null = cannot tell.
 export function verifyMerged(repo, pr, head, run) {
@@ -403,17 +468,20 @@ export function owedWork({ mode, paused }) {
 // ── the lane's merge step (one per tick) ─────────────────────────────────────────────
 // subject = { pr, head, class, chosen } | null. chosen = false: the tick chose no PR and
 // this is the nearest lane-A candidate, exercised in dry-run only.
-export function laneMergeStep({ mode, subject, rules, run, env, clock, liveClasses, token, holder, takeAllowed }) {
+// windowOpen(ms) = { open, local } for the merge window; tickStartedAt = when the tick
+// began (its gates are that old). Live mode re-checks both, and the pause, just before
+// the merge call.
+export function laneMergeStep({ mode, subject, rules, run, env, clock, liveClasses, token, holder, takeAllowed, windowOpen, tickStartedAt }) {
   const cfg = lockConfig(rules);
   const out = { mode, lock: { configmap: `${LOCK.namespace}/${LOCK.name}`, outcome: 'not-taken' }, verdict: null };
   const notRun = why => ({ verdict: 'not-run', why });
   const refusedEarly = why => (subject ? { pr: subject.pr, head: subject.head, class: subject.class, chosen: subject.chosen, mode, verdict: 'refused', pr_refusals: [why], lane_refusals: [], pr_ready: false, merge_call: mode === 'live' ? 'not made (refused)' : 'not reached (dry-run)' } : notRun(why));
-  // pause, re-read just before the take: a pause set mid-tick stops the merge
-  const st = readNamedConfigMap(rules.night.state_configmap, run);
-  const pause = !st ? 'unreadable' : (st.found && st.cm?.data?.pause) ? String(st.cm.data.pause) : null;
+  // pause, read before the take (and again before the merge call)
+  const p0 = readPause(rules, run);
+  const pause = pauseRefusal(p0, 'before the lock take');
   if (pause) {
-    out.lock.why = pause === 'unreadable' ? `unreadable: ConfigMap ${rules.night.state_configmap} (pause); no lock taken` : 'paused (data.pause); no lock taken';
-    out.verdict = refusedEarly(pause === 'unreadable' ? `unreadable: data.pause on ${rules.night.state_configmap}` : `paused: data.pause=${JSON.stringify(pause.slice(0, 80))}`);
+    out.lock.why = !p0 ? `unreadable: ConfigMap ${rules.night.state_configmap} (pause); no lock taken` : 'paused (data.pause); no lock taken';
+    out.verdict = refusedEarly(pause);
     return out;
   }
   if (!cfg.ok) { out.lock.why = cfg.why; out.verdict = refusedEarly(cfg.why); return out; }
@@ -439,25 +507,34 @@ export function laneMergeStep({ mode, subject, rules, run, env, clock, liveClass
     const clean = v.pr_refusals.length === 0 && laneRef.length === 0;
     if (mode !== 'live') { v.verdict = clean ? 'would-merge' : 'refused'; v.merge_call = 'not reached (dry-run)'; out.verdict = v; return out; }
     if (!clean) { v.merge_call = 'not made (refused)'; out.verdict = v; return out; }
-    const left = Date.parse(held.data.expires_at) - clock();
-    if (!held.rv || left < cfg.min_lease_left_seconds * 1000) {
-      v.lane_refusals.push(!held.rv ? 'the change lock was written but its resourceVersion is unknown; not merging on it' : `the change lock has ${Math.round(left / 1000)}s of lease left, under ${cfg.min_lease_left_seconds}s; not merging on a lease that may lapse`);
-      v.merge_call = 'not made (refused)'; out.verdict = v; return out;
-    }
-    held.merged = true; // from here the exit handler keeps the lock: a merge may have happened
-    const call = callMerge({ repo: REPO, pr: subject.pr, head: subject.head, mode, verdict: { ok: true, pr: subject.pr, head: subject.head }, lockHeld: true, env });
+    // just before the call: the lease, the window, the age of the tick's gates, the pause
+    const t = clock();
+    const left = Date.parse(held.data.expires_at) - t;
+    if (!held.rv) v.lane_refusals.push('the change lock was written but its resourceVersion is unknown; not merging on it');
+    else if (left < cfg.min_lease_left_seconds * 1000) v.lane_refusals.push(`the change lock has ${Math.round(left / 1000)}s of lease left, under ${cfg.min_lease_left_seconds}s; not merging on a lease that may lapse`);
+    const win = typeof windowOpen === 'function' ? windowOpen(t) : null;
+    if (!win || win.open !== true) v.lane_refusals.push(win ? `the merge window is closed at the merge call (now ${win.local})` : 'unreadable: whether the merge window is open at the merge call');
+    const age = t - tickStartedAt;
+    if (!Number.isFinite(age) || age < 0 || age > cfg.max_gate_age_seconds * 1000) v.lane_refusals.push(Number.isFinite(age) ? `the tick's gates are ${Math.round(age / 1000)}s old at the merge call, over ${cfg.max_gate_age_seconds}s` : 'unreadable: when the tick began');
+    const p1 = pauseRefusal(readPause(rules, run), 'just before the merge call');
+    if (p1) v.pr_refusals.push(p1);
+    if (v.pr_refusals.length || v.lane_refusals.length) { v.pr_ready = v.pr_refusals.length === 0; v.merge_call = 'not made (refused)'; out.verdict = v; return out; }
+    const begin = beginMerge(held, { now: clock(), env, leaseSeconds: cfg.post_merge_lease_seconds });
+    if (!begin.ok) { v.lane_refusals.push(begin.why); v.merge_call = 'not made (refused)'; out.verdict = v; return out; }
+    // held.merged is now true: whatever happens next, the lock keeps the post-merge lease
+    const call = callMerge({ repo: REPO, pr: subject.pr, head: subject.head, mode, verdict: { ok: v.pr_refusals.length === 0 && v.lane_refusals.length === 0, pr: v.pr, head: v.head }, lockHeld: true, env });
     const after = verifyMerged(REPO, subject.pr, subject.head, run);
     v.merge_call = call.argv + (call.exit === 0 ? ' (exit 0)' : ` (exit ${call.exit}: ${call.detail})`);
     v.merged = after;
-    if (after?.merged) v.verdict = 'merged';
-    else if (after && after.state === 'OPEN' && call.exit !== 0) { v.verdict = 'merge-failed'; held.merged = false; }
-    else v.verdict = 'merge-unknown'; // treated as merged: the lock is held for the post-merge lease
+    v.verdict = mergeOutcome(call, after);
+    if (v.verdict === 'merge-failed') held.merged = false; // a real failure with the PR still open: release
     out.verdict = v;
     return out;
   } finally {
     if (held && held.merged) {
-      const h = holdAfterMerge(held, { now: clock(), env, leaseSeconds: cfg.post_merge_lease_seconds, merged: out.verdict?.merged });
-      out.lock = { ...out.lock, outcome: 'held after merge (merged-awaiting-verification)', expires_at: h.expires_at, ...(h.why ? { why: h.why } : {}) };
+      const phase = out.verdict?.verdict === 'merged' ? 'merged-awaiting-verification' : 'merge-unknown';
+      const h = holdAfterMerge(held, { now: clock(), env, leaseSeconds: cfg.post_merge_lease_seconds, merged: out.verdict?.merged, phase });
+      out.lock = { ...out.lock, outcome: `held after merge (${phase})`, expires_at: h.expires_at, ...(h.why ? { why: h.why } : {}) };
       out.owed = owedWork({ mode, paused: false });
     } else if (held) {
       const r = releaseLock(held, { now: clock(), env, note: out.verdict?.verdict || 'tick ended' });
@@ -488,39 +565,59 @@ export function parseCli(argv) {
   return { ...o, pr: Number(o.pr) };
 }
 
+// The hand run judges the PR as the lane would: the classifier (path classes, holds,
+// majors and prereleases, package rules, vet markers) must put it in LANE-A, and the
+// merge step's preflight must pass. It skips what only the tick knows: the merge window,
+// the class allowlist and the tick's gates (backups, the Flux baseline, critical alerts,
+// work orders). It needs the owner's yes for the PR; it reads no approval.
 export function handRun(opt, { rules, run, env, now }) {
   const out = { mode: opt.merge ? 'hand --merge' : 'hand --check-only', pr: opt.pr, head: opt.head, refusals: [], notes: [] };
-  const st = readNamedConfigMap(rules.night.state_configmap, run);
-  if (!st) out.refusals.push(`unreadable: data.pause on ${rules.night.state_configmap}`);
-  else if (st.found && st.cm?.data?.pause) out.refusals.push(`paused: data.pause=${JSON.stringify(String(st.cm.data.pause).slice(0, 80))}`);
+  const p0 = pauseRefusal(readPause(rules, run), 'at the start');
+  if (p0) out.refusals.push(p0);
   const lock = lockStatus(readNamedConfigMap(LOCK.name, run), now);
   out.lock = { state: lock.state, holder: lock.holder || null, expires_at: lock.expires_at || null };
   if (['held', 'unreadable'].includes(lock.state)) out.refusals.push(lock.why);
   out.notes.push('a hand run reads the change lock and refuses while it is held; it does not take it (story 551)');
+  out.notes.push('a hand run skips the merge window, the class allowlist and the tick gates (backups, Flux baseline, critical alerts, work orders); it needs the owner\'s yes');
+  // the classifier, on the same facts the tick gathers
+  let holdRules = null, facts = null;
+  try { holdRules = L.fetchHoldRules(REPO, run); } catch { holdRules = null; }
+  try { facts = L.gatherFacts(REPO, opt.pr, run); } catch { facts = null; }
+  if (!holdRules) out.refusals.push('unreadable: .renovate/holds.json5 on main');
+  if (!facts) out.refusals.push('unreadable: the PR facts for the classifier');
+  if (holdRules && facts) {
+    const rec = L.classify(facts, rules, { now, holdRules });
+    out.lane = { lane: rec.lane, class: rec.class, reason: rec.reason, rules: rec.rules };
+    if (rec.lane !== 'LANE-A') out.refusals.push(`lane ${rec.lane} (${rec.class}): ${rec.reason}`);
+  }
   const ev = evaluate({ repo: REPO, pr: opt.pr, head: opt.head, rules, now, run });
   out.refusals.push(...ev.refusals);
   out.facts = ev.facts;
+  if (opt.merge) { const p1 = pauseRefusal(readPause(rules, run), 'just before the merge call'); if (p1) out.refusals.push(p1); }
+  out.refusals = [...new Set(out.refusals)];
   out.ok = out.refusals.length === 0;
   out.verdict = out.ok ? (opt.merge ? 'merging' : 'would-merge') : 'refused';
   if (!opt.merge || !out.ok) { out.merge_call = opt.merge ? 'not made (refused)' : 'not made (--check-only)'; return out; }
-  const call = callMerge({ repo: REPO, pr: opt.pr, head: opt.head, mode: 'hand', verdict: { ok: true, pr: opt.pr, head: opt.head }, lockHeld: false, env });
+  const call = callMerge({ repo: REPO, pr: opt.pr, head: opt.head, mode: 'hand', verdict: { ok: out.refusals.length === 0, pr: opt.pr, head: opt.head }, lockHeld: false, env });
   out.merge_call = call.argv + (call.exit === 0 ? ' (exit 0)' : ` (exit ${call.exit}: ${call.detail})`);
   out.merged = verifyMerged(REPO, opt.pr, opt.head, run);
-  out.verdict = out.merged?.merged ? 'merged' : (out.merged?.state === 'OPEN' && call.exit !== 0) ? 'merge-failed' : 'merge-unknown';
+  out.verdict = mergeOutcome(call, out.merged);
   return out;
 }
 
 async function main(argv) {
   const opt = parseCli(argv);
   if (opt.error) { console.error(`night-merge: ${opt.error}\n${USAGE}`); return 2; }
+  // UPGRADE_NIGHT_NOW pins the clock for a read-only check; a real merge never runs on it.
+  if (opt.merge && process.env.UPGRADE_NIGHT_NOW) { console.error(`night-merge: --merge refuses a pinned clock (UPGRADE_NIGHT_NOW is set)\n${USAGE}`); return 2; }
   const rules = L.loadRules(process.env.UPGRADE_RULES || join(dirname(fileURLToPath(import.meta.url)), 'upgrade-rules.json'));
-  // UPGRADE_NIGHT_NOW pins the clock for the selftest only.
   const now = Date.parse(process.env.UPGRADE_NIGHT_NOW || '') || Date.now();
   // gh uses the caller's own identity; this CLI reads no token file.
   const r = handRun(opt, { rules, run: L.runReadOnly, env: process.env, now });
   if (opt.json) process.stdout.write(JSON.stringify(r, null, 2) + '\n');
   else {
     const lines = [`merge step (${r.mode}) #${r.pr} head ${short(r.head)}: ${r.verdict.toUpperCase()}`];
+    if (r.lane) lines.push(`  lane: ${r.lane.lane} (${r.lane.class}): ${r.lane.reason}`);
     for (const x of r.refusals) lines.push(`  refused: ${x}`);
     lines.push(`  lock: ${LOCK.namespace}/${LOCK.name} ${r.lock.state}${r.lock.holder ? ` (holder ${r.lock.holder} until ${r.lock.expires_at})` : ''}`);
     for (const n of r.notes) lines.push(`  note: ${n}`);
