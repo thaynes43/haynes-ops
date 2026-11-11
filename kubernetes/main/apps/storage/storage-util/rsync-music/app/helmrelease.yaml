@@ -21,6 +21,10 @@ spec:
           #schedule: "0 0 5 12 2" # Disable cronjob by giving it a schedule that will never run
           #schedule: "*/15 * * * *" # Every 15 minutes
           schedule: "0 */12 * * *" # Every 12 hours
+          # Paused 2026-11-11 (OP710): this job mirrors haynestower to gasha01 with --delete, but
+          # Lidarr now writes to the gasha01 copy, so each run deleted the albums Lidarr had added
+          # since the last one. Do not resume until the direction is decided.
+          suspend: true
           backoffLimit: 0
           concurrencyPolicy: Forbid
           failedJobsHistory: 1
