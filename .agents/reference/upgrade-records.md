@@ -240,9 +240,12 @@ the item is `needed` and in lane `A-night`.
 A tick that takes over an expired lock reads `took_over_phase`:
 
 - `taken`: the call was never made. Record `merge-refused` with class `attempt-abandoned`.
-- `merging` or `merge-unknown`: the call may have been made. Read the PR: if it merged at
-  that head, record `merged`; if it is open at that head, `merge-failed`; if it cannot be
-  read, `merge-unknown`.
+- `merging`: the item is still `in_progress`, and the call may have been made. Read the
+  PR: if it merged at that head, record `merged`; if it is open at that head,
+  `merge-failed`; if it cannot be read, `merge-unknown`.
+- `merge-unknown`: the item is already `merge_unknown`. Read the PR: `merged` or
+  `merge-failed` as above. If it still cannot be read, write no event, because the state
+  already says the read is owed. Once its time box has passed, record `escalated`.
 
 Until story 553 holds the lock through verification, a merged item outlives its
 post-merge lease.

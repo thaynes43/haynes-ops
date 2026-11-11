@@ -26,7 +26,7 @@
     "events": ["approval-recorded", "schedule-set"]
   },
   "lock_phases": {
-    "doc": "The phases night-merge.mjs writes to ConfigMap upgrade-agent/upgrade-change-lock (story 752), and the item state each one goes with. released (or a lapsed lease) means no merge call is in flight; until story 553 holds the lock through verification, a merged item outlives its post-merge lease. A tick that takes over an expired lock reads took_over_phase: taken means the call was never made (merge-refused, class attempt-abandoned); merging or merge-unknown means it may have been (read the PR: merged, merge-failed, or merge-unknown).",
+    "doc": "The phases night-merge.mjs writes to ConfigMap upgrade-agent/upgrade-change-lock (story 752), and the item state each one goes with. released (or a lapsed lease) means no merge call is in flight; until story 553 holds the lock through verification, a merged item outlives its post-merge lease. A tick that takes over an expired lock reads took_over_phase. taken: the call was never made (merge-refused, class attempt-abandoned). merging: the item is still in_progress and the call may have been made; read the PR: merged, merge-failed, or merge-unknown if it cannot be read. merge-unknown: the item is already merge_unknown; read the PR: merged or merge-failed; if it still cannot be read, write no event (the state already says the read is owed), and once its time box has passed write escalated.",
     "taken": ["in_progress"],
     "merging": ["in_progress"],
     "merged-awaiting-verification": ["merged_unverified"],
@@ -77,7 +77,7 @@
       ]
     },
     "merge-unknown": {
-      "meaning": "The merge call was made and its outcome could not be read (verdict merge-unknown: no exit status, or the PR could not be read after the call). Also what a tick records when it takes over an expired lock left in phase merging and cannot read the PR.",
+      "meaning": "The merge call was made and its outcome could not be read (verdict merge-unknown: no exit status, or the PR could not be read after the call). Also what a tick records when it takes over an expired lock left in phase merging and cannot read the PR. Written once: an item already merge_unknown whose PR is still unreadable writes no event until it is read or escalated.",
       "used_by": ["752", "754"],
       "requires": ["attempt", "class", "reason", "evidence.merge_call"],
       "edges": [

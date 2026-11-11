@@ -1,0 +1,145 @@
+{
+  "case": "An item already merge_unknown whose PR is still unreadable writes no second merge-unknown: that is not an edge.",
+  "kind": "sequence",
+  "expect": {
+    "refused": "illegal transition: merge-unknown from merge_unknown to merge_unknown"
+  },
+  "record": {
+    "item": {
+      "schema": "haynes.upgrade-item/v1",
+      "id": "own-image:65d1acd0b3646b7b9f03fd41",
+      "source": "own-image",
+      "item": {
+        "name": "sentencepiece",
+        "repo": "thaynes43/haynes-ops",
+        "packages": [
+          {
+            "name": "sentencepiece",
+            "update": null,
+            "from": "==0.2.2",
+            "to": "==0.2.3"
+          }
+        ],
+        "targets": [],
+        "own_images": [
+          "audio-authoring"
+        ]
+      },
+      "installed": {
+        "version": "==0.2.2",
+        "kind": "semver"
+      },
+      "available": {
+        "version": "==0.2.3",
+        "kind": "semver",
+        "update_type": "patch"
+      },
+      "behind": {
+        "age_days": null,
+        "versions_behind": null,
+        "days_to_expiry": null,
+        "basis": "unknown"
+      },
+      "lane": "A-night",
+      "class": "delayed-cluster-change",
+      "reason": "3 expected checks SUCCESS on 5285e48; Renovate-only commits; delayed-cluster-change via own image audio-authoring",
+      "state": "needed",
+      "approval": {},
+      "schedule": {},
+      "attempts": [],
+      "first_seen": "2026-11-02T07:00:00.000Z",
+      "observed_at": "2026-11-02T07:00:00.000Z",
+      "coverage": {
+        "status": "read"
+      },
+      "carrier": {
+        "kind": "github-pr",
+        "repo": "thaynes43/haynes-ops",
+        "pr": 4662,
+        "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+        "title": "chore(deps): update sentencepiece to 0.2.3",
+        "fingerprint": null,
+        "fingerprint_basis": "unavailable",
+        "commit_count": 1,
+        "change_key": "153c42122b6670e6",
+        "files": [
+          "scripts/audio-authoring/requirements.txt"
+        ],
+        "head_committed_at": null
+      }
+    },
+    "events": [
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:29fdee11c3de0a103821515e",
+        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "type": "merge-attempted",
+        "from": "needed",
+        "to": "in_progress",
+        "at": "2026-11-02T07:00:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "lane": "A-night",
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4662,
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc"
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:2c9a776438bbc3e1d5ab6be8",
+        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "type": "merge-unknown",
+        "from": "in_progress",
+        "to": "merge_unknown",
+        "at": "2026-11-02T07:00:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "class": "merge-outcome-unread",
+        "reason": "pr merge 4662 --repo thaynes43/haynes-ops --squash --match-head-commit 5285e48eab3ed7df5458a884cb98001843e55bdc (exit null: no exit status (SIGKILL))",
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4662,
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc"
+        },
+        "evidence": {
+          "merge_call": "pr merge 4662 --repo thaynes43/haynes-ops --squash --match-head-commit 5285e48eab3ed7df5458a884cb98001843e55bdc (exit null: no exit status (SIGKILL))"
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:b28339522472f7ec6e122836",
+        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "type": "merge-unknown",
+        "from": "merge_unknown",
+        "to": "merge_unknown",
+        "at": "2026-11-02T07:15:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "class": "merge-outcome-unread",
+        "reason": "pr merge 4662 --repo thaynes43/haynes-ops --squash --match-head-commit 5285e48eab3ed7df5458a884cb98001843e55bdc (exit null: no exit status (SIGKILL))",
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4662,
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc"
+        },
+        "evidence": {
+          "merge_call": "pr merge 4662 --repo thaynes43/haynes-ops --squash --match-head-commit 5285e48eab3ed7df5458a884cb98001843e55bdc (exit null: no exit status (SIGKILL))"
+        }
+      }
+    ]
+  }
+}
