@@ -1,0 +1,107 @@
+{
+  "case": "Illustrative: PR 4636 (buildkit digest) closed by Renovate when a newer digest replaced it.",
+  "kind": "sequence",
+  "expect": "valid",
+  "final_state": "closed",
+  "record": {
+    "item": {
+      "schema": "haynes.upgrade-item/v1",
+      "id": "own-image:e0515b21079942e27dacad30",
+      "source": "own-image",
+      "item": {
+        "name": "docker.io/moby/buildkit",
+        "repo": "thaynes43/haynes-ops",
+        "packages": [
+          {
+            "name": "docker.io/moby/buildkit",
+            "update": "digest",
+            "from": "cec9f13",
+            "to": "c5f8862"
+          }
+        ],
+        "targets": [],
+        "own_images": [
+          "source-only-sha-tags"
+        ]
+      },
+      "installed": {
+        "version": "cec9f13",
+        "kind": "digest"
+      },
+      "available": {
+        "version": "c5f8862",
+        "kind": "digest",
+        "update_type": "digest"
+      },
+      "behind": {
+        "age_days": 5.81,
+        "versions_behind": null,
+        "days_to_expiry": null,
+        "basis": "first-seen"
+      },
+      "lane": "A-night",
+      "class": "no-cluster-effect",
+      "reason": "4 expected checks SUCCESS on b8c60e7; Renovate-only commits; no-cluster-effect via own image source-only-sha-tags",
+      "state": null,
+      "approval": {},
+      "schedule": {},
+      "attempts": [],
+      "first_seen": "2026-11-04T04:12:02.000Z",
+      "observed_at": "2026-11-09T23:40:00.000Z",
+      "coverage": {
+        "status": "read"
+      },
+      "carrier": {
+        "kind": "github-pr",
+        "repo": "thaynes43/haynes-ops",
+        "pr": 4636,
+        "head": "b8c60e7f5cff9f60dc55f1da61540d44779855f3",
+        "title": "chore(container): update image docker.io/moby/buildkit to c5f8862",
+        "fingerprint": null,
+        "fingerprint_basis": "unavailable",
+        "commit_count": 1,
+        "change_key": "21f4b7cf42731960"
+      }
+    },
+    "events": [
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:d3ca3479622919c6329f313d",
+        "item_id": "own-image:e0515b21079942e27dacad30",
+        "type": "observed",
+        "from": null,
+        "to": "needed",
+        "at": "2026-11-12T00:10:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "lane": "A-night",
+        "class": "no-cluster-effect",
+        "reason": "4 expected checks SUCCESS on b8c60e7; Renovate-only commits; no-cluster-effect via own image source-only-sha-tags",
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4636,
+          "head": "b8c60e7f5cff9f60dc55f1da61540d44779855f3",
+          "fingerprint": null
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:cc90925289877b73eb677f33",
+        "item_id": "own-image:e0515b21079942e27dacad30",
+        "type": "closed",
+        "from": "needed",
+        "to": "closed",
+        "at": "2026-11-12T03:00:00.000Z",
+        "actor": {
+          "kind": "renovate",
+          "login": "renovate[bot]"
+        },
+        "recorded_by": "lane",
+        "reason": "Renovate closed the PR: a newer digest replaced it"
+      }
+    ]
+  }
+}

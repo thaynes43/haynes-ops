@@ -1,0 +1,97 @@
+{
+  "case": "image-pin: PR 4333 (python digest), lane A, needed. Lane record built as for item-renovate-pr.json",
+  "kind": "item",
+  "expect": "valid",
+  "from_pr": 4333,
+  "record": {
+    "schema": "haynes.upgrade-item/v1",
+    "id": "image-pin:eeaf0380a6cc0bada95184d4",
+    "source": "image-pin",
+    "item": {
+      "name": "docker.io/library/python",
+      "repo": "thaynes43/haynes-ops",
+      "packages": [
+        {
+          "name": "docker.io/library/python",
+          "update": "digest",
+          "from": "d44b125",
+          "to": "a0f2e26"
+        }
+      ],
+      "targets": [
+        "kubernetes/main/apps/dev/openproject-agent"
+      ],
+      "own_images": []
+    },
+    "installed": {
+      "version": "d44b125",
+      "kind": "digest"
+    },
+    "available": {
+      "version": "a0f2e26",
+      "kind": "digest",
+      "update_type": "digest"
+    },
+    "behind": {
+      "age_days": 13.77,
+      "versions_behind": null,
+      "days_to_expiry": null,
+      "basis": "first-seen"
+    },
+    "lane": "A-night",
+    "class": "cluster-change",
+    "reason": "5 expected checks SUCCESS on 0d22b1a; Renovate-only commits; cluster-change (kubernetes/main/apps/dev/openproject-agent)",
+    "state": "needed",
+    "approval": {},
+    "schedule": {},
+    "attempts": [],
+    "first_seen": "2026-10-27T05:08:27.000Z",
+    "observed_at": "2026-11-09T23:40:00.000Z",
+    "coverage": {
+      "status": "read"
+    },
+    "carrier": {
+      "kind": "github-pr",
+      "repo": "thaynes43/haynes-ops",
+      "pr": 4333,
+      "head": "0d22b1a4bc6ebc984a18d7ecd9e5399a6e585006",
+      "title": "chore(container): update image docker.io/library/python to a0f2e26",
+      "fingerprint": null,
+      "fingerprint_basis": "unavailable",
+      "commit_count": 1,
+      "change_key": "62b77daf1b0f9ec6"
+    },
+    "lane_detail": {
+      "from_schema": "haynes.upgrade-lane/v1",
+      "rules": [],
+      "findings": [],
+      "checks": {
+        "expected": [
+          "Diff Scope / Diff Scope - Success",
+          "Flux Local / Flux Local - Success",
+          "Flux Local / Flux Local - Test (main)",
+          "Flux Local / Flux Local - Diff (main/helmrelease)",
+          "Flux Local / Flux Local - Diff (main/kustomization)"
+        ],
+        "missing": [],
+        "failing": [],
+        "pending": [],
+        "stale": []
+      },
+      "cluster_effect": "immediate",
+      "cluster_effect_wait": null,
+      "gates": {
+        "namespaces": [],
+        "blockers": [
+          "outside the merge window (01:30-04:45 America/New_York, now 18:40)"
+        ],
+        "would_be_eligible": false
+      },
+      "backup": {
+        "rule": "Per source: the newest successful VolSync sync (status.lastSyncTime, latestMoverStatus.result=Successful) or completed CNPG Backup (metadata.creationTimestamp, phase=completed) must be at or after that source's most recent scheduled run and no older than 24 hours at merge time. VolSync: the most recent run is status.nextSyncTime when that is already past, else nextSyncTime minus the schedule's period (spec.trigger.schedule). CNPG: ScheduledBackup status.lastScheduleTime. CNPG startedAt/stoppedAt are not used: some instances stamp local time with Z.",
+        "targets": [],
+        "stateful": false
+      }
+    }
+  }
+}

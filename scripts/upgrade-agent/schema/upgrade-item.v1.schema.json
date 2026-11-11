@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "haynes.upgrade-item/v1",
+  "title": "One update item",
+  "description": "One row per (source, item, available version). A pull request is one carrier of an item, not the item. Reference: .agents/reference/upgrade-records.md. Validated by scripts/upgrade-agent/schema/record-format.mjs, which implements only the JSON Schema keywords used here and refuses any other.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "source", "item", "installed", "available", "behind", "lane", "class", "reason", "state", "approval", "schedule", "attempts", "first_seen", "observed_at", "coverage"],
+  "properties": {
+    "schema": { "const": "haynes.upgrade-item/v1" },
+    "id": {
+      "description": "Stable key: '<source>:' plus the first 24 hex digits of sha256 over [source, item.repo, the sorted [name, to] pairs of item.packages] (or [[item.name, available.version]] when there are no packages). itemId() in record-format.mjs computes it; the validator refuses an id that does not match.",
+      "type": "string",
+      "pattern": "^[a-z][a-z-]*:[0-9a-f]{24}$"
+    },
+    "source": { "$ref": "#/$defs/source" },
+    "item": {
+      "description": "What is updated: the package, image, entity, device or credential, the repository and the apps it lands in.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "repo", "packages", "targets"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "repo": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+        "packages": { "type": "array", "items": { "$ref": "#/$defs/package" } },
+        "targets": { "description": "Repository paths of the apps the update lands in (the lane's targets).", "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "own_images": { "description": "Ids from own_images in upgrade-rules.json whose source this update changes.", "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "installed": { "$ref": "#/$defs/version" },
+    "available": {
+      "type": "object",
+      "required": ["version", "kind", "update_type"],
+      "properties": {
+        "version": { "type": ["string", "null"] },
+        "kind": { "$ref": "#/$defs/version_kind" },
+        "update_type": {
+          "description": "The lane's update_type: '+'-joined tokens such as patch, minor, major, digest, pin, pinDigest; or firmware, expiry, unknown.",
+          "type": "string",
+          "pattern": "^[A-Za-z]+(\\+[A-Za-z]+)*$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "behind": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis"],
+      "properties": {
+        "age_days": { "type": ["number", "null"], "minimum": 0 },
+        "versions_behind": { "type": ["integer", "null"], "minimum": 0 },
+        "days_to_expiry": { "type": ["number", "null"] },
+        "basis": { "description": "What age_days counts from: when available was published, when the item was first seen (a lower bound), or unknown.", "enum": ["published", "first-seen", "unknown"] }
+      }
+    },
+    "lane": { "$ref": "#/$defs/lane" },
+    "class": { "$ref": "#/$defs/class" },
+    "reason": { "type": "string" },
+    "state": { "$ref": "#/$defs/state" },
+    "approval": {
+      "description": "RESERVED. Empty in piece 1: by Tom's ruling (saga 547 comment 6922) every approval goes through the dev-env v2 approval framework in piece 2, and piece 1 reads no approval. Piece 2 defines the fields. A GitHub review is not an approval.",
+      "type": "object",
+      "maxProperties": 0
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "not_before": { "$ref": "#/$defs/timestamp" },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["first", "last", "tz"],
+          "properties": {
+            "first": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+            "last": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+            "tz": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "attempts": {
+      "description": "One entry per attempt, built from the item's events (applyEvent() in record-format.mjs). Empty until story 593 writes events.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/attempt" }
+    },
+    "first_seen": { "$ref": "#/$defs/timestamp" },
+    "observed_at": { "$ref": "#/$defs/timestamp" },
+    "coverage": {
+      "description": "Honesty: read = the whole item was read; partial = some facts failed to read; unread = nothing could be read, and then the state is unknown.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["read", "partial", "unread"] },
+        "detail": { "type": "string" }
+      }
+    },
+    "carrier": { "$ref": "#/$defs/carrier" },
+    "lane_detail": {
+      "description": "The night lane's own detail, copied as written. Its shape belongs to lane-classify.mjs and run-night.mjs.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from_schema"],
+      "properties": {
+        "from_schema": { "const": "haynes.upgrade-lane/v1" },
+        "rules": { "type": "array", "items": { "type": "string" } },
+        "findings": { "type": "array", "items": { "type": "string" } },
+        "checks": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "expected": { "type": "array", "items": { "type": "string" } },
+            "missing": { "type": "array", "items": { "type": "string" } },
+            "failing": { "type": "array", "items": { "type": "string" } },
+            "pending": { "type": "array", "items": { "type": "string" } },
+            "stale": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "cluster_effect": { "enum": ["none", "delayed", "immediate", null] },
+        "cluster_effect_wait": { "type": ["object", "null"] },
+        "gates": { "type": ["object", "null"] },
+        "backup": { "type": ["object", "null"] }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["source"], "properties": { "source": { "enum": ["renovate-pr", "image-pin", "own-image"] } } },
+      "then": { "required": ["carrier"] }
+    },
+    {
+      "if": { "required": ["coverage"], "properties": { "coverage": { "required": ["status"], "properties": { "status": { "const": "unread" } } } } },
+      "then": { "properties": { "state": { "const": "unknown" } } }
+    }
+  ],
+  "$defs": {
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "class": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "source": {
+      "description": "Written in piece 1 by the night lane: renovate-pr, image-pin, own-image. The others are named in ui.md section 3 and have no writer yet.",
+      "enum": ["renovate-pr", "image-pin", "own-image", "renovate-pending", "platform", "ha-update", "unifi-firmware", "credential"]
+    },
+    "lane": {
+      "description": "Who acts. From the lane record: A-night (LANE-A, and BLOCKED once its blocker clears), B-agent, B-owner, excluded; unknown when the lane could not decide. Others: auto (Renovate auto-merge), hand (a session delivers it), none (visibility only).",
+      "enum": ["A-night", "B-agent", "B-owner", "excluded", "auto", "hand", "none", "unknown"]
+    },
+    "state": {
+      "description": "See upgrade-states.v1.json. approved and scheduled are reserved for piece 2 and refused by the validator.",
+      "enum": ["needed", "held", "blocked", "unknown", "closed", "in_progress", "merged_unverified", "awaiting_pin", "done", "failed", "reverting", "reverted_unverified", "reverted", "escalated", "approved", "scheduled"]
+    },
+    "version_kind": { "description": "semver = dotted numbers (an exact pin such as ==1.2.3 counts); digest = a hex digest; date; other; unknown = no version.", "enum": ["semver", "digest", "date", "other", "unknown"] },
+    "version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "kind"],
+      "properties": {
+        "version": { "type": ["string", "null"] },
+        "kind": { "$ref": "#/$defs/version_kind" }
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "update", "from", "to"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "update": { "type": ["string", "null"] },
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["lane", "renovate", "shepherd", "hand", "person"] },
+        "login": { "type": ["string", "null"] }
+      }
+    },
+    "carrier": {
+      "description": "The pull request that carries the item, as last seen.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "repo", "pr"],
+      "properties": {
+        "kind": { "const": "github-pr" },
+        "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+        "pr": { "type": "integer", "minimum": 1 },
+        "head": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+        "title": { "type": ["string", "null"] },
+        "fingerprint": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
+        "fingerprint_basis": { "enum": ["commit-diff", "binary", "multi-commit", "unavailable", null] },
+        "commit_count": { "type": ["integer", "null"], "minimum": 0 },
+        "change_key": { "type": ["string", "null"], "pattern": "^[0-9a-f]{16}$" }
+      }
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n", "actor", "started_at", "at", "result", "recovery", "drill", "evidence_url"],
+      "properties": {
+        "n": { "type": "integer", "minimum": 1 },
+        "actor": { "$ref": "#/$defs/actor" },
+        "started_at": { "$ref": "#/$defs/timestamp" },
+        "at": { "description": "Time of the attempt's latest event.", "$ref": "#/$defs/timestamp" },
+        "result": { "enum": ["in-progress", "merge-refused", "merged", "awaiting-pin", "verified", "failed-verification", "drill", "reverted", "escalated"] },
+        "recovery": { "description": "After a revert: whether recovery was verified.", "enum": ["verified", "failed", null] },
+        "drill": { "type": "boolean" },
+        "evidence_url": { "type": ["string", "null"], "pattern": "^https://" }
+      }
+    }
+  }
+}

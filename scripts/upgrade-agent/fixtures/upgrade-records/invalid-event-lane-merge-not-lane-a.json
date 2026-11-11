@@ -1,0 +1,29 @@
+{
+  "case": "The lane may start a merge only for an item in lane A-night.",
+  "kind": "event",
+  "expect": {
+    "refused": "/lane: lane may record merge-attempted only for lane A-night"
+  },
+  "record": {
+    "schema": "haynes.upgrade-event/v1",
+    "id": "ev:040a40e1bbfac70b9e6bd72a",
+    "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+    "type": "merge-attempted",
+    "from": "needed",
+    "to": "in_progress",
+    "at": "2026-11-12T06:31:00.000Z",
+    "actor": {
+      "kind": "lane",
+      "login": null
+    },
+    "recorded_by": "lane",
+    "attempt": 1,
+    "lane": "B-owner",
+    "carrier": {
+      "repo": "thaynes43/haynes-ops",
+      "pr": 4477,
+      "head": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+      "fingerprint": null
+    }
+  }
+}

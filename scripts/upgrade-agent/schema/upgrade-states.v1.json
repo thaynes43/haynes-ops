@@ -1,0 +1,177 @@
+{
+  "schema": "haynes.upgrade-states/v1",
+  "doc": "The state machine of an update item (haynes.upgrade-item/v1 state) and the events that move it (haynes.upgrade-event/v1). An event is legal only as an edge here: its type, its from state (null = first event of the item), its to state, and an actor kind the edge allows. 'requires' names the event fields that type must carry (a path such as evidence.merge_commit; 'drill' means drill must be true). starts_attempt: the event opens attempt n+1. attempt_result / recovery: what the event sets on that attempt's entry in the item's attempts[]. Reference: .agents/reference/upgrade-records.md.",
+  "states": {
+    "needed": { "phase": "open", "meaning": "An update is available and nothing is in flight. lane says who may act; piece 1's lane starts a merge only from here and only for lane A-night." },
+    "held": { "phase": "open", "meaning": "A deliberate hold applies (.renovate/holds.json5 or a current-head vet HOLD). Nobody acts until it lifts." },
+    "blocked": { "phase": "open", "meaning": "Something about the item must change first: a check failing or incomplete, facts incomplete, a merge refusal that needs a new head, or (story 753) a version remembered as reverted on a new carrier." },
+    "unknown": { "phase": "open", "meaning": "The item could not be read; coverage says why. Unknown beats guessing." },
+    "closed": { "phase": "open", "meaning": "No longer offered: the carrier closed without a merge or a newer version replaced it. A reopened carrier is observed again." },
+    "in_progress": { "phase": "attempt", "meaning": "The lane took the change lock and its merge step is running (story 752). Ends in merged or merge-refused." },
+    "merged_unverified": { "phase": "attempt", "meaning": "Merged; the rollout is not yet verified. Backfilled merges stay here: nobody verified them." },
+    "awaiting_pin": { "phase": "attempt", "meaning": "An own-image source merged; verification waits, time-boxed, for the digest pin to merge, apply and soak (story 553)." },
+    "done": { "phase": "settled", "meaning": "Merged and verified. Counts as done." },
+    "failed": { "phase": "attempt", "meaning": "Verification failed, or a drill asked for a revert; no revert is open yet." },
+    "reverting": { "phase": "attempt", "meaning": "A revert pull request is open and not merged (story 753)." },
+    "reverted_unverified": { "phase": "attempt", "meaning": "The revert merged; recovery is not yet verified." },
+    "reverted": { "phase": "settled", "meaning": "Reverted and recovery verified. Sticky: the version is never merged again; only drill-cleared (a drill) or resolved by a person leaves it. A new carrier for the version is classed BLOCKED 'reverted' by the lane and writes no event here." },
+    "escalated": { "phase": "attempt", "meaning": "The lane's own moves are used up (recovery failed, a revert cannot be opened or merged, verification cannot be read); a person owns it (story 554)." },
+    "approved": { "phase": "reserved", "meaning": "Reserved for piece 2 (dev-env v2 approval framework). Refused in piece 1." },
+    "scheduled": { "phase": "reserved", "meaning": "Reserved for piece 2 (a planned time from schedule, e.g. Renovate's Awaiting Schedule items). Refused in piece 1." }
+  },
+  "reserved": {
+    "why": "Piece 1 reads no approval (saga 547 comment 6922) and plans no schedule. These names keep their meaning for piece 2; the validator refuses them until a reviewed change lifts the reservation.",
+    "states": ["approved", "scheduled"],
+    "events": ["approval-recorded", "schedule-set"]
+  },
+  "events": {
+    "observed": {
+      "meaning": "The lane read the item and its verdict changed (first sight, or a new state, lane or class). An unchanged read writes no event; the item's observed_at moves.",
+      "used_by": ["593"],
+      "requires": ["lane", "class", "reason"],
+      "edges": [
+        { "from": [null, "needed", "held", "blocked", "unknown", "closed"], "to": ["needed", "held", "blocked", "unknown"], "actors": ["lane"] }
+      ]
+    },
+    "closed": {
+      "meaning": "The carrier closed without a merge, or a newer version replaced it. actor is who closed it when known, else lane (the observer).",
+      "used_by": ["593"],
+      "requires": ["reason"],
+      "edges": [
+        { "from": ["needed", "held", "blocked", "unknown"], "to": ["closed"], "actors": ["lane", "renovate", "hand", "person"] }
+      ]
+    },
+    "merge-attempted": {
+      "meaning": "The merge step started: lock taken, preflight running. Only from needed; the lane only for an item in lane A-night. A hand run (story 712) may record its own attempt for an update Tom agreed to by phone prompt.",
+      "used_by": ["752", "712"],
+      "requires": ["attempt", "lane", "carrier"],
+      "edges": [
+        { "from": ["needed"], "to": ["in_progress"], "actors": ["lane"], "lanes": ["A-night"], "starts_attempt": true, "attempt_result": "in-progress" },
+        { "from": ["needed"], "to": ["in_progress"], "actors": ["hand"], "starts_attempt": true, "attempt_result": "in-progress" }
+      ]
+    },
+    "merge-refused": {
+      "meaning": "The merge step refused, with its reason in class and reason (pending status, checks older than main, head behind main, lock held, pause set, attempt abandoned by a crashed tick). On a revert, the revert's merge was refused and stays owed.",
+      "used_by": ["752", "753"],
+      "requires": ["attempt", "class", "reason"],
+      "edges": [
+        { "from": ["in_progress"], "to": ["needed", "blocked"], "actors": ["lane", "hand"], "attempt_result": "merge-refused" },
+        { "from": ["reverting"], "to": ["reverting"], "actors": ["lane", "hand"] }
+      ]
+    },
+    "merged": {
+      "meaning": "The carrier merged. From in_progress by the lane's own merge step; from an open state when someone else merged it (Renovate auto-merge, the shepherd, a hand run, a person), which opens a new attempt; from null when the first sight of the item is its merge (a backfill).",
+      "used_by": ["752", "593"],
+      "requires": ["attempt", "carrier", "evidence.merge_commit"],
+      "edges": [
+        { "from": ["in_progress"], "to": ["merged_unverified"], "actors": ["lane", "hand"], "attempt_result": "merged" },
+        { "from": [null, "needed", "held", "blocked", "unknown"], "to": ["merged_unverified"], "actors": ["renovate", "shepherd", "hand", "person"], "starts_attempt": true, "attempt_result": "merged" }
+      ]
+    },
+    "awaiting-pin": {
+      "meaning": "An own-image source merged; the verifier waits for the digest pin (the lane's cluster_effect_wait).",
+      "used_by": ["553"],
+      "requires": ["attempt"],
+      "edges": [
+        { "from": ["merged_unverified"], "to": ["awaiting_pin"], "actors": ["lane"], "attempt_result": "awaiting-pin" }
+      ]
+    },
+    "verified": {
+      "meaning": "The read-only verifier proved the rollout healthy: revision applied, Kustomization and HelmReleases Ready, new tag or digest running, soak clean.",
+      "used_by": ["553"],
+      "requires": ["attempt"],
+      "edges": [
+        { "from": ["merged_unverified", "awaiting_pin"], "to": ["done"], "actors": ["lane", "hand"], "attempt_result": "verified" }
+      ]
+    },
+    "verification-failed": {
+      "meaning": "Verification failed; class is the failure mode (not-applied, not-ready, wrong-image, restart-growth, critical-alert, pin-timeout).",
+      "used_by": ["553"],
+      "requires": ["attempt", "class", "reason"],
+      "edges": [
+        { "from": ["merged_unverified", "awaiting_pin"], "to": ["failed"], "actors": ["lane", "hand"], "attempt_result": "failed-verification" }
+      ]
+    },
+    "drill-requested": {
+      "meaning": "A drill request in git names this verified merge: the lane reverts it as if verification had failed. Opens its own attempt, marked drill.",
+      "used_by": ["753"],
+      "requires": ["attempt", "reason", "drill"],
+      "edges": [
+        { "from": ["done"], "to": ["failed"], "actors": ["lane"], "starts_attempt": true, "attempt_result": "drill" }
+      ]
+    },
+    "revert-opened": {
+      "meaning": "A revert pull request was opened (the lane's is night/revert-<PR>, one commit that exactly reverts the merged squash commit).",
+      "used_by": ["753"],
+      "requires": ["attempt", "evidence.revert_pr"],
+      "edges": [
+        { "from": ["failed"], "to": ["reverting"], "actors": ["lane", "hand", "person"] }
+      ]
+    },
+    "revert-merged": {
+      "meaning": "The revert merged. From reverting for a revert pull request that was recorded as opened; from failed, merged_unverified, awaiting_pin or done for a revert made by a person or a hand run without that record (also how a backfill records a revert found by its title).",
+      "used_by": ["753", "593"],
+      "requires": ["attempt", "evidence.revert_commit"],
+      "edges": [
+        { "from": ["reverting"], "to": ["reverted_unverified"], "actors": ["lane", "hand", "person"], "attempt_result": "reverted" },
+        { "from": ["failed", "merged_unverified", "awaiting_pin", "done"], "to": ["reverted_unverified"], "actors": ["hand", "person"], "attempt_result": "reverted" }
+      ]
+    },
+    "recovery-verified": {
+      "meaning": "After the revert, the verifier proved the target healthy again. The version is now remembered as reverted.",
+      "used_by": ["753"],
+      "requires": ["attempt"],
+      "edges": [
+        { "from": ["reverted_unverified"], "to": ["reverted"], "actors": ["lane", "hand"], "recovery": "verified" }
+      ]
+    },
+    "recovery-failed": {
+      "meaning": "After the revert the target is still unhealthy. The lane stops; a person owns it.",
+      "used_by": ["753", "554"],
+      "requires": ["attempt", "class", "reason"],
+      "edges": [
+        { "from": ["reverted_unverified"], "to": ["escalated"], "actors": ["lane", "hand"], "recovery": "failed" }
+      ]
+    },
+    "escalated": {
+      "meaning": "The lane cannot finish on its own: a revert cannot be opened or merged within its time box, or verification cannot be read. A person owns it.",
+      "used_by": ["553", "753", "754"],
+      "requires": ["attempt", "class", "reason"],
+      "edges": [
+        { "from": ["merged_unverified", "awaiting_pin", "failed", "reverting"], "to": ["escalated"], "actors": ["lane"], "attempt_result": "escalated" }
+      ]
+    },
+    "resolved": {
+      "meaning": "A person settled an escalated item: it is healthy at the new version (done), back on the old one (reverted), or no longer applies (closed).",
+      "used_by": ["554"],
+      "requires": ["attempt", "reason"],
+      "edges": [
+        { "from": ["escalated"], "to": ["done", "reverted", "closed"], "actors": ["hand", "person"] }
+      ]
+    },
+    "drill-cleared": {
+      "meaning": "The drill is over and its marker cleared: the version is not remembered as bad and may be merged again. Legal only when the item's current attempt is a drill.",
+      "used_by": ["753"],
+      "requires": ["attempt", "drill"],
+      "edges": [
+        { "from": ["reverted"], "to": ["needed"], "actors": ["lane", "hand"] }
+      ]
+    },
+    "approval-recorded": {
+      "meaning": "Reserved for piece 2: an approval from the dev-env v2 approval framework.",
+      "used_by": [],
+      "requires": [],
+      "edges": [
+        { "from": ["needed"], "to": ["approved"], "actors": ["person"] }
+      ]
+    },
+    "schedule-set": {
+      "meaning": "Reserved for piece 2: a planned time for the update.",
+      "used_by": [],
+      "requires": [],
+      "edges": [
+        { "from": ["needed", "approved"], "to": ["scheduled"], "actors": ["lane"] }
+      ]
+    }
+  }
+}

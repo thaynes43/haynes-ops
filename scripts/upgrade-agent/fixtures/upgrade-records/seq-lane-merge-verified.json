@@ -1,0 +1,164 @@
+{
+  "case": "Illustrative (the lane cannot merge until story 752): the lane merges PR 4477 at a checked head and the verifier proves the rollout. Commit ids are synthetic.",
+  "kind": "sequence",
+  "expect": "valid",
+  "final_state": "done",
+  "record": {
+    "item": {
+      "schema": "haynes.upgrade-item/v1",
+      "id": "renovate-pr:1d7a362939cd391c85d1adb5",
+      "source": "renovate-pr",
+      "item": {
+        "name": "docker.io/alpine/kubectl",
+        "repo": "thaynes43/haynes-ops",
+        "packages": [
+          {
+            "name": "docker.io/alpine/kubectl",
+            "update": "patch",
+            "from": "1.37.1",
+            "to": "1.37.2"
+          }
+        ],
+        "targets": [
+          "kubernetes/main/apps/kube-system/node-out-of-service",
+          "kubernetes/main/apps/media/plex-hw-canary"
+        ],
+        "own_images": []
+      },
+      "installed": {
+        "version": "1.37.1",
+        "kind": "semver"
+      },
+      "available": {
+        "version": "1.37.2",
+        "kind": "semver",
+        "update_type": "patch"
+      },
+      "behind": {
+        "age_days": 9.84,
+        "versions_behind": null,
+        "days_to_expiry": null,
+        "basis": "first-seen"
+      },
+      "lane": "A-night",
+      "class": "cluster-change",
+      "reason": "5 expected checks SUCCESS on 871dab8; Renovate-only commits; cluster-change (kubernetes/main/apps/kube-system/node-out-of-service, kubernetes/main/apps/media/plex-hw-canary)",
+      "state": null,
+      "approval": {},
+      "schedule": {},
+      "attempts": [],
+      "first_seen": "2026-10-31T03:28:16.000Z",
+      "observed_at": "2026-11-09T23:40:00.000Z",
+      "coverage": {
+        "status": "read"
+      },
+      "carrier": {
+        "kind": "github-pr",
+        "repo": "thaynes43/haynes-ops",
+        "pr": 4477,
+        "head": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+        "title": "fix(container): update image docker.io/alpine/kubectl to v1.37.2",
+        "fingerprint": null,
+        "fingerprint_basis": "unavailable",
+        "commit_count": 1,
+        "change_key": "bb9992cc873e5ccb"
+      }
+    },
+    "events": [
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:15a131b5a2043ee4f23d4708",
+        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "type": "observed",
+        "from": null,
+        "to": "needed",
+        "at": "2026-11-12T00:10:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "lane": "A-night",
+        "class": "cluster-change",
+        "reason": "5 expected checks SUCCESS on 871dab8; Renovate-only commits; cluster-change (kubernetes/main/apps/kube-system/node-out-of-service, kubernetes/main/apps/media/plex-hw-canary)",
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4477,
+          "head": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+          "fingerprint": null
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:040a40e1bbfac70b9e6bd72a",
+        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "type": "merge-attempted",
+        "from": "needed",
+        "to": "in_progress",
+        "at": "2026-11-12T06:31:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "lane": "A-night",
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4477,
+          "head": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+          "fingerprint": null
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:b06d0d051666cbb72d6eebaf",
+        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "type": "merged",
+        "from": "in_progress",
+        "to": "merged_unverified",
+        "at": "2026-11-12T06:31:40.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4477,
+          "head": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+          "fingerprint": null
+        },
+        "evidence": {
+          "merge_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "url": "https://github.com/thaynes43/haynes-ops/pull/4477"
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:74dc7cc75e4a5ea70b85766f",
+        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "type": "verified",
+        "from": "merged_unverified",
+        "to": "done",
+        "at": "2026-11-12T06:52:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "evidence": {
+          "flux_revision": "main@sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "checks": [
+            "revision applied: ok",
+            "Kustomization Ready: ok",
+            "rollout on 1.37.2: ok",
+            "soak 10m: no restart growth, no new critical alert"
+          ]
+        }
+      }
+    ]
+  }
+}
