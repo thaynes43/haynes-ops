@@ -308,8 +308,16 @@ spec:
               # parent-note route now names the route template, not the raw path. #1065 adds a
               # package nothing calls yet. No flag, CRD, CallerPolicy or permission change in this pin.
               # Previous pin sha-a9f5d56@sha256:9c058a3ea1434d32169ce7ce11c442857cf1a87fccf78cac88681b401778fa75
-              # (haynes-ops#4800); rollback target for the operator alone.
-              tag: sha-7cc86a8@sha256:69c8175e05f4e63db896bdc0ca68b31c57cc5149832ef4dcbe4e09c95a932b0f
+              # (haynes-ops#4800).
+              # dev-env main 3f551553 (release 2.102.0; publish 42956497289's operator job signed and
+              # verified this digest). One change in the running operator since sha-7cc86a8: the
+              # thread-launch result table gains three refusals that agent image 2.102.0 can return
+              # (folder_not_qualified, codex_config_invalid, codex_trust_unconfirmed; OP695), so the
+              # API's thread route passes them on with their sentences. No flag, CRD or permission
+              # change in this pin.
+              # Previous pin sha-7cc86a8@sha256:69c8175e05f4e63db896bdc0ca68b31c57cc5149832ef4dcbe4e09c95a932b0f
+              # (haynes-ops#4801); rollback target for the operator alone.
+              tag: sha-3f55155@sha256:c656bbc24d80c1c77cf67ac8b8019b94b8f6a29f7a1d3ee370de549ec3991ed6
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
