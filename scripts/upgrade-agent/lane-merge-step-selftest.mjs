@@ -13,6 +13,10 @@
 //   2. the reads around it: story 550's R7 through the same exported functions, and the
 //      head-behind-main rule, each failing closed on a read it cannot make; PR 3915 as
 //      read live on 2026-11-11 (fixtures/merge-step-pr3915-20261111.json);
+//   2b. GitHub's mergeability read until it has answered (story 773): answered on a later
+//      read, never answered in 4 reads, the head changed between reads, a read that fails,
+//      the last view judged whole; and, in section 4, the same through the lane step in
+//      both modes and the hand run, with the freshness checks measuring the re-reads;
 //   3. the change lock: free, held, expired and unreadable; an atomic take (AlreadyExists,
 //      Conflict); release on return, on an exception, on process exit and on SIGTERM;
 //      kept after a merge; a stale lock taken over by its lease;
@@ -152,6 +156,87 @@ const GO_MOD = 'scripts/tests/dev-env-archive-guard/go.mod';
   // R7 is story 550's rule, reused: no second staleness rule in night-merge.mjs
   const src = readFileSync(join(RES, 'night-merge.mjs'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
   ok(/L\.checksReferenceTime\(/.test(src) && /L\.checksPredateMain\(/.test(src) && /L\.mainCommitsTouching\(/.test(src) && !/since=/.test(src), "night-merge.mjs reuses R7's three exported functions and has no staleness query of its own");
+}
+
+// ── 2b. GitHub's mergeability, read until it has answered (story 773) ────────────────
+// GitHub answers UNKNOWN on the first read after main moves (5 of 20 ticks on 2026-11-12).
+// seqReader serves the views in order (the last one again if read more often) and counts
+// every read; the pause is injected and records what it was asked to wait, so nothing
+// here sleeps.
+const seqReader = (views, w = {}) => {
+  const log = { views: 0, calls: [] }, base = reader(w);
+  const run = (cmd, argv) => {
+    log.calls.push(`${cmd} ${argv.slice(0, 2).join(' ')} ${argv.find(a => String(a).startsWith('repos/')) || ''}`.trim());
+    if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'view') { const v = views[Math.min(log.views++, views.length - 1)]; return v === null ? null : JSON.stringify(v); }
+    return base(cmd, argv);
+  };
+  return { run, log };
+};
+const pauser = () => { const asked = []; const f = ms => { asked.push(ms); }; f.asked = asked; return f; };
+const unk = (f = v => v) => view(v => { v.mergeable = 'UNKNOWN'; v.mergeStateStatus = 'UNKNOWN'; return f(v) || v; });
+const evalSeq = (views, w = {}) => { const s = seqReader(views, w), p = pauser(); const e = M.evaluate({ repo: M.REPO, pr: 3915, head: HEAD, rules, now: NOW, run: s.run, rereadPause: p }); return { e, reads: s.log.views, calls: s.log.calls, asked: p.asked }; };
+{
+  ok(JSON.stringify(M.MERGEABLE_REREAD.pauses_ms) === '[2000,4000,8000]' && Object.isFrozen(M.MERGEABLE_REREAD) && Object.isFrozen(M.MERGEABLE_REREAD.pauses_ms) && M.MERGEABLE_REREAD.pauses_ms.reduce((a, b) => a + b, 0) === 14000,
+    'the bound: at most 4 reads, pauses of 2s, 4s and 8s (14s in all), frozen', JSON.stringify(M.MERGEABLE_REREAD));
+  // first read already MERGEABLE: exactly one read, no pause, behaviour unchanged
+  const a = evalSeq([view()]);
+  ok(a.reads === 1 && a.asked.length === 0 && a.e.refusals.length === 0 && a.e.facts.mergeable_reads === 1 && a.e.facts.mergeable === 'MERGEABLE' && a.e.facts.merge_state === 'CLEAN', 'first read MERGEABLE: one read, no pause, ready; facts.mergeable_reads 1', `${a.reads} ${JSON.stringify(a.asked)} ${a.e.refusals.join(' | ')}`);
+  const want = { head: HEAD, files: fx.view.files.map(f => f.path), mergeable: 'MERGEABLE', merge_state: 'CLEAN', mergeable_reads: 1, reference_time: '2026-11-10T00:10:58.000Z', main_newer: [], behind_main: [] };
+  ok(JSON.stringify(a.e.facts) === JSON.stringify(want), 'first read MERGEABLE: the facts are those of the single-read step plus the count', JSON.stringify(a.e.facts));
+  // answered on a later read
+  const b = evalSeq([unk(), view()]);
+  ok(b.reads === 2 && JSON.stringify(b.asked) === '[2000]' && b.e.refusals.length === 0 && b.e.facts.mergeable_reads === 2 && b.e.facts.mergeable === 'MERGEABLE' && b.e.facts.merge_state === 'CLEAN', 'UNKNOWN, then MERGEABLE on read 2: passes, after one 2s pause; facts.mergeable_reads 2', `${b.reads} ${JSON.stringify(b.asked)} ${b.e.refusals.join(' | ')}`);
+  const b4 = evalSeq([unk(), unk(), unk(), view()]);
+  ok(b4.reads === 4 && JSON.stringify(b4.asked) === '[2000,4000,8000]' && b4.e.refusals.length === 0 && b4.e.facts.mergeable_reads === 4, 'answered on the last allowed read (4): passes, facts.mergeable_reads 4', `${b4.reads} ${b4.e.refusals.join(' | ')}`);
+  const bs = evalSeq([view(v => { v.mergeStateStatus = 'UNKNOWN'; return v; }), view()]);
+  ok(bs.reads === 2 && bs.e.refusals.length === 0, 'mergeable MERGEABLE but mergeStateStatus UNKNOWN is read again too', `${bs.reads} ${bs.e.refusals.join(' | ')}`);
+  const bm = evalSeq([view(v => { v.mergeable = 'UNKNOWN'; return v; }), view()]);
+  ok(bm.reads === 2 && bm.e.refusals.length === 0, 'mergeable UNKNOWN with mergeStateStatus CLEAN is read again too', `${bm.reads} ${bm.e.refusals.join(' | ')}`);
+  // never answered within the bound: refused with today's text
+  const c = evalSeq([unk()]);
+  ok(c.reads === 4 && JSON.stringify(c.asked) === '[2000,4000,8000]' && c.e.facts.mergeable_reads === 4 && has(c.e.refusals, /^GitHub reads it UNKNOWN, not MERGEABLE$/) && has(c.e.refusals, /^merge state UNKNOWN$/), 'never answered in 4 reads: refused with the same text as before (GitHub reads it UNKNOWN, not MERGEABLE | merge state UNKNOWN); facts.mergeable_reads 4', `${c.reads} ${c.e.refusals.join(' | ')}`);
+  ok(JSON.stringify(c.e.refusals) === JSON.stringify(pre(unk())), "never answered: the refusals are exactly the preflight's on that one UNKNOWN view, as before story 773", `${JSON.stringify(c.e.refusals)} vs ${JSON.stringify(pre(unk()))}`);
+  // answered, but not MERGEABLE: no further read
+  const d = evalSeq([view(v => { v.mergeable = 'CONFLICTING'; v.mergeStateStatus = 'DIRTY'; return v; }), view()]);
+  ok(d.reads === 1 && d.asked.length === 0 && has(d.e.refusals, /GitHub reads it CONFLICTING, not MERGEABLE/), 'answered CONFLICTING: one read, refused as before (an answer is not re-read)', `${d.reads} ${d.e.refusals.join(' | ')}`);
+  const dc = evalSeq([unk(v => { v.state = 'CLOSED'; }), view()]);
+  ok(dc.reads === 1 && has(dc.e.refusals, /not open \(state CLOSED\)/) && has(dc.e.refusals, /GitHub reads it UNKNOWN/), 'a closed PR reading UNKNOWN is not read again (GitHub never computes it for a closed PR); refused as before', `${dc.reads} ${dc.e.refusals.join(' | ')}`);
+  // the last view read, whole: no field of an earlier read survives
+  const pending = v => { v.statusCheckRollup.push({ __typename: 'StatusContext', context: 'ci/external', state: 'PENDING' }); };
+  const e1 = evalSeq([unk(), view(v => { pending(v); return v; })]);
+  ok(e1.reads === 2 && has(e1.e.refusals, /^commit status ci\/external is pending \(PENDING\)$/), 'the later view is judged whole: a pending status that appears on read 2 is refused', e1.e.refusals.join(' | '));
+  const e2 = evalSeq([unk(pending), view()]);
+  ok(e2.reads === 2 && e2.e.refusals.length === 0, "the earlier view is dropped whole: read 1's pending status, gone on read 2, does not refuse", e2.e.refusals.join(' | '));
+  const e3 = evalSeq([unk(v => { v.isDraft = true; v.files = [{ path: 'x' }]; v.changedFiles = 1; }), view()]);
+  ok(e3.reads === 2 && e3.e.refusals.length === 0 && JSON.stringify(e3.e.facts.files) === JSON.stringify(fx.view.files.map(f => f.path)), "the facts come from the last view: read 2's files, not read 1's", JSON.stringify(e3.e.facts.files));
+  // the head changed between reads: refused, and the step goes no further on the new head
+  const NEWH = 'b'.repeat(40);
+  const moved = v => { v.headRefOid = NEWH; v.commits = [{ ...v.commits[0], oid: NEWH }]; };
+  const f1 = evalSeq([unk(), view(v => { moved(v); return v; })]);
+  ok(f1.reads === 2 && has(f1.e.refusals, /^head moved between reads of the pull request \(a7174f4e on read 1, bbbbbbbb on read 2\); not judging the new head in this tick$/) && has(f1.e.refusals, /^head moved: bbbbbbbb is not the chosen head a7174f4e$/), 'the head changed between reads (UNKNOWN, then MERGEABLE at a new head): refused, naming both heads', f1.e.refusals.join(' | '));
+  ok(f1.e.facts.head === NEWH && f1.e.facts.mergeable_reads === 2 && !f1.calls.some(c => /pulls\/3915\/commits|compare\/|commits\?sha=main/.test(c)), 'head changed: no further read on the new head (no REST commits, R7 or behind-main read); the facts are the last view', JSON.stringify(f1.calls));
+  const f2 = evalSeq([unk(), unk(moved), view()]);
+  ok(f2.reads === 2 && has(f2.e.refusals, /^head moved between reads/), 'head changed while still UNKNOWN: refused at once, no third read', `${f2.reads} ${f2.e.refusals.join(' | ')}`);
+  // a read that fails outright: fail closed, and no earlier view is used instead
+  const g1 = evalSeq([null]);
+  ok(g1.reads === 1 && JSON.stringify(g1.e.refusals) === '["unreadable: the pull request (gh pr view)"]' && g1.e.facts === null, 'the first read fails: refused unreadable exactly as before, facts null');
+  const g2 = evalSeq([unk(), null, view()]);
+  ok(g2.reads === 2 && JSON.stringify(g2.e.refusals) === '["unreadable: the pull request (gh pr view, read 2 of 4, while GitHub had not yet computed its mergeability)"]' && g2.e.facts === null && !g2.calls.some(c => /pulls\/3915\/commits/.test(c)), 'a later read fails: refused unreadable, naming the read; read 1 is not used instead; no third read', `${g2.reads} ${JSON.stringify(g2.e.refusals)}`);
+  // the helper itself, and the real pause
+  const h = M.readMergeViewAnswered(M.REPO, 3915, seqReader([unk(), view()]).run, { rereadPause: () => {} });
+  ok(h.reads === 2 && h.why === null && h.view.mergeable === 'MERGEABLE', 'readMergeViewAnswered: { view (the last), reads, why }');
+  ok(M.mergeabilityPending({ state: 'OPEN', mergeable: 'UNKNOWN' }) && M.mergeabilityPending({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'UNKNOWN' }) && !M.mergeabilityPending({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED' }) && !M.mergeabilityPending({ state: 'MERGED', mergeable: 'UNKNOWN' }) && !M.mergeabilityPending(null) && !M.mergeabilityPending({ state: 'OPEN' }),
+    'mergeabilityPending: only an open PR whose mergeable or mergeStateStatus reads UNKNOWN (a missing field is unreadable, not pending)');
+  const t0 = Date.now(); M.sleepSync(30); const slept = Date.now() - t0;
+  const t1 = Date.now(); M.sleepSync(0); M.sleepSync(-5); M.sleepSync(NaN); M.sleepSync(undefined); const none = Date.now() - t1;
+  ok(slept >= 25 && slept < 2000 && none < 25, 'sleepSync blocks for the time asked (30ms here) and not at all for 0, a negative or a non-number', `${slept}ms, ${none}ms`);
+  // where the re-read is applied, and that it adds no other wait (ruling Q-548-04)
+  const src = readFileSync(join(RES, 'night-merge.mjs'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
+  const count = re => (src.match(re) || []).length;
+  ok(count(/(?<!function )\breadMergeView\(/g) === 2 && /function readMergeViewAnswered\([^)]*\{ rereadPause = sleepSync \} = \{\}\)/.test(src), 'readMergeView() is called only by readMergeViewAnswered() (twice: the first read and each re-read); the default pause is sleepSync', String(count(/(?<!function )\breadMergeView\(/g)));
+  ok(count(/(?<!function )\breadMergeViewAnswered\(/g) === 1 && /export function evaluate\(\{[^}]*rereadPause \}\) \{\n\s*const r = readMergeViewAnswered\(repo, pr, run, \{ rereadPause \}\);/.test(src), 'evaluate() is the one caller of readMergeViewAnswered(), with the injected pause');
+  ok(count(/(?<!function )\bevaluate\(\{[^}]*\brereadPause \}\)/g) === 2 && count(/(?<!function )\bevaluate\(\{/g) === 2, 'both callers of evaluate() (the lane step, the hand run) pass the pause through');
+  ok(count(/Atomics\.wait\(/g) === 1 && !/\bsetTimeout\(|\bsetInterval\(|\bsleep\s+\d|execSync\(['"]sleep/.test(src) && count(/\brereadPause\(ms\)/g) === 1, 'night-merge.mjs has one wait, the pause between mergeability reads (no other sleep or timer)');
 }
 
 // ── 3. token, classes, argv (pure) ────────────────────────────────────────────────
@@ -642,6 +727,69 @@ fail('stub: unexpected call ' + cmd + ' ' + argv.join(' '));
   const f3w = M.laneMergeStep({ ...live, run });
   ok(f3w.verdict.verdict === 'refused' && has(f3w.verdict.lane_refusals, /could not be moved to phase merging/) && noMerge(), 'finding 3: when the merging phase cannot be written the lane does not merge');
 
+  // story 773 through the lane's merge step and the hand run: the merge view (the read whose
+  // fields include mergeStateStatus) served in order, the pause injected (nothing sleeps)
+  const viewSeq = (views, { onRead } = {}) => {
+    let n = 0;
+    const f = (cmd, argv, o) => {
+      if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'view' && argv.join(' ').includes('mergeStateStatus')) { const v = views[Math.min(n++, views.length - 1)]; if (onRead) onRead(n); return v === null ? null : JSON.stringify(v); }
+      return run(cmd, argv, o);
+    };
+    f.reads = () => n;
+    return f;
+  };
+  const movedHead = view(v => { v.headRefOid = 'b'.repeat(40); v.commits = [{ ...v.commits[0], oid: 'b'.repeat(40) }]; return v; });
+  world();
+  const q1p = pauser(), q1r = viewSeq([unk(), view()]);
+  const q1 = M.laneMergeStep({ ...base, mode: 'dryrun', subject, run: q1r, rereadPause: q1p });
+  ok(q1.verdict.verdict === 'refused' && q1.verdict.pr_ready === true && q1.verdict.pr_refusals.length === 0 && q1.verdict.facts?.mergeable_reads === 2 && q1r.reads() === 2 && JSON.stringify(q1p.asked) === '[2000]' && q1.verdict.merge_call === 'not reached (dry-run)' && noMerge() && lockNow().data.holder === '',
+    'story 773, dry-run step: UNKNOWN then MERGEABLE: the PR is ready, facts.mergeable_reads 2, the merge call not reached, the lock released', JSON.stringify(q1.verdict));
+  world();
+  const q2 = M.laneMergeStep({ ...base, mode: 'dryrun', liveClasses: ['no-cluster-effect'], token: tokW, subject, run: viewSeq([unk(), view()]), rereadPause: pauser() });
+  ok(q2.verdict.verdict === 'would-merge' && q2.verdict.merge_call === 'not reached (dry-run)' && q2.verdict.facts.mergeable_reads === 2 && noMerge() && lockNow().data.holder === '',
+    'story 773, the dry-run guarantee: with a write token, the class allowlisted and a re-read that answers MERGEABLE, dry-run is would-merge and makes no merge call', JSON.stringify(q2.verdict));
+  world();
+  const q3p = pauser();
+  const q3 = M.laneMergeStep({ ...live, run: viewSeq([unk(), unk(), view()]), rereadPause: q3p });
+  ok(q3.verdict.verdict === 'merged' && q3.verdict.facts.mergeable_reads === 3 && JSON.stringify(q3p.asked) === '[2000,4000]' && calls().filter(c => c.cmd === 'gh' && c.argv[1] === 'merge').length === 1,
+    'story 773, live: answered on read 3: one pinned merge call, facts.mergeable_reads 3', JSON.stringify(q3.verdict.pr_refusals) + JSON.stringify(q3.verdict.lane_refusals));
+  world();
+  const q4 = M.laneMergeStep({ ...live, run: viewSeq([unk()]), rereadPause: pauser() });
+  ok(q4.verdict.verdict === 'refused' && has(q4.verdict.pr_refusals, /^GitHub reads it UNKNOWN, not MERGEABLE$/) && has(q4.verdict.pr_refusals, /^merge state UNKNOWN$/) && q4.verdict.facts.mergeable_reads === 4 && q4.verdict.merge_call === 'not made (refused)' && noMerge() && lockNow().data.holder === '',
+    'story 773, live: never answered in 4 reads: refused with the same text as before, no merge call, the lock released', JSON.stringify(q4.verdict.pr_refusals));
+  world();
+  const q5 = M.laneMergeStep({ ...live, run: viewSeq([unk(), movedHead]), rereadPause: pauser() });
+  ok(q5.verdict.verdict === 'refused' && has(q5.verdict.pr_refusals, /^head moved between reads of the pull request \(a7174f4e on read 1, bbbbbbbb on read 2\)/) && noMerge() && lockNow().data.holder === '',
+    'story 773, live: the head changed between reads: refused, no merge call, the lock released', JSON.stringify(q5.verdict.pr_refusals));
+  world();
+  const q6 = M.laneMergeStep({ ...live, run: viewSeq([unk(), null]), rereadPause: pauser() });
+  ok(q6.verdict.verdict === 'refused' && has(q6.verdict.pr_refusals, /^unreadable: the pull request \(gh pr view, read 2 of 4, /) && q6.verdict.facts === null && noMerge() && lockNow().data.holder === '',
+    'story 773, live: a re-read that fails: refused unreadable (fail closed), no merge call', JSON.stringify(q6.verdict.pr_refusals));
+  // the re-reads sit among the fact reads, before the freshness checks, which measure them:
+  // re-reads that take the gates past 300s, or leave under 240s of lease, refuse
+  world();
+  let tq = NOW;
+  const q7 = M.laneMergeStep({ ...live, run: viewSeq([unk(), view()], { onRead: n => { if (n === 2) tq = NOW + 301e3; } }), rereadPause: pauser(), clock: () => tq });
+  ok(q7.verdict.verdict === 'refused' && q7.verdict.pr_ready === true && has(q7.verdict.lane_refusals, /^the tick's gates are 301s old at the merge call, over 300s$/) && noMerge(),
+    'story 773: re-reads that take the gates past their age limit are caught by the freshness check after them', JSON.stringify(q7.verdict.lane_refusals));
+  world();
+  let tr2 = NOW;
+  const q8 = M.laneMergeStep({ ...live, tickStartedAt: NOW + 200e3, run: viewSeq([unk(), view()], { onRead: n => { if (n === 2) tr2 = NOW + 361e3; } }), rereadPause: pauser(), clock: () => tr2 });
+  ok(q8.verdict.verdict === 'refused' && has(q8.verdict.lane_refusals, /^the change lock has 239s of lease left, under 240s; not merging on a lease that may lapse$/) && noMerge(),
+    'story 773: re-reads that leave under 240s of lease are caught by the lease check after them', JSON.stringify(q8.verdict.lane_refusals));
+  world();
+  const h7p = pauser();
+  const h7 = M.handRun({ pr: 3915, head: HEAD, merge: true }, { rules, run: viewSeq([unk(), view()]), env, now: NOW, rereadPause: h7p });
+  ok(h7.verdict === 'merged' && h7.facts?.mergeable_reads === 2 && JSON.stringify(h7p.asked) === '[2000]' && calls().filter(c => c.cmd === 'gh' && c.argv[1] === 'merge').length === 1,
+    'story 773, hand --merge: UNKNOWN then MERGEABLE: merged once, facts.mergeable_reads 2', JSON.stringify(h7.refusals));
+  world();
+  const h8 = M.handRun({ pr: 3915, head: HEAD, merge: true }, { rules, run: viewSeq([unk()]), env, now: NOW, rereadPause: pauser() });
+  ok(h8.verdict === 'refused' && has(h8.refusals, /^GitHub reads it UNKNOWN, not MERGEABLE$/) && h8.facts?.mergeable_reads === 4 && h8.merge_call === 'not made (refused)' && noMerge(),
+    'story 773, hand --merge: never answered: refused with the same text, no merge call', JSON.stringify(h8.refusals));
+  world();
+  const h9 = M.handRun({ pr: 3915, head: HEAD, merge: true }, { rules, run: viewSeq([unk(), movedHead]), env, now: NOW, rereadPause: pauser() });
+  ok(h9.verdict === 'refused' && has(h9.refusals, /^head moved between reads/) && noMerge(), 'story 773, hand --merge: the head changed between reads: refused, no merge call', JSON.stringify(h9.refusals));
+
   // finding 2: every read has a deadline
   world({ slowMs: 5000 });
   const t0 = Date.now();
@@ -761,6 +909,8 @@ M.laneMergeStep({ mode: 'live', subject: { pr: 3915, head: '${HEAD}', class: 'no
   const c8 = cli([...CHECK, '--json']);
   let j8 = null; try { j8 = JSON.parse(c8.stdout); } catch {}
   ok(c8.status === 0 && j8?.verdict === 'would-merge' && j8.ok === true && j8.facts?.reference_time === '2026-11-10T00:10:58.000Z', '--json prints the verdict as JSON', c8.stdout.slice(0, 300));
+  ok(j8?.facts?.mergeable_reads === 1 && /^  facts: .* mergeable=MERGEABLE merge_state=CLEAN mergeable_reads=1 files=/m.test(c1.stdout) && c1.calls.filter(c => c.cmd === 'gh' && c.argv[1] === 'view' && c.argv.join(' ').includes('mergeStateStatus')).length === 1,
+    'story 773, the CLI: a PR GitHub has answered is read once, and the facts line and --json show mergeable_reads=1', c1.stdout);
   for (const [args, why] of [[['--pr', '3915', '--check-only'], 'no --head'], [['--pr', '3915', '--head', HEAD], 'neither mode'], [['--pr', '3915', '--head', HEAD, '--check-only', '--merge'], 'both modes'],
     [['--pr', 'x', '--head', HEAD, '--check-only'], 'a bad PR number'], [['--pr', '3915', '--head', HEAD.toUpperCase(), '--check-only'], 'an uppercase SHA'], [['--pr', '3915', '--head', HEAD, '--check-only', '--admin'], 'an unknown flag']]) {
     const r = cli(args);
@@ -826,6 +976,8 @@ M.laneMergeStep({ mode: 'live', subject: { pr: 3915, head: '${HEAD}', class: 'no
     const s1 = body.indexOf('settleCheck(', live0), fresh = i('const left = Date.parse(held.data.expires_at) - t;'), pz = i("pauseRefusal(readPause(rules, run), 'just before the merge call')"), bm = i('const begin = beginMerge('), f4 = body.indexOf('readMergingJobs(run)', bm), cm = i('callMerge({');
     ok(i('settleCheck({ rules, run, scope: subject.scope ?? null });\n    laneRef.push') > 0 && i('settleCheck({ rules, run, scope: subject.scope ?? null });\n    laneRef.push') < live0 && i('const jobs0 = readMergingJobs(run);') < live0, 'night-merge.mjs: the step reads the settle facts and F4 before its dry-run return');
     ok(s1 > live0 && s1 < fresh && fresh < pz && pz < bm && bm < f4 && f4 < cm, 'R5 and R1: at the call, the fact reads, then the freshness checks, then the pause, the merging write, F4, and the merge call', JSON.stringify({ s1, fresh, pz, bm, f4, cm }));
+    const ev0 = i('const ev = evaluate({ repo: REPO, pr: subject.pr, head: subject.head, rules, now: clock(), run, rereadPause });');
+    ok(ev0 > 0 && ev0 < live0 && ev0 < fresh && body.indexOf('evaluate(', ev0 + 'const ev = evaluate('.length) < 0, 'story 773: the one evaluate() (and so every mergeability re-read) is among the fact reads, before the dry-run return and the freshness checks; no second PR view read before the call', JSON.stringify({ ev0, live0, fresh }));
   }
   // F4: a shepherd Job running at the step read
   const shepJob = { metadata: { name: 'upgrade-shepherd-29907120', labels: { 'app.kubernetes.io/controller': 'upgrade-shepherd' }, ownerReferences: [{ kind: 'CronJob', name: 'upgrade-shepherd' }] }, status: { active: 1 } };

@@ -379,7 +379,8 @@ the gate blockers.
 
 - `gh pr view` with state, draft flag, head and head branch, base, whether it comes
   from another repository, author, mergeability, files, commits and every check and
-  commit status on the head;
+  commit status on the head, read again while GitHub has not computed the mergeability
+  (below);
 - the REST commit list (`repos/<repo>/pulls/<n>/commits`): each commit's author and
   committer accounts and its signature;
 - story 550's R7 through the same three functions
@@ -387,6 +388,35 @@ the gate blockers.
 - for each changed file, the newest commit on main that touches it
   (`commits?sha=main&path=<file>&per_page=1`), and whether the head contains it
   (`compare/<head>...<sha>`: `ahead_by` 0 means it does).
+
+**Mergeability is read until GitHub has answered (story 773).** GitHub works out whether
+a PR can merge only when asked. The first read after main changes answers `mergeable`
+`UNKNOWN` or `mergeStateStatus` `UNKNOWN`. On 2026-11-12 that refused PR 4752 on 5 of 20
+dry-run ticks, each the first tick after a merge to main. `readMergeViewAnswered()`
+therefore reads the view again while an open PR reads `UNKNOWN` in either field. It
+pauses 2s, 4s and 8s between reads: at most 4 reads and 14s of pauses
+(`MERGEABLE_REREAD`).
+
+- Every decision is on the last view read, taken whole. No field of an earlier read is
+  kept.
+- If GitHub never answers, the refusal is the same as before:
+  `GitHub reads it UNKNOWN, not MERGEABLE | merge state UNKNOWN`.
+- If the head changes between reads, the step refuses and reads nothing more about the
+  new head in that tick.
+- A closed PR, or one GitHub has already answered (`CONFLICTING` included), is read once.
+- `facts.mergeable_reads` records the number of reads in both modes. The merge-step log
+  line ends `mergeability <mergeable>/<merge state> after <n> read(s)`.
+
+This is a bounded poll of GitHub's own answer about one PR, so it is allowed under ruling
+Q-548-04. It does not wait on another actor or on another actor's schedule.
+
+The re-reads happen in `evaluate()`, among the step's fact reads. In live mode the
+freshness checks come after them, so they measure that time: the 240s lease minimum and
+the 300s gate age at the merge call. A tick reaches the lock take about 27s after it
+starts, and the step itself takes about 3s (tick of 2026-11-12T10:45Z). Adding 14s of
+pauses and three reads leaves room under both limits. If the re-reads ever pushed past a
+limit, that check would refuse. Nothing is re-read just before the merge call: the call
+is pinned with `--match-head-commit`, and GitHub refuses to merge a PR it cannot merge.
 
 **It refuses** (fail closed: a read it cannot make is a refusal named `unreadable: …`):
 
@@ -396,7 +426,9 @@ the gate blockers.
 | `opened by … not the Renovate app`, `a pull request from another repository`, `head branch … is not under renovate/` | the author must be the Renovate app as gh reports it (`app/renovate`, `is_bot` true), from this repository, on a `renovate/` branch |
 | `commit … is not the Renovate app's (…)` | every REST commit authored by `renovate[bot]` (type `Bot`, id 29139614), committed by `web-flow` with a valid signature, as GitHub makes Renovate's commits. Read live on 2026-11-11 for every open Renovate PR |
 | `head moved: …` | the head is not the one the tick chose; the merge is pinned to it anyway |
-| `GitHub reads it … not MERGEABLE`, `merge state …` | `CLEAN`, `HAS_HOOKS` and `UNSTABLE` pass; the check scan below decides on non-required checks |
+| `GitHub reads it … not MERGEABLE`, `merge state …` | `CLEAN`, `HAS_HOOKS` and `UNSTABLE` pass; the check scan below decides on non-required checks. `UNKNOWN` here means GitHub had still not answered after 4 reads |
+| `head moved between reads of the pull request (… on read 1, … on read n); not judging the new head in this tick` | the PR moved while the step waited for GitHub's answer (story 773) |
+| `unreadable: the pull request (gh pr view, read n of 4, while GitHub had not yet computed its mergeability)` | a re-read failed. Read 1 failing keeps the old text, `unreadable: the pull request (gh pr view)` |
 | `commit status <context> is pending (PENDING)` or `(EXPECTED)` | **gap 1.** The handoff preflight read a pending status as complete |
 | `check still running: …`, `check failed: …` | any check run on the head, newest attempt counted. `Claude Review (advisory)` is never a gate |
 | `required check not SUCCESS: …` | `Flux Local - Success` and `Diff Scope - Success`, literals as in `deliver_reviewed_pr.py` |
@@ -1005,7 +1037,7 @@ merge step:
 | `summary.token_permissions` | `names` (for example `checks:read`, `contents:write`, `pull_requests:write`), `can_merge`, `why` |
 | `summary.live_classes` | the allowlist this tick read (git ships `[]`) |
 | `summary.change_lock` | `outcome` (`taken-and-released`, `not-taken`, `held after merge …`), `before.state` (`absent`, `free`, `expired`, `held`, `unreadable`), `holder`, `taken_at`, `expires_at`, `released_at`, `took_over_from` and `took_over_phase` (an expired lease taken over), `why` |
-| `summary.merge_step` | `pr`, `head`, `class`, `chosen`, `mode`, `verdict` (`not-run`, `refused`, `would-merge`, `merged`, `merge-failed`, `merge-unknown`), `pr_refusals`, `lane_refusals`, `pr_ready`, `merge_call`, `facts` (`reference_time`, `main_newer`, `behind_main`) |
+| `summary.merge_step` | `pr`, `head`, `class`, `chosen`, `mode`, `verdict` (`not-run`, `refused`, `would-merge`, `merged`, `merge-failed`, `merge-unknown`), `pr_refusals`, `lane_refusals`, `pr_ready`, `merge_call`, `facts` (`mergeable`, `merge_state`, `mergeable_reads` (story 773), `reference_time`, `main_newer`, `behind_main`) |
 | `summary.owed_work` | the post-merge hook; `built: false` |
 | `records[].last_attempt` | `verdict`, `pr_refusals`, `lane_refusals`, `merge_call` for that PR |
 
@@ -1139,7 +1171,7 @@ dev-env-ops, so merge such a change only when no work order is claimed.
 ```bash
 node scripts/upgrade-agent/lane-classify-selftest.mjs      # lanes, drift (workflows and shared components), own images, the 27 reviewed PRs, R7/R8/R10
 node scripts/upgrade-agent/lane-night-dryrun-selftest.mjs  # the dry-run guarantee, the gates, R5 and R7/R8, the merge step and the lock through the tick
-node scripts/upgrade-agent/lane-merge-step-selftest.mjs    # the merge step's refusals, the lock's states and exit paths, the hand-run CLI, the settle gate
+node scripts/upgrade-agent/lane-merge-step-selftest.mjs    # the merge step's refusals, the mergeability re-read, the lock's states and exit paths, the hand-run CLI, the settle gate
 bash scripts/upgrade-agent/shepherd-stand-aside-selftest.sh  # the shepherd standing aside for a lane change in progress (story 551)
 ```
 

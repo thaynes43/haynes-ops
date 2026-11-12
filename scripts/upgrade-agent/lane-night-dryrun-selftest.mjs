@@ -507,6 +507,10 @@ process.exit(0);
     ok(/upgrade-night dryrun: token permissions: unreadable/.test(r.stderr), 'the log names the token permissions (here unreadable)');
     ok(/upgrade-night dryrun: change lock upgrade-agent\/upgrade-change-lock: taken-and-released \(before: absent\) taken_at=\S+ expires_at=\S+ released_at=\S+/.test(r.stderr), 'the log shows the lock taken and released', r.stderr.split('\n').filter(l => /change lock/.test(l)).join(' | '));
     ok(/upgrade-night dryrun: merge step #4662 [0-9a-f]{8} \(delayed-cluster-change\): REFUSED: .*; merge call: not reached \(dry-run\)/.test(r.stderr) && /merge step: #4662 /.test(r.stdout), 'the log and stdout carry the merge step verdict');
+    // story 773: the read count reaches the state (summary.merge_step.facts) and the log line;
+    // a PR GitHub has answered is read once
+    ok(ms.facts?.mergeable_reads === 1 && /upgrade-night dryrun: merge step #4662 .*; merge call: not reached \(dry-run\); mergeability MERGEABLE\/CLEAN after 1 read$/m.test(r.stderr) && /^merge step: #4662 .*; mergeability MERGEABLE\/CLEAN after 1 read$/m.test(r.stdout)
+      && r.calls.filter(c => c.cmd === 'gh' && c.argv[1] === 'view' && c.argv.join(' ').includes('mergeStateStatus')).length === 1, 'story 773: summary.merge_step.facts.mergeable_reads 1, and the log and stdout show it; one merge view read', `${JSON.stringify(ms.facts)} ${r.stderr.split('\n').filter(l => /merge step #/.test(l)).join(' | ')}`);
     ok(/would merge this tick: #4662/.test(r.stdout), 'the log says what it would merge');
     // step 2: the tick reads the head commit's diff (gh api GET by SHA) and records the fingerprint
     ok(r.calls.some(c => c.cmd === 'gh' && c.argv[0] === 'api' && c.argv.includes(`repos/thaynes43/haynes-ops/commits/${fact(4477).head_sha}`)), 'the tick reads the head commit diff by SHA with gh api');
