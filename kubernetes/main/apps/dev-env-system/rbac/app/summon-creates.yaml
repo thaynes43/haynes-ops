@@ -1,0 +1,18 @@
+---
+# OpenProject 758 (dev-env DESIGN-064 5.9, the create ledger): metadata-only
+# precreation. The operator's API keeps one key per summoning caller here: that
+# caller's charges (a dispatch id, two times, a request hash and a session name
+# each) and its count of refused urgent creates. No credential, prompt, alert text
+# or private config is stored. The operator never creates or deletes the object: a
+# summoning create is refused with 503 while it is missing, never admitted
+# uncharged. Preserve operator-owned data through reconciliation and rollback:
+# an emptied ledger forgets the hour's charges.
+# Nothing writes it until a CallerPolicy with `summon` exists; none does.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-summon-creates
+  namespace: dev-env-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled

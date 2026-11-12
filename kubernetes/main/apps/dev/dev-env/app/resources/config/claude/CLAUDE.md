@@ -151,7 +151,7 @@ scope is unclear, keep the dependent work paused and state that uncertainty.
 
 | Tool | Auth | Notes |
 |---|---|---|
-| claude | ✅ Max plan | credential on PVC; the access token self-refreshes but the **login itself lapses ~30 days after each `/login`** — run `claude-login-check` at the start of every session (*Max login renewal* below) |
+| claude | ✅ Max plan (env token) | `CLAUDE_CODE_OAUTH_TOKEN` runs headless/task sessions and is unaffected. The pod's own sign-in on the PVC is **left to lapse on 2026-11-15 on purpose** (*v1 Claude sign-in* below): do not check, renew or report it |
 | codex | ✅ ChatGPT plan | `~/.codex/auth.json`, self-refreshes; same rules (`~/.codex/AGENTS.md`) + MCP servers as claude, rendered at boot; phone control = daemon brought up after every boot by `post-ready.sh` (supervised); `agent-run codex-remote` pairs a phone |
 | kubectl / flux | ✅ in-cluster SA | OPERATOR tier: read all-but-secrets; writes limited to pod delete, **pod exec**, rollout restart, flux reconcile/suspend, Jobs, CronJob suspend + PVC delete in `database` only (`kubectl cnpg destroy`, plugin at `~/.local/bin/kubectl-cnpg`). No secrets/RBAC (exec into a secret-mounting pod can read that pod's secrets — accepted, 2026-08-06) |
 | gh / git push | ✅ haynes-dev-bot | App token, all repos, refreshed every 40min; commits/PRs author as the dev bot |
@@ -162,67 +162,20 @@ scope is unclear, keep the dependent work paused and state that uncertainty.
 | hw-ssh (PVE nodes + HaynesTower/Unraid + PiKVM) | ✅ one ed25519 key (`~/.ssh/dev-env-hw`, from `HW_SSH_PRIVATE_KEY_B64` in the pod env ← 1Password `dev-env`); absent key = `hw-ssh` says so | `hw-ssh list` · `hw-ssh <node> sudo dmidecode -t slot` · `hw-ssh pve-all 'sudo qm list'` · `hw-ssh haynestower 'tail /var/log/syslog'` · `hw-ssh pikvm 'systemctl status kvmd'`. PVE nodes: user `dev-env`, key-only, sudo allowlist (dmidecode lspci journalctl dmesg sensors smartctl nvme zpool zfs qm pct pvesh pvecm pvesm ha-manager ipmitool) — `sudo qm` makes it root-equivalent, same tier as the operator token. HaynesTower: **root** (Unraid's only SSH user). PiKVM: **root**, console + ATX on every bare-metal master, so root-equivalent (operator-token tier); read-only rootfs: `rw` only to deploy `pikvm.yaml`, then `ro` straight after. By rule: read first; `declare-activity` before `qm stop/start/set`, anything on the array, a KVM channel switch or a kvmd restart; never reboot a node or stop the Unraid array from here; never PiKVM ATX power/reset, Wake-on-LAN or console keystrokes to a node without Tom's go-ahead in that session; never `sudo -i`/interactive root. Runbook: `.agents/runbooks/proxmox-access.md` (SSH tier) |
 | terraform/tofu providers | ✅ GCP only (ADC = dev-env-agent@sigo-alumni-prod, roles/owner) | plan+apply against sigo-alumni-prod (multiple applies proven 2026-08-14/15); other clouds still credential-less |
 
-## Max login renewal — check every session, renew from inside the pod
+## v1 Claude sign-in — left to lapse on purpose (Tom, 2026-11-10)
 
-`~/.claude/.credentials.json` (on the PVC) is what every remote-control (`both`)
-session runs on, and that **login expires about 30 days after each `/login`**
-(`refreshTokenExpiresAt`; the CLI's "Your login expires in N days" banner counts
-down to it, and the access token only self-refreshes until then). When it lapses no
-phone/claude.ai session can start and post-ready skips the standby.
-`CLAUDE_CODE_OAUTH_TOKEN` (headless/task sessions, ~1 yr, 1Password) is a separate
-credential; this does not renew it.
+This pod's own Claude sign-in (`~/.claude/.credentials.json` on the PVC) runs out
+on 2026-11-15. Tom chose to let it lapse, because v1 is being emptied for
+retirement (story OP731).
 
-**Check — at the start of every session, and whenever a banner says "Your login
-expires in N days":**
-
-```bash
-claude-login-check      # exit 0 = fine · 1 = 7 days or fewer left (or expired) · 2 = cannot tell
-```
-
-It prints timestamps and day counts only, never token material. On exit 1, tell Tom
-in your very next reply, one line ("Max login expires in 3 days — I can renew it now,
-about a minute on your phone"), then run the renewal below as soon as he says go.
-auth-watch pages him daily once it is within 7 days, so a headless session that
-cannot reach him is covered; on exit 2 say so too — it means the check is blind.
-
-**Renew (proven 2026-09-23).** Tom drives it from his phone. He cannot copy from the
-pod's terminal (the code-server terminal wraps the URL and has no working
-copy-paste), so **you relay the link and he pastes the code back to you**. If a
-`/login` inside a session already printed a wrapped URL, Esc out of it and use this
-instead.
-
-1. Start the login in its own wide tmux session (wide so the URL stays one line;
-   strip the env token so the flow cannot short-circuit on it):
-   ```bash
-   tmux kill-session -t login 2>/dev/null
-   tmux new-session -d -s login -x 300 -y 50 -c "$HOME" \
-     "env -u CLAUDE_CODE_OAUTH_TOKEN claude auth login; echo LOGIN_EXIT=\$?; sleep 3600"
-   timeout 60 bash -c 'until tmux capture-pane -p -J -t login | grep -q "https://"; do sleep 2; done'
-   tmux capture-pane -p -J -t login | grep -o 'https://claude.com/cai/oauth/authorize?[^ ]*'
-   ```
-2. Put that URL in your reply to Tom **bare, on its own line** (no backticks, no
-   markdown link — the phone app makes it tappable as-is). Tell him: open it, sign
-   in, then paste back the code the page shows (it looks like `<code>#<state>`).
-3. When he pastes the code, send it into the waiting prompt literally:
-   ```bash
-   tmux send-keys -t login -l '<the code he pasted>'; tmux send-keys -t login Enter
-   timeout 60 bash -c 'until tmux capture-pane -p -J -t login | grep -q LOGIN_EXIT; do sleep 2; done'
-   tmux capture-pane -p -J -t login | grep -E 'Login successful|LOGIN_EXIT|rror'
-   ```
-   `Login successful.` + `LOGIN_EXIT=0` is done. Anything else: kill the session and
-   start over from step 1 with a fresh URL — codes are single-use and the code must
-   match the URL's `state`.
-4. Verify and clean up: `claude-login-check` (expect ~30 days) and
-   `env -u CLAUDE_CODE_OAUTH_TOKEN claude auth status` (`"loggedIn": true`,
-   `"subscriptionType": "max"`), then `tmux kill-session -t login`. Running sessions
-   pick the new login up at their next token refresh; nothing to restart.
-
-**Secrets — this repo is public.** The OAuth URL (`code_challenge`, `state`), the
-code Tom pastes, and anything inside `.credentials.json` are secrets for the life of
-the flow: they go in your chat reply and the tmux pane and nowhere else — never into
-a commit, PR, issue, memory file, handoff note, or log. `claude-login-check` output
-is the only thing here safe to quote in git; `claude auth status` prints the account
-email and org id, so read it, don't paste it.
+- Do not renew it. Do not check it at session start. Do not report it to Tom.
+- After 2026-11-15, a remote-control (`both`) session started inside v1 will not
+  sign in. That is intended for a pod being retired.
+- The headless token (`CLAUDE_CODE_OAUTH_TOKEN`) is a separate credential and is
+  unaffected, so `task` and `local` sessions keep working.
+- auth-watch stops paging about this sign-in once the pod next starts.
+- Login links, codes and credential files never go into git, PRs, logs or memory.
+  This repo is public.
 
 ## MCP servers (GitOps-managed, `~/.config/dev-env/mcp.json`)
 
@@ -386,6 +339,10 @@ It is deliberately timid, and all three of these are normal, not faults:
   cannot register a remote session), no `~/repos/haynes-ops`, or no `/creds/gh_token`
   within 90s.
 
+After 2026-11-15 the sign-in has lapsed on purpose (*v1 Claude sign-in* above).
+post-ready only checks that the file exists, so it may still start a standby that
+cannot sign in. That is expected, not a fault.
+
 Start one by hand any time with the `--interactive` command above; the standby is a
 convenience, not a dependency. An unused standby worktree is reaped by `agent-run prune`.
 
@@ -461,8 +418,9 @@ unaffected (it runs in tmux, a TTY). The same applies to any `codex exec` under
 One trap: `both` deliberately strips `CLAUDE_CODE_OAUTH_TOKEN` and falls back to
 `~/.claude/.credentials.json`. The long-lived env token cannot register
 `/v1/code/sessions`, so a session started with it silently never appears on the
-phone/web list. Keep the Max login current (`claude-login-check`, *Max login renewal*
-above) or `both` breaks while `task` and `local` keep working.
+phone/web list. This pod's sign-in is left to lapse on 2026-11-15 (*v1 Claude
+sign-in* above), so after that date `both` stops working while `task` and `local`
+keep working.
 
 ## Declare disruptive work (avoid false escalations)
 

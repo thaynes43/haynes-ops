@@ -59,7 +59,7 @@ jobs:
       - name: Use the Node major of the upgrade-shepherd image (node:24-slim)
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24.22.2'
+          node-version: '24.22.3'
       - name: Syntax of the shipped lane files
         run: |
           node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/lane-classify.mjs
