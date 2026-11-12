@@ -437,7 +437,26 @@ spec:
               # (haynes-ops#4852). Rollback: that image AND remove --enable-summoned-lanes in the
               # same change; the older binary does not know the flag and would not start with it.
               # The CRD copy stays.
-              tag: sha-c4bc870@sha256:c7ffda11220a0e868250a0490b1761ace0b33957b1138ddfef8bb3963104a90e
+              # dev-env main 59169f1f (publish 43302572270's operator job signed and verified this
+              # digest; CI run 43302572564 on that commit was green before this pin merged). Two
+              # commits since sha-c4bc870, both slices of OP741:
+              # - dev-env#1094 (OP778): a summoning create past its pool is created Queued, and
+              #   the caller's queues are counted in the create ledger. It sits behind the create
+              #   switch: --summon-create-kinds is unset, so every summoning create is still
+              #   refused before anything is charged or created.
+              # - dev-env#1095 (OP779): the leader's watchdog closes a hung, held, lost or stopped
+              #   summoned session once and frees its lane; a reap of a summoned session is
+              #   recorded for the leader to carry out; nobody resumes a summoned session.
+              # Every new step keys on spec.caller, and no session has one: the reap and closed
+              # steps in the reconciler return at once without it, the API's reap and resume
+              # routes change only for a session that has it, and the leader's pass still stops
+              # after one list when no session is summoned. The AgentSession CRD change
+              # (status.summon.pages) was copied first by haynes-ops#4860.
+              # No flag, permission, ConfigMap or Secret change in this pin.
+              # Previous pin sha-c4bc870@sha256:c7ffda11220a0e868250a0490b1761ace0b33957b1138ddfef8bb3963104a90e
+              # (haynes-ops#4859); rollback target for the operator alone, with
+              # --enable-summoned-lanes kept. The CRD copy stays.
+              tag: sha-59169f1@sha256:813a612b8a6695e6f9f3a062d60b2836d1344c9bee7c18c1fd66364a0314a88e
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
