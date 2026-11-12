@@ -184,6 +184,12 @@
       "note": "Empty today."
     },
     {
+      "lane": "retry",
+      "item": "lane_detail.retry",
+      "how": "copy",
+      "note": "Since story 549: the stalled-check retry for this PR as the tick read it: state (not-needed, eligible, deferred, selected, ticked, not-written, write-failed, waiting-for-renovate, new-head-checks-running, resolved, failed-again, no-new-head, not-retried-again, budget-used, not-eligible, unreadable), why, count_7d, limits and history (head, at, status, outcome, next_head) from data.retry_ledger. A retry is a Renovate rebase, not an attempt on the item: it writes no event. Copied as written."
+    },
+    {
       "lane": "last_attempt",
       "item": "lane_detail.last_attempt",
       "how": "copy",

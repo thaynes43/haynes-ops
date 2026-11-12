@@ -24,7 +24,10 @@
 //   vet_markers: [{ author, sha, verdict }],  // '<!-- shepherd-vet sha=… -->' comments
 //   patch_fingerprint: 'sha256:…' | null,     // patchFingerprint() of the head commit's diff (step 2)
 //   patch_basis: 'commit-diff' | 'binary' | 'multi-commit' | 'unavailable',
+//   record_comments: [{ id, author, author_type, body }],  // story 549: bodies that start with the record marker
+//   retry_box: 'unticked' | 'ticked' | 'absent' | 'ambiguous', // story 549: Renovate's rebase/retry box
 // }
+// classify() reads neither story 549 field; the tick (run-night.mjs) does.
 // opts = { now: epoch ms, holdRules: [packageRules from .renovate/holds.json5] }
 //
 // The CLI at the bottom gathers those facts for every open Renovate PR with READ-ONLY
@@ -614,6 +617,32 @@ export function parseVetMarkers(comments) {
   return out;
 }
 
+// ── story 549: the lane's PR record and Renovate's retry box (READ side only) ─────
+// The record marker starts the body of the lane's one comment per PR. Comments that carry
+// it are kept with their REST identity (id, user.login, user.type); night-merge.mjs decides
+// which one, if any, is the lane's own. Nothing here writes.
+export const RECORD_MARKER = '<!-- upgrade-lane v1 -->';
+export const RETRY_BOX_MARKER = '<!-- rebase-check -->';
+// Renovate's box is one line ` - [ ] <!-- rebase-check -->If you want to rebase/retry this
+// PR, check this box` (read 2026-11-12 on PR 4848). unticked | ticked | absent |
+// ambiguous (the marker more than once, or on a line that is not a checkbox).
+const BOX_LINE = /^(\s*-\s+\[)([ xX])(\]\s*<!-- rebase-check -->)/;
+export function retryBox(body) {
+  const lines = String(body ?? '').split('\n');
+  const hits = lines.map((l, i) => [l, i]).filter(([l]) => l.includes(RETRY_BOX_MARKER));
+  if (!hits.length) return { state: 'absent', line: -1 };
+  if (hits.length > 1) return { state: 'ambiguous', line: -1 };
+  if (hits[0][0].split(RETRY_BOX_MARKER).length !== 2) return { state: 'ambiguous', line: -1 };
+  const m = BOX_LINE.exec(hits[0][0]);
+  if (!m) return { state: 'ambiguous', line: -1 };
+  return { state: m[2] === ' ' ? 'unticked' : 'ticked', line: hits[0][1] };
+}
+// The comments whose body starts with the record marker, as REST reports their author.
+export function recordComments(comments) {
+  return (comments || []).filter(c => String(c?.body || '').startsWith(RECORD_MARKER))
+    .map(c => ({ id: c.id ?? null, author: c.user?.login ?? null, author_type: c.user?.type ?? null, body: String(c.body) }));
+}
+
 export function gatherFacts(repo, number, run = runReadOnly) {
   const v = JSON.parse(run('gh', ['pr', 'view', String(number), '-R', repo, '--json',
     'number,headRefOid,headRefName,title,author,isDraft,labels,files,commits,statusCheckRollup,body,changedFiles']));
@@ -650,6 +679,9 @@ export function gatherFacts(repo, number, run = runReadOnly) {
     vet_markers: parseVetMarkers(comments.map(c => ({ author: c.user?.login, body: c.body }))),
     patch_fingerprint: fp.fingerprint,
     patch_basis: fp.basis,
+    // story 549: the comments that carry the record marker, and Renovate's retry box
+    record_comments: recordComments(comments),
+    retry_box: retryBox(v.body).state,
   };
 }
 

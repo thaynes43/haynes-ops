@@ -139,7 +139,8 @@
         "cluster_wide": { "description": "Ids of cluster_wide_targets the PR reaches (R5): a change that reaches every namespace.", "type": "array", "items": { "type": "string" } },
         "gates": { "description": "Tonight's gates (lane-A records only): namespaces, blockers, alerts_not_blocking, would_be_eligible.", "type": ["object", "null"] },
         "backup": { "type": ["object", "null"] },
-        "last_attempt": { "description": "The tick's merge-step verdict for this PR, as written (at, mode, chosen, verdict, pr_refusals, lane_refusals, merge_call); empty when the step did not run on it. Not the item's attempts: a live verdict becomes events (eventsFromMergeStep in record-format.mjs).", "type": ["object", "null"] }
+        "last_attempt": { "description": "The tick's merge-step verdict for this PR, as written (at, mode, chosen, verdict, pr_refusals, lane_refusals, merge_call); empty when the step did not run on it. Not the item's attempts: a live verdict becomes events (eventsFromMergeStep in record-format.mjs).", "type": ["object", "null"] },
+        "retry": { "description": "Story 549: the stalled-check retry for this PR as the lane read it (state, why, count_7d, limits, history), from data.retry_ledger on upgrade-lane-state. A Renovate rebase, not an attempt on the item.", "type": ["object", "null"] }
       }
     }
   },
