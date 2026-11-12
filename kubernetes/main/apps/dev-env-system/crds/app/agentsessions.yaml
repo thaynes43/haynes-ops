@@ -4,23 +4,25 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main 83a125e6eb1129181048d79ed11e371c9c98f8cc (merge of PR #1077),
-# verified byte for byte (SHA-256 450a8c538d9e4666974992bf5d25261ee39ee96e8740af3b23f45a0b2196b022
-# below this header). Two changes since the copy from 83428207:
-# - dev-env 66201204c557, PR #1079, DESIGN-064 6.4, OpenProject #756: spec.summon, the
-#   immutable snapshot of the CallerPolicy entry a summoned session was created under, and
-#   its rules (summon is present exactly when caller is; a summoned session runs agent
-#   claude, never profile workbench). spec.prompt is now also allowed in remote mode, for a
-#   summoned session only. The enum strings a rule reads gain a maxLength. Schema only:
-#   at this copy no pinned operator creates a summoned session, and the API refuses
-#   name and lane from every caller until the admission change is pinned.
-#   Install precondition: no AgentSession carries spec.caller (an older schema allowed
-#   caller without summon). Read in the cluster before this copy merged; the PR records it.
-# - dev-env 83a125e6eb11, PR #1077, OpenProject #709: status.agent.podUID, the UID of the
-#   pod a heartbeat came from. It must be here before the operator pin that writes it,
-#   or the API server prunes the field.
-# Do not roll this file back once a session with spec.summon exists (an older schema
-# drops the snapshot at the next write) or once an operator writes status.agent.podUID.
+# Source: dev-env main db8f0a3f497ace8505b1f50d42da70002fcf9158 (merge of PR #1088),
+# verified byte for byte (SHA-256 69f7f41aef0dc87627ee8e955fc458852bee30fc565b13fd0882eca822a2817d
+# below this header). One change since the copy from 83a125e6:
+# - dev-env db8f0a3f497a, PR #1088, DESIGN-064 6.6 and 5.9, OpenProject #740:
+#   status.summon, the record of a summoned session's one terminal write
+#   (closed: at, source, reason; escalation: the pending filing of a remediation that
+#   ended escalated), and a bound on status.outcome.note (maxLength 1024 and a rule that
+#   it is at most 1024 bytes). Status only; nothing in spec changed.
+#   It must be here before the operator pin that writes it: an operator at or after
+#   db8f0a3f treats a terminal write whose answer lacks status.summon.closed as an
+#   error, so a copy that lags fails loudly instead of losing the record.
+#   Install precondition: no AgentSession holds a status.outcome.note over 1024 bytes
+#   (read in the cluster before this copy merged; the PR records it).
+# Earlier changes in this file, still in force: spec.summon and its rules (dev-env
+# 66201204c557, PR #1079, OpenProject #756) and status.agent.podUID (dev-env
+# 83a125e6eb11, PR #1077, OpenProject #709).
+# Do not roll this file back once a session with spec.summon or status.summon exists (an
+# older schema drops them at the next write) or once an operator writes
+# status.agent.podUID.
 # Earlier cautions still hold: once a status.privateHistory record with an absent
 # executorTerminal.containers[].finishedAt exists (allowed only when reason is
 # ContainerStatusUnknown), or a status.privateHistory.expiry.bundle record exists, do not
@@ -2243,8 +2245,14 @@ spec:
                     format: date-time
                     type: string
                   note:
-                    description: Note is the session's one-line note with its report.
+                    description: |-
+                      Note is the session's one-line note with its report.
+                      MaxLength bounds code points; the CEL rule also bounds UTF-8 bytes.
+                    maxLength: 1024
                     type: string
+                    x-kubernetes-validations:
+                    - message: outcome note must be at most 1024 bytes
+                      rule: size(bytes(self)) <= 1024
                   state:
                     description: State is the reported outcome.
                     enum:
@@ -3306,6 +3314,54 @@ spec:
                   is admitted. A replacement claim is never adopted into this lifecycle.
                 maxLength: 128
                 type: string
+              summon:
+                description: Summon records the summoned session's terminal transition
+                  (DESIGN-064 5.9).
+                properties:
+                  closed:
+                    description: Closed is written atomically with the first terminal
+                      outcome.
+                    properties:
+                      at:
+                        format: date-time
+                        type: string
+                      reason:
+                        description: Reason is the report verb or the guaranteed-close
+                          reason from section 6.6.
+                        maxLength: 32
+                        minLength: 1
+                        type: string
+                      source:
+                        enum:
+                        - report
+                        - unreported
+                        maxLength: 10
+                        type: string
+                    required:
+                    - at
+                    - reason
+                    - source
+                    type: object
+                  escalation:
+                    description: |-
+                      Escalation is the pending filing for a remediation ending escalated.
+                      OP768 adds filing, blocked and abandoned transitions; this slice files nothing.
+                    properties:
+                      name:
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                      state:
+                        enum:
+                        - Pending
+                        maxLength: 16
+                        type: string
+                    required:
+                    - name
+                    - state
+                    type: object
+                type: object
               suspendedAt:
                 description: |-
                   SuspendedAt is when the operator first saw the session suspended with
