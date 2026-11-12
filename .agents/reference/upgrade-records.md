@@ -214,7 +214,7 @@ because only that one carries the merge commit.
 | Verdict | Events |
 |---|---|
 | `not-run`, `would-merge`, any dry-run verdict | none: nothing was attempted. The verdict stays in `lane_detail.last_attempt`. |
-| `refused`, live, with any lane refusal (class not allowlisted, token, not chosen, lease, window, gate age, lock move) | none: the lane declined, which is not an attempt on the item |
+| `refused`, live, with any lane refusal (class not allowlisted, token, not chosen, lease, window, gate age, lock move, a settle fact or a yield to a shepherd Job, story 551) | none: the lane declined, which is not an attempt on the item |
 | `refused`, live, PR refusals only | `merge-attempted`, then `merge-refused` (class `merge-step-refused`, to `needed`, the refusals in `evidence`) |
 | `merged` | `merge-attempted`, then `merged` (merge commit and time from the verdict). With no merge commit read, `merge-unknown` instead. |
 | `merge-failed` | `merge-attempted`, then `merge-failed` (class `merge-call-failed`, to `needed`) |

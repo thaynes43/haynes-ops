@@ -297,6 +297,11 @@ const laneRecordOf = (n, mutate) => {
     if (v.verdict === 'merged') ok(evs[1].evidence.merge_commit === v.merged.merge_commit && evs[1].at === v.merged.merged_at.replace('Z', '.000Z'), `${tag}: the merge commit and time from the verdict`);
     ok(same(evs.map(e => e.id), F.eventsFromMergeStep({ ...base, carrier: { ...base.carrier, pr: v.pr } }, v, { repo: REPO, at }).map(e => e.id)), `${tag}: the same verdict gives the same event ids (a retried write is a duplicate)`);
   }
+  // story 551 (F4): a live tick that yields to a shepherd Job after the merging write made no
+  // merge call. The lane reports it as refused with a lane refusal, so it writes no event.
+  const yielded = { pr: base.carrier.pr, mode: 'live', verdict: 'refused', pr_refusals: [], lane_refusals: ['F4 at the merge call: 1 shepherd Job that can merge is active; yielded-to-shepherd, the next tick tries again'], yielded: 'yielded-to-shepherd', merge_call: 'not made (yielded)' };
+  ok(F.eventsFromMergeStep(base, yielded, { repo: REPO, at: tickFx.merge_steps[0].at }).length === 0, 'events: live/refused by a yield to a shepherd Job (story 551) writes no event');
+  ok(F.eventsFromMergeStep(base, { ...yielded, lane_refusals: [] }, { repo: REPO, at: tickFx.merge_steps[0].at }).some(e => e.type === 'merge-refused'), 'events: the same verdict without its lane refusal would be an attempt (the yield test is not vacuous)');
   const merged = tickFx.merge_steps.find(x => x.merge_step.verdict === 'merged');
   const noCommit = structuredClone(merged.merge_step); noCommit.merged.merge_commit = null;
   ok(F.eventsFromMergeStep(base, noCommit, { repo: REPO, at: merged.at })[1]?.type === 'merge-unknown', 'events: merged with no merge commit is recorded as merge-unknown (fail closed)');

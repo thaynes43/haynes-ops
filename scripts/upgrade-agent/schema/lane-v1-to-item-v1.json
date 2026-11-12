@@ -191,7 +191,7 @@
     }
   ],
   "merge_step_verdicts": {
-    "doc": "What one merge-step verdict (summary.merge_step, story 752) writes to the history. Only live mode writes events: a dry-run verdict was never acted on and stays in lane_detail.last_attempt. A refusal that names any lane refusal (class not allowlisted, token, not chosen, lease, window, gate age, lock move) is the lane declining, not an attempt on the item, and writes nothing. eventsFromMergeStep() in record-format.mjs implements this table; every event carries the attempt the first one opens.",
+    "doc": "What one merge-step verdict (summary.merge_step, story 752) writes to the history. Only live mode writes events: a dry-run verdict was never acted on and stays in lane_detail.last_attempt. A refusal that names any lane refusal (class not allowlisted, token, not chosen, lease, window, gate age, lock move, a settle fact or a yield to a shepherd Job, story 551) is the lane declining, not an attempt on the item, and writes nothing. eventsFromMergeStep() in record-format.mjs implements this table; every event carries the attempt the first one opens.",
     "verdicts": {
       "not-run": [],
       "would-merge": [],
