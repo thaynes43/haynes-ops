@@ -219,7 +219,7 @@ write_orphan_report() {
 # Returns 0 = an in-scope unvetted PR exists (or we're unsure) -> run the LLM.
 # Returns 1 = definitively nothing to look at -> caller should exit $0.
 prefilter_should_run() {
-  local globs="$1" prs pr meta files oid g
+  local globs="$1" prs pr meta files oid g comments vetted
   # -R "$REPO" is REQUIRED: the pre-filter runs BEFORE the clone, so gh has no git
   # remote to infer the repo from — a bare `gh pr list` errors "not a git repository"
   # and the filter fails open (runs the LLM) every time (bit us live 2026-07-04).
@@ -229,7 +229,7 @@ prefilter_should_run() {
   [ -n "$prs" ] || { log "pre-filter: no open Renovate PRs — skipping LLM (\$0)."; return 1; }
   local checked=0
   for pr in $prs; do
-    meta="$(gh pr view "$pr" -R "$REPO" --json files,headRefOid,comments 2>/dev/null)" || {
+    meta="$(gh pr view "$pr" -R "$REPO" --json files,headRefOid 2>/dev/null)" || {
       log "pre-filter: gh pr view #$pr failed — failing OPEN (running the LLM)."; return 0; }
     files="$(printf '%s' "$meta" | jq -r '.files[].path' 2>/dev/null)"
     checked=$((checked + 1))
@@ -240,9 +240,23 @@ prefilter_should_run() {
         # state — re-vetting it daily while it bakes/queues re-spends for the same
         # verdict. A Renovate rebase moves the SHA, so the marker self-invalidates
         # exactly when a re-vet is warranted.
+        # OUR BOT ONLY (story 549): the repository is public, so a marker counts only from
+        # the shepherd's own app, read over REST: user.login "${SHEPHERD_BOT_LOGIN}[bot]",
+        # type Bot (GraphQL's author.login drops the [bot] suffix, and the plain login is a
+        # user name anyone could register), with the marker first in the body, as in every
+        # genuine one (64 of 64 on record, 2026-11-12). Comments unreadable = the author
+        # cannot be established = not vetted: summon the LLM.
         oid="$(printf '%s' "$meta" | jq -r '.headRefOid // ""' 2>/dev/null)"
-        if [ -n "$oid" ] && printf '%s' "$meta" | jq -e --arg m "shepherd-vet sha=${oid}" \
-             '[(.comments[]? | .body // "") | contains($m)] | any' >/dev/null 2>&1; then
+        vetted=no
+        if [ -n "$oid" ]; then
+          if comments="$(gh api --paginate "repos/$REPO/issues/$pr/comments?per_page=100" 2>/dev/null)"; then
+            printf '%s' "$comments" | jq -e -s --arg m "<!-- shepherd-vet sha=${oid} -->" --arg bot "${SHEPHERD_BOT_LOGIN}[bot]" \
+              '[add[]? | select(.user.login == $bot and .user.type == "Bot") | (.body // "") | startswith($m)] | any' >/dev/null 2>&1 && vetted=yes
+          else
+            log "pre-filter: PR #$pr comments unreadable — a vet marker's author cannot be established, so none counts."
+          fi
+        fi
+        if [ "$vetted" = yes ]; then
           log "pre-filter: PR #$pr touches ramp path '$g' but is already vetted at ${oid:0:10} — not a summon reason."
         else
           log "pre-filter: Renovate PR #$pr touches ramp path '$g' — summoning the LLM."

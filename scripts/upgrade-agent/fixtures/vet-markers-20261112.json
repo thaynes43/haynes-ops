@@ -1,0 +1,774 @@
+{
+  "doc": "Story 549. Every shepherd-vet marker comment on a haynes-ops PR, read 2026-11-12 over REST (GET repos/thaynes43/haynes-ops/issues/<pr>/comments, from the 63 PRs GitHub search lists with shepherd-vet in a comment). 64 are by the haynes-ops-bot app (user.login haynes-ops-bot[bot], type Bot, id 298460192, performed_via_github_app haynes-ops-bot) and each starts with <!-- shepherd-vet sha=<40 hex> --> then a VERDICT line; GraphQL (gh pr view --json comments) reports the same author as haynes-ops-bot, a user name GitHub answers 404 for, so anyone could register it. The 65th marker on record (PR 4827, github-actions[bot]) is a Flux diff that quotes a marker in a file; it is left out. body keeps the first two non-empty lines only. shepherd-prefilter-selftest.sh checks that the pre-filter counts each of the 64 for its own head and counts forged copies of them for none.",
+  "read_at": "2026-11-12T14:20:00Z",
+  "comments": [
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=84401f7deb2fbf03fdfcbbce1dd76601b4880878 -->\nVERDICT: supporting-edit-authored",
+      "created_at": "2026-07-07T13:02:55Z",
+      "id": 4904088797,
+      "pr": 1985,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=43c73db6192062305e192bee40d46ec9fde2b56c -->\nVERDICT: declined",
+      "created_at": "2026-07-07T13:03:09Z",
+      "id": 4904090745,
+      "pr": 1989,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=815c9ae0d10945618dbd8bc8713d53f98adb160b -->\nVERDICT: declined",
+      "created_at": "2026-07-07T13:03:10Z",
+      "id": 4904090873,
+      "pr": 1977,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=af32ca3e25e2d98d2abccddc1196766b4320c73b -->\nVERDICT: auto-merged",
+      "created_at": "2026-07-08T09:49:24Z",
+      "id": 4913534442,
+      "pr": 1996,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=43c73db6192062305e192bee40d46ec9fde2b56c -->\nVERDICT: auto-merged",
+      "created_at": "2026-07-08T09:49:25Z",
+      "id": 4913534672,
+      "pr": 1989,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=6c135354283c6a86d514393f58431e00ba81bba4 -->\nVERDICT: auto-merge enabled",
+      "created_at": "2026-07-08T09:49:26Z",
+      "id": 4913534836,
+      "pr": 1997,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=a1ae3b39cb4adcae8d6857dc0fd03ea63adc9f0b -->\nVERDICT: auto-merge",
+      "created_at": "2026-07-08T12:01:04Z",
+      "id": 4914554511,
+      "pr": 1995,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=0f190563617b1e1c7e82398693b4d0dca996c528 -->\nVERDICT: HOLD",
+      "created_at": "2026-07-09T08:02:31Z",
+      "id": 4922933087,
+      "pr": 2005,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=042c6fb13630553e3cace651258c1bdaee5708f5 -->\nVERDICT: AUTOMERGE",
+      "created_at": "2026-07-14T04:03:51Z",
+      "id": 4965277356,
+      "pr": 2021,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=331764ffaab769b6d2c61b0157ba201325e30f6e -->\nVERDICT: AUTOMERGE",
+      "created_at": "2026-07-14T04:03:51Z",
+      "id": 4965277407,
+      "pr": 2052,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=5a87de47bc960641bafdb49900ed08053a0ecf17 -->\nVERDICT: OUT-OF-SCOPE",
+      "created_at": "2026-07-14T20:04:37Z",
+      "id": 4973480285,
+      "pr": 2054,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=63099203efa551841edde130bc31b4d80f80bcab -->\nVERDICT: HOLD",
+      "created_at": "2026-07-15T20:05:43Z",
+      "id": 4984804640,
+      "pr": 2005,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=63099203efa551841edde130bc31b4d80f80bcab -->\nVERDICT: MERGED",
+      "created_at": "2026-07-19T14:57:31Z",
+      "id": 5016182800,
+      "pr": 2005,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=3317fb4103e548b046c16080d7c4955adef13816 -->\nVERDICT: auto-merge-enabled",
+      "created_at": "2026-07-23T08:02:48Z",
+      "id": 5055938168,
+      "pr": 2218,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=1e9ffc897816d543091629f44e6537ce50a377f6 -->\nVERDICT: out-of-scope",
+      "created_at": "2026-07-23T08:02:56Z",
+      "id": 5055939149,
+      "pr": 2220,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=b142e261839e5b4730d62780b1fded11adb96d7d -->\nVERDICT: out-of-scope",
+      "created_at": "2026-07-23T08:03:02Z",
+      "id": 5055939966,
+      "pr": 2219,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=2f356ee4b1d63cb4f7f76da6a78d54375a5de149 -->\nVERDICT: left-for-renovate",
+      "created_at": "2026-07-23T08:03:11Z",
+      "id": 5055941135,
+      "pr": 2132,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=ecd5197edb208ffd78fe6de7080d2a3153530692 -->\nVERDICT: out-of-scope",
+      "created_at": "2026-07-23T08:03:20Z",
+      "id": 5055942305,
+      "pr": 2126,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=5280916657b010cb0e496d156ebd803b8c09d6b6 -->\nVERDICT: auto-merge-enabled",
+      "created_at": "2026-07-24T04:00:54Z",
+      "id": 5066004384,
+      "pr": 2226,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=640401dbf7184c5e70dff2c001bd60ecfe4ba773 -->\nVERDICT: auto-merge",
+      "created_at": "2026-07-29T08:02:30Z",
+      "id": 5114810257,
+      "pr": 2292,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=9d0c557a73baadcbdc5ed79c81b375ff646aa282 -->\nVERDICT: auto-merge",
+      "created_at": "2026-07-29T08:02:31Z",
+      "id": 5114810427,
+      "pr": 2293,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=2b3be74b8ea01f848f01cd8b95b7f77174ee25ae -->\nVERDICT: out-of-scope",
+      "created_at": "2026-07-30T12:05:36Z",
+      "id": 5130593232,
+      "pr": 2298,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=8f4c33add52b3847981c2b86026264c3575e4b7b -->\nVERDICT: out-of-scope",
+      "created_at": "2026-07-30T12:05:41Z",
+      "id": 5130594001,
+      "pr": 2299,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=3a318e9dfd9db956aeda22650faf94697ec6adeb -->\nVERDICT: auto-merge-enabled",
+      "created_at": "2026-08-01T12:01:42Z",
+      "id": 5151330484,
+      "pr": 2322,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=bad69378716b7ef37855b71f0e9822695b5196d0 -->\nVERDICT: auto-merge",
+      "created_at": "2026-08-08T08:01:09Z",
+      "id": 5225237226,
+      "pr": 2373,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=77a0a3071f0fc73932e3495c37af3e291bde6b1e -->\nVERDICT: split",
+      "created_at": "2026-08-08T12:04:39Z",
+      "id": 5226019433,
+      "pr": 2380,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=33719d3e60e722976989fe7e71bc390a8e210e9d -->\nVERDICT: auto-merge",
+      "created_at": "2026-08-08T16:01:20Z",
+      "id": 5226896247,
+      "pr": 2380,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=1c72a3dfa5e08a80349569b0dbebc50400d369f7 -->\nVERDICT: AUTO-MERGE",
+      "created_at": "2026-08-15T08:04:18Z",
+      "id": 5301287073,
+      "pr": 2446,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=40f5989898f38cfbc55066dbfdedf3556f304aaa -->\nVERDICT: OUT-OF-SCOPE",
+      "created_at": "2026-08-15T08:04:19Z",
+      "id": 5301287126,
+      "pr": 2449,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=2872923d6c542fb2e8359c56529bbc67f090f6f0 -->\nVERDICT: auto-merged",
+      "created_at": "2026-08-19T04:03:03Z",
+      "id": 5337371343,
+      "pr": 2501,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=adecc7768cd0b3b8c9c3561ad7c8b6bf4bcf18c6 -->\nVERDICT: auto-merged",
+      "created_at": "2026-08-19T04:03:03Z",
+      "id": 5337371436,
+      "pr": 2497,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=47aee3d1baf474ea94875d314077c943c754a53a -->\nVERDICT: left-untouched",
+      "created_at": "2026-08-19T04:03:04Z",
+      "id": 5337371539,
+      "pr": 2480,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=cf1634cce96550896ec5f8a60b06684efd005a81 -->\nVERDICT: one-way",
+      "created_at": "2026-08-19T08:03:25Z",
+      "id": 5339259519,
+      "pr": 2504,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=75e99eaa54582b830614abad0cfada9f3c12025b -->\nVERDICT: auto-merge-enabled",
+      "created_at": "2026-08-20T08:03:56Z",
+      "id": 5353135104,
+      "pr": 2530,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=e40dd8b5158e21d57f5086d94ed16ebd555070f3 -->\nVERDICT: auto-merge-enabled",
+      "created_at": "2026-08-20T08:03:57Z",
+      "id": 5353135241,
+      "pr": 2531,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=cf1634cce96550896ec5f8a60b06684efd005a81 -->\nVERDICT: manual-only",
+      "created_at": "2026-08-20T08:03:58Z",
+      "id": 5353135406,
+      "pr": 2504,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=58029801053dbbb151cc864870361e6e35a98d9b -->\nVERDICT: held-for-human",
+      "created_at": "2026-08-20T08:03:59Z",
+      "id": 5353135571,
+      "pr": 2506,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=2f62489ca269a3da457fbd76d5fd9bade91fc89a -->\nVERDICT: auto-merged",
+      "created_at": "2026-08-21T08:03:22Z",
+      "id": 5367084121,
+      "pr": 2548,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=e3cfaaca3443c687554910b0529ebee540d31dfd -->\nVERDICT: auto-merged",
+      "created_at": "2026-08-21T08:03:23Z",
+      "id": 5367084275,
+      "pr": 2549,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=ad1156b3d5de97d6a58d438180fb64c07781e149 -->\nVERDICT: split-phase-1-authored",
+      "created_at": "2026-08-23T04:03:31Z",
+      "id": 5384120753,
+      "pr": 2578,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=a613a5b9a8fe0d7d2bad79a0652bf10b73baa767 -->\nVERDICT: auto-merged",
+      "created_at": "2026-08-23T08:04:03Z",
+      "id": 5384967624,
+      "pr": 2581,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=81d8a065cfe5f827566b79e7c299cb0e454725c8 -->\nVERDICT: auto-merged",
+      "created_at": "2026-08-23T08:04:06Z",
+      "id": 5384967828,
+      "pr": 2578,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=f6e1d72a66317ae3ce4c45a65c316d65234a37ac -->\nVERDICT: split",
+      "created_at": "2026-08-29T08:02:37Z",
+      "id": 5461196143,
+      "pr": 2652,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=562424e865700c3744c0f7dddd8769dd001de495 -->\nVERDICT: auto-merged",
+      "created_at": "2026-08-29T12:02:16Z",
+      "id": 5462305293,
+      "pr": 2652,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=8d5fb595304b72fca2ca2782f56e6e7075d0136b -->\nVERDICT: handed-off",
+      "created_at": "2026-09-03T08:04:18Z",
+      "id": 5522577268,
+      "pr": 2757,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=7f0f054b4984da1035c29d6d67b0b7be1dd129cf -->\nVERDICT: handed-off",
+      "created_at": "2026-09-03T08:04:30Z",
+      "id": 5522579344,
+      "pr": 2758,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=79783e7be0cc89a4492bdb73ace6304ad6825b72 -->\nVERDICT: split-authored",
+      "created_at": "2026-09-21T13:10:49Z",
+      "id": 5761024818,
+      "pr": 3028,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=9a660aa6d0b2364e5c1d5bda1532db8346c432c7 -->\nVERDICT: superseded",
+      "created_at": "2026-09-21T13:10:59Z",
+      "id": 5761027271,
+      "pr": 3034,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=1ad3ec53969c2bbc7eb3af2020d5691079e06174 -->\nVERDICT: superseded",
+      "created_at": "2026-09-21T13:11:09Z",
+      "id": 5761029537,
+      "pr": 3033,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=25087cbe83a8f2ec8e3e040413f9b9dfd687df9a -->\nVERDICT: auto-merge",
+      "created_at": "2026-09-21T13:16:51Z",
+      "id": 5761110968,
+      "pr": 3028,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=48cf7246ace51d72f8e3a95d3e54455ecdbe2c8f -->\nVERDICT: auto-merge",
+      "created_at": "2026-09-30T04:07:39Z",
+      "id": 5903846610,
+      "pr": 3280,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=ec474b38e0df90845df0e7d2759d496f2b54095c -->\nVERDICT: superseded",
+      "created_at": "2026-10-06T12:01:24Z",
+      "id": 6015787862,
+      "pr": 3427,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=eae1d22a283dd3cff6e94a3c30298a1ae41b1102 -->\nVERDICT: superseded",
+      "created_at": "2026-10-06T12:01:29Z",
+      "id": 6015789274,
+      "pr": 3426,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=cde8423157373edc7c1110398d80d3ae58432ab1 -->\nVERDICT: handed-off",
+      "created_at": "2026-10-07T04:01:21Z",
+      "id": 6030640316,
+      "pr": 3486,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=65581e1ab39d676465656c7a1b4524e35b099aee -->\nVERDICT: auto-merge",
+      "created_at": "2026-10-17T04:02:50Z",
+      "id": 6229400147,
+      "pr": 3994,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=5a88dde62c6a117f4765b240786ceda0b91aa650 -->\nVERDICT: auto-merge",
+      "created_at": "2026-10-22T12:01:21Z",
+      "id": 6340226868,
+      "pr": 4165,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=a3130fbcf5f9a323ba0b6b388017ab233a886e83 -->\nVERDICT: auto-merge-enabled",
+      "created_at": "2026-10-27T08:02:24Z",
+      "id": 6436742037,
+      "pr": 4341,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=32f87f0f3caeb18863a1939de87204fff8165712 -->\nVERDICT: auto-merge",
+      "created_at": "2026-10-27T12:01:59Z",
+      "id": 6441374721,
+      "pr": 4338,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=4a4ff22e9d83689c6de1d0318bbcbb0b68c1b6cc -->\nVERDICT: auto-merge",
+      "created_at": "2026-10-31T08:00:51Z",
+      "id": 6540904846,
+      "pr": 4475,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=88c893472ce163540dbaaf8e35d75d0aceff19e2 -->\nVERDICT: LEFT",
+      "created_at": "2026-11-05T05:01:15Z",
+      "id": 6650136734,
+      "pr": 4658,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=0f9bb57474be684614a381933ff307e04a160f37 -->\nVERDICT: AUTO-MERGE",
+      "created_at": "2026-11-06T05:02:53Z",
+      "id": 6677375824,
+      "pr": 4676,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=980feeb0464caab1b574213b879ac6c8fe4157fe -->\nVERDICT: AUTOMERGE",
+      "created_at": "2026-11-07T09:01:11Z",
+      "id": 6704799198,
+      "pr": 4701,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=d91793d3e1be1dd719a04b0061a4bbe83d8d1965 -->\nVERDICT: LEFT",
+      "created_at": "2026-11-07T09:01:16Z",
+      "id": 6704799924,
+      "pr": 4607,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    },
+    {
+      "app": "haynes-ops-bot",
+      "body": "<!-- shepherd-vet sha=ea9bbac853a034011dfad694f4a0d0592d32e1eb -->\nVERDICT: LEFT",
+      "created_at": "2026-11-10T05:02:30Z",
+      "id": 6759465530,
+      "pr": 4607,
+      "user": {
+        "id": 298460192,
+        "login": "haynes-ops-bot[bot]",
+        "type": "Bot"
+      }
+    }
+  ]
+}

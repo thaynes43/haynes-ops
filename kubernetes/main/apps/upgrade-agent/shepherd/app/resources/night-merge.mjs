@@ -40,10 +40,12 @@
 //
 // WHAT NEVER HAPPENS IN DRY-RUN. callMerge() throws unless its mode is 'live' (the lane)
 // or 'hand' (the CLI with --merge), and laneMergeStep() calls it only when mode is
-// 'live'. The two spawn sites in this file are writeLock() (create or replace of the
-// lock ConfigMap, nothing else) and callMerge(). Every read goes through the classifier's
-// read-only runner. scripts/upgrade-agent/lane-merge-step-selftest.mjs and
-// lane-night-dryrun-selftest.mjs check all of this.
+// 'live'. The three spawn sites in this file are writeLock() (create or replace of the
+// lock ConfigMap, nothing else), callMerge() and ghWrite() (story 549: the lane's own PR
+// record comment and Renovate's retry box, never a merge; see "PR records and the
+// stalled-check retry" below). Every read goes through the classifier's read-only runner.
+// scripts/upgrade-agent/lane-merge-step-selftest.mjs, lane-night-dryrun-selftest.mjs and
+// lane-pr-records-selftest.mjs check all of this.
 //
 // HAND RUN (the rehearsal): node night-merge.mjs --pr <n> --head <sha> --check-only
 // prints the verdict and changes nothing; --merge merges once with the caller's own gh
@@ -321,7 +323,7 @@ export function readPause(rules, run) {
   if (!st) return null;
   return { pause: st.found && st.cm?.data?.pause ? String(st.cm.data.pause) : null };
 }
-const pauseRefusal = (p, when) => (!p ? `unreadable: data.pause on upgrade-lane-state (${when})` : p.pause ? `paused ${when}: data.pause=${JSON.stringify(p.pause.slice(0, 80))}` : null);
+export const pauseRefusal = (p, when) => (!p ? `unreadable: data.pause on upgrade-lane-state (${when})` : p.pause ? `paused ${when}: data.pause=${JSON.stringify(p.pause.slice(0, 80))}` : null);
 
 // The whole PR-side preflight: one fresh view (read again while GitHub has not computed
 // its mergeability, story 773), the REST commit identities, story 550's R7 (the same
@@ -872,6 +874,392 @@ export function verifyMerged(repo, pr, head, run) {
 // nothing and runs nothing, and says so.
 export function owedWork({ mode, paused }) {
   return { built: false, mode, paused: !!paused, ran: [], note: 'verification (story 553) and revert (stories 753, 754) of a merge already made are not built; nothing owed was run' };
+}
+
+// ── PR records and the stalled-check retry (story 549) ─────────────────────────────
+// Story: https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/549
+// Design: OP512 comment 6193 (rollout step 3; "Retry of a stalled auto-merge"). Facts, not
+// clocks (Tom's ruling Q-548-04): every decision reads GitHub at the moment it writes.
+//
+// THE RECORD. One comment per open Renovate PR, written by the lane's own identity
+// (rules.night.pr_record.author: REST user.login haynes-ops-bot[bot], type Bot) and edited
+// in place. Its body starts with the marker line, then one fenced JSON block: the tick's
+// record projected to rules.night.pr_record.fields, with < > & @ and ` escaped as \u
+// sequences (no HTML comment, mention or fence can appear in it). A comment by any other
+// author is never read as the record and never edited. The lane writes only when the
+// content changed, leaving out updated and last_attempt.at. With two or more of its own it
+// keeps the oldest and edits each newer one into a note without the marker.
+//
+// THE RETRY. Renovate's rebase/retry box is ticked once per head, at most per_pr times per
+// PR in window_days and per_tick times per tick, on a PR that a failing check alone keeps
+// out of lane A, after a fresh read shows: the newest run of the failing check failed and
+// nothing on the head is queued or running; the box exists once and is unticked; the PR is
+// Renovate's and every commit is the Renovate app's; the head is the one the tick judged.
+// The ledger entry is written first (data.retry_ledger), then the pause and the PR are read
+// again: a pause, a moved head or a changed body abandons the write for this tick. The edit
+// changes the box's one character and nothing else (ghWrite refuses anything else).
+//
+// THE GITHUB WRITES. ghWrite() is their one spawn site: gh api --method POST of a new
+// comment on a PR, --method PATCH of one comment by id, --method PATCH of a PR's body,
+// each with { body } on stdin and nothing else. They run only from the tick's PR-write
+// phase (--write-state, a token with pull_requests:write, not paused, not halted) and are
+// never a merge. The first write that fails stops every other GitHub write of that tick.
+export function recordConfig(rules) {
+  const c = rules?.night?.pr_record || {};
+  const ok = c.marker === L.RECORD_MARKER && typeof c.author?.login === 'string' && /^[a-z0-9-]+\[bot\]$/.test(c.author.login) && c.author.type === 'Bot'
+    && Array.isArray(c.fields) && ['schema', 'pr', 'head', 'preapproval', 'retry', 'updated'].every(f => c.fields.includes(f))
+    && Number.isInteger(c.max_body_bytes) && c.max_body_bytes >= 4096 && c.max_body_bytes <= 65000;
+  return { ok, marker: c.marker, author: c.author || {}, fields: Array.isArray(c.fields) ? c.fields : [], max_body_bytes: c.max_body_bytes,
+    why: ok ? null : `night.pr_record in upgrade-rules.json is invalid (marker ${L.RECORD_MARKER}; author a <app>[bot] login of type Bot; fields with schema, pr, head, preapproval, retry, updated; 4096 <= max_body_bytes <= 65000)` };
+}
+export function retryConfig(rules) {
+  const c = rules?.night?.retry || {};
+  const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+  const ok = c.per_head === 1 && int(c.per_pr, 1, 5) && int(c.window_days, 1, 30) && int(c.per_tick, 0, 3);
+  return { ok, per_head: c.per_head, per_pr: c.per_pr, window_days: c.window_days, per_tick: c.per_tick,
+    why: ok ? null : 'night.retry in upgrade-rules.json is invalid (per_head 1; per_pr 1 to 5; window_days 1 to 30; per_tick 0 to 3)' };
+}
+// The PR writes need pull_requests:write (GitHub's permission tables for installation
+// tokens list all three endpoints under "Pull requests", write). Unreadable = no write.
+export function prWriteAllowed(token) {
+  if (!token?.readable) return { ok: false, why: 'unreadable: the token permissions (/creds/gh_token_permissions); no PR write' };
+  if (!(token.names || []).includes('pull_requests:write')) return { ok: false, why: `the token cannot write pull requests (${(token.names || []).join(', ') || 'no permissions'})` };
+  return { ok: true, why: null };
+}
+
+// ── the record (PURE) ──
+const canon = v => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canon(v[k])])) : v);
+export function projectRecord(rec, cfg) {
+  const out = {};
+  for (const f of cfg.fields) out[f] = rec?.[f] === undefined ? null : rec[f];
+  return out;
+}
+// The content the lane compares: everything but the tick's own time.
+export function recordContentKey(pub) {
+  const x = structuredClone(pub ?? {});
+  delete x.updated;
+  if (x.last_attempt && typeof x.last_attempt === 'object') delete x.last_attempt.at;
+  return JSON.stringify(canon(x));
+}
+const escJson = s => s.replace(/[<>&@`]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+const word = s => String(s ?? '').replace(/[^A-Za-z0-9._-]/g, '') || 'unknown';
+export function renderRecord(pub, cfg) {
+  return [cfg.marker,
+    `The nightly upgrade lane keeps this record and edits it in place: lane \`${word(pub.lane)}\`, class \`${word(pub.class)}\`, head \`${word(String(pub.head ?? '').slice(0, 8))}\`. Runbook: \`.agents/runbooks/upgrade-night-lane.md\`.`,
+    '', '```json', escJson(JSON.stringify(pub, null, 1)), '```', ''].join('\n');
+}
+export function parseRecord(body, cfg) {
+  const b = String(body ?? '').replace(/\r\n/g, '\n');
+  if (!b.startsWith(`${cfg.marker}\n`)) return null;
+  const m = /\n```json\n([\s\S]*?)\n```(?:\n|$)/.exec(b);
+  if (!m) return null;
+  try { const j = JSON.parse(m[1]); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; } catch { return null; }
+}
+// What must never reach a public comment. The record holds names, SHAs, times and the
+// lane's own wording; any of these shapes means something else got in, and the record is
+// refused (not written) with the reason.
+const SECRET_SHAPES = Object.freeze([
+  [/\bgh[pousr]_[A-Za-z0-9]{20,}/, 'a GitHub token'], [/\bgithub_pat_[A-Za-z0-9_]{20,}/, 'a GitHub token'],
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'a private key'], [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\./, 'a JSON web token'],
+  [/\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/i, 'a URL with credentials'], [/\bbearer\s+[A-Za-z0-9._~+/-]{12,}/i, 'a bearer credential'],
+  [/\b(?:password|passwd|secret|api[_-]?key|client[_-]?secret)\s*["']?\s*[:=]\s*\S/i, 'a credential assignment'],
+  [/\bxox[abprs]-[A-Za-z0-9-]{10,}/, 'a Slack token'], [/\bAKIA[0-9A-Z]{16}\b/, 'an AWS key'],
+]);
+export function publishProblems(pub, body, cfg) {
+  const out = [];
+  const raw = JSON.stringify(pub);
+  for (const [re, what] of SECRET_SHAPES) if (re.test(raw) || re.test(body)) out.push(`the record carries text shaped like ${what}`);
+  if (pub?.preapproval && Object.keys(pub.preapproval).length) out.push('preapproval is not empty (piece 1 reads no approval)');
+  if (pub?.schema !== 'haynes.upgrade-lane/v1' || !Number.isInteger(pub?.pr)) out.push('not a haynes.upgrade-lane/v1 record of one PR');
+  if (Buffer.byteLength(body) > cfg.max_body_bytes) out.push(`the record is ${Buffer.byteLength(body)} bytes, over ${cfg.max_body_bytes}`);
+  return [...new Set(out)];
+}
+// comments = L.recordComments() output (REST identity). own = the lane's, oldest first.
+export function ownRecords(comments, cfg) {
+  const own = [], foreign = [];
+  for (const c of comments || []) {
+    if (!String(c?.body || '').startsWith(cfg.marker)) continue;
+    if (c.author === cfg.author.login && c.author_type === cfg.author.type && Number.isInteger(c.id)) own.push(c);
+    else foreign.push({ id: c.id ?? null, author: c.author ?? null });
+  }
+  own.sort((a, b) => a.id - b.id);
+  return { own, foreign };
+}
+export function planRecord(pub, comments, cfg) {
+  const { own, foreign } = ownRecords(comments, cfg);
+  if (!own.length) return { action: 'create', id: null, demote: [], foreign };
+  const cur = parseRecord(own[0].body, cfg);
+  const same = !!cur && cur.pr === pub.pr && recordContentKey(cur) === recordContentKey(pub);
+  return { action: same ? 'current' : 'update', id: own[0].id, demote: own.slice(1).map(c => c.id), foreign };
+}
+export const demoteBody = (repo, pr, keepId) => `This comment was a second night-lane record on this pull request, and the lane keeps one. The record is https://github.com/${repo}/pull/${pr}#issuecomment-${keepId}.`;
+
+// ── the retry (PURE) ──
+// The box ticked: that one character, nothing else. { ok, body } or { ok: false, why }.
+export function tickRetryBox(body) {
+  const b = String(body ?? '');
+  const box = L.retryBox(b);
+  if (box.state !== 'unticked') return { ok: false, why: `Renovate's retry box is ${box.state}` };
+  const lines = b.split('\n');
+  lines[box.line] = lines[box.line].replace(/^(\s*-\s+\[) \]/, '$1x]');
+  const out = lines.join('\n');
+  let diff = 0;
+  for (let i = 0; i < b.length; i++) if (b[i] !== out[i]) diff++;
+  if (out.length !== b.length || diff !== 1 || L.retryBox(out).state !== 'ticked') return { ok: false, why: 'the box could not be ticked by changing one character' };
+  return { ok: true, body: out };
+}
+const counts = e => e && e.status !== 'abandoned';
+// rec = the tick's record; box = facts.retry_box; entries = this PR's ledger entries (null
+// = the ledger is unreadable); now = the tick's clock. Returns { field (the record's retry),
+// eligible, block ({ class, reason } when a failure after a retry blocks the PR), update
+// (fields to set on the newest ledger entry) }.
+export function retryAssess({ rec, box, entries, cfg, now }) {
+  const limits = { per_head: cfg.per_head, per_pr: cfg.per_pr, window_days: cfg.window_days, per_tick: cfg.per_tick };
+  if (entries === null) return { field: { state: 'unreadable', why: 'unreadable: the retry ledger (data.retry_ledger on upgrade-lane-state); no retry', count_7d: null, limits, history: [] }, eligible: false, block: null, update: null };
+  const counted = (entries || []).filter(counts).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  const inWin = counted.filter(e => now - Date.parse(e.at) < cfg.window_days * 864e5);
+  const history = counted.map(e => ({ head: e.head, at: e.at, status: e.status, outcome: e.outcome ?? null, next_head: e.next_head ?? null }));
+  const out = (state, why, extra = {}) => ({ field: { state, why, count_7d: inWin.length, limits, history }, eligible: false, block: null, update: null, ...extra });
+  const failing = rec?.checks?.failing || [], pending = rec?.checks?.pending || [], missing = rec?.checks?.missing || [];
+  const blockWith = reason => (rec?.lane === 'BLOCKED' && failing.length ? { class: 'check-failing-after-retry', reason } : null);
+  const last = counted[counted.length - 1] || null;
+  if (last && !last.outcome) {
+    if (rec?.head === last.head) {
+      if (last.status === 'ticked' && box === 'unticked') {
+        const reason = `the retry on ${short(last.head)} at ${last.at} gave no new head: Renovate cleared the box${failing.length ? `; still failing: ${failing.join('; ')}` : ''}`;
+        return out('no-new-head', reason, { block: blockWith(reason), update: { outcome: 'no-new-head', outcome_at: iso(now) } });
+      }
+      return last.status === 'ticked'
+        ? out('waiting-for-renovate', `ticked on ${short(last.head)} at ${last.at}; the box reads ${box} and the head has not moved yet`)
+        : out('not-retried-again', `a retry of ${short(last.head)} at ${last.at} ended ${last.status}${last.why ? ` (${last.why})` : ''}; this head is not retried again`);
+    }
+    if (failing.length) {
+      const reason = `failed again on ${short(rec?.head)} after one retry on ${short(last.head)} at ${last.at}: ${failing.join('; ')}`;
+      return out('failed-again', reason, { block: blockWith(reason), update: { outcome: 'failed-again', next_head: rec?.head ?? null, outcome_at: iso(now) } });
+    }
+    if (pending.length || missing.length) return out('new-head-checks-running', `the retry on ${short(last.head)} gave head ${short(rec?.head)}; waiting for its checks (${[...pending, ...missing].join('; ')})`);
+    return out('resolved', `the retry on ${short(last.head)} at ${last.at} gave head ${short(rec?.head)}, and its expected checks passed`, { update: { outcome: 'resolved', next_head: rec?.head ?? null, outcome_at: iso(now) } });
+  }
+  if (last && failing.length && ((last.outcome === 'failed-again' && rec?.head === last.next_head) || (last.outcome === 'no-new-head' && rec?.head === last.head))) {
+    const reason = last.outcome === 'failed-again' ? `failed again on ${short(rec.head)} after one retry on ${short(last.head)} at ${last.at}: ${failing.join('; ')}` : `the retry on ${short(last.head)} at ${last.at} gave no new head: Renovate cleared the box; still failing: ${failing.join('; ')}`;
+    return out(last.outcome, reason, { block: blockWith(reason) });
+  }
+  if (!failing.length) return out('not-needed', 'no required or expected check is failing on this head');
+  if (!(rec?.lane === 'BLOCKED' && rec?.class === 'check-failing')) return out('not-eligible', `lane ${rec?.lane} (${rec?.class}): only a PR that a failing check alone keeps out of lane A is retried`);
+  if (pending.length) return out('not-eligible', `a check is still running on this head: ${pending.join('; ')}`);
+  if (counted.some(e => e.head === rec.head)) return out('not-eligible', `already retried on this head (${short(rec.head)}); at most ${cfg.per_head} per head`);
+  if (inWin.length >= cfg.per_pr) return out('budget-used', `${inWin.length} retries in the last ${cfg.window_days} days; at most ${cfg.per_pr} per PR`);
+  if (box !== 'unticked') return out('not-eligible', `Renovate's retry box is ${box ?? 'unread'}`);
+  return { ...out('eligible', `failing on ${short(rec.head)}: ${failing.join('; ')}; nothing running; the box unticked; ${inWin.length} of ${cfg.per_pr} retries used in ${cfg.window_days} days`), eligible: true };
+}
+// PURE. The facts at the moment of the write. pull = REST GET pulls/<n>; view = gh pr view
+// (commits, headRefOid, statusCheckRollup); commits = REST pulls/<n>/commits.
+export function retryPreflight({ pull, view, commits, head, files, rules, now }) {
+  if (!pull || typeof pull !== 'object') return ['unreadable: the pull request (REST)'];
+  const out = [];
+  if (pull.state !== 'open') out.push(`not open (state ${pull.state ?? 'unknown'})`);
+  if (pull.draft !== false) out.push(pull.draft ? 'a draft' : 'unreadable: whether the PR is a draft');
+  if (pull.base?.ref !== 'main') out.push(`base is ${pull.base?.ref ?? 'unknown'}, not main`);
+  if (pull.user?.login !== RENOVATE.commit_login || pull.user?.type !== 'Bot' || pull.user?.id !== RENOVATE.commit_id) out.push(`opened by ${pull.user?.login ?? 'unknown'} (${pull.user?.type ?? '?'}/${pull.user?.id ?? '?'}), not the Renovate app`);
+  if (pull.head?.repo?.full_name !== REPO) out.push(`head repository ${pull.head?.repo?.full_name ?? 'unknown'}, not ${REPO}`);
+  if (!String(pull.head?.ref || '').startsWith(RENOVATE.branch_prefix)) out.push(`head branch ${pull.head?.ref ?? 'unknown'} is not under ${RENOVATE.branch_prefix}`);
+  if (!SHA.test(head || '') || pull.head?.sha !== head) out.push(`head moved: ${short(pull.head?.sha)} is not the head the tick judged (${short(head)})`);
+  if (!view || typeof view !== 'object') out.push('unreadable: the pull request (gh pr view)');
+  else if (view.headRefOid !== pull.head?.sha) out.push('the two reads of the pull request disagree on its head');
+  out.push(...commitRefusals(commits, view));
+  const rollup = Array.isArray(view?.statusCheckRollup) ? view.statusCheckRollup : null;
+  if (!rollup) out.push('unreadable: the checks on the head');
+  else {
+    if (rollup.length >= 100) out.push(`the check list may be truncated (${rollup.length} entries)`);
+    const runs = [];
+    for (const c of rollup) {
+      if (c?.__typename === 'StatusContext') { const st = String(c.state || '').toUpperCase(); if (st === 'PENDING' || st === 'EXPECTED') out.push(`commit status ${c.context} is pending (${st})`); continue; }
+      if (c?.__typename !== 'CheckRun') { out.push(`unreadable: a check entry of type ${c?.__typename ?? 'unknown'}`); continue; }
+      if (c.status !== 'COMPLETED') out.push(`queued or running on the head: ${c.workflowName} / ${c.name} (${c.status || 'no status'})`);
+      runs.push({ workflow: c.workflowName, name: c.name, status: c.status, conclusion: c.conclusion, completed_at: c.completedAt, started_at: c.startedAt });
+    }
+    if (!(files || []).length) out.push('unreadable: the PR files (for the expected checks)');
+    else if (!L.evaluateChecks(L.expectedChecks(files, rules).expected, runs, now, rules.check_max_age_days).failing.length) out.push('the newest run of every required and expected check on the head did not fail');
+  }
+  const box = L.retryBox(pull.body);
+  if (box.state !== 'unticked') out.push(`Renovate's retry box is ${box.state}`);
+  return [...new Set(out)];
+}
+
+// ── the retry ledger: data.retry_ledger on upgrade-lane-state (PURE) ──
+// { schema, retries: { "<pr>": [{ head, at, status, checks, why?, outcome?, next_head?,
+// outcome_at? }] }, halt: null | { at, why, comment } }. status: intent (written before the
+// box is ticked; counted, since the write may have happened), ticked, write-failed
+// (counted: GitHub may have applied it), abandoned (no write was made; not counted).
+// Written by field manager upgrade-night-ledger, so the tick's own apply (and its error
+// record) never removes it. Unparseable = unreadable: no retry and no PR write.
+export const LEDGER_SCHEMA = 'haynes.upgrade-lane-retries/v1';
+export const LEDGER_KEEP_DAYS = 30;
+export function parseLedger(text) {
+  if (text === undefined || text === null || text === '') return { ok: true, absent: true, ledger: { schema: LEDGER_SCHEMA, retries: {}, halt: null } };
+  let j = null;
+  try { j = JSON.parse(String(text)); } catch { j = null; }
+  const okEntry = e => e && typeof e === 'object' && SHA.test(e.head || '') && Number.isFinite(Date.parse(e.at || '')) && ['intent', 'ticked', 'write-failed', 'abandoned'].includes(e.status);
+  if (!j || j.schema !== LEDGER_SCHEMA || !j.retries || typeof j.retries !== 'object' || Array.isArray(j.retries)
+    || !Object.entries(j.retries).every(([k, v]) => /^[1-9]\d*$/.test(k) && Array.isArray(v) && v.every(okEntry))) {
+    return { ok: false, ledger: null, why: 'unreadable: data.retry_ledger on upgrade-lane-state is not a haynes.upgrade-lane-retries/v1 ledger' };
+  }
+  return { ok: true, absent: false, ledger: { schema: LEDGER_SCHEMA, retries: j.retries, halt: j.halt && typeof j.halt === 'object' ? j.halt : null } };
+}
+// The newest counted entry of a PR takes an assessment's update (an outcome seen this tick).
+export function applyRetryUpdate(entries, update) {
+  if (!update || !Array.isArray(entries)) return false;
+  const counted = entries.filter(counts).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  const last = counted[counted.length - 1];
+  if (!last || last.outcome) return false;
+  Object.assign(last, update);
+  return true;
+}
+// Entries of PRs no longer open, and entries older than LEDGER_KEEP_DAYS, are dropped.
+export function pruneLedger(ledger, openPrs, now) {
+  const open = new Set((openPrs || []).map(String));
+  const retries = {};
+  for (const [k, v] of Object.entries(ledger?.retries || {})) {
+    if (!open.has(k)) continue;
+    const keep = v.filter(e => now - Date.parse(e.at) < LEDGER_KEEP_DAYS * 864e5);
+    if (keep.length) retries[k] = keep;
+  }
+  return { ...ledger, retries };
+}
+
+// ── reads for the PR-write phase (read-only runner) ──
+export const readPull = (repo, pr, run) => { const j = parse(tryRun(run, 'gh', ['api', `repos/${repo}/pulls/${pr}`])); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; };
+export const readComment = (repo, id, run) => { const j = parse(tryRun(run, 'gh', ['api', `repos/${repo}/issues/comments/${id}`])); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; };
+export function readIssueComments(repo, pr, run) {
+  const j = parse(tryRun(run, 'gh', ['api', '--paginate', '--slurp', `repos/${repo}/issues/${pr}/comments?per_page=100`]));
+  return Array.isArray(j) ? j.flat() : null;
+}
+const RETRY_VIEW_FIELDS = 'number,headRefOid,commits,statusCheckRollup';
+
+// ── THE GITHUB WRITES (not merges) ──
+export const GH_WRITE_KINDS = Object.freeze(['record-create', 'record-edit', 'record-demote', 'retry-box']);
+export function ghWrite(kind, a, env) {
+  if (!GH_WRITE_KINDS.includes(kind)) throw new Error(`ghWrite: refused kind ${kind}`);
+  if (a?.repo !== REPO) throw new Error(`ghWrite: refused repository ${a?.repo}`);
+  const body = a.body;
+  if (typeof body !== 'string' || !body.length) throw new Error('ghWrite: refused an empty body');
+  const posInt = v => Number.isInteger(v) && v > 0;
+  let method, path;
+  if (kind === 'record-create') {
+    if (!posInt(a.pr) || !body.startsWith(`${L.RECORD_MARKER}\n`)) throw new Error('ghWrite: refused: a new record needs a PR number and a body that starts with the record marker');
+    method = 'POST'; path = `repos/${REPO}/issues/${a.pr}/comments`;
+  } else if (kind === 'record-edit' || kind === 'record-demote') {
+    if (!posInt(a.commentId)) throw new Error('ghWrite: refused: a comment edit needs a comment id');
+    if (kind === 'record-edit' && !body.startsWith(`${L.RECORD_MARKER}\n`)) throw new Error('ghWrite: refused: a record edit must keep the record marker first');
+    if (kind === 'record-demote' && body.includes(L.RECORD_MARKER)) throw new Error('ghWrite: refused: a demoted record must not carry the marker');
+    method = 'PATCH'; path = `repos/${REPO}/issues/comments/${a.commentId}`;
+  } else {
+    const t = tickRetryBox(a.before);
+    if (!posInt(a.pr) || !t.ok || t.body !== body) throw new Error('ghWrite: refused: a PR body edit must tick the retry box and change nothing else');
+    method = 'PATCH'; path = `repos/${REPO}/pulls/${a.pr}`;
+  }
+  const argv = ['api', '--method', method, path, '--input', '-'];
+  const r = spawnSync('gh', argv, { input: JSON.stringify({ body }), encoding: 'utf8', env, timeout: GH_TIMEOUT_MS });
+  const http = /\(HTTP (\d{3})\)/.exec(String(r.stderr || ''))?.[1];
+  return { ok: r.status === 0, exit: r.status, http: http ? Number(http) : null, call: `gh api --method ${method} ${path}`,
+    detail: r.status === 0 ? null : r.status === null ? `no exit status (${r.signal || r.error?.code || 'killed'})` : publicDetail(r.stderr || r.error?.message), json: r.status === 0 ? parse(r.stdout) : null };
+}
+
+// ── the retry write (one PR) ──
+// cand = { pr, head, files, failing }; ledger = { retries: { "<pr>": [entry] } } (mutated);
+// persistLedger(ledger) -> true when written. Returns { pr, head, outcome, why, writes, call }.
+export function runRetry({ cand, rules, run, env, clock, ledger, persistLedger, write = ghWrite }) {
+  const res = { pr: cand.pr, head: cand.head, outcome: 'not-written', why: null, writes: 0, call: null };
+  const p0 = pauseRefusal(readPause(rules, run), 'before the retry');
+  if (p0) return { ...res, why: p0 };
+  const pull = readPull(REPO, cand.pr, run);
+  const view = parse(tryRun(run, 'gh', ['pr', 'view', String(cand.pr), '-R', REPO, '--json', RETRY_VIEW_FIELDS]));
+  const refusals = retryPreflight({ pull, view, commits: readPrCommits(REPO, cand.pr, run), head: cand.head, files: cand.files, rules, now: clock() });
+  if (refusals.length) return { ...res, why: `the facts at the write refuse it: ${refusals.join('; ')}` };
+  const key = String(cand.pr);
+  const entry = { head: cand.head, at: iso(clock()), status: 'intent', checks: cand.failing || [] };
+  ledger.retries[key] = [...(ledger.retries[key] || []), entry];
+  if (!persistLedger(ledger)) { ledger.retries[key].pop(); return { ...res, why: 'the retry ledger could not be written before the tick; nothing was ticked' }; }
+  const p1 = pauseRefusal(readPause(rules, run), 'just before the retry write');
+  const again = p1 ? null : readPull(REPO, cand.pr, run);
+  const why = p1 || (!again ? 'unreadable: the pull request just before the write'
+    : again.head?.sha !== cand.head ? `the head moved between the read and the write (${short(again.head?.sha)})`
+      : again.body !== pull.body ? 'the PR body changed between the read and the write' : null);
+  if (why) { entry.status = 'abandoned'; entry.why = why; return { ...res, why: `${why}; not written this tick` }; }
+  const t = tickRetryBox(pull.body);
+  const w = write('retry-box', { repo: REPO, pr: cand.pr, body: t.body, before: pull.body }, env);
+  res.writes = 1; res.call = w.call;
+  if (!w.ok) { entry.status = 'write-failed'; entry.why = w.detail; return { ...res, outcome: 'write-failed', why: `${w.call}: ${w.detail}`, http: w.http }; }
+  entry.status = 'ticked';
+  const echoed = L.retryBox(w.json?.body).state;
+  if (echoed !== 'ticked' || w.json?.head?.sha !== cand.head) entry.why = `GitHub's reply reads the box ${echoed} at head ${short(w.json?.head?.sha)}`;
+  return { ...res, outcome: 'ticked', why: entry.why || null };
+}
+
+// ── the record writes (every open Renovate PR) ──
+// items = [{ rec, comments }] (comments = facts.record_comments, null when unread);
+// live = false plans only (a local run). Returns the summary block.
+export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, stopped = null }) {
+  const out = { github_writes: 0, created: [], updated: [], current: [], demoted: [], refused: [], failed: [], not_attempted: [], foreign_ignored: [], would_create: [], would_update: [], halt: null, stopped_by: stopped };
+  let stop = stopped;
+  const fail = (pr, w) => { out.failed.push({ pr, why: `${w.call}: ${w.detail}${w.http ? ` (HTTP ${w.http})` : ''}` }); stop = `an earlier GitHub write failed this tick (#${pr})`; out.stopped_by = stop; };
+  const stillOwn = c => c && c.user?.login === cfg.author.login && c.user?.type === cfg.author.type && String(c.body || '').startsWith(cfg.marker);
+  for (const { rec, comments } of [...items].sort((a, b) => a.rec.pr - b.rec.pr)) {
+    const pr = rec.pr;
+    if (stop) { out.not_attempted.push(pr); continue; }
+    if (!Array.isArray(comments)) { out.refused.push({ pr, why: 'unreadable: the comments of this PR (its facts were not read this tick)' }); continue; }
+    const pub = projectRecord(rec, cfg);
+    const body = renderRecord(pub, cfg);
+    const probs = publishProblems(pub, body, cfg);
+    if (probs.length) { out.refused.push({ pr, why: probs.join('; ') }); continue; }
+    let plan = planRecord(pub, comments, cfg);
+    if (plan.foreign.length) out.foreign_ignored.push({ pr, comments: plan.foreign.map(c => `${c.id} by ${c.author}`) });
+    if (!live) { if (plan.action === 'create') out.would_create.push(pr); else if (plan.action === 'update') out.would_update.push(pr); else out.current.push(pr); continue; }
+    if (plan.action === 'create') {
+      // listed again just before the create: never a second record
+      const fresh = readIssueComments(REPO, pr, run);
+      if (!fresh) { out.refused.push({ pr, why: 'unreadable: the comments of this PR just before the create; not written' }); continue; }
+      plan = planRecord(pub, L.recordComments(fresh), cfg);
+    }
+    if (plan.action === 'update') {
+      const c = readComment(REPO, plan.id, run);
+      if (!stillOwn(c)) { out.refused.push({ pr, why: c ? `comment ${plan.id} is no longer the lane's record (author ${c.user?.login ?? 'unknown'}); not edited` : `unreadable: comment ${plan.id} just before the edit; not edited` }); continue; }
+      const cur = parseRecord(c.body, cfg);
+      if (cur && cur.pr === pub.pr && recordContentKey(cur) === recordContentKey(pub)) plan = { ...plan, action: 'current' };
+    }
+    if (plan.action === 'current') out.current.push(pr);
+    else if (plan.action === 'update') {
+      const w = write('record-edit', { repo: REPO, commentId: plan.id, body }, env);
+      out.github_writes++;
+      if (!w.ok) { fail(pr, w); continue; }
+      out.updated.push(pr);
+    } else {
+      const w = write('record-create', { repo: REPO, pr, body }, env);
+      out.github_writes++;
+      if (!w.ok) { fail(pr, w); continue; }
+      const who = { login: w.json?.user?.login ?? null, type: w.json?.user?.type ?? null };
+      if (who.login !== cfg.author.login || who.type !== cfg.author.type) {
+        // the token is not the identity the lane reads its records by: every later tick
+        // would add another comment. Halt (data.retry_ledger.halt) until a person clears it.
+        out.halt = { why: `the record on #${pr} was written as ${who.login ?? 'unknown'} (${who.type ?? '?'}), not ${cfg.author.login} (${cfg.author.type}); PR writes halt until a person removes retry_ledger.halt`, comment: w.json?.id ?? null };
+        out.failed.push({ pr, why: out.halt.why });
+        stop = 'the record identity check failed this tick'; out.stopped_by = stop;
+        continue;
+      }
+      plan = { ...plan, id: w.json?.id ?? null };
+      out.created.push(pr);
+    }
+    for (const id of plan.demote) {
+      if (stop) break;
+      const c = readComment(REPO, id, run);
+      if (!stillOwn(c)) continue;
+      const w = write('record-demote', { repo: REPO, commentId: id, body: demoteBody(REPO, pr, plan.id) }, env);
+      out.github_writes++;
+      if (!w.ok) { fail(pr, w); break; }
+      out.demoted.push({ pr, id });
+    }
+  }
+  return out;
 }
 
 // ── the lane's merge step (one per tick) ─────────────────────────────────────────────

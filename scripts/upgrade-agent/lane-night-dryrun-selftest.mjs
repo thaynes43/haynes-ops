@@ -8,11 +8,12 @@
 // its own two ConfigMaps, and whose gates must never pass on a fact it could not read.
 // Since story 752 its token can merge (ruling Q-548-02), so the guarantee is the code's:
 // dry-run never reaches a GitHub write call. This test fails if a mutating gh, git,
-// kubectl or flux verb can appear on the dry-run path, or if a gate opens on a failed
-// read:
+// kubectl or flux verb can appear on the dry-run path (other than the lane's own PR record
+// and retry box, story 549), or if a gate opens on a failed read:
 //   1. statically: lane-classify.mjs and run-night.mjs start processes at exactly one
-//      call site each (runReadOnly, writeLaneState); night-merge.mjs at two (writeLock,
-//      callMerge), and callMerge refuses every mode but live and hand before it spawns;
+//      call site each (runReadOnly, writeLaneState); night-merge.mjs at three (writeLock,
+//      callMerge, ghWrite), callMerge refuses every mode but live and hand before it
+//      spawns, and ghWrite (story 549) sends only the lane's record and the retry box;
 //      fetch() is GET-only; no mutating verb is spelled in the first two; git ships
 //      dryrun, an empty class allowlist and the shepherd's token rights;
 //   2. the read-only allowlist (isReadOnlyCommand) refuses every mutating shape;
@@ -25,6 +26,10 @@
 //      failed read is a named blocker; pause stops the tick; an unknown mode or class is
 //      refused before a single command runs. Live mode merges once, pinned to the head,
 //      only when every condition holds, and refuses each one that does not;
+//   6. story 549 through the tick against a stubbed GitHub: one record per PR, no write
+//      when nothing changed, the per-tick retry cap, the ledger before the box, a second
+//      failure that blocks, a refused write, a changed body or head, a forged record, the
+//      token, a local run, the halt and a pause;
 //   5. the settle gate (story 551) through the tick: a merge to kubernetes/** 10 minutes
 //      earlier is the one blocker on an otherwise clean PR inside the window, the
 //      2026-11-10 shepherd merges (fixtures/settle-20261110.json) make every candidate
@@ -68,7 +73,8 @@ for (const [name, src] of [['run-night.mjs', night], ['lane-classify.mjs', class
   ok(!/['"](git|flux|curl|helm)['"]/.test(src), `${name}: never runs git, flux, curl or helm`);
 }
 ok(/runReadOnly[\s\S]*?if \(!isReadOnlyCommand\(cmd, argv\)\) throw[\s\S]*?spawnSync\(cmd, argv/.test(classify), 'lane-classify.mjs: the spawn sits behind isReadOnlyCommand');
-ok(/function writeLaneState[\s\S]*?m\.name !== STATE\.name[\s\S]*?spawnSync\('kubectl', \['apply', '--server-side', '--field-manager=upgrade-night', '--force-conflicts', '-f', '-'\]/.test(night), "run-night.mjs: the spawn is writeLaneState's server-side apply, after the name check");
+ok(/function writeLaneState\(manifest, manager = 'upgrade-night'\)[\s\S]*?m\.name !== STATE\.name[\s\S]*?!\['upgrade-night', LEDGER_MANAGER\]\.includes\(manager\)[\s\S]*?throw new Error[\s\S]*?spawnSync\('kubectl', \['apply', '--server-side', `--field-manager=\$\{manager\}`, '--force-conflicts', '-f', '-'\]/.test(night), "run-night.mjs: the spawn is writeLaneState's server-side apply, after the name and field-manager checks");
+ok(/const LEDGER_MANAGER = 'upgrade-night-ledger';/.test(night) && /\(manager === LEDGER_MANAGER\) !== \(Object\.keys\(manifest\.data \|\| \{\}\)\.join\(\) === 'retry_ledger'\)/.test(night), 'run-night.mjs (story 549): the ledger field manager writes data.retry_ledger and nothing else, and the tick\'s manager never writes it');
 ok(/const STATE = \{ name: 'upgrade-lane-state', namespace: 'upgrade-agent' \}/.test(night), 'run-night.mjs: the state object name is a constant');
 ok(count(night, /\bfetch\s*\(/g) === 1 && /fetch\(url, \{ method: 'GET'/.test(night), 'run-night.mjs: one fetch, GET only');
 ok(count(classify, /\bfetch\s*\(/g) === 0, 'lane-classify.mjs: no fetch');
@@ -83,7 +89,23 @@ ok(!/900 \* 1024/.test(night) && /MAX_STATE_BYTES = 768 \* 1024/.test(night), 'r
 
 // story 752: dry-run can never reach the merge call (night-merge.mjs)
 const merge = strip(readFileSync(join(RES, 'night-merge.mjs'), 'utf8'));
-ok(count(merge, /\bspawnSync\s*\(/g) === 2, 'night-merge.mjs: exactly two spawnSync call sites', `found ${count(merge, /\bspawnSync\s*\(/g)}`);
+ok(count(merge, /\bspawnSync\s*\(/g) === 3, 'night-merge.mjs: exactly three spawnSync call sites (writeLock, callMerge, ghWrite)', `found ${count(merge, /\bspawnSync\s*\(/g)}`);
+{
+  // story 549: ghWrite is the one spawn for the lane's PR records and the retry box; it
+  // sends gh api --method POST|PATCH <path> --input - after its refusals, and is reached
+  // only from runRetry and writePrRecords, never from the merge step or the hand run
+  const gw0 = merge.indexOf('export function ghWrite(');
+  const gw = merge.slice(gw0, merge.indexOf('\n}\n', gw0));
+  ok(gw0 > 0 && /if \(!GH_WRITE_KINDS\.includes\(kind\)\) throw/.test(gw) && /if \(a\?\.repo !== REPO\) throw/.test(gw) && gw.indexOf('throw') < gw.indexOf("spawnSync('gh', argv"), 'night-merge.mjs: ghWrite refuses an unknown kind or repository before its gh spawn');
+  ok(/const argv = \['api', '--method', method, path, '--input', '-'\];/.test(gw) && /input: JSON\.stringify\(\{ body \}\)/.test(gw) && [...gw.matchAll(/method = '([A-Z]+)'/g)].map(m => m[1]).every(x => ['POST', 'PATCH'].includes(x)), 'night-merge.mjs: ghWrite sends gh api --method POST|PATCH <path> --input - with { body } only');
+  ok(/export const GH_WRITE_KINDS = Object\.freeze\(\['record-create', 'record-edit', 'record-demote', 'retry-box'\]\);/.test(merge), 'night-merge.mjs: the four write kinds are a frozen constant');
+  const callers = [...merge.matchAll(/\bwrite = ghWrite\b/g)].length;
+  ok(callers === 2 && count(merge, /(?<!function )\bghWrite\(/g) === 0, 'night-merge.mjs: ghWrite is reached only as the default writer of runRetry and writePrRecords', `${callers} default writers, ${count(merge, /(?<!function )\bghWrite\(/g)} direct calls`);
+  const lm2 = merge.slice(merge.indexOf('export function laneMergeStep('), merge.indexOf('// ── CLI'));
+  const hr2 = merge.slice(merge.indexOf('export function handRun('), merge.indexOf('async function main('));
+  ok(!/ghWrite|writePrRecords|runRetry/.test(lm2 + hr2), 'night-merge.mjs: the merge step and the hand run never write a record or tick a box');
+  ok(!/ghWrite|callMerge/.test(night) && count(night, /M\.runRetry\(/g) === 1 && count(night, /M\.writePrRecords\(/g) === 1, 'run-night.mjs: one runRetry call and one writePrRecords call, no direct GitHub write');
+}
 ok(!/(?<![.\w])(execSync|execFileSync|execFile|exec|spawn|fork)\s*\(/.test(merge.replace(/spawnSync\s*\(/g, '')) && /import \{ spawnSync \} from 'node:child_process'/.test(merge), 'night-merge.mjs: no other process API');
 ok(!/['"](git|flux|curl|helm)['"]/.test(merge) && count(merge, /\bfetch\s*\(/g) === 0, 'night-merge.mjs: never runs git, flux, curl or helm, and fetches nothing');
 ok(/function writeLock\(verb, manifest, env\) \{[\s\S]*?m\.name !== LOCK\.name[\s\S]*?throw new Error[\s\S]*?spawnSync\('kubectl', \[verb, '-f', '-', '-o', 'json'\]/.test(merge), "night-merge.mjs: the kubectl spawn is writeLock's create/replace, after the lock-name check");
@@ -353,7 +375,7 @@ try {
   const stub = `#!/usr/bin/env node
 const fs = require('fs'); const path = require('path');
 const cmd = path.basename(process.argv[1]); const argv = process.argv.slice(2);
-let stdin = ''; try { if (cmd === 'kubectl' && ['apply', 'create', 'replace'].includes(argv[0])) stdin = fs.readFileSync(0, 'utf8'); } catch {}
+let stdin = ''; try { if ((cmd === 'kubectl' && ['apply', 'create', 'replace'].includes(argv[0])) || (cmd === 'gh' && argv[0] === 'api' && argv[1] === '--method')) stdin = fs.readFileSync(0, 'utf8'); } catch {}
 fs.appendFileSync(process.env.STUB_LOG, JSON.stringify({ cmd, argv, stdin }) + '\\n');
 const w = JSON.parse(fs.readFileSync(process.env.STUB_WORLD, 'utf8'));
 const out = o => { process.stdout.write(typeof o === 'string' ? o : JSON.stringify(o)); process.exit(0); };
@@ -362,6 +384,26 @@ const LOCKF = process.env.STUB_LOCK, MERGED = process.env.STUB_MERGED;
 const lock = () => (fs.existsSync(LOCKF) ? JSON.parse(fs.readFileSync(LOCKF, 'utf8')) : null);
 const merged = () => (fs.existsSync(MERGED) ? JSON.parse(fs.readFileSync(MERGED, 'utf8')) : {});
 const fsel = () => { const i = argv.indexOf('--field-selector'); return i < 0 ? null : argv[i + 1].replace(/^metadata\\.name=/, ''); };
+// story 549: GitHub's comments and PR bodies as the lane's writes leave them (STUB_GH),
+// initialised from the world; the retry ledger the lane applied (STUB_LEDGER)
+const GHF = process.env.STUB_GH, LEDF = process.env.STUB_LEDGER;
+const ghs = () => (GHF && fs.existsSync(GHF) ? JSON.parse(fs.readFileSync(GHF, 'utf8')) : { comments: w.comments || {}, pulls: {}, next: 9000 });
+const ghsSave = s => fs.writeFileSync(GHF, JSON.stringify(s));
+if (cmd === 'gh' && argv[0] === 'api' && argv[1] === '--method') {
+  if (w.ghWriteFail) fail('gh: Resource not accessible by integration (HTTP 403)');
+  const s = ghs(), body = JSON.parse(stdin).body, p = argv[3]; let m;
+  if (argv[2] === 'POST' && (m = /issues\\/(\\d+)\\/comments$/.exec(p))) { const c = { id: s.next++, user: { login: w.botLogin || 'haynes-ops-bot[bot]', type: 'Bot' }, body }; s.comments[m[1]] = [...(s.comments[m[1]] || []), c]; ghsSave(s); out(c); }
+  if (argv[2] === 'PATCH' && (m = /issues\\/comments\\/(\\d+)$/.exec(p))) { for (const k of Object.keys(s.comments)) { const c = s.comments[k].find(x => x.id === Number(m[1])); if (c) { c.body = body; ghsSave(s); out(c); } } fail('gh: Not Found (HTTP 404)'); }
+  if (argv[2] === 'PATCH' && (m = /pulls\\/(\\d+)$/.exec(p))) { s.pulls[m[1]] = body; ghsSave(s); out({ number: Number(m[1]), head: { sha: w.prs[m[1]].headRefOid }, body }); }
+  fail('unexpected write');
+}
+if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /issues\\/comments\\/\\d+$/.test(a))) { const id = Number(argv.find(a => /issues\\/comments\\//.test(a)).split('/').pop()); for (const list of Object.values(ghs().comments)) { const c = list.find(x => x.id === id); if (c) out(c); } fail('gh: Not Found (HTTP 404)'); }
+if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/pulls\\/\\d+$/.test(a))) {
+  const n = argv.find(a => /\\/pulls\\/\\d+$/.test(a)).split('/').pop(), p = w.prs[n], rf = GHF + '.pull-reads';
+  const k = Number(fs.existsSync(rf) ? fs.readFileSync(rf, 'utf8') : 0) + 1; fs.writeFileSync(rf, String(k));
+  let body = ghs().pulls[n] ?? p.body; if (w.bodyChangesAfterRead && k >= 2) body += '\\nRenovate edited this body';
+  out({ number: Number(n), state: 'open', draft: false, base: { ref: 'main' }, user: { login: 'renovate[bot]', type: 'Bot', id: 29139614 }, head: { sha: (w.headAfterRead && k >= 2) ? w.headAfterRead : p.headRefOid, ref: p.headRefName, repo: { full_name: 'thaynes43/haynes-ops' } }, body });
+}
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'list') { if (w.failList) fail(); out(w.list); }
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'merge') {
   if (lock()) fs.writeFileSync(LOCKF + '.at-merge', JSON.stringify(lock()));
@@ -369,7 +411,7 @@ if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'merge') {
   if (w.mergeExit) fail('GraphQL: merge refused'); const m = merged(); m[argv[2]] = true; fs.writeFileSync(MERGED, JSON.stringify(m)); out('');
 }
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'view') {
-  const n = argv[2], f = argv[argv.indexOf('--json') + 1] || '', p = w.prs[n];
+  const n = argv[2], f = argv[argv.indexOf('--json') + 1] || '', p = w.prs[n] && ghs().pulls[n] ? { ...w.prs[n], body: ghs().pulls[n] } : w.prs[n];
   if (f.includes('mergedAt')) out(merged()[n] ? { state: 'MERGED', mergedAt: '2026-11-02T07:00:30Z', headRefOid: p.headRefOid, mergeCommit: { oid: 'f'.repeat(40) } } : { state: 'OPEN', mergedAt: null, headRefOid: p.headRefOid, mergeCommit: null });
   if (f.includes('mergeStateStatus')) { const o = (w.mergeViews || {})[n]; if (o === 'FAIL') fail(); out({ ...p, author: { ...p.author, is_bot: true }, isCrossRepository: false, state: 'OPEN', baseRefName: 'main', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', ...(o || {}) }); }
   out(p);
@@ -389,7 +431,7 @@ if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/commits\\?sha=main&/
   const v = q.get('since') ? (w.mainCommits || {})[q.get('path')] : (w.mainNewest || {})[q.get('path') ?? '(all)'];
   if (v === 'FAIL') fail(); out((v || []).map(c => (c.commit ? c : { sha: c.sha, parents: c.parents ?? [{ sha: 'e'.repeat(40) }], commit: { committer: { date: c.at }, author: { date: c.author_at ?? c.at }, message: c.message ?? '' } })));
 }
-if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /issues\\/\\d+\\/comments/.test(a))) { const n = argv.find(a => /issues\\/\\d+\\/comments/.test(a)).match(/issues\\/(\\d+)/)[1]; out([w.comments[n] || []]); }
+if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /issues\\/\\d+\\/comments/.test(a))) { const n = argv.find(a => /issues\\/\\d+\\/comments/.test(a)).match(/issues\\/(\\d+)/)[1]; out([ghs().comments[n] || []]); }
 if (cmd === 'kubectl' && argv[0] === 'get') {
   const ns = argv[argv.indexOf('-n') + 1], name = fsel();
   if (argv[1] === 'configmaps' && ns === 'upgrade-agent') {
@@ -398,6 +440,8 @@ if (cmd === 'kubectl' && argv[0] === 'get') {
     if (base === 'FAIL' || base === undefined) fail();
     if (base === 'GARBAGE') out('not json');
     let items = [...base.items, ...(lock() ? [lock()] : [])];
+    const led = LEDF && fs.existsSync(LEDF) ? fs.readFileSync(LEDF, 'utf8') : (w.ledger ?? null);
+    if (led !== null) items = [...items.filter(c => c.metadata.name !== 'upgrade-lane-state'), { metadata: { name: 'upgrade-lane-state', resourceVersion: '8' }, data: { retry_ledger: led } }];
     const reads = name === 'upgrade-lane-state' ? Number(fs.existsSync(LOCKF + '.state-reads') ? fs.readFileSync(LOCKF + '.state-reads', 'utf8') : 0) + 1 : 0;
     if (name === 'upgrade-lane-state') fs.writeFileSync(LOCKF + '.state-reads', String(reads));
     const pz = w.pauseOnReread || (w.pauseFromRead && reads >= w.pauseFromRead ? w.pauseFromReadValue : null);
@@ -416,6 +460,7 @@ if (cmd === 'kubectl' && (argv[0] === 'create' || argv[0] === 'replace')) {
   m.metadata.resourceVersion = String(cur ? Number(cur.metadata.resourceVersion) + 1 : 100);
   fs.writeFileSync(LOCKF, JSON.stringify(m)); out(m);
 }
+if (cmd === 'kubectl' && argv[0] === 'apply' && argv.includes('--field-manager=upgrade-night-ledger')) { if (w.failLedger) fail(); fs.writeFileSync(LEDF, JSON.parse(stdin).data.retry_ledger); process.exit(0); }
 if (cmd === 'kubectl' && argv[0] === 'apply' && w.failApply) fail();
 process.exit(0);
 `;
@@ -428,9 +473,9 @@ process.exit(0);
     diffs: { 4477: rebase.pairs[0].after.diff, 4670: 'FAIL' },
     k8s: healthy(),
   });
-  const lockFile = join(tmp, 'lock.json'), mergedFile = join(tmp, 'merged.json');
+  const lockFile = join(tmp, 'lock.json'), mergedFile = join(tmp, 'merged.json'), ghFile = join(tmp, 'github.json'), ledgerFile = join(tmp, 'ledger.json');
   const env = { PATH: `${bin}:${process.env.PATH}`, HOME: tmp, STUB_LOG: logFile, STUB_WORLD: join(tmp, 'world.json'), GH_TOKEN_FILE: join(tmp, 'no-token'),
-    GH_TOKEN_PERMISSIONS_FILE: join(tmp, 'no-permissions'), STUB_LOCK: lockFile, STUB_MERGED: mergedFile, HOSTNAME: 'upgrade-shepherd-upgrade-night-test',
+    GH_TOKEN_PERMISSIONS_FILE: join(tmp, 'no-permissions'), STUB_LOCK: lockFile, STUB_MERGED: mergedFile, STUB_GH: ghFile, STUB_LEDGER: ledgerFile, HOSTNAME: 'upgrade-shepherd-upgrade-night-test',
     PROMETHEUS_URL: `http://127.0.0.1:${server.address().port}`, UPGRADE_NIGHT_NOW: NOW, UPGRADE_NIGHT_MODE: 'dryrun' };
   const calls = () => (existsSync(logFile) ? readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : []);
   const isSsa = x => x.cmd === 'kubectl' && JSON.stringify(x.argv) === JSON.stringify(SSA);
@@ -438,8 +483,8 @@ process.exit(0);
   // here runs with it unset and its clock pinned by the test-only preload (FAKE_NOW,
   // default NOW); keepNow passes UPGRADE_NIGHT_NOW through to test those refusals.
   const FAKE_CLOCK = join(ROOT, 'scripts/upgrade-agent/test-fake-clock.mjs');
-  const tick = (world, extraEnv = {}, args = ['--write-state'], { keepNow = false } = {}) => new Promise(resolve => {
-    for (const f of [logFile, mergedFile, lockFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`]) rmSync(f, { force: true });
+  const tick = (world, extraEnv = {}, args = ['--write-state'], { keepNow = false, keepGh = false } = {}) => new Promise(resolve => {
+    for (const f of [logFile, mergedFile, lockFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`, `${ghFile}.pull-reads`, ...(keepGh ? [] : [ghFile, ledgerFile])]) rmSync(f, { force: true });
     if (world.lock) writeFileSync(lockFile, JSON.stringify(world.lock));
     if (!world.rawSettle) {
       world = { ...world, k8s: { ...world.k8s } };
@@ -463,10 +508,14 @@ process.exit(0);
       const merges = c.filter(x => x.cmd === 'gh' && x.argv[0] === 'pr' && x.argv[1] === 'merge');
       const lockWrites = w.filter(x => x.cmd === 'kubectl' && ['create', 'replace'].includes(x.argv[0]));
       const atMerge = existsSync(`${lockFile}.at-merge`) ? JSON.parse(readFileSync(`${lockFile}.at-merge`, 'utf8')) : null;
-      resolve({ status, stdout, stderr, calls: c, writes: w, m, recs, summary, lock: lockNow, atMerge, merges, lockWrites, rec: n => recs.find(r => r.pr === n) || { gates: { blockers: [] } } });
+      const ghWrites = c.filter(x => x.cmd === 'gh' && x.argv[0] === 'api' && x.argv[1] === '--method');
+      resolve({ status, stdout, stderr, calls: c, writes: w, m, recs, summary, lock: lockNow, atMerge, merges, lockWrites, ghWrites, rec: n => recs.find(r => r.pr === n) || { gates: { blockers: [] } } });
     });
   });
   const blk = (r, n) => (r.rec(n).gates?.blockers || []).join(' | ');
+  // story 549: the only GitHub writes a tick may make, and never a merge
+  const isPrWrite = c => c.cmd === 'gh' && c.argv[0] === 'api' && c.argv[1] === '--method' && c.argv[4] === '--input' && c.argv[5] === '-' && c.argv.length === 6
+    && ((c.argv[2] === 'POST' && /^repos\/thaynes43\/haynes-ops\/issues\/\d+\/comments$/.test(c.argv[3])) || (c.argv[2] === 'PATCH' && /^repos\/thaynes43\/haynes-ops\/(issues\/comments|pulls)\/\d+$/.test(c.argv[3])));
 
   for (const mode of ['auto', 'merge', 'DRYRUN', 'dry-run', 'LIVE', 'Live']) {
     const r = await tick(baseWorld([4477]), { UPGRADE_NIGHT_MODE: mode });
@@ -655,13 +704,14 @@ process.exit(0);
     const d = await tick(baseWorld([4662]), { UPGRADE_NIGHT_LIVE_CLASSES: 'delayed-cluster-change', GH_TOKEN_PERMISSIONS_FILE: permWrite });
     ok(ms(d).verdict === 'would-merge' && ms(d).merge_call === 'not reached (dry-run)' && d.merges.length === 0, 'dry-run with a write token and the class allowlisted: verdict would-merge, and no gh pr merge call', `${ms(d).verdict} ${refs(d)} merges=${d.merges.length}`);
     ok(/token permissions: checks:read, contents:write, pull_requests:write .*; can merge/.test(d.stderr) && JSON.stringify(d.summary.token_permissions?.names) === JSON.stringify(['checks:read', 'contents:write', 'pull_requests:write']), 'each tick logs and records the permission names (never the token)');
-    ok(!d.calls.some(c => c.cmd === 'gh' && !L.isReadOnlyCommand(c.cmd, c.argv)) && d.lock?.data?.holder === '', 'dry-run: every gh call is a read and the lock ends released');
+    ok(d.merges.length === 0 && d.calls.filter(c => c.cmd === 'gh' && !L.isReadOnlyCommand(c.cmd, c.argv)).every(isPrWrite) && d.lock?.data?.holder === '', 'dry-run: every gh call is a read or a story-549 PR write (no merge), and the lock ends released', JSON.stringify(d.calls.filter(c => c.cmd === 'gh' && !L.isReadOnlyCommand(c.cmd, c.argv)).map(c => c.argv)));
     // the night as git ships it (ruling Q-548-02): a token that can merge, dryrun, an empty
     // allowlist. The verdict is refused for the class only, and no write reaches GitHub.
     const shipped = /GITHUB_BOT_TOKEN_PERMISSIONS: '([^']*)'/.exec(readFileSync(join(ROOT, 'kubernetes/main/apps/upgrade-agent/shepherd/app/helmrelease.yaml'), 'utf8').split('      upgrade-night:')[1])[1];
     const permShipped = join(tmp, 'perm-shipped.json'); writeFileSync(permShipped, shipped);
     const sh = await tick(baseWorld([4662]), { GH_TOKEN_PERMISSIONS_FILE: permShipped });
-    ok(ms(sh).verdict === 'refused' && ms(sh).pr_ready === true && JSON.stringify(ms(sh).lane_refusals) === JSON.stringify(['class delayed-cluster-change is not in the live allowlist (UPGRADE_NIGHT_LIVE_CLASSES: empty)']) && sh.merges.length === 0 && !sh.calls.some(c => c.cmd === 'gh' && !L.isReadOnlyCommand(c.cmd, c.argv)), "dry-run as git ships it (write token, empty allowlist): refused for the class only, every gh call a read", refs(sh));
+    ok(ms(sh).verdict === 'refused' && ms(sh).pr_ready === true && JSON.stringify(ms(sh).lane_refusals) === JSON.stringify(['class delayed-cluster-change is not in the live allowlist (UPGRADE_NIGHT_LIVE_CLASSES: empty)']) && sh.merges.length === 0 && sh.calls.filter(c => c.cmd === 'gh' && !L.isReadOnlyCommand(c.cmd, c.argv)).every(isPrWrite), "dry-run as git ships it (write token, empty allowlist): refused for the class only, every gh call a read or a story-549 PR write", refs(sh));
+    ok(sh.ghWrites.length === 1 && sh.summary.pr_records?.created?.join() === '4662' && sh.summary.github_writes === 1, 'dry-run as git ships it: the tick writes the one record (story 549)', JSON.stringify(sh.summary.pr_records));
     ok(/upgrade-night dryrun: token permissions: checks:read, contents:write, pull_requests:write \(as requested by mint-token, \S+\); can merge/.test(sh.stderr) && !/ghs_|GH_TOKEN=/.test(sh.stderr + sh.stdout), 'the log names exactly checks:read, contents:write, pull_requests:write and never a token');
     ok(sh.summary.change_lock?.outcome === 'taken-and-released' && sh.rec(4662).last_attempt?.verdict === 'refused', 'and the lock is taken and released, the verdict recorded on the record');
     const dr = await tick(baseWorld([4662]), { GH_TOKEN_PERMISSIONS_FILE: permRead });
@@ -873,6 +923,100 @@ process.exit(0);
     ok(rd.merges.length === 0 && rd.summary.merge_step_shepherd_jobs?.active?.length === 1, 'dry-run: F4 is recorded like the other facts (summary.merge_step_shepherd_jobs)');
     // static: one settle read per tick, judged per candidate
     ok(count(night, /M\.readSettleFacts\(/g) === 1 && count(night, /M\.settleVerdict\(/g) === 1 && /blockers\.push\(\.\.\.sv\.blockers\.map\(b => `settle gate: \$\{b\}`\)\);/.test(night), 'run-night.mjs: one settle read per tick, a verdict per immediate candidate');
+  }
+  // ── 6. story 549 through the tick: one record per PR, one retry per head ─────────
+  {
+    const permW = join(tmp, 'perm-549.json'); writeFileSync(permW, '{"contents":"write","pull_requests":"write","checks":"read"}');
+    const permR = join(tmp, 'perm-549-read.json'); writeFileSync(permR, '{"contents":"write","pull_requests":"read","checks":"read"}');
+    const W = { GH_TOKEN_PERMISSIONS_FILE: permW };
+    const BOX = '\n\n---\n\n - [ ] <!-- rebase-check -->If you want to rebase/retry this PR, check this box\n';
+    const cfg549 = M.recordConfig(rules);
+    const failWorld = (nums, failing) => {
+      const w = baseWorld(nums);
+      for (const n of failing) { const p = w.prs[n]; p.body += BOX; p.statusCheckRollup = p.statusCheckRollup.map(c => (c.name === 'Flux Local - Success' ? { ...c, conclusion: 'FAILURE' } : c)); }
+      return w;
+    };
+    const gh = () => JSON.parse(readFileSync(ghFile, 'utf8'));
+    const ledgerNow = () => (existsSync(ledgerFile) ? JSON.parse(readFileSync(ledgerFile, 'utf8')) : null);
+    const own = n => (gh().comments[n] || []).filter(c => c.user.login === 'haynes-ops-bot[bot]' && c.body.startsWith(cfg549.marker));
+    const mirrors = (r, n) => { const c = own(n); const pub = c.length === 1 ? M.parseRecord(c[0].body, cfg549) : null; return !!pub && M.recordContentKey(pub) === M.recordContentKey(M.projectRecord(r.rec(n), cfg549)); };
+    const pullWrites = (r, n) => r.ghWrites.filter(c => c.argv[3] === `repos/thaynes43/haynes-ops/pulls/${n}`);
+
+    // the steady state: a first tick writes one record per PR, an identical tick writes none
+    const calm = baseWorld([4477, 4708]);
+    const c1 = await tick(calm, W);
+    ok(c1.status === 0 && c1.ghWrites.length === 2 && c1.summary.github_writes === 2 && c1.summary.pr_records?.created?.join() === '4477,4708' && c1.ghWrites.every(isPrWrite), 'records: the first tick creates one record per open Renovate PR (2 writes)', JSON.stringify(c1.summary.pr_records));
+    ok(mirrors(c1, 4477) && mirrors(c1, 4708), 'records: each comment carries the record the tick wrote to upgrade-lane-state');
+    ok(/upgrade-night dryrun: PR records: 2 written \(created #4477, #4708; updated none; demoted none\), 0 current/.test(c1.stderr) && /upgrade-night dryrun: GitHub writes this tick: 2 \(no merge in dry-run\)/.test(c1.stderr), 'records: the log line counts the writes', c1.stderr.split('\n').filter(l => /PR records|GitHub writes/.test(l)).join(' | '));
+    const c2 = await tick(calm, W, ['--write-state'], { keepGh: true });
+    ok(c2.ghWrites.length === 0 && c2.summary.github_writes === 0 && c2.summary.pr_records?.current?.join() === '4477,4708' && own(4477).length === 1, 'records: the next identical tick makes no GitHub write (steady state 0), and still one record per PR', JSON.stringify(c2.summary.pr_records));
+    ok(mirrors(c2, 4477) && mirrors(c2, 4708), 'records: the unchanged comments still match the state, apart from the time');
+
+    // two stalled PRs: the per-tick cap ticks one; the record shows it; the ledger first
+    const fw = failWorld([4477, 4670, 4708], [4477, 4670]);
+    const t1 = await tick(fw, W);
+    ok(t1.rec(4477).lane === 'BLOCKED' && t1.rec(4477).class === 'check-failing' && t1.rec(4670).class === 'check-failing', 'retry: the stalled PRs read BLOCKED check-failing', `${t1.rec(4477).class} ${t1.rec(4670).class}`);
+    ok(JSON.stringify(t1.summary.retry?.eligible) === '[4477,4670]' && JSON.stringify(t1.summary.retry?.selected) === '[4477]' && t1.summary.retry.attempts[0]?.outcome === 'ticked', 'retry: two eligible, the per-tick cap (1) ticks #4477', JSON.stringify(t1.summary.retry));
+    ok(t1.rec(4477).retry?.state === 'ticked' && t1.rec(4670).retry?.state === 'deferred' && /per-tick cap \(1\) went to #4477/.test(t1.rec(4670).retry.why), 'retry: the records say ticked and deferred');
+    const pw = pullWrites(t1, 4477);
+    ok(pw.length === 1 && pullWrites(t1, 4670).length === 0 && JSON.parse(pw[0].stdin).body === M.tickRetryBox(fw.prs[4477].body).body, 'retry: one PR body edit, the box ticked and nothing else changed');
+    const iLedger = t1.calls.findIndex(c => c.cmd === 'kubectl' && c.argv.includes('--field-manager=upgrade-night-ledger'));
+    ok(iLedger >= 0 && iLedger < t1.calls.indexOf(pw[0]) && JSON.parse(JSON.parse(t1.calls[iLedger].stdin).data.retry_ledger).retries[4477][0].status === 'intent', 'retry: the ledger entry (intent) is written before the box is ticked');
+    ok(ledgerNow()?.retries?.[4477]?.[0]?.status === 'ticked' && ledgerNow().retries[4477][0].head === fact(4477).head_sha, 'retry: the ledger ends with the tick on that head (data.retry_ledger, its own field manager)');
+    ok(t1.ghWrites.length === 4 && t1.summary.github_writes === 4 && t1.ghWrites.every(isPrWrite) && t1.merges.length === 0, 'first night: 3 records and 1 retry, 4 GitHub writes, no merge', JSON.stringify(t1.ghWrites.map(c => c.argv.slice(2, 4))));
+    ok(own(4477).length === 1 && M.parseRecord(own(4477)[0].body, cfg549).retry.state === 'ticked' && M.parseRecord(own(4477)[0].body, cfg549).retry.history[0]?.status === 'ticked', 'retry: the retry count shows in the PR record');
+    const t2 = await tick(fw, W, ['--write-state'], { keepGh: true });
+    ok(t2.rec(4477).retry?.state === 'waiting-for-renovate' && pullWrites(t2, 4477).length === 0 && pullWrites(t2, 4670).length === 1 && t2.rec(4670).retry?.state === 'ticked', 'retry: next tick, #4477 waits for Renovate (no second tick on its head) and #4670 gets the cap', JSON.stringify(t2.summary.retry?.attempts));
+    ok(t2.summary.pr_records?.updated?.join() === '4477,4670' && t2.summary.pr_records.current.join() === '4708' && t2.ghWrites.length === 3, 'retry: the two changed records are edited in place; the third is current', JSON.stringify(t2.summary.pr_records));
+    // Renovate acted: a new head on #4477, and the check fails again
+    const g = gh(); delete g.pulls[4477]; writeFileSync(ghFile, JSON.stringify(g));
+    const fw3 = structuredClone(fw); const NEWH = 'b'.repeat(40);
+    fw3.prs[4477].headRefOid = NEWH; fw3.prs[4477].commits = fw3.prs[4477].commits.map((c, i, a) => (i === a.length - 1 ? { ...c, oid: NEWH } : c));
+    const t3 = await tick(fw3, W, ['--write-state'], { keepGh: true });
+    ok(t3.rec(4477).lane === 'BLOCKED' && t3.rec(4477).class === 'check-failing-after-retry' && /^failed again on bbbbbbbb after one retry on [0-9a-f]{8} at /.test(t3.rec(4477).reason) && t3.rec(4477).retry?.state === 'failed-again', 'retry: a second failure on the new head blocks the PR with its reason', `${t3.rec(4477).class}: ${t3.rec(4477).reason}`);
+    ok(pullWrites(t3, 4477).length === 0 && ledgerNow().retries[4477][0].outcome === 'failed-again' && ledgerNow().retries[4477][0].next_head === NEWH, 'retry: no retry on the new head; the ledger records the outcome');
+    ok(M.parseRecord(own(4477)[0].body, cfg549).class === 'check-failing-after-retry' && own(4477).length === 1, 'retry: the record on the PR shows the block');
+    const t4 = await tick(fw3, W, ['--write-state'], { keepGh: true });
+    ok(t4.rec(4477).class === 'check-failing-after-retry' && pullWrites(t4, 4477).length === 0, 'retry: it stays blocked on later ticks');
+    // resolved: the head after a retry passes
+    const okw = baseWorld([4477]); okw.ledger = JSON.stringify({ schema: M.LEDGER_SCHEMA, retries: { 4477: [{ head: 'c'.repeat(40), at: '2026-11-02T06:30:00.000Z', status: 'ticked', checks: ['x'] }] }, halt: null });
+    const t5 = await tick(okw, W);
+    ok(t5.rec(4477).retry?.state === 'resolved' && ledgerNow()?.retries?.[4477]?.[0]?.outcome === 'resolved' && t5.rec(4477).lane === 'LANE-A', 'retry: the head after a retry passed: resolved, recorded in the ledger', JSON.stringify(t5.rec(4477).retry));
+    // a refused write: reported with its reason, stops the rest, the state still lands
+    const t6 = await tick({ ...failWorld([4477, 4708], [4477]), ghWriteFail: true }, W);
+    ok(t6.status === 0 && t6.summary.retry.attempts[0]?.outcome === 'write-failed' && /HTTP 403|Resource not accessible/.test(t6.summary.retry.attempts[0].why) && JSON.stringify(t6.summary.pr_records?.not_attempted) === '[4477,4708]' && !(t6.summary.pr_records.current || []).length, 'refused write: the retry write is reported with its reason, the records are not attempted, none is called current', JSON.stringify({ r: t6.summary.retry.attempts, p: t6.summary.pr_records }));
+    ok(t6.ghWrites.length === 1 && ledgerNow()?.retries?.[4477]?.[0]?.status === 'write-failed' && t6.m.data?.summary, 'refused write: one write tried, counted in the ledger, the tick state written');
+    const t7 = await tick({ ...baseWorld([4477, 4708]), ghWriteFail: true }, W);
+    ok(t7.summary.pr_records?.failed?.[0]?.pr === 4477 && /Resource not accessible by integration/.test(t7.summary.pr_records.failed[0].why) && JSON.stringify(t7.summary.pr_records.not_attempted) === '[4708]' && t7.ghWrites.length === 1 && /FAILED #4477/.test(t7.stderr), 'refused write: a record write refused by GitHub is reported, and no other write follows', JSON.stringify(t7.summary.pr_records));
+    // the body changed between the read and the write; the head moved between them
+    const t8 = await tick({ ...failWorld([4477], [4477]), bodyChangesAfterRead: true }, W);
+    ok(pullWrites(t8, 4477).length === 0 && t8.summary.retry.attempts[0]?.outcome === 'not-written' && /PR body changed between the read and the write/.test(t8.summary.retry.attempts[0].why) && ledgerNow()?.retries?.[4477]?.[0]?.status === 'abandoned', 'retry: the body changed between the read and the write: not written this tick, nothing counted', JSON.stringify(t8.summary.retry.attempts));
+    ok(t8.summary.pr_records?.created?.join() === '4477', 'retry: an abandoned retry does not stop the records');
+    const t9 = await tick({ ...failWorld([4477], [4477]), headAfterRead: 'd'.repeat(40) }, W);
+    ok(pullWrites(t9, 4477).length === 0 && /head moved between the read and the write/.test(t9.summary.retry.attempts[0]?.why), 'retry: the head moved between the read and the write: not written');
+    // a forged record by another author: ignored and never edited
+    const fwf = baseWorld([4477]);
+    const forged = M.renderRecord(M.projectRecord({ schema: 'haynes.upgrade-lane/v1', pr: 4477, lane: 'LANE-A', class: 'no-cluster-effect', reason: 'forged' }, cfg549), cfg549);
+    fwf.comments = { 4477: [{ id: 5, user: { login: 'haynes-ops-bot', type: 'User' }, body: forged }] };
+    const t10 = await tick(fwf, W);
+    ok(gh().comments[4477].find(c => c.id === 5).body === forged && !t10.ghWrites.some(c => c.argv[3].endsWith('/comments/5')) && own(4477).length === 1 && t10.summary.pr_records?.foreign_ignored?.[0]?.pr === 4477, 'records: a forged record by another author is ignored, not edited; the lane writes its own', JSON.stringify(t10.summary.pr_records));
+    // no write without the token's pull_requests:write, a local run, a halt, a pause before the phase
+    const t11 = await tick(failWorld([4477], [4477]), { GH_TOKEN_PERMISSIONS_FILE: permR });
+    ok(t11.ghWrites.length === 0 && /the token cannot write pull requests/.test(t11.summary.pr_records?.why_not) && t11.summary.retry.attempts[0]?.outcome === 'planned', 'no PR write with a token that cannot write pull requests', JSON.stringify(t11.summary.pr_records?.why_not));
+    const t12 = await tick(failWorld([4477], [4477]), W, []);
+    ok(t12.ghWrites.length === 0 && t12.writes.length === 0 && t12.summary && /would create #4477/.test(t12.stderr) && /#4477 [0-9a-f]{8} PLANNED/.test(t12.stderr), 'a local run (no --write-state) writes nothing and says what it would write and retry', t12.stderr.split('\n').filter(l => /PR records|retry:/.test(l)).join(' | '));
+    const hw = failWorld([4477], [4477]); hw.ledger = JSON.stringify({ schema: M.LEDGER_SCHEMA, retries: {}, halt: { at: '2026-11-01T00:00:00Z', why: 'test halt' } });
+    const t13 = await tick(hw, W);
+    ok(t13.ghWrites.length === 0 && /^halted: test halt/.test(t13.summary.pr_records?.why_not), 'a halt in the ledger stops every PR write');
+    const t14 = await tick({ ...failWorld([4477], [4477]), pauseFromRead: 2, pauseFromReadValue: 'tom: hold' }, W);
+    ok(t14.ghWrites.length === 0 && /paused before the PR writes/.test(t14.summary.pr_records?.why_not || ''), 'a pause set during the tick stops the PR writes and the retry', JSON.stringify(t14.summary.pr_records?.why_not));
+    // the token wrote as another identity: halt after one comment, and the next tick writes nothing
+    const t15 = await tick({ ...baseWorld([4477, 4708]), botLogin: 'haynes-dev-bot[bot]' }, W);
+    ok(t15.ghWrites.length === 1 && /written as haynes-dev-bot\[bot\]/.test(t15.summary.pr_records?.halt?.why) && /written as haynes-dev-bot/.test(ledgerNow()?.halt?.why || ''), 'identity mismatch: one comment, then a durable halt in the ledger', JSON.stringify(t15.summary.pr_records?.halt));
+    const t16 = await tick({ ...baseWorld([4477, 4708]), botLogin: 'haynes-dev-bot[bot]' }, W, ['--write-state'], { keepGh: true });
+    ok(t16.ghWrites.length === 0 && /^halted:/.test(t16.summary.pr_records?.why_not), 'identity mismatch: the next tick writes nothing (no comment per tick)');
+    // the state of every record the tick wrote carries retry, which the mapping covers
+    ok(t1.recs.every(r => r.retry && typeof r.retry.state === 'string'), 'every record in upgrade-lane-state carries retry');
   }
 } finally {
   server.close();

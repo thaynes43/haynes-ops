@@ -54,7 +54,7 @@ Renovate moves the PR to a newer version, that newer version is a new item.
 | `first_seen`, `observed_at` | The collector's clock, in UTC. |
 | `coverage` | `status` is `read` (the whole item was read), `partial` (some facts failed to read) or `unread` (nothing could be read; the state must then be `unknown`). `detail` says what failed. |
 | `carrier` | The pull request that carries the item, as last seen: `repo`, `pr`, `head`, `title`, `fingerprint`, `fingerprint_basis`, `commit_count`, `change_key`, `files` (its changed files) and `head_committed_at`. Required for PR sources. |
-| `lane_detail` | The lane's own detail, copied exactly as the lane wrote it: `rules`, `findings`, `checks`, `cluster_effect`, `cluster_effect_wait`, `via_components`, `cluster_wide`, `gates`, `backup` and `last_attempt`. Their shapes are set by `lane-classify.mjs`, `run-night.mjs` and `night-merge.mjs`. `checks` is typed field by field (`expected`, `missing`, `failing`, `pending`, `stale`, `ran_at`, `reference_time`, `main_newer`), because the item's blocked state and the merge step depend on it. The others are kept as written. |
+| `lane_detail` | The lane's own detail, copied exactly as the lane wrote it: `rules`, `findings`, `checks`, `cluster_effect`, `cluster_effect_wait`, `via_components`, `cluster_wide`, `gates`, `backup`, `last_attempt` and `retry` (story 549). Their shapes are set by `lane-classify.mjs`, `run-night.mjs` and `night-merge.mjs`. `checks` is typed field by field (`expected`, `missing`, `failing`, `pending`, `stale`, `ran_at`, `reference_time`, `main_newer`), because the item's blocked state and the merge step depend on it. The others are kept as written. |
 
 **Sources.** In piece 1, the lane writes three sources. Each one has a valid fixture taken
 from the 2026-11-09 queue.
@@ -285,6 +285,7 @@ also add a row that says where it goes.
 | `preapproval` | `approval` | renamed; must stay empty |
 | `schedule` | `schedule` | copied (empty today) |
 | `last_attempt` | `lane_detail.last_attempt` | copied: the tick's merge-step verdict for the PR it ran on, `{}` on the others. It is not `attempts`: that list is rebuilt from events, and a live verdict becomes events as the table above says. |
+| `retry` | `lane_detail.retry` | copied (story 549): the stalled-check retry for the PR as the tick read it: `state`, `why`, `count_7d`, `limits` and `history` (`head`, `at`, `status`, `outcome`, `next_head`) from the ledger `data.retry_ledger`. A retry is a Renovate rebase, not an attempt on the item, so it writes no event. |
 
 **Lane and state.**
 
@@ -305,7 +306,18 @@ The state follows from the verdict and the findings:
 - Everything else gives state `needed`.
 
 A gate blocker from `run-night.mjs` (outside the window, a stale backup) does not change
-the state. It describes tonight's conditions, not the item.
+the state. It describes tonight's conditions, not the item. A failure on the head that
+follows a stalled-check retry (story 549) does: the tick sets class
+`check-failing-after-retry` on a `BLOCKED` record, which maps to state `blocked` like any
+other `BLOCKED` verdict.
+
+**The record on the PR (story 549).** The lane also publishes each record as one comment on
+its PR: the marker `<!-- upgrade-lane v1 -->` and a JSON block holding the fields
+`night.pr_record.fields` in `upgrade-rules.json` names (`schema`, `pr`, `head`,
+`fingerprint`, `lane`, `class`, `reason`, `rules`, `checks`, `backup`, `preapproval`,
+`schedule`, `last_attempt`, `retry`, `updated`). Those fields map by the rows above. The
+runbook's section "PR records and the stalled-check retry" says how the comment is written
+and read.
 
 **Source.** If the record lists any own image, the source is `own-image`. If not, and
 every update-type token is `digest` or `pinDigest`, the source is `image-pin`. Otherwise

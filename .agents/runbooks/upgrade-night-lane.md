@@ -6,7 +6,9 @@ driven (OP512, comment 6168). The design is OP512 comment 6193
 (<https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/512>).
 
 **Status: dry-run in git.** The lane classifies updates and records what it would do. It
-merges nothing, comments on nothing and labels nothing.
+merges nothing and labels nothing. Since story 549 it writes one record comment on each
+open Renovate PR and ticks Renovate's retry box on at most one PR a tick. See
+[PR records and the stalled-check retry](#pr-records-and-the-stalled-check-retry-story-549).
 
 **Story 752 added** a live mode behind the switch, the merge step, the change lock and a
 token that can merge
@@ -986,6 +988,179 @@ kubectl -n upgrade-agent logs job/<latest upgrade-shepherd job> | grep -i 'stand
   It has no comparable version, so it still counts as held (fail closed). #4757 now
   reads as `BLOCKED` because its `validate` build fails, which is the real reason.
 
+## PR records and the stalled-check retry (story 549)
+
+Story 549 (<https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/549>)
+is OP512 rollout step 3. The lane stays in dry-run: none of this is a merge. The code is
+in `night-merge.mjs` (section "PR records and the stalled-check retry") and the tick's
+PR-write phase in `run-night.mjs`. The settings are `night.pr_record` and `night.retry` in
+`upgrade-rules.json`.
+
+### The record on each PR
+
+- **One comment per open Renovate PR**, written by the lane's own identity and edited in
+  place. Its body starts with the line `<!-- upgrade-lane v1 -->`, then one line of plain
+  text, then a fenced JSON block with schema `haynes.upgrade-lane/v1`. The JSON holds the
+  tick's record from `upgrade-lane-state`, cut down to `night.pr_record.fields`: `schema`, `pr`, `head`, `fingerprint`, `lane`,
+  `class`, `reason`, `rules`, `checks`, `backup`, `preapproval` (always `{}`), `schedule`,
+  `last_attempt`, `retry` and `updated`. It leaves out `gates`, `findings`, `files` and
+  everything else in the state.
+- **The lane's identity** is the haynes-ops-bot GitHub App: REST `user.login`
+  `haynes-ops-bot[bot]`, `user.type` `Bot`. The night CronJob mints its token from the same
+  app as the shepherd (`upgrade-shepherd-bot-secret`).
+- **Only the lane's own comment is the record.** A comment from any other author is never
+  read as the record and never edited, even when its body starts with the marker. The tick
+  lists such comments in `summary.pr_records.foreign_ignored`. Before it edits its own
+  comment, the lane reads that comment again by id and checks the author and the marker.
+- **Safe to publish.** The repository is public. Inside the JSON, `<`, `>`, `&`, `@` and
+  the backtick are written as `\u` escapes, so the block cannot contain an HTML comment,
+  a mention (which would also start `claude.yml`) or a code fence. A record with text
+  shaped like a credential (a GitHub, Slack or AWS token, a private key, a JWT, a URL with
+  a password, a bearer value or a `password=` assignment), a non-empty `preapproval`, or
+  more than 60,000 bytes is not written. The tick lists it under `refused` with the
+  reason. On 2026-11-12 the 14 records in `upgrade-lane-state` passed this check, and the
+  largest was 2.2 KB.
+- **No shepherd-vet marker and no `VERDICT:` line.** The record therefore does not change
+  labels (the labeler reads only comments that start with a shepherd-vet marker). It also
+  does not count as a vet in the shepherd's pre-filter or in the classifier.
+- **The lane writes only when the content changed.** The comparison leaves out `updated`
+  and `last_attempt.at`, which change on every tick. On the first night the lane creates
+  one comment per open PR: 14 on 2026-11-12, plus one retry. After that, an unchanged tick
+  makes no GitHub write, and a PR whose record changed (lane, class, checks, retry state,
+  the merge-step verdict) costs one edit.
+- **Never two records.** The lane lists the PR's comments again just before it creates one.
+  If it ever finds two or more of its own records, it keeps the oldest and edits each newer
+  one into a one-line note without the marker that links to the record. It does not delete
+  comments.
+- **A failed write.** The tick reports a refused or failed write in `summary.pr_records.failed`
+  with the HTTP status and GitHub's reason. That PR is not listed as current, and the tick
+  makes no further GitHub write: the remaining PRs go to `not_attempted`. The next tick
+  tries again by the same route; there is no other route.
+- **Identity check.** GitHub's reply to a create names the comment's author. If the author
+  is not the configured identity, every later tick would add another comment the lane does
+  not recognise as its own. So the tick sets `halt` in the ledger and makes no PR write
+  until a person removes it (see [Kill switch](#kill-switch)).
+
+### Vet markers count only from our bot
+
+The shepherd's pre-filter (`prefilter_should_run` in `run-shepherd.sh`) skips the LLM for a
+ramp PR whose current head already carries `<!-- shepherd-vet sha=<head> -->`. Before story
+549 the pre-filter read comments through `gh pr view --json comments`, which is GraphQL,
+and counted a marker from any author. Two facts about how the bot's identity is known:
+
+- GraphQL reports the bot's comments as `haynes-ops-bot`, without the `[bot]` suffix.
+  GitHub answers 404 for a user with that name, so anyone could register it.
+- REST reports `haynes-ops-bot[bot]`, type `Bot`, id 298460192, `performed_via_github_app`
+  `haynes-ops-bot`. A person cannot register a login with the `[bot]` suffix.
+
+So the pre-filter now reads the comments over REST
+(`gh api --paginate repos/<repo>/issues/<pr>/comments`). A marker counts only when the
+comment's author is `${SHEPHERD_BOT_LOGIN}[bot]` with type `Bot` and the body starts with
+the marker. All 64 vet markers on record (read 2026-11-12) meet that, so a genuine marker
+behaves as before. The only other marker on record (PR 4827, by `github-actions[bot]`) is a Flux diff that quotes
+one. If the comments cannot be read, no marker counts and the LLM runs. The classifier
+already required `haynes-ops-bot[bot]` over REST (`trusted_vet_authors`).
+
+### The retry of a stalled check
+
+Renovate's PR body has one line ` - [ ] <!-- rebase-check -->If you want to rebase/retry
+this PR, check this box`. When the box is ticked, Renovate rebases the branch, which gives
+a new head and new checks. On 2026-11-09 Renovate acted within about 5 minutes, outside its
+schedule (#4711, #4712).
+
+**Which PR.** A PR whose record reads lane `BLOCKED`, class `check-failing`: a required or
+expected check failed, and nothing else keeps it out of lane A. Lane B and excluded PRs are
+never retried.
+
+**The facts, read at the moment of the write** (Tom's ruling Q-548-04, facts not clocks):
+
+- the newest run of the failing check on that head failed, and no check run on the head is
+  queued or running and no commit status is pending;
+- the box is in the body exactly once and is unticked;
+- the PR is open, not a draft, based on main, opened by `renovate[bot]` (Bot, id 29139614)
+  from a `renovate/` branch of this repository, and every commit is the Renovate app's
+  (author `renovate[bot]`, committed by `web-flow`, signed);
+- the head is the one the tick judged.
+
+The story's first text said "failed at least 30 minutes ago". That clock is not used: the
+facts above decide.
+
+**Limits** (`night.retry`): once per head; at most 2 per PR in 7 days; at most 1 per tick.
+The per-tick cap is a budget, not a wait. When two PRs are eligible, the lower PR number
+goes first and the other reads `deferred`.
+
+**The write.** The lane checks the pause, reads the PR (REST and `gh pr view`) and checks
+the facts. It writes the ledger entry (`intent`) to `upgrade-lane-state`. Then it reads the
+pause and the PR again. If the tick is now paused, the head moved or the body changed, it
+writes nothing this tick and the entry becomes `abandoned`, which does not count. Otherwise
+it sends the body it read with the box's one character changed (`ghWrite` refuses any other
+body edit), and the entry becomes `ticked`, or `write-failed` with the reason. Both count,
+because GitHub may have applied a write that reported a failure. GitHub has no conditional
+update for a PR body, so a Renovate edit in the milliseconds between the second read and
+the write would be overwritten. Renovate rewrites its body on its next run.
+
+**After the retry**, each tick reads the PR again:
+
+| `retry.state` | When | Effect |
+|---|---|---|
+| `waiting-for-renovate` | the head has not moved and the box still reads ticked | none |
+| `new-head-checks-running` | a new head, its checks not all finished | none |
+| `resolved` | a new head whose expected checks passed | none; a later failure on a later head may get the second retry |
+| `failed-again` | a new head with a failing check | the PR is blocked: class `check-failing-after-retry`, reason `failed again on <head> after one retry on <head> at <time>: <checks>` |
+| `no-new-head` | Renovate cleared the box and pushed nothing, and the check still fails | blocked the same way |
+| `budget-used` | 2 retries in the last 7 days | none; the failing check keeps it blocked |
+
+One case only a wait could decide, so the lane does not decide it: a ticked box that
+Renovate never acts on reads `waiting-for-renovate` for as long as that lasts. No second
+tick is made on that head, and the failing check keeps the PR blocked. A person reads the
+state in the record.
+
+**The ledger** is `data.retry_ledger` on `upgrade-lane-state`, written by its own field
+manager `upgrade-night-ledger`. The tick's server-side apply under `upgrade-night`, and the
+error record on a failed tick, therefore never remove it. It keeps entries for open PRs for
+30 days. An unreadable ledger allows no retry and no PR write.
+
+### When the lane writes to GitHub
+
+The PR-write phase runs after the merge step, and only when all of these hold:
+
+- the tick runs with `--write-state` (the CronJob does; a local run only plans and logs
+  `would create`, `would update` and `PLANNED`);
+- the token's recorded permissions include `pull_requests:write`;
+- the ledger is readable and has no `halt`;
+- the pause, read again just before the phase, is not set.
+
+GitHub's permission tables for installation tokens list all three endpoints the lane calls
+under "Pull requests", write: `POST /repos/{owner}/{repo}/issues/{n}/comments`,
+`PATCH /repos/{owner}/{repo}/issues/comments/{id}` and
+`PATCH /repos/{owner}/{repo}/pulls/{n}`. The night token has `pull_requests:write` (story
+752, ruling Q-548-02). The first night is the real proof.
+
+### Reading it
+
+Log lines of each tick (stderr):
+
+```text
+upgrade-night dryrun: PR records: 15 written (created #4349, ...; updated none; demoted none), 0 current
+upgrade-night dryrun: retry: #4757 162b35d8 TICKED; eligible #4757, #4848; blocked after a retry none; waiting for Renovate none; ledger read
+upgrade-night dryrun: GitHub writes this tick: 15 (no merge in dry-run)
+```
+
+```bash
+kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.summary}' \
+  | jq '{github_writes, pr_records, retry: (.retry | del(.by_state))}'
+kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.records}' \
+  | jq '.[] | {pr, class, retry: (.retry | {state, why, count_7d})}'
+kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.retry_ledger}' | jq .
+```
+
+`summary.pr_records` lists the PRs whose record was `created`, `updated` or already
+`current` this tick. A PR in any of the three carries a record that matches this tick's
+record, except for `updated` and `last_attempt.at`. The other lists are `refused`, `failed`,
+`not_attempted`, `demoted` and `foreign_ignored`, and `why_not` says why nothing was written.
+`summary.retry` holds `eligible`, `selected`, `attempts` (outcome and reason for each) and
+`by_state`.
+
 ## Lane verdicts in the labeler
 
 `.github/workflows/pr-disposition.yml` reads a lane verdict only from a comment that
@@ -1006,8 +1181,10 @@ meets all three conditions:
 An enabled auto-merge and an unreadable merge state still come first. A verdict that
 moves a PR toward a person outranks policy; a verdict that moves it toward automation
 does not. A comment without
-the lane marker keeps its old label. No such comment exists yet, because the lane writes
-no comments until step 3. `scripts/pr-disposition-test.cjs` pins each token, a token by
+the lane marker keeps its old label. The lane's own record (story 549) starts with
+`<!-- upgrade-lane v1 -->`, with no shepherd-vet marker and no `VERDICT:` line, so the
+labeler does not read it and labels do not change. Making the record drive labels is
+outside story 549. `scripts/pr-disposition-test.cjs` pins each token, a token by
 a non-bot author (ignored), a token for an older head (ignored) and the same tokens
 without the marker (unchanged).
 
@@ -1103,10 +1280,24 @@ For one PR, use the [hand run](#the-hand-run-rehearsal) with `--check-only`.
   ```
 
   While `data.pause` is non-empty, each tick logs that it is paused and does nothing else.
-  It reads nothing from GitHub, takes no lock, merges nothing and writes nothing. To
+  It reads nothing from GitHub, takes no lock, merges nothing and writes nothing: no PR
+  record and no retry (story 549). The PR-write phase and the retry read the pause again
+  just before they write. To
   resume, remove the key. The server-side apply never removes a key that another field
   manager set. For what pause leaves running in live mode, see
   [Pause and suspend in live mode](#pause-and-suspend-in-live-mode).
+
+- **PR writes only** (story 549): a `halt` in `data.retry_ledger` stops every PR record
+  and retry and nothing else. The lane sets it itself when GitHub reports that a record
+  was written under an identity other than `night.pr_record.author`. To clear it, after
+  fixing the cause, remove the key:
+
+  ```bash
+  kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.retry_ledger}' \
+    | jq -c '.halt = null' > /tmp/ledger.json
+  kubectl -n upgrade-agent patch cm upgrade-lane-state --type merge \
+    -p "$(jq -n --rawfile l /tmp/ledger.json '{data: {retry_ledger: ($l | rtrimstr("\n"))}}')"
+  ```
 
 ## When a tick fails
 
@@ -1183,7 +1374,15 @@ node scripts/upgrade-agent/lane-classify-selftest.mjs      # lanes, drift (workf
 node scripts/upgrade-agent/lane-night-dryrun-selftest.mjs  # the dry-run guarantee, the gates, R5 and R7/R8, the merge step and the lock through the tick
 node scripts/upgrade-agent/lane-merge-step-selftest.mjs    # the merge step's refusals, the mergeability re-read, the lock's states and exit paths, the hand-run CLI, the settle gate
 bash scripts/upgrade-agent/shepherd-stand-aside-selftest.sh  # the shepherd standing aside for a lane change in progress (story 551)
+node scripts/upgrade-agent/lane-pr-records-selftest.mjs      # story 549: the record, whose record, the retry's facts, limits and ledger, the GitHub writes
+bash scripts/upgrade-agent/shepherd-prefilter-selftest.sh    # story 549: vet markers count only from our bot (64 real markers, forged copies)
 ```
+
+`lane-night-dryrun-selftest.mjs` section 6 runs story 549 through the real tick against a
+stubbed GitHub: the steady state (a second identical tick writes nothing), the per-tick cap,
+the ledger written before the box, a second failure that blocks, a refused write, a body
+or head that changed between the read and the write, a forged record, the token, the
+local run, the halt and a pause.
 
 `lane-merge-step-selftest.mjs` reads
 `scripts/upgrade-agent/fixtures/merge-step-pr3915-20261111.json`, PR 3915 as the merge
@@ -1198,9 +1397,10 @@ the two shared shell sources the selftests execute (`coordination-lib.sh`,
 `respond.sh`), `scripts/upgrade-agent/**`, any workflow file (for the drift test) or
 `.renovate/**`. The workflow runs, one at a time:
 
-- the three lane selftests above, plus `node --check` and `jq .` on the shipped files;
+- the lane selftests above (classifier, dry-run tick, merge step, record format), plus `node --check` and `jq .` on the shipped files;
+- the PR-record suite (story 549), after the record-format suite;
 - the shell selftests: `coordination-sig`, `held-audit`, `shepherd-verdict`,
-  `shepherd-stand-aside`, `stale-corpse` and `triage-claim`
+  `shepherd-stand-aside`, `shepherd-prefilter` (story 549), `stale-corpse` and `triage-claim`
   (`scripts/upgrade-agent/*-selftest.sh`);
 - the delivery helper's offline suite:
   `python3 -I -B scripts/upgrade-agent/test_deliver_reviewed_pr.py -v`.
@@ -1217,8 +1417,9 @@ node scripts/pr-disposition-test.cjs                        # the labeler truth 
 
 2. Done: the selftest workflow and the labeler mapping. The fingerprint and the pin
    wait are recorded but not used yet.
-3. The per-PR record as one bot comment, the comment-author check in the shepherd
-   pre-filter, and the one-retry rule for stalled checks.
+3. Built (story 549), in dry-run: the per-PR record as one bot comment, the
+   comment-author check in the shepherd pre-filter, and the one-retry rule for stalled
+   checks.
 4. Coordination with triage and the gate: ownership of a regression signature, the
    morning digest and the orphan page.
 5. The first live merge: one class, one merge a night, a stateless leaf (story 556).

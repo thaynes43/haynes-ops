@@ -317,7 +317,7 @@ export function fromLaneRecord(rec, ctx = {}) {
     observed_at: observed,
     coverage: unknownLane ? { status: 'partial', detail: rec.reason ?? 'facts incomplete' } : { status: 'read' },
     carrier: { kind: 'github-pr', repo, pr: rec.pr, head: rec.head ?? null, title: rec.title ?? null, fingerprint: rec.fingerprint ?? null, fingerprint_basis: rec.fingerprint_basis ?? null, commit_count: rec.commit_count ?? null, change_key: rec.change_key ?? null, files: rec.files || [], head_committed_at: rec.head_committed_at ?? null },
-    lane_detail: { from_schema: rec.schema, rules: rec.rules || [], findings, checks: rec.checks || {}, cluster_effect: rec.cluster_effect ?? null, cluster_effect_wait: rec.cluster_effect_wait ?? null, via_components: rec.via_components || [], cluster_wide: rec.cluster_wide || [], gates: rec.gates ?? null, backup: rec.backup ?? null, last_attempt: rec.last_attempt ?? null },
+    lane_detail: { from_schema: rec.schema, rules: rec.rules || [], findings, checks: rec.checks || {}, cluster_effect: rec.cluster_effect ?? null, cluster_effect_wait: rec.cluster_effect_wait ?? null, via_components: rec.via_components || [], cluster_wide: rec.cluster_wide || [], gates: rec.gates ?? null, backup: rec.backup ?? null, last_attempt: rec.last_attempt ?? null, retry: rec.retry ?? null },
   };
   item.id = itemId(item);
   return item;
