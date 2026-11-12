@@ -334,8 +334,9 @@ profiles:
   # ops egress tier (network/app/session-ops.yaml, DESIGN-064 6.1): a name list, and
   # neither the web tier nor the platform tier selects an ops pod.
   # Claude: only a remote session's agent pod gets the keeper's login projection, through
-  # the `remote` block below (dev-env#1083, OP765). It needs operator sha-4534516 or later
-  # on every replica: an older operator refuses the whole document. A task or local pod on
+  # the `remote` block below (dev-env#1083, OP765). An operator that predates dev-env#1083
+  # refuses the whole document, so every replica must run one that has it; sha-4534516 is
+  # the pin this was checked against. A task or local pod on
   # this profile gets neither the variable nor the mount. It runs on the static token the
   # operator sets, and it reads attacker-influenced text, so it must not hold the
   # account's access token (review of haynes-ops#4832). The projection is access-only:
@@ -343,7 +344,8 @@ profiles:
   # hold a refresh token of their own, so the keeper stays the only refresher. No Codex
   # projection: summoned sessions run Claude only.
   # Known limit (DESIGN-064 6.3): a remote session here is joinable from the owner's
-  # phone, so it holds the account's access token (about eight hours, no refresh token).
+  # phone, so it holds the account's access token (each lasts about eight hours and the
+  # pod follows the keeper's later ones while it runs; no refresh token).
   # Not here on purpose: UNIFI_MCP_AUTH_TOKEN (direct pod egress on this tier does not
   # reach mcp-unifi, and mcp-unifi can write to the network) and dev-env-mcp-secret.
   # Kept: the cigar-journal token (curation), the optional Proxmox read token (D-18;
