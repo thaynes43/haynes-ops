@@ -386,7 +386,21 @@ spec:
               # No flag, CRD or permission change in this pin.
               # Previous pin sha-5bb6c8a@sha256:6aee2d0ac3eb559c98cb27b6b68d0d92480500eb9e1c9aa04907e3938acd6b0c
               # (haynes-ops#4833); rollback target for the operator alone.
-              tag: sha-4534516@sha256:a58a59c9d00958e2d2945470f51e61b3977b9ab65437aec76f9966c0736fefff
+              # dev-env main ac1bbb58 (publish 43157522778's operator job signed and verified this
+              # digest; CI run 43157522774 on that commit was green before this pin merged). Two
+              # commits since sha-4534516, both from the ops-profile epic (OP751, DESIGN-064):
+              # - dev-env#1085 (OP758): a summoning create is charged in the create ledger before
+              #   its session exists, a repeat of its key returns the same session, and it is
+              #   refused at the policy's hourly limit and past its pool. The ledger is the ConfigMap
+              #   dev-env-summon-creates; haynes-ops#4837 installed it and gave the operator's Role
+              #   get and update on it. Only a summoning caller reaches this code, and no
+              #   CallerPolicy has spec.summon, so no request reaches it yet. The create path of
+              #   every other caller is unchanged, and nothing new runs at start or in the background.
+              # - dev-env#1084 (OP736): one design document.
+              # No flag, CRD or permission change in this pin.
+              # Previous pin sha-4534516@sha256:a58a59c9d00958e2d2945470f51e61b3977b9ab65437aec76f9966c0736fefff
+              # (haynes-ops#4836); rollback target for the operator alone.
+              tag: sha-ac1bbb5@sha256:f29febceece8a79224504241316fa0c0038d13efa8815d71e2e42c848861628c
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
