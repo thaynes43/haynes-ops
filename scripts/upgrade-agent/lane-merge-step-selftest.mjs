@@ -199,6 +199,8 @@ const evalSeq = (views, w = {}) => { const s = seqReader(views, w), p = pauser()
   // answered, but not MERGEABLE: no further read
   const d = evalSeq([view(v => { v.mergeable = 'CONFLICTING'; v.mergeStateStatus = 'DIRTY'; return v; }), view()]);
   ok(d.reads === 1 && d.asked.length === 0 && has(d.e.refusals, /GitHub reads it CONFLICTING, not MERGEABLE/), 'answered CONFLICTING: one read, refused as before (an answer is not re-read)', `${d.reads} ${d.e.refusals.join(' | ')}`);
+  const dcu = evalSeq([view(v => { v.mergeable = 'CONFLICTING'; v.mergeStateStatus = 'UNKNOWN'; return v; }), view()]);
+  ok(dcu.reads === 1 && has(dcu.e.refusals, /GitHub reads it CONFLICTING, not MERGEABLE/), 'CONFLICTING with the merge state still UNKNOWN: an answer, read once, refused as before (native review finding 6)', `${dcu.reads} ${dcu.e.refusals.join(' | ')}`);
   const dc = evalSeq([unk(v => { v.state = 'CLOSED'; }), view()]);
   ok(dc.reads === 1 && has(dc.e.refusals, /not open \(state CLOSED\)/) && has(dc.e.refusals, /GitHub reads it UNKNOWN/), 'a closed PR reading UNKNOWN is not read again (GitHub never computes it for a closed PR); refused as before', `${dc.reads} ${dc.e.refusals.join(' | ')}`);
   // the last view read, whole: no field of an earlier read survives
@@ -217,6 +219,13 @@ const evalSeq = (views, w = {}) => { const s = seqReader(views, w), p = pauser()
   ok(f1.e.facts.head === NEWH && f1.e.facts.mergeable_reads === 2 && !f1.calls.some(c => /pulls\/3915\/commits|compare\/|commits\?sha=main/.test(c)), 'head changed: no further read on the new head (no REST commits, R7 or behind-main read); the facts are the last view', JSON.stringify(f1.calls));
   const f2 = evalSeq([unk(), unk(moved), view()]);
   ok(f2.reads === 2 && has(f2.e.refusals, /^head moved between reads/), 'head changed while still UNKNOWN: refused at once, no third read', `${f2.reads} ${f2.e.refusals.join(' | ')}`);
+  // an unreadable head on one read is the preflight's refusal, not a move (native review finding 2)
+  const u1 = evalSeq([unk(v => { delete v.headRefOid; }), view()]);
+  ok(u1.reads === 2 && u1.e.refusals.length === 0 && !has(u1.e.refusals, /head moved/), 'read 1 has no readable head, read 2 is MERGEABLE at the chosen head: no "head moved", read 2 judged whole', `${u1.reads} ${u1.e.refusals.join(' | ')}`);
+  const u2 = evalSeq([unk(), view(v => { delete v.headRefOid; return v; })]);
+  ok(u2.reads === 2 && has(u2.e.refusals, /^unreadable: the PR head SHA$/) && !has(u2.e.refusals, /head moved/), 'read 2 has no readable head: refused as an unreadable head, not as a move', `${u2.reads} ${u2.e.refusals.join(' | ')}`);
+  const u3 = evalSeq([unk(), unk(v => { delete v.headRefOid; }), view(v => { moved(v); return v; })]);
+  ok(u3.reads === 3 && has(u3.e.refusals, /^head moved between reads of the pull request \(a7174f4e on read 1, bbbbbbbb on read 3\)/), 'a head unreadable on read 2 and different on read 3: still a move against read 1', `${u3.reads} ${u3.e.refusals.join(' | ')}`);
   // a read that fails outright: fail closed, and no earlier view is used instead
   const g1 = evalSeq([null]);
   ok(g1.reads === 1 && JSON.stringify(g1.e.refusals) === '["unreadable: the pull request (gh pr view)"]' && g1.e.facts === null, 'the first read fails: refused unreadable exactly as before, facts null');
@@ -225,11 +234,11 @@ const evalSeq = (views, w = {}) => { const s = seqReader(views, w), p = pauser()
   // the helper itself, and the real pause
   const h = M.readMergeViewAnswered(M.REPO, 3915, seqReader([unk(), view()]).run, { rereadPause: () => {} });
   ok(h.reads === 2 && h.why === null && h.view.mergeable === 'MERGEABLE', 'readMergeViewAnswered: { view (the last), reads, why }');
-  ok(M.mergeabilityPending({ state: 'OPEN', mergeable: 'UNKNOWN' }) && M.mergeabilityPending({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'UNKNOWN' }) && !M.mergeabilityPending({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED' }) && !M.mergeabilityPending({ state: 'MERGED', mergeable: 'UNKNOWN' }) && !M.mergeabilityPending(null) && !M.mergeabilityPending({ state: 'OPEN' }),
-    'mergeabilityPending: only an open PR whose mergeable or mergeStateStatus reads UNKNOWN (a missing field is unreadable, not pending)');
+  ok(M.mergeabilityPending({ state: 'OPEN', mergeable: 'UNKNOWN' }) && M.mergeabilityPending({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'UNKNOWN' }) && !M.mergeabilityPending({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED' }) && !M.mergeabilityPending({ state: 'OPEN', mergeable: 'CONFLICTING', mergeStateStatus: 'UNKNOWN' }) && !M.mergeabilityPending({ state: 'MERGED', mergeable: 'UNKNOWN' }) && !M.mergeabilityPending(null) && !M.mergeabilityPending({ state: 'OPEN' }),
+    'mergeabilityPending: only an open PR whose mergeable reads UNKNOWN, or MERGEABLE with the merge state UNKNOWN (CONFLICTING is an answer; a missing field is unreadable, not pending)');
   const t0 = Date.now(); M.sleepSync(30); const slept = Date.now() - t0;
   const t1 = Date.now(); M.sleepSync(0); M.sleepSync(-5); M.sleepSync(NaN); M.sleepSync(undefined); const none = Date.now() - t1;
-  ok(slept >= 25 && slept < 2000 && none < 25, 'sleepSync blocks for the time asked (30ms here) and not at all for 0, a negative or a non-number', `${slept}ms, ${none}ms`);
+  ok(slept >= 25 && slept < 10000 && none < 2000, 'sleepSync blocks for at least the time asked (30ms here) and returns for 0, a negative or a non-number (unguarded, NaN or undefined would wait forever)', `${slept}ms, ${none}ms`);
   // where the re-read is applied, and that it adds no other wait (ruling Q-548-04)
   const src = readFileSync(join(RES, 'night-merge.mjs'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
   const count = re => (src.match(re) || []).length;

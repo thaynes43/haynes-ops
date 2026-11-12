@@ -158,19 +158,24 @@ export const MERGEABLE_REREAD = Object.freeze({ pauses_ms: Object.freeze([2000, 
 // The step is synchronous (every read is a spawnSync), so the pause blocks the thread
 // without spinning. Injectable: the selftests pass one that does not sleep.
 export const sleepSync = ms => { if (Number.isFinite(ms) && ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
-export const mergeabilityPending = v => v?.state === 'OPEN' && (v.mergeable === 'UNKNOWN' || v.mergeStateStatus === 'UNKNOWN');
+// Pending = an open PR whose mergeable reads UNKNOWN, or reads MERGEABLE with the merge
+// state still UNKNOWN. An answer that refuses (CONFLICTING) is final: it is not re-read.
+export const mergeabilityPending = v => v?.state === 'OPEN' && (v.mergeable === 'UNKNOWN' || (v.mergeable === 'MERGEABLE' && v.mergeStateStatus === 'UNKNOWN'));
 // { view, reads, why }. view = the LAST view read, whole, never fields mixed from two
 // reads; null when a read failed (fail closed, and no earlier view is used instead).
-// why = a refusal when the head moved between reads: the step does not go on with the
-// new head in the same tick.
+// why = a refusal when the head moved between reads (two readable heads that differ):
+// the step does not go on with the new head in the same tick. An unreadable head is the
+// preflight's refusal ("unreadable: the PR head SHA"), not a move.
 export function readMergeViewAnswered(repo, pr, run, { rereadPause = sleepSync } = {}) {
+  const headOf = v => (SHA.test(v?.headRefOid || '') ? v.headRefOid : null);
   let view = readMergeView(repo, pr, run), reads = 1;
-  const first = view?.headRefOid;
+  const first = headOf(view);
   for (const ms of MERGEABLE_REREAD.pauses_ms) {
     if (!view || !mergeabilityPending(view)) break;
     rereadPause(ms);
     view = readMergeView(repo, pr, run); reads++;
-    if (view && view.headRefOid !== first) return { view, reads, why: `head moved between reads of the pull request (${short(first)} on read 1, ${short(view.headRefOid)} on read ${reads}); not judging the new head in this tick` };
+    const cur = headOf(view);
+    if (first && cur && cur !== first) return { view, reads, why: `head moved between reads of the pull request (${short(first)} on read 1, ${short(cur)} on read ${reads}); not judging the new head in this tick` };
   }
   return { view, reads, why: null };
 }
