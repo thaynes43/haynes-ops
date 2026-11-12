@@ -18,7 +18,11 @@
 //      kept after a merge; a stale lock taken over by its lease;
 //   4. the token and the class allowlist; the merge argv (squash, pinned to the head, no
 //      bypass flag); callMerge refusing every mode but live and hand before it spawns;
-//   5. the hand-run CLI (--check-only and --merge) against stub gh and kubectl.
+//   5. the hand-run CLI (--check-only and --merge) against stub gh and kubectl;
+//   6. the settle gate (story 551): each Flux state, each read failing closed, the
+//      2026-11-10 shepherd merges (fixtures/settle-20261110.json: the lane waits through
+//      multus's roll and opens once it settled), and the re-read at a live merge call and
+//      before a hand --merge, where another actor's merge in between refuses the call.
 // The tick-level cases (dry-run never reaching the merge call, live refusals through the
 // real tick) are in lane-night-dryrun-selftest.mjs.
 //
@@ -190,6 +194,234 @@ const GO_MOD = 'scripts/tests/dev-env-archive-guard/go.mod';
   }
 }
 
+// ── 3b. the settle gate (story 551, facts not clocks): pure, and the 2026-11-10 fixture ──
+// fixtures/settle-20261110.json: main's compares and commit files as GitHub lists them after
+// the shepherd's #4760 and #4761 and Renovate's #4767, and the Flux objects rebuilt from
+// Prometheus around multus's roll, with the chains read live. Three targets: one unrelated
+// to all three merges (plex-hw-canary), one #4767 changed (ytdl-sub), one in multus's
+// dependents (home-assistant).
+const sx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/settle-20261110.json'), 'utf8'));
+const fxRun = (inst, over = {}) => (cmd, argv) => {
+  const api = argv.find(a => String(a).startsWith('repos/')) || '';
+  if (over[cmd + ' ' + (argv[1] || '')] !== undefined) return over[cmd + ' ' + (argv[1] || '')];
+  if (cmd === 'gh' && /\/compare\//.test(api)) { if (over.compare !== undefined) return over.compare; const [b, h] = api.split('/compare/')[1].split('?')[0].split('...'); const c = sx.compare[`${b}...${h === 'main' ? inst.main : h}`]; return c ? JSON.stringify(c) : null; }
+  if (cmd === 'gh' && /\/commits\/[0-9a-f]{40}$/.test(api)) { if (over.commit !== undefined) return over.commit; const c = sx.commits[api.split('/').pop()]; return c ? JSON.stringify(c) : null; }
+  if (cmd === 'kubectl' && argv[1] === 'kustomizations.kustomize.toolkit.fluxcd.io') return JSON.stringify({ items: inst.flux.kustomizations });
+  if (cmd === 'kubectl' && argv[1] === 'helmreleases.helm.toolkit.fluxcd.io') return JSON.stringify({ items: inst.flux.helmreleases });
+  if (cmd === 'kubectl' && argv[1] === 'gitrepositories.source.toolkit.fluxcd.io') return JSON.stringify({ items: [inst.flux.gitrepository] });
+  return null;
+};
+const judge = (inst, target, over = {}) => { const f = M.readSettleFacts(M.REPO, rules, fxRun(inst, over)); return M.settleVerdict(f, M.settleScope(sx.targets[target].record, f.ks, f.hr), rules); };
+const inst = id => sx.instants.find(i => i.id === id);
+{
+  const sc = M.settleConfig(rules);
+  ok(sc.ok && sc.source.namespace === 'flux-system' && sc.source.name === 'haynes-ops' && sc.max_unapplied_commits === 50, 'git ships the settle gate on Flux source flux-system/haynes-ops, up to 50 unapplied commits', JSON.stringify(sc));
+  ok(!('minutes' in rules.night.settle_gate) && !('watched_path' in rules.night.settle_gate) && !/minutes|window_minutes/.test(JSON.stringify(sc)), 'no clock left in the settle gate config (ruling Q-548-04)');
+  for (const [k, v] of [['max_unapplied_commits', 0], ['max_unapplied_commits', '50'], ['max_unapplied_commits', 101], ['flux_source', { kind: 'OCIRepository', namespace: 'flux-system', name: 'haynes-ops' }], ['flux_source', { kind: 'GitRepository', namespace: 'flux-system' }]]) {
+    const r2 = structuredClone(rules); r2.night.settle_gate[k] = v;
+    const sv = M.settleVerdict({ cfg: M.settleConfig(r2) }, { targets: [] }, r2);
+    ok(!M.settleConfig(r2).ok && !sv.settled && /night\.settle_gate in upgrade-rules\.json is invalid/.test(sv.blockers[0] || ''), `an invalid settle config refuses (${k}=${JSON.stringify(v)})`);
+  }
+  ok(M.settleVerdict({ cfg: sc }, null, rules).applicable === false && M.settleVerdict({ cfg: sc }, null, rules).settled === true, 'a candidate with no immediate cluster effect: not applicable (nothing in the cluster changes now)');
+  ok(!M.settleVerdict({ cfg: sc }, undefined, rules).settled && !M.settleVerdict({ cfg: sc }, { unreadable: 'x' }, rules).settled, 'no scope, or an unreadable one, is not settled');
+  // one Flux object, by facts only: conditions and generations, never a transition time
+  const o = (conds, extra = {}) => ({ metadata: { generation: 2, namespace: 'n', ...(extra.meta || {}) }, spec: extra.spec || {}, status: { observedGeneration: extra.og ?? 2, ...(extra.att ? { lastAttemptedRevision: extra.att } : {}), conditions: conds } });
+  const R = (status, reason = 'X') => ({ type: 'Ready', status, reason });
+  const Rc = reason => ({ type: 'Reconciling', status: 'True', reason });
+  const st = (x, ctx) => M.fluxSettleState(x, ctx);
+  const REVX = `main@sha1:${'a'.repeat(40)}`;
+  ok(st(o([R('True')])).state === 'settled', 'Flux: Ready True at its generation is settled');
+  ok(st(o([R('Unknown', 'Progressing')])).state === 'progressing', 'Flux: Ready Unknown is progressing');
+  ok(st(o([R('True'), Rc('Progressing')])).state === 'progressing', 'Flux: Ready True but Reconciling is progressing');
+  ok(st(o([R('True')], { og: 1 })).state === 'progressing', 'Flux: a generation not observed yet is progressing');
+  ok(st({ metadata: {}, status: { conditions: [R('True')] } }).state === 'progressing', 'Flux: no generations fails closed (progressing)');
+  ok(st(o([])).state === 'progressing' && st({ metadata: {} }).state === 'progressing', 'Flux: no Ready condition, or no conditions, is progressing');
+  ok(st(o([R('False', 'HealthCheckFailed'), Rc('ProgressingWithRetry')], { og: -1 })).state === 'failing', "Flux: Flux's retry loop is failing, not settling, whatever its transition time");
+  ok(st(o([R('False', 'HealthCheckFailed'), Rc('Progressing')])).state === 'progressing', 'Flux: NotReady and reconciling anew is progressing');
+  ok(st(o([R('False', 'X'), { type: 'Stalled', status: 'True' }])).state === 'failing', 'Flux: Stalled is failing');
+  ok(st(o([R('False', 'BuildFailed')], { att: REVX }), { revision: REVX }).state === 'failing', 'Flux: NotReady at the current generation and revision is failing (a fact, not a timer)');
+  ok(st(o([R('False', 'BuildFailed')], { att: `main@sha1:${'b'.repeat(40)}` }), { revision: REVX }).state === 'progressing', 'Flux: NotReady that has not attempted the current revision is progressing');
+  ok(st(o([R('False', 'BuildFailed')], { og: 1 })).state === 'progressing', 'Flux: NotReady with a generation not observed is progressing');
+  ok(st(o([R('Maybe')])).state === 'progressing', 'Flux: an unknown Ready status fails closed');
+  ok(st(o([R('Unknown')], { spec: { suspend: true } })).state === 'settled', 'Flux: a suspended object is settled (nothing will move it)');
+  // R3: DependencyNotReady behind a failing dependency is failing (ai/comfyui, for days)
+  const dnr = o([R('False', 'DependencyNotReady')], { spec: { dependsOn: [{ name: 'dep', namespace: 'n' }] } });
+  ok(st(dnr, { dep: () => ({ state: 'failing', why: 'x' }) }).state === 'failing' && /waiting on n\/dep, which is failing/.test(st(dnr, { dep: () => ({ state: 'failing' }) }).why), 'R3: DependencyNotReady behind a failing dependency is failing, not settling');
+  ok(st(dnr, { dep: () => ({ state: 'progressing' }) }).state === 'progressing', 'R3: DependencyNotReady behind a dependency in flight is progressing (multus rolling)');
+  ok(st(dnr, { dep: () => null }).state === 'progressing', 'R3: DependencyNotReady behind a missing dependency fails closed');
+  const K = items => ({ items });
+  const kso = (name, deps, conds, extra = {}) => ({ metadata: { namespace: 'n', name, generation: 1 }, spec: { path: `./kubernetes/main/apps/n/${name}/app`, sourceRef: { kind: 'GitRepository', name: 'haynes-ops', namespace: 'flux-system' }, ...(deps.length ? { dependsOn: deps.map(d => ({ name: d, namespace: 'n' })) } : {}) }, status: { observedGeneration: 1, lastAttemptedRevision: REVX, lastAppliedRevision: REVX, conditions: conds, ...extra } });
+  const srcO = { metadata: { namespace: 'flux-system', name: 'haynes-ops', generation: 1 }, status: { observedGeneration: 1, artifact: { revision: REVX }, conditions: [R('True')] } };
+  const r3 = { cfg: sc, source: srcO, range: { complete: true, commits: [] },
+    ks: K([kso('broken', [], [R('False', 'HealthCheckFailed'), Rc('ProgressingWithRetry')]), kso('waiter', ['broken'], [R('False', 'DependencyNotReady')], { lastAttemptedRevision: `main@sha1:${'c'.repeat(40)}`, lastAppliedRevision: `main@sha1:${'c'.repeat(40)}` }), kso('target', ['waiter'], [R('True')])]), hr: K([]) };
+  const v3 = M.settleVerdict(r3, M.settleScope({ cluster_effect: 'immediate', targets: ['kubernetes/main/apps/n/target'] }, r3.ks, r3.hr), rules);
+  ok(v3.settled && v3.failing_not_settling.some(x => /Kustomization n\/waiter: NotReady \(DependencyNotReady\), waiting on n\/broken, which is failing/.test(x)) && v3.failing_not_settling.some(x => /n\/broken/.test(x)), "R3: a chain waiting on a broken dependency is the baseline gate's business, not a settle hold", JSON.stringify(v3));
+  const v3u = M.settleVerdict(r3, M.settleScope({ cluster_effect: 'immediate', targets: ['kubernetes/main/apps/other'] }, r3.ks, r3.hr), rules);
+  ok(v3u.settled, 'R3: a target outside that chain is not held by it (no cluster-wide hold)');
+  ok(M.revisionSha(`main@sha1:${'a'.repeat(40)}`) === 'a'.repeat(40) && M.revisionSha('main@sha256:abc') === null && M.revisionSha(null) === null, 'revisionSha reads main@sha1:<40 hex> only');
+
+  // the 2026-11-10 instants for each target, by facts (no clock is read)
+  ok(sx.instants.length === 6 && Object.keys(sx.targets).length === 3, 'the fixture has six instants and three targets');
+  for (const i of sx.instants) for (const t of Object.keys(sx.targets)) {
+    const v = judge(i, t);
+    const text = [...v.blockers, ...v.unsettled].join(' | ');
+    const want = i.want[t];
+    ok(v.settled === (want === 'settled') && (i.because[t] || []).every(b => text.includes(b)) && !/min ago|minutes|before 20/.test(text),
+      `2026-11-10 ${i.at} (${i.id}), ${t}: ${want === 'settled' ? 'may merge' : 'waits'}${(i.because[t] || []).length ? ` (${i.because[t].join('; ')})` : ''}`, text || 'settled');
+  }
+  // R6: F1 replaces rule 3, so the not-yet-fetched instants hold on F1 alone
+  for (const id of ['after-4767', 'counterfactual-race']) {
+    const v = judge(inst(id), 'unrelated');
+    ok(!v.settled && v.blockers.every(b => /^F1 /.test(b)) && v.blockers.some(b => /reaches cluster-wide multus: 6fe1fdf3 feat\(container\): update image ghcr\.io\/angelnu\/cni-plugins/.test(b)), `R6: at ${inst(id).at} only F1 holds the unrelated target, and it names multus (#4760)`, v.blockers.join(' | '));
+  }
+  // F1 fails closed
+  const fc = (over, re, name) => { const v = judge(inst('settled-counterfactual'), 'unrelated', over); ok(!v.settled && v.blockers.some(b => re.test(b)), name, v.blockers.join(' | ')); };
+  fc({ compare: null }, /^F1 unreadable: what main has that Flux has not fetched \(unreadable: compare acaca28d\.\.\.main\)$/, 'F1: an unreadable compare fails closed');
+  fc({ compare: JSON.stringify({ status: 'diverged', ahead_by: 1, behind_by: 2, commits: [{}] }) }, /reads diverged \(behind by 2\)/, 'F1: a source revision not on main (diverged) fails closed');
+  fc({ compare: JSON.stringify({ status: 'ahead', ahead_by: 51, behind_by: 0, total_commits: 51, commits: [] }) }, /51 commits in acaca28d\.\.\.main, more than one read can attribute \(limit 50/, 'F1: more unapplied commits than the limit fails closed');
+  fc({ compare: JSON.stringify({ status: 'ahead', ahead_by: 2, behind_by: 0, total_commits: 2, commits: [sx.compare[Object.keys(sx.compare)[2]].commits[0]] }) }, /2 commits in .* \(limit 50, listed 1\)/, 'F1: a truncated commit list fails closed');
+  const one = JSON.stringify(sx.compare[`3dadf34a76e84b19079ef11a87a9d68abac990b0...acaca28d9ed92317ad9fccb889a8336b5747758a`]);
+  fc({ compare: one, commit: null }, /unreadable: the files of commit acaca28d/, "F1: an unreadable commit's files fail closed");
+  fc({ compare: one, commit: JSON.stringify({ files: Array.from({ length: 300 }, (_, k) => ({ filename: `x/${k}` })) }) }, /lists 300 files, GitHub's first page/, 'F1: a commit with 300 files (truncated) fails closed');
+  for (const [k, re] of [['kubectl kustomizations.kustomize.toolkit.fluxcd.io', /^unreadable: kustomizations \(settle gate\)$/], ['kubectl helmreleases.helm.toolkit.fluxcd.io', /^unreadable: helmreleases \(settle gate\)$/], ['kubectl gitrepositories.source.toolkit.fluxcd.io', /^unreadable: GitRepository flux-system\/haynes-ops$/]]) {
+    const f = M.readSettleFacts(M.REPO, rules, fxRun(inst('settled-counterfactual'), { [k]: null }));
+    const v = M.settleVerdict(f, f.ks && f.hr ? M.settleScope(sx.targets.unrelated.record, f.ks, f.hr) : { unreadable: 'kustomizations or helmreleases (the target scope)' }, rules);
+    ok(!v.settled && v.blockers.some(b => re.test(b) || /unreadable: kustomizations or helmreleases/.test(b)), `settle gate: ${k.split(' ')[1]} unreadable fails closed`, v.blockers.join(' | '));
+  }
+  const fAbs = M.readSettleFacts(M.REPO, rules, fxRun(inst('settled-counterfactual'), { 'kubectl gitrepositories.source.toolkit.fluxcd.io': JSON.stringify({ items: [] }) }));
+  ok(M.settleVerdict(fAbs, M.settleScope(sx.targets.unrelated.record, fAbs.ks, fAbs.hr), rules).blockers.includes('GitRepository flux-system/haynes-ops does not exist'), 'settle gate: an absent source fails closed');
+  // F2: applied, not only attempted
+  const ap = structuredClone(inst('settled-counterfactual'));
+  ap.flux.kustomizations.find(k => k.metadata.name === 'plex-hw-canary').status.lastAppliedRevision = 'main@sha1:08f367f6b8d5f87f61a718fc59c0e2dfe4069178';
+  const vap = judge(ap, 'unrelated');
+  ok(!vap.settled && vap.blockers.some(b => /^F2 the target is not settled: Kustomization media\/plex-hw-canary: has not applied acaca28d \(applied 08f367f6\)/.test(b)), 'F2: a target Kustomization that attempted but has not applied the revision waits', vap.blockers.join(' | '));
+  const ch = structuredClone(inst('settled-counterfactual'));
+  ch.flux.kustomizations.find(k => k.metadata.name === 'external-secrets-stores').status.conditions = [R('Unknown', 'Progressing')];
+  ok(judge(ch, 'unrelated').blockers.some(b => /^F2 .*Kustomization external-secrets\/external-secrets-stores: Ready Unknown/.test(b)), "F2: a Kustomization of the target's dependsOn chain in flight waits");
+  const hrp = structuredClone(inst('settled-counterfactual'));
+  hrp.flux.helmreleases.find(h => h.metadata.name === 'plex-hw-canary').status.observedGeneration = 4;
+  ok(judge(hrp, 'unrelated').blockers.some(b => /^F2 .*HelmRelease media\/plex-hw-canary: generation 5 not observed yet/.test(b)) && judge(hrp, 'ytdl').settled, "F2: a HelmRelease of the target's namespace not settled waits; another namespace's target does not");
+  // F3: a cluster-wide part mid-change holds every target; the source too
+  const cw = structuredClone(inst('settled-counterfactual'));
+  cw.flux.kustomizations.find(k => k.metadata.name === 'cilium').status.lastAppliedRevision = 'main@sha1:08f367f6b8d5f87f61a718fc59c0e2dfe4069178';
+  ok(['unrelated', 'ytdl', 'ha'].every(t => judge(cw, t).blockers.some(b => /^F3 a cluster-wide part is mid-change: cilium: Kustomization kube-system\/cilium: has not applied acaca28d/.test(b))), 'F3: a cluster-wide Kustomization that has not applied the revision holds every target');
+  const gf = structuredClone(inst('settled-counterfactual')); gf.flux.gitrepository.status.conditions = [{ type: 'Ready', status: 'False', reason: 'GitOperationFailed' }, { type: 'Stalled', status: 'True' }];
+  ok(judge(gf, 'unrelated').blockers.some(b => /^F3 GitRepository flux-system\/haynes-ops is NotReady \(GitOperationFailed\), Stalled/.test(b)), 'F3: a failing source blocks: nothing it serves can be judged settled');
+  const gr = structuredClone(inst('settled-counterfactual')); gr.flux.gitrepository.status.conditions = [R('True'), Rc('Progressing')];
+  ok(judge(gr, 'unrelated').blockers.some(b => /^F3 .*flux: GitRepository flux-system\/haynes-ops: Reconciling/.test(b)), 'F3: a source mid-fetch holds every target');
+  // scope through a shared component (R8): a change to the app-template component reaches its consumers
+  const shp = rules.shared_components.entries.find(e => e.consumers.some(c => c === 'kubernetes/main/apps/media'));
+  if (shp) ok(M.scopeHits(`${shp.path}/kustomization.yaml`, { targets: ['kubernetes/main/apps/media/plex-hw-canary'], chain_paths: [] }, rules).some(h => h.part === 'target' && /via kubernetes\/main\/apps\/media/.test(h.name)), 'F1 scope: a shared component a namespace-level consumer includes reaches the targets below it (R8)');
+  ok(M.scopeHits('kubernetes/main/apps/network/traefik-forward-auth/app/x.yaml', { targets: ['kubernetes/main/apps/network/traefik'], chain_paths: [] }, rules).length === 0, 'F1 scope: a sibling directory sharing a name prefix is not the target');
+
+  // THE HELPER for the verifier (stories 553 and 753): other changes between two commits
+  const B = '3dadf34a76e84b19079ef11a87a9d68abac990b0', A = 'acaca28d9ed92317ad9fccb889a8336b5747758a';
+  const range = M.readCommitRange(M.REPO, B, A, fxRun(inst('settled-counterfactual')));
+  ok(range.complete && range.commits.length === 1 && range.commits[0].pr === 4767 && range.commits[0].author === 'renovate[bot]' && range.commits[0].committer === 'web-flow' && range.commits[0].at === '2026-11-10T05:03:25.000Z', 'readCommitRange: after #4760/#4761, the range to acaca28d is #4767 alone, with time, author and committer', JSON.stringify(range).slice(0, 300));
+  const f40 = M.readSettleFacts(M.REPO, rules, fxRun(inst('settled-counterfactual')));
+  const touched = Object.entries(sx.targets).map(([t, x]) => [t, M.otherChanges(range, M.settleScope(x.record, f40.ks, f40.hr), rules)]);
+  ok(touched.every(([, oc]) => oc.complete) && JSON.stringify(touched.filter(([, oc]) => oc.changes.length).map(([t]) => t)) === '["ytdl"]', 'otherChanges: #4767 touches the ytdl-sub target only, not plex-hw-canary or home-assistant', JSON.stringify(touched.map(([t, oc]) => [t, oc.changes.length])));
+  const yt = touched.find(([t]) => t === 'ytdl')[1].changes[0];
+  ok(yt.sha === A && yt.subject.includes('ytdl-sub') && yt.matched.some(m => m.part === 'target' && m.path === 'kubernetes/main/apps/downloads/ytdl-sub/youtube/helmrelease.yaml') && yt.matched.some(m => m.part === 'chain' && m.name === 'downloads/ytdl-sub-peloton'), 'otherChanges: names the sha, the subject and which paths matched which part', JSON.stringify(yt));
+  const full = M.readCommitRange(M.REPO, '08f367f6b8d5f87f61a718fc59c0e2dfe4069178', A, fxRun(inst('settled-counterfactual')));
+  const ocHa = M.otherChanges(full, M.settleScope(sx.targets.ha.record, f40.ks, f40.hr), rules);
+  ok(JSON.stringify(ocHa.changes.map(c => c.pr)) === '[4760]' && ocHa.changes[0].matched.some(m => m.part === 'cluster-wide' && m.name === 'multus') && ocHa.changes[0].matched.some(m => m.part === 'chain' && m.name === 'network/multus'), 'otherChanges: over the whole night, home-assistant is reached by #4760 only (its chain and cluster-wide multus)', JSON.stringify(ocHa.changes.map(c => [c.pr, c.matched])));
+  const ex = M.otherChanges(full, M.settleScope(sx.targets.ha.record, f40.ks, f40.hr), rules, { exclude: ['6fe1fdf30666a8c33d24385751701b5bbdef356e'] });
+  ok(ex.complete && ex.changes.length === 0, "otherChanges excludes the verifier's own merge (here #4760): nothing else reached home-assistant", JSON.stringify(ex.changes));
+  ok(M.otherChanges({ complete: false, why: 'x' }, {}, rules).complete === false && M.otherChanges(null, {}, rules).changes.length === 0, 'otherChanges on an incomplete range claims nothing (fail closed)');
+
+  // F4 (pure): which unfinished Jobs can merge
+  const job = (name, cron, ctrl, done = false) => ({ metadata: { name, labels: { 'app.kubernetes.io/controller': ctrl }, ...(cron ? { ownerReferences: [{ kind: 'CronJob', name: cron }] } : {}) }, status: done ? { conditions: [{ type: 'Complete', status: 'True' }], completionTime: '2026-11-11T09:00:33Z' } : { active: 1 } });
+  const remCm = data => ({ found: true, cm: { metadata: { name: 'upgrade-remediation-state' }, data } });
+  const J = (items, rem = remCm({})) => M.mergingJobs({ items }, rem);
+  ok(J([]).readable && J([]).active.length === 0, 'F4: no Jobs, nothing that can merge');
+  ok(J([job('upgrade-shepherd-29907120', 'upgrade-shepherd', 'upgrade-shepherd')]).active[0] === 'upgrade-shepherd-29907120 (the shepherd)', 'F4: an unfinished Job of CronJob upgrade-shepherd can merge');
+  ok(J([job('upgrade-shepherd-29906940', 'upgrade-shepherd', 'upgrade-shepherd', true)]).active.length === 0, 'F4: a finished shepherd Job cannot');
+  ok(J([job('manual-summon', null, 'upgrade-shepherd')]).active.length === 1, 'F4: a summon carrying the shepherd controller label can merge');
+  ok(J([job('upgrade-shepherd-triage-1', 'upgrade-shepherd-triage', 'triage')]).active.length === 0, 'F4: triage with no remediation claimed cannot merge (remediate runs inside triage)');
+  ok(/triage running remediate for sig-a/.test(J([job('upgrade-shepherd-triage-1', 'upgrade-shepherd-triage', 'triage')], remCm({ 'sig-a': JSON.stringify({ attempted: '1', result: 'none' }) })).why || ''), 'F4: triage with a claimed, unfinished remediation can merge');
+  ok(J([job('upgrade-shepherd-triage-1', 'upgrade-shepherd-triage', 'triage')], remCm({ 'sig-a': JSON.stringify({ attempted: '1', result: 'pending' }) })).active.length === 0, 'F4: a remediation that has ended (result recorded) does not count');
+  ok(J([job('upgrade-shepherd-triage-1', 'upgrade-shepherd-triage', 'triage')], null).active.length === 1, 'F4: triage while the remediation state is unreadable counts as able to merge (fail closed)');
+  ok(J([job('upgrade-shepherd-upgrade-night-1', 'upgrade-shepherd-upgrade-night', 'upgrade-night'), job('alert-responder-1', 'alert-responder', 'alert-responder'), job('upgrade-health-gate-1', 'upgrade-health-gate', 'upgrade-health-gate'), job('dev-env-ops-curation-order-1', 'dev-env-ops-curation-order', 'curation-order')]).active.length === 0, "F4: the lane's own Job, the responder, the gate and the curation order cannot merge");
+  ok(/an unknown Job in upgrade-agent; it may merge/.test(J([job('file-photo-backlog-order', null, undefined)]).why || ''), 'F4: an unknown unfinished Job counts as able to merge (fail closed)');
+  ok(!M.mergingJobs(null, remCm({})).readable && /unreadable: Jobs in upgrade-agent/.test(M.mergingJobs(null, remCm({})).why), 'F4: unreadable Jobs fail closed');
+
+  // S1: namespace-level files, the apps root, and the Kustomizations that apply the target.
+  // Labels as live: 183 of 186 Kustomizations are applied by flux-system/cluster-apps
+  // (path ./kubernetes/main/apps), which flux-system/cluster applies.
+  {
+    const REV1 = `main@sha1:${'d'.repeat(40)}`, base1 = 'd'.repeat(40);
+    const lab = (name, ns = 'flux-system') => ({ 'kustomize.toolkit.fluxcd.io/name': name, 'kustomize.toolkit.fluxcd.io/namespace': ns });
+    const K1 = (ns, name, path, labels = {}, extra = {}) => ({ metadata: { namespace: ns, name, generation: 1, labels }, spec: { path: `./${path}`, sourceRef: { kind: 'GitRepository', name: 'haynes-ops', namespace: 'flux-system' }, ...(extra.spec || {}) },
+      status: { observedGeneration: 1, lastAttemptedRevision: extra.applied ?? REV1, lastAppliedRevision: extra.applied ?? REV1, conditions: extra.conditions ?? [{ type: 'Ready', status: 'True' }] } });
+    const world1 = (over = {}) => ({ items: [
+      K1('flux-system', 'cluster', 'kubernetes/main/flux', lab('cluster'), over.cluster),
+      K1('flux-system', 'cluster-apps', 'kubernetes/main/apps', lab('cluster'), over['cluster-apps']),
+      K1('network', 'ns-apps', 'kubernetes/main/apps/network/apps', lab('cluster-apps'), over['ns-apps']),
+      K1('network', 'traefik-external', 'kubernetes/main/apps/network/traefik/traefik-external/app', lab('ns-apps', 'network'), over.traefik),
+      K1('media', 'plex-hw-canary', 'kubernetes/main/apps/media/plex-hw-canary/app', lab('cluster-apps'), over.plex),
+      K1('kube-system', 'cilium', 'kubernetes/main/apps/kube-system/cilium/app', lab('cluster-apps'), over.cilium),
+      K1('kube-system', 'off', 'kubernetes/main/apps/kube-system/off/app', lab('cluster-apps'), over.off),
+    ] });
+    const hr1 = (over = {}) => ({ items: [
+      { metadata: { namespace: 'network', name: 'traefik', generation: 1, labels: lab('traefik-external', 'network') }, spec: { ...(over.traefikHr || {}) }, status: { observedGeneration: 1, conditions: [{ type: 'Ready', status: 'True' }] } },
+      { metadata: { namespace: 'media', name: 'plex-hw-canary', generation: 1, labels: lab('plex-hw-canary', 'media') }, spec: {}, status: { observedGeneration: 1, conditions: [{ type: 'Ready', status: 'True' }] } },
+    ] });
+    const src1 = { metadata: { namespace: 'flux-system', name: 'haynes-ops', generation: 1 }, status: { observedGeneration: 1, artifact: { revision: REV1 }, conditions: [{ type: 'Ready', status: 'True' }] } };
+    const C2 = 'e'.repeat(40);
+    const range1 = files => ({ base: base1, head: 'main', complete: true, commits: files ? [{ sha: C2, parents: [base1], at: '2026-11-11T15:00:00.000Z', subject: 'chore: a namespace-level change (#4900)', pr: 4900, author: 'haynes-dev-bot[bot]', committer: 'web-flow', files }] : [] });
+    const facts1 = (files, ksOver = {}, hrOver = {}) => ({ cfg: sc, source: src1, ks: world1(ksOver), hr: hr1(hrOver), range: range1(files) });
+    const T_IN = { cluster_effect: 'immediate', targets: ['kubernetes/main/apps/network/traefik'] }, T_OUT = { cluster_effect: 'immediate', targets: ['kubernetes/main/apps/media/plex-hw-canary'] };
+    const v1 = (rec, f) => M.settleVerdict(f, M.settleScope(rec, f.ks, f.hr), rules);
+    const sIn = M.settleScope(T_IN, world1(), hr1());
+    ok(JSON.stringify(sIn.appliers) === JSON.stringify(['network/ns-apps', 'flux-system/cluster-apps', 'flux-system/cluster']) && JSON.stringify(sIn.own_hr) === '["network/traefik"]', "S1: the target's appliers come from the Flux labels of its Kustomizations, up to the root (not a hard-coded cluster-apps)", JSON.stringify(sIn));
+    ok(v1(T_IN, facts1(null)).settled && v1(T_OUT, facts1(null)).settled, 'S1: with nothing unapplied both targets are settled');
+    for (const f of ['kubernetes/main/apps/network/namespace.yaml', 'kubernetes/main/apps/network/kustomization.yaml']) {
+      const vi = v1(T_IN, facts1([f])), vo = v1(T_OUT, facts1([f]));
+      ok(!vi.settled && vi.blockers.some(b => /^F1 .*reaches namespace kubernetes\/main\/apps\/network \(for target kubernetes\/main\/apps\/network\/traefik\)/.test(b)) && vo.settled, `S1: ${f} reaches every target in network (traefik waits) and no other (plex-hw-canary does not)`, `${vi.blockers.join(' | ')} || ${vo.blockers.join(' | ')}`);
+      const oc = M.otherChanges(range1([f]), sIn, rules);
+      ok(oc.changes.length === 1 && oc.changes[0].matched.some(m => m.part === 'namespace') && M.otherChanges(range1([f]), M.settleScope(T_OUT, world1(), hr1()), rules).changes.length === 0, `S1: otherChanges sees ${f.split('/').pop()} for a network target and not for a media one`);
+    }
+    const root = 'kubernetes/main/apps/kustomization.yaml';
+    ok([T_IN, T_OUT].every(r => v1(r, facts1([root])).blockers.some(b => /^F1 .*reaches cluster-wide flux: eeeeeeee/.test(b))), 'S1: kubernetes/main/apps/kustomization.yaml (the apps root) is cluster-wide: every target waits', v1(T_OUT, facts1([root])).blockers.join(' | '));
+    ok(M.otherChanges(range1([root]), M.settleScope(T_OUT, world1(), hr1()), rules).changes[0]?.matched.some(m => m.part === 'cluster-wide' && m.name === 'flux'), 'S1: otherChanges reports the apps root as cluster-wide flux');
+    ok([T_IN, T_OUT].every(r => v1(r, facts1(['kubernetes/main/flux/apps.yaml'])).blockers.some(b => /cluster-wide flux/.test(b))), 'S1: kubernetes/main/flux/apps.yaml, which defines cluster-apps, is cluster-wide flux (already)');
+    ok(v1(T_IN, facts1(['kubernetes/main/apps/network/traefik-forward-auth/app/x.yaml'])).settled && v1(T_IN, facts1(['kubernetes/main/apps/networking/namespace.yaml'])).settled, 'S1: a sibling app directory, or another namespace directory sharing a prefix, does not reach traefik');
+    const nsApplier = v1(T_IN, facts1(null, { 'ns-apps': { applied: `main@sha1:${'0'.repeat(40)}` } }));
+    ok(!nsApplier.settled && nsApplier.blockers.some(b => /^F2 the target is not settled: Kustomization network\/ns-apps \(applies the target\): has not applied dddddddd/.test(b)) && v1(T_OUT, facts1(null, { 'ns-apps': { applied: `main@sha1:${'0'.repeat(40)}` } })).settled, 'S1: an applying Kustomization that has not applied the revision holds its targets (F2), not others', nsApplier.blockers.join(' | '));
+    const apFail = v1(T_IN, facts1(null, { 'ns-apps': { conditions: [{ type: 'Ready', status: 'False', reason: 'BuildFailed' }, { type: 'Reconciling', status: 'True', reason: 'ProgressingWithRetry' }] } }));
+    ok(!apFail.settled && apFail.blockers.some(b => /network\/ns-apps \(applies the target\): NotReady \(BuildFailed\), in Flux's retry loop/.test(b)), 'S1: a failing applier holds its targets: it has not applied the revision and no baseline gate watches it');
+    const apCa = v1(T_OUT, facts1(null, { 'cluster-apps': { conditions: [{ type: 'Ready', status: 'Unknown', reason: 'Progressing' }] } }));
+    ok(!apCa.settled && apCa.blockers.some(b => /flux-system\/cluster-apps \(applies the target\): Ready Unknown/.test(b)) && apCa.blockers.some(b => /^F3 .*flux: Kustomization flux-system\/cluster-apps/.test(b)), 'S1: cluster-apps in flight holds every target, through F2 (applier) and F3 (the flux part now includes the apps root)', apCa.blockers.join(' | '));
+    const miss = M.settleScope(T_IN, { items: world1().items.filter(k => k.metadata.name !== 'ns-apps') }, hr1());
+    ok(miss.missing.includes('network/ns-apps') && M.settleVerdict(facts1(null), miss, rules).blockers.some(b => /^F2 Kustomization network\/ns-apps in the target's dependsOn chain or applying it does not exist$/.test(b)), 'S1: an applier named by the labels that does not exist fails closed');
+
+    // S2: suspended in the target's own scope, its chain or its appliers blocks; elsewhere not
+    for (const [name, over, re] of [
+      ['its own Kustomization', { traefik: { spec: { suspend: true } } }, /^F2 Kustomization network\/traefik-external is suspended: a lane merge to the target would not apply until someone resumes it$/],
+      ['its applier', { 'ns-apps': { spec: { suspend: true } } }, /^F2 Kustomization network\/ns-apps is suspended: a lane merge/],
+    ]) { const v = v1(T_IN, facts1(null, over)); ok(!v.settled && v.blockers.some(b => re.test(b)), `S2: a suspended ${name} blocks: a merge would not apply`, v.blockers.join(' | ')); }
+    const vHr = v1(T_IN, facts1(null, {}, { traefikHr: { suspend: true } }));
+    ok(!vHr.settled && vHr.blockers.some(b => /^F2 HelmRelease network\/traefik is suspended: a lane merge to the target would not apply/.test(b)), 'S2: a suspended HelmRelease of the target blocks', vHr.blockers.join(' | '));
+    ok(v1(T_IN, facts1(null, { off: { spec: { suspend: true } } })).settled, 'S2: a suspended object elsewhere does not hold the target');
+    const chainOff = { items: [...world1().items.map(k => k.metadata.name === 'plex-hw-canary' ? { ...k, spec: { ...k.spec, dependsOn: [{ name: 'off', namespace: 'kube-system' }] } } : k.metadata.name === 'off' ? { ...k, spec: { ...k.spec, suspend: true } } : k)] };
+    const vco = M.settleVerdict({ ...facts1(null), ks: chainOff }, M.settleScope(T_OUT, chainOff, hr1()), rules);
+    ok(!vco.settled && vco.blockers.some(b => /^F2 Kustomization kube-system\/off is suspended/.test(b)), "S2: a suspended Kustomization in the target's dependsOn chain blocks", vco.blockers.join(' | '));
+    const stuck = { items: world1().items.map(k => k.metadata.name === 'cilium' ? { ...k, spec: { ...k.spec, dependsOn: [{ name: 'off', namespace: 'kube-system' }] }, status: { ...k.status, conditions: [{ type: 'Ready', status: 'False', reason: 'DependencyNotReady' }] } } : k.metadata.name === 'off' ? { ...k, spec: { ...k.spec, suspend: true } } : k) };
+    const vst = M.settleVerdict({ ...facts1(null), ks: stuck }, M.settleScope(T_OUT, stuck, hr1()), rules);
+    ok(vst.settled && vst.failing_not_settling.some(x => /cilium: Kustomization kube-system\/cilium: NotReady \(DependencyNotReady\), waiting on kube-system\/off, which is suspended/.test(x)), 'S2: a cluster-wide Kustomization stuck behind a suspended dependency is failing, not mid-change: F3 does not hold every candidate on it', JSON.stringify(vst));
+  }
+
+  // R7: the shared lock states, read by the lane's lockStatus (the shepherd reads the same file)
+  const ls = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/change-lock-states.json'), 'utf8'));
+  ok(ls.cases.length >= 20, 'the shared lock fixture has every phase, expired, no expiry, malformed and an offset timestamp');
+  for (const c of ls.cases) {
+    const read = c.read === 'absent' ? { found: false } : c.read === 'unreadable' ? null : { found: true, cm: c.configmap };
+    const s = M.lockStatus(read, Date.parse(ls.now));
+    ok(s.state === c.want_lane, `lock state '${c.id}': the lane reads ${c.want_lane}`, s.state);
+  }
+}
+
 // ── 4. the lock and the merge call against stub kubectl and gh ─────────────────────────
 const tmp = mkdtempSync(join(tmpdir(), 'merge-step-'));
 try {
@@ -224,9 +456,13 @@ const api = argv.find(a => a.startsWith('repos/')) || '';
 if (cmd === 'gh' && /\\/pulls\\/\\d+\\/commits/.test(api)) out(w.prCommits);
 if (cmd === 'gh' && api.includes('contents/.renovate/holds.json5')) { if (w.holdsFail) fail(); out({ content: w.holds }); }
 if (cmd === 'gh' && /\\/issues\\/\\d+\\/comments/.test(api)) out([w.comments || []]);
-if (cmd === 'gh' && /\\/commits\\/[0-9a-f]{40}$/.test(api)) out('');
-if (cmd === 'gh' && /\\/compare\\//.test(api)) { const c = (w.compare || {})[api.split('...')[1].split('?')[0]]; if (!c) fail(); out(c); }
-if (cmd === 'gh' && /\\/commits\\?sha=main&/.test(api)) { const q = new URLSearchParams(api.split('?')[1]); const v = q.get('since') ? (w.since || {})[q.get('path')] ?? [] : (w.newest || {})[q.get('path')]; if (!v) fail(); out(v.map(c => ({ sha: c.sha, commit: { committer: { date: c.at } } }))); }
+if (cmd === 'gh' && /\\/commits\\/[0-9a-f]{40}$/.test(api)) { if (argv.includes('Accept: application/vnd.github.diff')) out(''); const c = (w.commitFiles || {})[api.split('/').pop()]; if (!c) fail(); out(c); }
+if (cmd === 'gh' && /\\/compare\\//.test(api)) { const c = (w.compare || {})[api.split('...')[1].split('?')[0]]; if (!c || c === 'FAIL') fail(); out(c); }
+if (cmd === 'gh' && /\\/commits\\?sha=main&/.test(api)) { const q = new URLSearchParams(api.split('?')[1]); const v = q.get('since') ? (w.since || {})[q.get('path')] ?? [] : (w.newest || {})[q.get('path') ?? '(all)']; if (!v || v === 'FAIL') fail(); out(v.map(c => (c.commit ? c : { sha: c.sha, parents: c.parents ?? [{ sha: 'e'.repeat(40) }], commit: { committer: { date: c.at }, author: { date: c.author_at ?? c.at }, message: c.message ?? '' } }))); }
+// story 551: the settle gate's Flux reads and F4's Jobs (any kubectl get that is not a ConfigMap);
+// w.jobsFromRead = n serves w.jobsLater from the n-th Jobs read on (a Job that starts mid-step)
+if (cmd === 'kubectl' && argv[0] === 'get' && argv[1] === 'jobs' && w.jobsLater && count('.jobs-reads') >= w.jobsFromRead) out(w.jobsLater);
+if (cmd === 'kubectl' && argv[0] === 'get' && argv[1] !== 'configmaps') { const v = (w.flux || {})[argv[1]]; if (!v || v === 'FAIL') fail(); out(v); }
 if (cmd === 'kubectl' && argv[0] === 'get') {
   const name = argv[argv.indexOf('--field-selector') + 1].replace('metadata.name=', '');
   if (w.cmFail) fail();
@@ -252,10 +488,25 @@ fail('stub: unexpected call ' + cmd + ' ' + argv.join(' '));
   const lockNow = () => (existsSync(lockFile) ? JSON.parse(readFileSync(lockFile, 'utf8')) : null);
   const HOLDS = Buffer.from(readFileSync(join(ROOT, '.renovate/holds.json5'))).toString('base64');
   const atMerge = () => (existsSync(`${lockFile}.at-merge`) ? JSON.parse(readFileSync(`${lockFile}.at-merge`, 'utf8')) : null);
+  // story 551: by default Flux has applied main's head (the compare reads identical), its
+  // objects are settled and no Job that can merge is running, so the settle gate and F4
+  // pass and every older case keeps its meaning
+  const K8S0 = { sha: '9'.repeat(40) };
+  const IDENT = { status: 'identical', ahead_by: 0, behind_by: 0, total_commits: 0, commits: [] };
+  const fluxReady = t => [{ type: 'Ready', status: 'True', reason: 'ReconciliationSucceeded', lastTransitionTime: t }];
+  const SRC = { kind: 'GitRepository', name: 'haynes-ops', namespace: 'flux-system' };
+  const settledFlux = (rev = K8S0.sha) => ({
+    'gitrepositories.source.toolkit.fluxcd.io': { items: [{ metadata: { namespace: 'flux-system', name: 'haynes-ops', generation: 1 }, status: { observedGeneration: 1, artifact: { revision: `main@sha1:${rev}` }, conditions: fluxReady('2026-11-01T00:00:00Z') } }] },
+    'kustomizations.kustomize.toolkit.fluxcd.io': { items: [{ metadata: { namespace: 'network', name: 'multus', generation: 2 }, spec: { sourceRef: SRC, path: './kubernetes/main/apps/network/multus/app' }, status: { observedGeneration: 2, lastAttemptedRevision: `main@sha1:${rev}`, lastAppliedRevision: `main@sha1:${rev}`, conditions: fluxReady('2026-11-01T00:00:00Z') } },
+      { metadata: { namespace: 'media', name: 'plex-hw-canary', generation: 1 }, spec: { sourceRef: SRC, path: './kubernetes/main/apps/media/plex-hw-canary/app' }, status: { observedGeneration: 1, lastAttemptedRevision: `main@sha1:${rev}`, lastAppliedRevision: `main@sha1:${rev}`, conditions: fluxReady('2026-11-01T00:00:00Z') } }] },
+    'helmreleases.helm.toolkit.fluxcd.io': { items: [{ metadata: { namespace: 'network', name: 'multus', generation: 4, labels: { 'kustomize.toolkit.fluxcd.io/name': 'multus', 'kustomize.toolkit.fluxcd.io/namespace': 'network' } }, spec: {}, status: { observedGeneration: 4, conditions: fluxReady('2026-11-01T00:00:00Z') } }] },
+    jobs: { items: [] },
+  });
   const world = (w = {}) => {
     for (const f of [logFile, lockFile, mergedFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`, `${lockFile}.writes`]) rmSync(f, { force: true });
     if (w.lock) writeFileSync(lockFile, JSON.stringify(w.lock));
-    writeFileSync(worldFile, JSON.stringify({ view: fx.view, newest: fx.main_newest, compare: fx.compare, prCommits: fx.pr_commits, comments: fx.comments, holds: HOLDS, cms: [], ...w }));
+    for (const f of [`${lockFile}.jobs-reads`]) rmSync(f, { force: true });
+    writeFileSync(worldFile, JSON.stringify({ view: fx.view, newest: fx.main_newest, compare: { ...fx.compare, main: IDENT }, prCommits: fx.pr_commits, comments: fx.comments, holds: HOLDS, cms: [], flux: settledFlux(), ...w }));
   };
   // the read-only runner, as the tick uses it, with the stub binaries on PATH
   const run = (cmd, argv, o = {}) => L.runReadOnly(cmd, argv, { env, ...o });
@@ -418,6 +669,10 @@ const t = M.takeLock({ holder: 'child', purpose: 'exit test', mode: 'live', now:
 if (!t.taken) { console.log('NOT TAKEN ' + t.why); process.exit(9); }`;
   const ex = child(`${prelude}\nprocess.exit(5);`);
   ok(ex.status === 5 && lockNow()?.data.holder === '' && /released on process exit/.test(lockNow()?.data.last_note || ''), 'a process that exits while holding the lock releases it', `${ex.status} ${ex.stdout}${ex.stderr} ${JSON.stringify(lockNow()?.data)}`);
+  // S4: an exit between the merging write and the merge call releases the lock (held.merged
+  // is set immediately before the call, not by beginMerge)
+  const exm = child(`${prelude}\nconst b = M.beginMerge(t.held, { now: Date.now(), env: process.env, leaseSeconds: 14400 });\nif (!b.ok) { console.log('BEGIN FAILED ' + b.why); process.exit(8); }\nprocess.exit(6);`);
+  ok(exm.status === 6 && lockNow()?.data.holder === '' && lockNow().data.phase === 'released' && /released on process exit/.test(lockNow()?.data.last_note || '') && calls().some(c => c.argv[0] === 'replace' && /"phase":"merging"/.test(c.stdin)), 'S4: an exit after the merging write but before the merge call releases the lock (no 4h hold without a call)', `${exm.status} ${exm.stdout}${exm.stderr} ${JSON.stringify(lockNow()?.data)}`);
   const th = child(`${prelude}\nthrow new Error('uncaught');`);
   ok(th.status !== 0 && lockNow()?.data.holder === '', 'an uncaught exception after a take releases the lock', `${th.status} ${JSON.stringify(lockNow()?.data)}`);
   const hm = child(`${prelude}\nM.holdAfterMerge(t.held, { now: Date.now(), env: process.env, leaseSeconds: 14400, merged: { merge_commit: 'f'.repeat(40) } });\nprocess.exit(0);`);
@@ -511,6 +766,107 @@ M.laneMergeStep({ mode: 'live', subject: { pr: 3915, head: '${HEAD}', class: 'no
     const r = cli(args);
     ok(r.status === 2 && /usage: night-merge\.mjs/.test(r.stderr) && r.calls.length === 0, `usage error (${why}): exit 2 before any call`, `${r.status} ${r.stderr}`);
   }
+
+  // ── 6. the settle gate and F4 through the merge step and the hand run (story 551) ─────
+  // A subject with an immediate cluster effect carries its target scope (the tick computes
+  // it). An unapplied commit on main to the target holds it; one to another app does not.
+  const fluxW = settledFlux();
+  const scopeOf = t => M.settleScope({ cluster_effect: 'immediate', targets: [t] }, fluxW['kustomizations.kustomize.toolkit.fluxcd.io'], fluxW['helmreleases.helm.toolkit.fluxcd.io']);
+  const subjT = { ...subject, class: 'cluster-change', scope: scopeOf('kubernetes/main/apps/media/plex-hw-canary') };
+  const C1 = '7'.repeat(40);
+  const unapplied = (files, subj = "fix(container): another actor's merge (#4800)") => ({
+    compare: { ...fx.compare, main: { status: 'ahead', ahead_by: 1, behind_by: 0, total_commits: 1, commits: [{ sha: C1, parents: [{ sha: K8S0.sha }], commit: { committer: { date: '2026-11-11T15:58:00Z' }, author: { date: '2026-11-11T15:58:00Z' }, message: subj }, author: { login: 'renovate[bot]' }, committer: { login: 'web-flow' } }] } },
+    commitFiles: { [C1]: { sha: C1, files: files.map(filename => ({ filename })) } },
+  });
+  const onTarget = unapplied(['kubernetes/main/apps/media/plex-hw-canary/app/helmrelease.yaml']);
+  const offTarget = unapplied(['kubernetes/main/apps/media/sonarr/app/helmrelease.yaml']);
+  const onMultus = unapplied(['kubernetes/main/apps/network/multus/app/helmrelease.yaml'], 'feat(container): update image ghcr.io/angelnu/cni-plugins to v1.10.0 (#4760)');
+  world(onTarget);
+  const g1 = M.laneMergeStep({ ...base, mode: 'dryrun', subject: subjT, run });
+  ok(g1.verdict.verdict === 'refused' && g1.verdict.pr_ready === true && has(g1.verdict.lane_refusals, /^settle gate: F1 main has a change Flux has not applied that reaches target kubernetes\/main\/apps\/media\/plex-hw-canary, chain media\/plex-hw-canary: 77777777 fix\(container\): another actor's merge \(#4800\)$/) && g1.settle?.settled === false && lockNow().data.holder === '', "dry-run step: an unapplied change to the subject's target is a lane refusal; the PR stays ready; the lock is released", JSON.stringify(g1.verdict.lane_refusals));
+  world(offTarget);
+  const g2 = M.laneMergeStep({ ...base, mode: 'dryrun', subject: subjT, run });
+  ok(g2.settle?.settled === true && !g2.verdict.lane_refusals.some(x => /settle gate/.test(x)), 'dry-run step: an unapplied change to another app does not hold it (facts, not a clock)', JSON.stringify(g2.verdict.lane_refusals));
+  world(onMultus);
+  const g2m = M.laneMergeStep({ ...base, mode: 'dryrun', subject: subjT, run });
+  ok(has(g2m.verdict.lane_refusals, /^settle gate: F1 .*reaches cluster-wide multus: 77777777 feat\(container\): update image ghcr\.io\/angelnu\/cni-plugins/), 'dry-run step: an unapplied change to a cluster-wide part (multus) holds every target, and names it', JSON.stringify(g2m.verdict.lane_refusals));
+  world(onTarget);
+  const g2n = M.laneMergeStep({ ...base, mode: 'dryrun', subject, run });
+  ok(g2n.settle?.applicable === false && !g2n.verdict.lane_refusals.some(x => /settle gate/.test(x)), 'a subject with no immediate cluster effect: the settle gate does not apply');
+  // live: held at the step read
+  world(onTarget);
+  const g3 = M.laneMergeStep({ ...live, subject: subjT, liveClasses: ['cluster-change'], run });
+  ok(g3.verdict.verdict === 'refused' && has(g3.verdict.lane_refusals, /^settle gate: F1 /) && noMerge() && lockNow().data.holder === '', 'live: unsettled at the step: refused, no merge call, lock released', JSON.stringify(g3.verdict.lane_refusals));
+  world();
+  const g3c = M.laneMergeStep({ ...live, subject: subjT, liveClasses: ['cluster-change'], run });
+  ok(g3c.verdict.verdict === 'merged', 'live: the same subject on settled facts merges (the facts are what held it)', JSON.stringify(g3c.verdict.lane_refusals));
+  // live: settled at the step, then another actor's change reaches main before the call
+  world();
+  let cmpReads = 0;
+  const lateMerge = (cmd, argv, o) => {
+    const api = argv.find(a => String(a).startsWith('repos/')) || '';
+    if (cmd === 'gh' && /\/compare\/[0-9a-f]{40}\.\.\.main/.test(api) && ++cmpReads >= 2) return JSON.stringify(onTarget.compare.main);
+    if (cmd === 'gh' && api.endsWith(`/commits/${C1}`)) return JSON.stringify(onTarget.commitFiles[C1]);
+    return run(cmd, argv, o);
+  };
+  const g4 = M.laneMergeStep({ ...live, subject: subjT, liveClasses: ['cluster-change'], run: lateMerge });
+  ok(g4.verdict.verdict === 'refused' && cmpReads === 2 && has(g4.verdict.lane_refusals, /^settle gate at the merge call: F1 .*plex-hw-canary/) && g4.verdict.settle_at_merge_call?.settled === false && noMerge() && lockNow().data.holder === '', "live: a change to the target that reaches main between the step's read and the call is caught at the call", JSON.stringify(g4.verdict.lane_refusals));
+  // R5: at the call the fact reads come first, then the freshness checks
+  world();
+  let cmpAt = null;
+  const slowFacts = (cmd, argv, o) => { if (cmd === 'gh' && /\/compare\/[0-9a-f]{40}\.\.\.main/.test(argv.find(a => String(a).startsWith('repos/')) || '')) cmpAt = (cmpAt ?? 0) + 1; return run(cmd, argv, o); };
+  let tick = NOW;
+  const g5 = M.laneMergeStep({ ...live, subject: subjT, liveClasses: ['cluster-change'], run: (c, a, o) => { const r = slowFacts(c, a, o); if (cmpAt === 2) tick = NOW + 301e3; return r; }, clock: () => tick });
+  ok(g5.verdict.verdict === 'refused' && has(g5.verdict.lane_refusals, /^the tick's gates are 301s old at the merge call, over 300s$/) && noMerge(), 'R5: a fact re-read that takes the gates past their age limit is caught by the freshness check after it', JSON.stringify(g5.verdict.lane_refusals));
+  {
+    const lm = readFileSync(join(RES, 'night-merge.mjs'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
+    const body = lm.slice(lm.indexOf('export function laneMergeStep('), lm.indexOf('export function parseCli('));
+    const i = k => body.indexOf(k);
+    const live0 = i("if (mode !== 'live') {");
+    const s1 = body.indexOf('settleCheck(', live0), fresh = i('const left = Date.parse(held.data.expires_at) - t;'), pz = i("pauseRefusal(readPause(rules, run), 'just before the merge call')"), bm = i('const begin = beginMerge('), f4 = body.indexOf('readMergingJobs(run)', bm), cm = i('callMerge({');
+    ok(i('settleCheck({ rules, run, scope: subject.scope ?? null });\n    laneRef.push') > 0 && i('settleCheck({ rules, run, scope: subject.scope ?? null });\n    laneRef.push') < live0 && i('const jobs0 = readMergingJobs(run);') < live0, 'night-merge.mjs: the step reads the settle facts and F4 before its dry-run return');
+    ok(s1 > live0 && s1 < fresh && fresh < pz && pz < bm && bm < f4 && f4 < cm, 'R5 and R1: at the call, the fact reads, then the freshness checks, then the pause, the merging write, F4, and the merge call', JSON.stringify({ s1, fresh, pz, bm, f4, cm }));
+  }
+  // F4: a shepherd Job running at the step read
+  const shepJob = { metadata: { name: 'upgrade-shepherd-29907120', labels: { 'app.kubernetes.io/controller': 'upgrade-shepherd' }, ownerReferences: [{ kind: 'CronJob', name: 'upgrade-shepherd' }] }, status: { active: 1 } };
+  world({ flux: { ...settledFlux(), jobs: { items: [shepJob] } } });
+  const j1 = M.laneMergeStep({ ...base, mode: 'dryrun', subject, run });
+  ok(has(j1.verdict.lane_refusals, /^F4 a Job that can merge is running: upgrade-shepherd-29907120 \(the shepherd\)$/) && j1.shepherd_jobs?.active.length === 1, 'dry-run step: a running shepherd Job is recorded as an F4 refusal', JSON.stringify(j1.verdict.lane_refusals));
+  world({ flux: { ...settledFlux(), jobs: { items: [shepJob] } } });
+  const j2 = M.laneMergeStep({ ...live, run });
+  ok(j2.verdict.verdict === 'refused' && noMerge() && !calls().some(c => c.argv[0] === 'replace' && /"phase":"merging"/.test(c.stdin)) && lockNow().data.holder === '', 'live: a shepherd Job running at the step read: refused before the merging write, no merge', JSON.stringify(j2.verdict.lane_refusals));
+  world({ flux: { ...settledFlux(), jobs: 'FAIL' } });
+  ok(has(M.laneMergeStep({ ...live, run }).verdict.lane_refusals, /^F4 unreadable: Jobs in upgrade-agent/) && noMerge(), 'live: unreadable Jobs fail closed');
+  // THE HANDSHAKE (R1): the shepherd's Job starts after the step read, before the merging
+  // write. The lane writes merging, then reads the Jobs, sees it, and yields; the shepherd,
+  // reading the lock after its Job exists, would have seen merging and stood aside.
+  world({ jobsLater: { items: [shepJob] }, jobsFromRead: 2 });
+  const j3 = M.laneMergeStep({ ...live, run });
+  const mergingWrite = calls().findIndex(c => c.cmd === 'kubectl' && c.argv[0] === 'replace' && /"phase":"merging"/.test(c.stdin));
+  const jobsAfter = calls().findIndex((c, k) => k > mergingWrite && c.cmd === 'kubectl' && c.argv[1] === 'jobs');
+  ok(j3.verdict.verdict === 'refused' && j3.verdict.yielded === 'yielded-to-shepherd' && has(j3.verdict.lane_refusals, /^F4 at the merge call: a Job that can merge is running: upgrade-shepherd-29907120 \(the shepherd\); yielded-to-shepherd, the next tick tries again$/) && noMerge(), 'R1: a shepherd Job that starts after the step read is seen after the merging write: the lane yields, no merge call', JSON.stringify(j3.verdict.lane_refusals));
+  ok(mergingWrite >= 0 && jobsAfter > mergingWrite, 'R1: the order: the merging write, then the Jobs read', `${mergingWrite} ${jobsAfter}`);
+  ok(lockNow().data.holder === '' && lockNow().data.phase === 'released' && lockNow().data.last_note === 'yielded-to-shepherd' && j3.lock.outcome === 'taken-and-released', 'R1: after yielding, the lock is released with the note yielded-to-shepherd (no merge was made, no 4h hold)', JSON.stringify(lockNow()?.data));
+  // what the shepherd reads in that window: the merging phase, which is a stand-aside
+  // (run-shepherd.sh merge_gate_decide; shepherd-stand-aside-selftest.sh pins it)
+  ok(atMerge() === null, 'R1: and no merge call was made, so nothing recorded a lock at a merge');
+  // the hand run: the settle gate and F4 at its start and again just before a --merge call
+  const h1 = cli(CHECK, onTarget);
+  ok(h1.status === 0 && /settle gate: not applicable \(no immediate cluster effect/.test(h1.stdout), "--check-only on PR 3915 (no cluster effect): the settle gate does not apply", h1.stdout);
+  world({ flux: { ...settledFlux(), jobs: { items: [shepJob] } } });
+  const h2 = cli(CHECK, { flux: { ...settledFlux(), jobs: { items: [shepJob] } } });
+  ok(h2.status === 1 && /refused: F4: a Job that can merge is running: upgrade-shepherd-29907120 \(the shepherd\)/.test(h2.stdout) && h2.writes.length === 0, '--check-only while the shepherd runs: REFUSED (F4), exit 1, nothing written', h2.stdout);
+  world();
+  let hJobs = 0;
+  const handLate = (cmd, argv, o) => { if (cmd === 'kubectl' && argv[1] === 'jobs' && ++hJobs >= 2) return JSON.stringify({ items: [shepJob] }); return run(cmd, argv, o); };
+  const h3 = M.handRun({ pr: 3915, head: HEAD, merge: true }, { rules, run: handLate, env, now: NOW });
+  ok(h3.verdict === 'refused' && hJobs === 2 && has(h3.refusals, /^F4 just before the merge call: a Job that can merge is running/) && !calls().some(c => c.cmd === 'gh' && c.argv[1] === 'merge'), 'hand --merge: a shepherd Job that starts after the hand run began is caught just before the call; no merge', JSON.stringify(h3.refusals));
+  world({ lock: lockOf({ holder: 'upgrade-night/x/1', phase: 'merged-awaiting-verification', expires_at: '2026-11-11T19:00:00Z' }) });
+  const h5 = M.handRun({ pr: 3915, head: HEAD, merge: true }, { rules, run, env, now: NOW });
+  ok(h5.verdict === 'refused' && has(h5.refusals, /^the change lock is held by upgrade-night\/x\/1 \(merged-awaiting-verification\) until 2026-11-11T19:00:00Z$/) && !calls().some(c => c.cmd === 'gh' && c.argv[1] === 'merge') && !calls().some(c => ['create', 'replace'].includes(c.argv[0])), 'hand --merge while the lane holds the lock (post-merge hold): refused, no merge, the lock untouched (story 551 item 6)', JSON.stringify(h5.refusals));
+  world({ lock: lockOf({ holder: 'upgrade-night/x/2', phase: 'taken', expires_at: '2026-11-11T16:08:00Z' }) });
+  const h6 = M.handRun({ pr: 3915, head: HEAD, merge: false, checkOnly: true }, { rules, run, env, now: NOW });
+  ok(h6.verdict === 'refused' && has(h6.refusals, /held by upgrade-night\/x\/2 \(taken\)/), "a hand run still refuses a tick's taken lock (the lane's lockStatus is unchanged)");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

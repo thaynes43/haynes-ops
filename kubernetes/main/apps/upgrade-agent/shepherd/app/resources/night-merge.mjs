@@ -45,8 +45,18 @@
 // prints the verdict and changes nothing; --merge merges once with the caller's own gh
 // identity when the verdict is clean, and needs the owner's yes. It runs the classifier
 // (the PR must be LANE-A) and the same preflight, reads the lock and the pause and
-// refuses when either is set, but does not take the lock (story 551). It skips the merge
-// window, the class allowlist and the tick's gates. --merge refuses UPGRADE_NIGHT_NOW.
+// refuses when either is set, but cannot take the lock (a session cannot write ConfigMaps in
+// upgrade-agent). It runs the settle gate and F4 (story 551) at its start and again before
+// a --merge call. It skips the merge window, the class allowlist and the tick's other
+// gates. --merge refuses UPGRADE_NIGHT_NOW.
+//
+// THE SETTLE GATE (story 551; facts, not clocks: Tom's ruling Q-548-04). settleVerdict():
+// for a candidate's target, F1 nothing on main that Flux has not applied reaches it, its
+// dependsOn chain or a cluster-wide part; F2 it has applied the source revision and is
+// settled; F3 no cluster-wide part is mid-change. F4: no shepherd Job that can merge is
+// running. Read at the tick's start, in the merge step, just before a live merge call
+// (after the merging write, for F4), and by the hand run. otherChanges() is the helper the
+// verifier (stories 553 and 753) uses for "another change landed".
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
@@ -404,13 +414,16 @@ export function releaseLock(held, { now, env, note }) {
 
 // BEFORE the merge call: the lock moves to phase "merging" with the post-merge lease, so a
 // kill, a timeout or a lost reply during the call cannot leave only the short lease
-// behind. If this write fails the lane does not merge.
+// behind. If this write fails the lane does not merge. held.merged (the exit handler then
+// keeps the lock) is set by the caller immediately before the call, not here: an exit
+// between this write and the call releases the lock (story 551, S4). A SIGKILL there
+// leaves the merging phase to its lease: no handler runs.
 export function beginMerge(held, { now, env, leaseSeconds }) {
   if (!held?.rv) return { ok: false, why: 'the change lock has no known resourceVersion; not merging on it' };
   const data = { ...held.data, phase: 'merging', expires_at: iso(now + leaseSeconds * 1000), lease_seconds: String(leaseSeconds), merge_started_at: iso(now) };
   const w = writeLock('replace', lockManifest(data, held.rv), env || held.env);
   if (!w.ok || !w.rv) return { ok: false, why: `the change lock could not be moved to phase merging (${w.ok ? 'no resourceVersion came back' : w.detail}); not merging` };
-  held.rv = w.rv; held.data = data; held.merged = true; // from here the exit handler keeps the lock
+  held.rv = w.rv; held.data = data;
   return { ok: true };
 }
 
@@ -424,6 +437,356 @@ export function holdAfterMerge(held, { now, env, leaseSeconds, merged, phase = '
   const w = writeLock('replace', lockManifest(data, held.rv), env || held.env);
   if (w.ok) { held.rv = w.rv; held.data = data; }
   return { held: true, expires_at: w.ok ? data.expires_at : held.data.expires_at, why: w.ok ? null : `the post-merge hold was not written (${w.detail}); the lock keeps its first lease (${held.data.expires_at})` };
+}
+
+// ── the settle gate (story 551, R6; Tom's ruling Q-548-04: facts, not clocks) ──────────
+// Story: https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/551
+// No actor needs another actor's schedule: every check reads the state at the moment the
+// lane acts. For a candidate with target T (its Flux scope as the baseline gate has it:
+// L.kustomizationsFor + L.fluxScope, i.e. its Kustomizations, their dependsOn chain and
+// their namespaces) and the cluster-wide parts (cluster_wide_targets in upgrade-rules.json):
+//   F1  nothing unapplied on main touches T: between Flux's source revision and main's head
+//       no commit changes T's paths, a path of its chain, or a cluster-wide part;
+//   F2  T has applied the source's revision and is settled: each Kustomization of its chain
+//       has applied (not only attempted) the revision, is Ready at its generation and not
+//       reconciling; the HelmReleases of its namespaces are settled;
+//   F3  no Flux object of a cluster-wide part (nor the source) is mid-change.
+// An object in Flux's retry loop, or waiting on a failing dependency, is failing, not
+// settling: the baseline gate judges it by scope. F4 (no shepherd Job that can merge is
+// running) is merge-time only, below. Every read fails closed and names what failed.
+const NAME = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+export function settleConfig(rules) {
+  const c = rules?.night?.settle_gate || {};
+  const s = c.flux_source || {};
+  const ok = s.kind === 'GitRepository' && NAME.test(s.namespace || '') && NAME.test(s.name || '')
+    && Number.isInteger(c.max_unapplied_commits) && c.max_unapplied_commits >= 1 && c.max_unapplied_commits <= 100;
+  return { ok, source: { namespace: s.namespace, name: s.name }, max_unapplied_commits: c.max_unapplied_commits,
+    why: ok ? null : 'night.settle_gate in upgrade-rules.json is invalid (flux_source a GitRepository with a namespace and a name; max_unapplied_commits an integer from 1 to 100)' };
+}
+// Flux writes a GitRepository revision as <branch>@sha1:<40 hex>.
+export const revisionSha = rev => { const m = /^[^@\s]+@sha1:([0-9a-f]{40})$/.exec(String(rev || '')); return m ? m[1] : null; };
+// A commit's time as GitHub stamps a squash merge: its committer date. NaN when unreadable.
+export const commitTime = c => Date.parse(c?.commit?.committer?.date || '');
+const subjectOf = c => String(c?.commit?.message || '').split('\n')[0].slice(0, 100);
+const dirOf = k => String(k?.spec?.path || '').replace(/^\.\//, '').replace(/\/$/, '');
+const under = (p, d) => !!d && (p === d || p.startsWith(d + '/'));
+
+// The cluster-wide parts and their Flux objects: the Kustomizations whose spec.path falls
+// under a part's globs, and the HelmReleases those Kustomizations applied (Flux labels).
+export function clusterWideParts(rules, ks, hr) {
+  return (rules.cluster_wide_targets || []).map(t => {
+    const mine = (ks?.items || []).filter(k => dirOf(k) && t.globs.some(g => L.matchGlob(`${dirOf(k)}/x`, g)));
+    const ids = new Set(mine.map(L.ksId));
+    const hrs = (hr?.items || []).filter(h => { const l = h.metadata?.labels || {}; return ids.has(`${l['kustomize.toolkit.fluxcd.io/namespace'] || h.metadata?.namespace}/${l['kustomize.toolkit.fluxcd.io/name']}`); });
+    return { id: t.id, globs: t.globs, ks: [...ids], hr: hrs.map(h => `${h.metadata.namespace}/${h.metadata.name}`) };
+  });
+}
+
+// The settle scope of a lane-A record: null when it has no immediate cluster effect (it
+// changes nothing in the cluster now), { unreadable } when the Flux objects cannot be read.
+export function settleScope(rec, ks, hr) {
+  if (rec?.cluster_effect !== 'immediate') return null;
+  if (!ks || !hr) return { unreadable: 'kustomizations or helmreleases (the target scope)' };
+  const targets = [...new Set(rec.targets || [])];
+  const mine = targets.flatMap(t => L.kustomizationsFor(t, ks));
+  const sc = L.fluxScope(mine, ks, hr);
+  const byId = new Map((ks.items || []).map(k => [L.ksId(k), k]));
+  // the Kustomizations that apply T's own (their Flux labels), up to the root: 183 of 186
+  // are applied by flux-system/cluster-apps, which is in no chain (story 551, S1)
+  const appliers = [], missing = sc.chain.filter(id => !byId.has(id));
+  const queue = mine.map(L.ksId);
+  for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+    const l = byId.get(id)?.metadata?.labels || {};
+    if (!l['kustomize.toolkit.fluxcd.io/name']) continue;
+    const up = `${l['kustomize.toolkit.fluxcd.io/namespace'] || byId.get(id).metadata.namespace}/${l['kustomize.toolkit.fluxcd.io/name']}`;
+    if (appliers.includes(up) || up === id) continue;
+    appliers.push(up);
+    if (!byId.has(up)) missing.push(up); else queue.push(up);
+  }
+  const ownIds = new Set(mine.map(L.ksId));
+  const ownHr = (hr.items || []).filter(h => { const l = h.metadata?.labels || {}; return ownIds.has(`${l['kustomize.toolkit.fluxcd.io/namespace'] || h.metadata?.namespace}/${l['kustomize.toolkit.fluxcd.io/name']}`); }).map(h => `${h.metadata.namespace}/${h.metadata.name}`);
+  return { targets, own: [...ownIds], own_hr: ownHr, chain: sc.chain, appliers, namespaces: sc.namespaces,
+    chain_paths: sc.chain.map(id => ({ id, path: dirOf(byId.get(id)) })).filter(x => x.path), missing: [...new Set(missing)] };
+}
+
+// Which parts of a scope one changed path reaches: T's paths, its chain, a cluster-wide
+// part, directly or through a shared component that includes it (R8, componentReach).
+export function scopeHits(path, scope, rules) {
+  const hits = [];
+  // a file directly under kubernetes/main/apps/<dir>/ (namespace.yaml, the namespace's
+  // kustomization.yaml listing its apps) reaches every target and chain path in <dir>
+  // (story 551, S1); a file directly under kubernetes/main/apps/ is the flux part's
+  // (cluster_wide_targets), as is kubernetes/main/flux/apps.yaml, which defines cluster-apps
+  const nsFile = /^(kubernetes\/main\/apps\/[^/]+)\/[^/]+$/.exec(path);
+  if (nsFile) {
+    for (const t of scope?.targets || []) if (under(t, nsFile[1])) hits.push({ path, part: 'namespace', name: `${nsFile[1]} (for target ${t})` });
+    for (const c of scope?.chain_paths || []) if (under(c.path, nsFile[1])) hits.push({ path, part: 'namespace', name: `${nsFile[1]} (for chain ${c.id})` });
+  }
+  const reach = [path, ...L.componentReach([path], rules).via.map(v => v.consumer)];
+  for (const p of reach) {
+    const via = p === path ? '' : ` (via ${p})`;
+    const isDir = p !== path;
+    const touches = d => under(p, d) || (isDir && under(d, p));
+    for (const t of scope?.targets || []) if (touches(t)) hits.push({ path, part: 'target', name: t + via });
+    for (const c of scope?.chain_paths || []) if (touches(c.path)) hits.push({ path, part: 'chain', name: c.id + via });
+  }
+  for (const t of rules.cluster_wide_targets || []) if (L.clusterWide([path, ...reach.slice(1).map(c => `${c}/kustomization.yaml`)], { cluster_wide_targets: [t] }).length) hits.push({ path, part: 'cluster-wide', name: t.id });
+  return hits;
+}
+
+// READ-ONLY: the commits from base (exclusive) to head (inclusive), each with its files.
+// One compare, then one commit read per commit. complete false (and why) when the range
+// cannot be read in full: a failed read, more than max commits, a diverged base, a commit
+// with 300 or more files (GitHub's first page).
+export function readCommitRange(repo, base, head, run, max = 50) {
+  const out = { base, head, status: null, commits: [], complete: false, why: null };
+  if (!SHA.test(base || '') || !/^([0-9a-f]{40}|main)$/.test(head || '')) { out.why = `unreadable: the range ${short(base)}...${head}`; return out; }
+  const cmp = parse(tryRun(run, 'gh', ['api', `repos/${repo}/compare/${base}...${head}?per_page=100`]));
+  if (!cmp || typeof cmp !== 'object' || !Number.isInteger(cmp.ahead_by)) { out.why = `unreadable: compare ${short(base)}...${head}`; return out; }
+  out.status = cmp.status || null;
+  if (cmp.behind_by > 0 || !['identical', 'ahead'].includes(cmp.status)) { out.why = `compare ${short(base)}...${head} reads ${cmp.status} (behind by ${cmp.behind_by}): the base is not on the head's history`; return out; }
+  const list = Array.isArray(cmp.commits) ? cmp.commits : null;
+  if (!list) { out.why = `unreadable: the commits of compare ${short(base)}...${head}`; return out; }
+  if (cmp.ahead_by > max || (Number.isInteger(cmp.total_commits) && cmp.total_commits !== list.length) || list.length !== cmp.ahead_by) { out.why = `${cmp.ahead_by} commits in ${short(base)}...${head}, more than one read can attribute (limit ${max}, listed ${list.length})`; return out; }
+  for (const c of list) {
+    const full = parse(tryRun(run, 'gh', ['api', `repos/${repo}/commits/${c.sha}`]));
+    const files = Array.isArray(full?.files) ? full.files : null;
+    if (!SHA.test(c?.sha || '') || !files) { out.why = `unreadable: the files of commit ${short(c?.sha)}`; return out; }
+    if (files.length >= 300) { out.why = `commit ${short(c.sha)} lists ${files.length} files, GitHub's first page: cannot tell which it changed`; return out; }
+    out.commits.push({ sha: c.sha, parents: (c.parents || []).map(p => p.sha), at: Number.isFinite(commitTime(c)) ? iso(commitTime(c)) : null, subject: subjectOf(c),
+      author: c.author?.login ?? null, committer: c.committer?.login ?? null, pr: (/\(#(\d+)\)\s*$/.exec(subjectOf(c)) || [])[1] ? Number(/\(#(\d+)\)\s*$/.exec(subjectOf(c))[1]) : null,
+      files: [...new Set(files.flatMap(f => [f.filename, f.previous_filename].filter(Boolean)))] });
+  }
+  out.complete = true;
+  return out;
+}
+
+// PURE, for the verifier (stories 553 and 753): the other changes on main between a range's
+// base and head that reach the scope (T's paths, its chain, a cluster-wide part). exclude =
+// SHAs that are not "other" (the verifier's own merge). Fails closed: an incomplete range
+// gives complete false and no claim that nothing else changed.
+export function otherChanges(range, scope, rules, { exclude = [] } = {}) {
+  if (!range?.complete) return { complete: false, why: range?.why || 'unreadable: the commit range', changes: [] };
+  const changes = [];
+  for (const c of range.commits) {
+    if (exclude.includes(c.sha)) continue;
+    const matched = c.files.flatMap(p => scopeHits(p, scope, rules));
+    if (matched.length) changes.push({ sha: c.sha, at: c.at, subject: c.subject, pr: c.pr, author: c.author, committer: c.committer, matched });
+  }
+  return { complete: true, why: null, base: range.base, head: range.head, changes };
+}
+
+// PURE. One Flux object: { state: 'settled' | 'progressing' | 'failing', why }, from its
+// conditions and generations only (no clock). ctx.revision = the source revision, for a
+// Kustomization of that source; ctx.dep(id) = the state of a dependency. 'failing' is
+// broken, not settling (the baseline gate judges it by scope): Flux's retry loop, Stalled,
+// a failure at the current revision and generation, or waiting on a failing dependency.
+export function fluxSettleState(o, ctx = {}) {
+  if (o?.spec?.suspend === true) return { state: 'settled', suspended: true, why: 'suspended' };
+  const cs = o?.status?.conditions;
+  if (!Array.isArray(cs)) return { state: 'progressing', why: 'no status conditions' };
+  const ready = cs.find(c => c?.type === 'Ready');
+  if (!ready) return { state: 'progressing', why: 'no Ready condition yet' };
+  const rec = cs.find(c => c?.type === 'Reconciling' && c.status === 'True') || null;
+  const stalled = cs.some(c => c?.type === 'Stalled' && c.status === 'True');
+  const gen = o?.metadata?.generation, og = o?.status?.observedGeneration;
+  const gens = Number.isInteger(gen) && Number.isInteger(og);
+  if (ready.status === 'Unknown') return { state: 'progressing', why: `Ready Unknown (${ready.reason || 'no reason'})` };
+  if (ready.status === 'True') {
+    if (rec) return { state: 'progressing', why: `Reconciling (${rec.reason || 'no reason'})` };
+    if (!gens) return { state: 'progressing', why: `generation unreadable (generation ${gen ?? 'none'}, observed ${og ?? 'none'})` };
+    if (og < gen) return { state: 'progressing', why: `generation ${gen} not observed yet (observed ${og})` };
+    return { state: 'settled', why: null };
+  }
+  if (ready.status === 'False') {
+    const r = ready.reason || 'no reason';
+    // the retry loop rewrites lastTransitionTime on every retry (dev-env-h7-metadata-audit,
+    // 2026-11-11): a failure, not a change in flight
+    if (rec?.reason === 'ProgressingWithRetry') return { state: 'failing', why: `NotReady (${r}), in Flux's retry loop` };
+    if (rec) return { state: 'progressing', why: `NotReady and Reconciling (${rec.reason || 'no reason'})` };
+    if (stalled) return { state: 'failing', why: `NotReady (${r}), Stalled` };
+    if (r === 'DependencyNotReady' && typeof ctx.dep === 'function') {
+      const deps = (o?.spec?.dependsOn || []).map(d => `${d.namespace || o.metadata?.namespace}/${d.name}`);
+      const st = deps.map(id => ({ id, s: ctx.dep(id) }));
+      const bad = st.find(x => x.s?.state === 'failing');
+      if (bad) return { state: 'failing', why: `NotReady (DependencyNotReady), waiting on ${bad.id}, which is failing` };
+      // stuck, not mid-change: nothing moves until someone resumes the dependency (S2)
+      const off = st.find(x => x.s?.suspended);
+      if (off) return { state: 'failing', why: `NotReady (DependencyNotReady), waiting on ${off.id}, which is suspended` };
+      const gone = st.find(x => !x.s);
+      return { state: 'progressing', why: gone ? `NotReady (DependencyNotReady), waiting on ${gone.id}, which does not exist` : `NotReady (DependencyNotReady), waiting on ${st.filter(x => x.s.state !== 'settled').map(x => x.id).join(', ') || 'a dependency that just settled'}` };
+    }
+    if (!gens) return { state: 'progressing', why: `NotReady (${r}), generation unreadable` };
+    if (og < gen) return { state: 'progressing', why: `NotReady (${r}), generation ${gen} not observed yet` };
+    if (ctx.revision && o?.status?.lastAttemptedRevision !== ctx.revision) return { state: 'progressing', why: `NotReady (${r}), has not attempted ${short(revisionSha(ctx.revision))} yet` };
+    return { state: 'failing', why: `NotReady (${r}) at its current generation${ctx.revision ? ' and revision' : ''}` };
+  }
+  return { state: 'progressing', why: `Ready ${ready.status ?? 'without a status'}` };
+}
+
+// The state of every Kustomization (with its dependencies resolved, cycle-safe) and
+// HelmRelease, and of the source.
+export function fluxStates(f) {
+  const cfg = f?.cfg || {};
+  const rev = f?.source?.status?.artifact?.revision || null;
+  const byId = new Map((f?.ks?.items || []).map(k => [L.ksId(k), k]));
+  const memo = new Map();
+  const ofSource = k => { const r = k?.spec?.sourceRef || {}; return r.kind === 'GitRepository' && r.name === cfg.source?.name && (r.namespace || k.metadata?.namespace) === cfg.source?.namespace; };
+  const ksState = (id, seen = new Set()) => {
+    if (memo.has(id)) return memo.get(id);
+    const k = byId.get(id);
+    if (!k) return null;
+    if (seen.has(id)) return { state: 'progressing', why: 'a dependsOn cycle' };
+    seen.add(id);
+    const s = fluxSettleState(k, { revision: ofSource(k) ? rev : null, dep: d => ksState(d, seen) });
+    memo.set(id, s);
+    return s;
+  };
+  for (const id of byId.keys()) ksState(id);
+  const hrState = new Map((f?.hr?.items || []).map(h => [`${h.metadata.namespace}/${h.metadata.name}`, fluxSettleState(h)]));
+  return { rev, byId, ofSource, ksState: id => ksState(id), hrState, source: f?.source ? fluxSettleState(f.source) : null };
+}
+
+// READ-ONLY (gh api GET and kubectl get through `run`), once per tick: the source, every
+// Kustomization and HelmRelease, and main's commits the source has not fetched yet.
+// undefined = the read failed; source null = the GitRepository does not exist.
+export function readSettleFacts(repo, rules, run) {
+  const cfg = settleConfig(rules);
+  if (!cfg.ok) return { cfg };
+  const kList = args => { const j = parse(tryRun(run, 'kubectl', ['get', ...args, '-o', 'json'])); return Array.isArray(j?.items) ? j : undefined; };
+  const ks = kList(['kustomizations.kustomize.toolkit.fluxcd.io', '-A']);
+  const hr = kList(['helmreleases.helm.toolkit.fluxcd.io', '-A']);
+  const sl = kList(['gitrepositories.source.toolkit.fluxcd.io', '-n', cfg.source.namespace, '--field-selector', `metadata.name=${cfg.source.name}`]);
+  const source = sl ? (sl.items.find(g => g?.metadata?.name === cfg.source.name && g?.metadata?.namespace === cfg.source.namespace) || null) : undefined;
+  const srcSha = revisionSha(source?.status?.artifact?.revision);
+  const range = srcSha ? readCommitRange(repo, srcSha, 'main', run, cfg.max_unapplied_commits) : null;
+  return { cfg, ks, hr, source, range };
+}
+
+// PURE: the verdict for one target scope on facts from readSettleFacts.
+export function settleVerdict(f, scope, rules) {
+  const cfg = f?.cfg || { ok: false, why: 'unreadable: the settle gate config' };
+  const out = { applicable: true, settled: false, blockers: [], source_revision: null, unapplied: [], unsettled: [], cluster_wide_unsettled: [], failing_not_settling: [] };
+  const add = b => { if (!out.blockers.includes(b)) out.blockers.push(b); };
+  if (scope === null) return { ...out, applicable: false, settled: true, why: 'no immediate cluster effect: nothing in the cluster changes now' };
+  if (!cfg.ok) { add(cfg.why); return out; }
+  if (!scope) { add('unreadable: the target scope'); return out; }
+  if (scope.unreadable) { add(`unreadable: ${scope.unreadable}`); return out; }
+  const src = `${cfg.source.namespace}/${cfg.source.name}`;
+  if (!f.ks) add('unreadable: kustomizations (settle gate)');
+  if (!f.hr) add('unreadable: helmreleases (settle gate)');
+  if (f.source === undefined) add(`unreadable: GitRepository ${src}`);
+  else if (f.source === null) add(`GitRepository ${src} does not exist`);
+  const rev = f.source?.status?.artifact?.revision || null;
+  out.source_revision = rev;
+  if (f.source && !revisionSha(rev)) add(`unreadable: the artifact revision of GitRepository ${src} (${JSON.stringify(rev)})`);
+  // F1: nothing unapplied on main touches T, its chain or a cluster-wide part
+  if (revisionSha(rev)) {
+    const oc = otherChanges(f.range, scope, rules);
+    if (!oc.complete) add(`F1 unreadable: what main has that Flux has not fetched (${oc.why})`);
+    else {
+      out.unapplied = oc.changes.map(c => ({ sha: c.sha, pr: c.pr, subject: c.subject, parts: [...new Set(c.matched.map(m => `${m.part} ${m.name}`))] }));
+      for (const c of out.unapplied) add(`F1 main has a change Flux has not applied that reaches ${c.parts.join(', ')}: ${short(c.sha)} ${c.subject}`);
+    }
+  }
+  if (!f.ks || !f.hr || !f.source) { out.settled = false; return out; }
+  const st = fluxStates(f);
+  // F2: T's chain has applied the source revision and is settled; T's namespaces' HelmReleases settled
+  for (const id of scope.missing || []) add(`F2 Kustomization ${id} in the target's dependsOn chain or applying it does not exist`);
+  // S2: a suspended object of T's own scope, its chain or its appliers: a merge would not apply
+  for (const id of [...new Set([...(scope.chain || []), ...(scope.appliers || [])])]) if (st.byId.get(id)?.spec?.suspend === true) add(`F2 Kustomization ${id} is suspended: a lane merge to the target would not apply until someone resumes it`);
+  for (const id of scope.own_hr || []) if ((f.hr.items || []).find(h => `${h.metadata.namespace}/${h.metadata.name}` === id)?.spec?.suspend === true) add(`F2 HelmRelease ${id} is suspended: a lane merge to the target would not apply until someone resumes it`);
+  for (const id of [...new Set([...(scope.chain || []), ...(scope.appliers || [])])]) {
+    const k = st.byId.get(id); if (!k || k.spec?.suspend === true) continue;
+    const s = st.ksState(id);
+    const applier = (scope.appliers || []).includes(id) && !(scope.chain || []).includes(id);
+    // a failing applier has not applied the revision, and no baseline gate watches it (S1)
+    if (s.state === 'failing') { if (applier) out.unsettled.push(`Kustomization ${id} (applies the target): ${s.why}`); else out.failing_not_settling.push(`Kustomization ${id}: ${s.why}`); continue; }
+    if (s.state === 'progressing') { out.unsettled.push(`Kustomization ${id}${applier ? ' (applies the target)' : ''}: ${s.why}`); continue; }
+    if (st.ofSource(k) && k.status?.lastAppliedRevision !== rev) out.unsettled.push(`Kustomization ${id}${applier ? ' (applies the target)' : ''}: has not applied ${short(revisionSha(rev))} (applied ${short(revisionSha(k.status?.lastAppliedRevision) || k.status?.lastAppliedRevision || 'nothing')})`);
+  }
+  for (const [id, s] of st.hrState) {
+    if (!(scope.namespaces || []).includes(id.split('/')[0])) continue;
+    if (s.state === 'failing') out.failing_not_settling.push(`HelmRelease ${id}: ${s.why}`);
+    else if (s.state === 'progressing') out.unsettled.push(`HelmRelease ${id}: ${s.why}`);
+  }
+  if (out.unsettled.length) add(`F2 the target is not settled: ${out.unsettled.slice(0, 4).join('; ')}${out.unsettled.length > 4 ? ` (+${out.unsettled.length - 4} more)` : ''}`);
+  // F3: no cluster-wide part (nor the source) mid-change
+  if (st.source?.state === 'progressing') out.cluster_wide_unsettled.push(`flux: GitRepository ${src}: ${st.source.why}`);
+  if (st.source?.state === 'failing') add(`F3 GitRepository ${src} is ${st.source.why}; nothing it serves can be judged settled`);
+  for (const part of clusterWideParts(rules, f.ks, f.hr)) {
+    for (const id of part.ks) {
+      const k = st.byId.get(id), s = st.ksState(id);
+      if (s.state === 'progressing') out.cluster_wide_unsettled.push(`${part.id}: Kustomization ${id}: ${s.why}`);
+      else if (s.state === 'settled' && k.spec?.suspend !== true && st.ofSource(k) && k.status?.lastAppliedRevision !== rev) out.cluster_wide_unsettled.push(`${part.id}: Kustomization ${id}: has not applied ${short(revisionSha(rev))}`);
+      else if (s.state === 'failing') out.failing_not_settling.push(`${part.id}: Kustomization ${id}: ${s.why}`);
+    }
+    for (const id of part.hr) {
+      const s = st.hrState.get(id);
+      if (s?.state === 'progressing') out.cluster_wide_unsettled.push(`${part.id}: HelmRelease ${id}: ${s.why}`);
+      else if (s?.state === 'failing') out.failing_not_settling.push(`${part.id}: HelmRelease ${id}: ${s.why}`);
+    }
+  }
+  if (out.cluster_wide_unsettled.length) add(`F3 a cluster-wide part is mid-change: ${out.cluster_wide_unsettled.slice(0, 4).join('; ')}${out.cluster_wide_unsettled.length > 4 ? ` (+${out.cluster_wide_unsettled.length - 4} more)` : ''}`);
+  out.unsettled = out.unsettled.slice(0, 20);
+  out.failing_not_settling = [...new Set(out.failing_not_settling)].slice(0, 20);
+  out.settled = out.blockers.length === 0;
+  return out;
+}
+// The settle gate for one scope, read now (or on facts the caller already read).
+export const settleCheck = ({ repo = REPO, rules, run, scope, facts }) => settleVerdict(facts || readSettleFacts(repo, rules, run), scope, rules);
+// One log line, and what the state keeps.
+export const settleLine = s => (!s.applicable ? `not applicable (${s.why})`
+  : s.settled ? `settled (Flux at ${short(revisionSha(s.source_revision))}; nothing unapplied reaches the target; target and cluster-wide parts settled${s.failing_not_settling.length ? `; ${s.failing_not_settling.length} failing, not settling` : ''})`
+    : `NOT settled: ${s.blockers.join(' | ')}`);
+export const settleBrief = s => ({ applicable: s.applicable, settled: s.settled, source_revision: s.source_revision, blockers: s.blockers,
+  unapplied: s.unapplied, unsettled: (s.unsettled || []).slice(0, 10), cluster_wide_unsettled: (s.cluster_wide_unsettled || []).slice(0, 10), failing_not_settling: (s.failing_not_settling || []).slice(0, 10), ...(s.why ? { why: s.why } : {}) });
+
+// ── F4: no lane merge while a shepherd Job that can merge is running (story 551, R1) ─────
+// The two-sided handshake on facts. The shepherd's Job exists before run-shepherd.sh reads
+// the lock (and triage claims a remediation in upgrade-remediation-state before it starts
+// run-shepherd.sh in remediate mode); the lane writes phase merging before it reads the
+// Jobs. So at least one side sees the other. Jobs that can run `gh pr merge`, unfinished
+// (no Complete or Failed condition): every Job of CronJob upgrade-shepherd (or carrying
+// its controller label: a summon made from it), and a Job of upgrade-shepherd-triage while
+// upgrade-remediation-state holds a claimed, unfinished remediation (attempted 1, result
+// none). The lane's own Jobs and the other upgrade-agent CronJobs cannot merge: the
+// alert-responder's LLM has read-only Bash (kubectl get/describe, flux get, grep, cat, git
+// log/show and its query scripts, no gh), the health gate and dev-env-ops-curation-order. Any other
+// unfinished Job is unknown and counts as one that can (fail closed).
+export const SHEPHERD_JOBS = Object.freeze({
+  namespace: 'upgrade-agent',
+  merging: Object.freeze([{ cronjob: 'upgrade-shepherd', controller: 'upgrade-shepherd' }]),
+  remediating: Object.freeze([{ cronjob: 'upgrade-shepherd-triage', controller: 'triage' }]),
+  never: Object.freeze([{ cronjob: 'upgrade-shepherd-upgrade-night', controller: 'upgrade-night' }, { cronjob: 'alert-responder', controller: 'alert-responder' }, { cronjob: 'upgrade-health-gate', controller: 'upgrade-health-gate' }, { cronjob: 'dev-env-ops-curation-order', controller: 'curation-order' }]),
+  remediation_state: 'upgrade-remediation-state',
+});
+const jobFinished = j => (j?.status?.conditions || []).some(c => ['Complete', 'Failed'].includes(c?.type) && c.status === 'True') || !!j?.status?.completionTime;
+const jobIs = (j, list) => { const o = (j?.metadata?.ownerReferences || []).find(r => r.kind === 'CronJob')?.name; const c = j?.metadata?.labels?.['app.kubernetes.io/controller']; return list.some(x => x.cronjob === o || (o === undefined && c && x.controller === c)); };
+// PURE. jobs = kubectl get jobs -n upgrade-agent (null = unreadable); remediation = the
+// remediation-state read (readNamedConfigMap result; null = unreadable).
+// Known limit (story 551, S5): any claim with attempted 1 and result none counts, not only
+// the active triage Job's. The claim carries no time or Job identity to tell a stale one
+// (a crashed remediate) from a live one, so this stays fail closed; it holds only the
+// ticks that overlap a triage Job, and clears when triage records a result or the entry
+// ages out (STATE_TTL_HOURS after its first_seen).
+export function mergingJobs(jobs, remediation) {
+  if (!Array.isArray(jobs?.items)) return { readable: false, active: [], why: 'unreadable: Jobs in upgrade-agent (F4)' };
+  const claimed = !remediation ? null : Object.entries(remediation.cm?.data || {}).filter(([, v]) => { try { const e = JSON.parse(v); return String(e.attempted) === '1' && (e.result ?? 'none') === 'none'; } catch { return false; } }).map(([k]) => k);
+  const active = [];
+  for (const j of jobs.items.filter(x => !jobFinished(x))) {
+    const name = j?.metadata?.name || '(unnamed)';
+    if (jobIs(j, SHEPHERD_JOBS.merging)) active.push(`${name} (the shepherd)`);
+    else if (jobIs(j, SHEPHERD_JOBS.remediating)) {
+      if (claimed === null) active.push(`${name} (triage; upgrade-remediation-state unreadable, so it may be running remediate)`);
+      else if (claimed.length) active.push(`${name} (triage running remediate for ${claimed.slice(0, 2).join(', ')})`);
+    } else if (!jobIs(j, SHEPHERD_JOBS.never)) active.push(`${name} (an unknown Job in upgrade-agent; it may merge)`);
+  }
+  return { readable: true, active, why: active.length ? `a Job that can merge is running: ${active.join('; ')}` : null };
+}
+export function readMergingJobs(run) {
+  const j = parse(tryRun(run, 'kubectl', ['get', 'jobs', '-n', SHEPHERD_JOBS.namespace, '-o', 'json']));
+  return mergingJobs(Array.isArray(j?.items) ? j : null, readNamedConfigMap(SHEPHERD_JOBS.remediation_state, run));
 }
 
 // ── the merge call ─────────────────────────────────────────────────────────────────
@@ -506,11 +869,25 @@ export function laneMergeStep({ mode, subject, rules, run, env, clock, liveClass
     const prRef = [...(held ? [] : [out.lock.why || 'no change lock held']), ...ev.refusals];
     const laneRef = laneRefusals({ klass: subject.class, liveClasses, token });
     if (!subject.chosen) laneRef.unshift('not chosen by the tick: it has gate blockers (records[].gates.blockers)');
+    // the settle gate (story 551), facts about the subject's target, read afresh under the
+    // lock in both modes; and F4, no shepherd Job that can merge running
+    const settle = settleCheck({ rules, run, scope: subject.scope ?? null });
+    laneRef.push(...settle.blockers.map(b => `settle gate: ${b}`));
+    out.settle = settleBrief(settle);
+    const jobs0 = readMergingJobs(run);
+    out.shepherd_jobs = jobs0;
+    if (!jobs0.readable || jobs0.active.length) laneRef.push(`F4 ${jobs0.why}`);
     const v = { pr: subject.pr, head: subject.head, class: subject.class, chosen: subject.chosen, mode, verdict: 'refused', pr_refusals: [...new Set(prRef)], lane_refusals: laneRef, pr_ready: prRef.length === 0, facts: ev.facts };
     const clean = v.pr_refusals.length === 0 && laneRef.length === 0;
     if (mode !== 'live') { v.verdict = clean ? 'would-merge' : 'refused'; v.merge_call = 'not reached (dry-run)'; out.verdict = v; return out; }
     if (!clean) { v.merge_call = 'not made (refused)'; out.verdict = v; return out; }
-    // just before the call: the lease, the window, the age of the tick's gates, the pause
+    // just before the call (R5: the fact reads first, then the freshness checks, so no gate
+    // is older than its limit at the call): the settle gate again (another actor may have
+    // merged while the step read the PR), then the lease, the window and the age of the
+    // tick's gates, then the pause, the merging write, F4, and the call
+    const s1 = settleCheck({ rules, run, scope: subject.scope ?? null });
+    v.lane_refusals.push(...s1.blockers.map(b => `settle gate at the merge call: ${b}`));
+    v.settle_at_merge_call = settleBrief(s1);
     const t = clock();
     const left = Date.parse(held.data.expires_at) - t;
     if (!held.rv) v.lane_refusals.push('the change lock was written but its resourceVersion is unknown; not merging on it');
@@ -524,7 +901,18 @@ export function laneMergeStep({ mode, subject, rules, run, env, clock, liveClass
     if (v.pr_refusals.length || v.lane_refusals.length) { v.pr_ready = v.pr_refusals.length === 0; v.merge_call = 'not made (refused)'; out.verdict = v; return out; }
     const begin = beginMerge(held, { now: clock(), env, leaseSeconds: cfg.post_merge_lease_seconds });
     if (!begin.ok) { v.lane_refusals.push(begin.why); v.merge_call = 'not made (refused)'; out.verdict = v; return out; }
-    // held.merged is now true: whatever happens next, the lock keeps the post-merge lease
+    // F4 after the merging write: a shepherd Job that started after the step's read either
+    // reads this phase (and stands aside) or is seen here. Seen: yield, release the lock
+    // (no merge call was made) and let the next tick try again.
+    const jobs1 = readMergingJobs(run);
+    v.shepherd_jobs_at_merge_call = jobs1;
+    if (!jobs1.readable || jobs1.active.length) {
+      v.yielded = 'yielded-to-shepherd';
+      v.lane_refusals.push(`F4 at the merge call: ${jobs1.why}; yielded-to-shepherd, the next tick tries again`);
+      v.merge_call = 'not made (yielded)'; out.verdict = v; return out;
+    }
+    // from here, whatever happens next, the lock keeps the post-merge lease (S4: set only now)
+    held.merged = true;
     const call = callMerge({ repo: REPO, pr: subject.pr, head: subject.head, mode, verdict: { ok: v.pr_refusals.length === 0 && v.lane_refusals.length === 0, pr: v.pr, head: v.head }, lockHeld: true, env });
     const after = verifyMerged(REPO, subject.pr, subject.head, run);
     v.merge_call = call.argv + (call.exit === 0 ? ' (exit 0)' : ` (exit ${call.exit}: ${call.detail})`);
@@ -540,7 +928,7 @@ export function laneMergeStep({ mode, subject, rules, run, env, clock, liveClass
       out.lock = { ...out.lock, outcome: `held after merge (${phase})`, expires_at: h.expires_at, ...(h.why ? { why: h.why } : {}) };
       out.owed = owedWork({ mode, paused: false });
     } else if (held) {
-      const r = releaseLock(held, { now: clock(), env, note: out.verdict?.verdict || 'tick ended' });
+      const r = releaseLock(held, { now: clock(), env, note: out.verdict?.yielded || out.verdict?.verdict || 'tick ended' });
       out.lock = { ...out.lock, outcome: r.released ? 'taken-and-released' : 'taken, release failed', ...(r.released_at ? { released_at: r.released_at } : {}), ...(r.why ? { why: r.why } : {}) };
     }
   }
@@ -580,23 +968,42 @@ export function handRun(opt, { rules, run, env, now }) {
   const lock = lockStatus(readNamedConfigMap(LOCK.name, run), now);
   out.lock = { state: lock.state, holder: lock.holder || null, expires_at: lock.expires_at || null };
   if (['held', 'unreadable'].includes(lock.state)) out.refusals.push(lock.why);
-  out.notes.push('a hand run reads the change lock and refuses while it is held; it does not take it (story 551)');
+  out.notes.push('a hand run reads the change lock and refuses while it is held; it cannot take it (a session cannot write ConfigMaps in upgrade-agent), so the shepherd and the lane do not see it');
+  out.notes.push('a hand run runs the settle gate and F4 (story 551) at its start and, with --merge, again just before the call');
   out.notes.push('a hand run skips the merge window, the class allowlist and the tick gates (backups, Flux baseline, critical alerts, work orders); it needs the owner\'s yes');
   // the classifier, on the same facts the tick gathers
-  let holdRules = null, facts = null;
+  let holdRules = null, facts = null, rec = null;
   try { holdRules = L.fetchHoldRules(REPO, run); } catch { holdRules = null; }
   try { facts = L.gatherFacts(REPO, opt.pr, run); } catch { facts = null; }
   if (!holdRules) out.refusals.push('unreadable: .renovate/holds.json5 on main');
   if (!facts) out.refusals.push('unreadable: the PR facts for the classifier');
   if (holdRules && facts) {
-    const rec = L.classify(facts, rules, { now, holdRules });
+    rec = L.classify(facts, rules, { now, holdRules });
     out.lane = { lane: rec.lane, class: rec.class, reason: rec.reason, rules: rec.rules };
     if (rec.lane !== 'LANE-A') out.refusals.push(`lane ${rec.lane} (${rec.class}): ${rec.reason}`);
   }
+  // the settle gate (story 551): facts about the PR's target (F1 to F3), and F4
+  const settleOnce = when => {
+    const sf = readSettleFacts(REPO, rules, run);
+    const scope = rec ? settleScope(rec, sf.ks, sf.hr) : undefined;
+    const st = settleVerdict(sf, scope, rules);
+    const jobs = readMergingJobs(run);
+    return { st, jobs, refusals: [...st.blockers.map(b => `settle gate${when}: ${b}`), ...(!jobs.readable || jobs.active.length ? [`F4${when}: ${jobs.why}`] : [])] };
+  };
+  const g0 = settleOnce('');
+  out.settle = settleBrief(g0.st);
+  out.shepherd_jobs = g0.jobs;
+  out.refusals.push(...g0.refusals);
   const ev = evaluate({ repo: REPO, pr: opt.pr, head: opt.head, rules, now, run });
   out.refusals.push(...ev.refusals);
   out.facts = ev.facts;
-  if (opt.merge) { const p1 = pauseRefusal(readPause(rules, run), 'just before the merge call'); if (p1) out.refusals.push(p1); }
+  if (opt.merge) {
+    const g1 = settleOnce(' just before the merge call');
+    out.settle_at_merge_call = settleBrief(g1.st);
+    out.shepherd_jobs_at_merge_call = g1.jobs;
+    out.refusals.push(...g1.refusals);
+    const p1 = pauseRefusal(readPause(rules, run), 'just before the merge call'); if (p1) out.refusals.push(p1);
+  }
   out.refusals = [...new Set(out.refusals)];
   out.ok = out.refusals.length === 0;
   out.verdict = out.ok ? (opt.merge ? 'merging' : 'would-merge') : 'refused';
@@ -625,6 +1032,7 @@ async function main(argv) {
     if (r.lane) lines.push(`  lane: ${r.lane.lane} (${r.lane.class}): ${r.lane.reason}`);
     for (const x of r.refusals) lines.push(`  refused: ${x}`);
     lines.push(`  lock: ${LOCK.namespace}/${LOCK.name} ${r.lock.state}${r.lock.holder ? ` (holder ${r.lock.holder} until ${r.lock.expires_at})` : ''}`);
+    if (r.settle) lines.push(`  settle gate: ${settleLine(r.settle)}`);
     for (const n of r.notes) lines.push(`  note: ${n}`);
     if (r.facts) lines.push(`  facts: reference_time=${r.facts.reference_time} mergeable=${r.facts.mergeable} merge_state=${r.facts.merge_state} files=${r.facts.files.join(',')}`);
     lines.push(`  merge call: ${r.merge_call}`);

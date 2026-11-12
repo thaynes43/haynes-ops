@@ -24,7 +24,11 @@
 //      no gh write is made even with a write token and the class allowlisted; every
 //      failed read is a named blocker; pause stops the tick; an unknown mode or class is
 //      refused before a single command runs. Live mode merges once, pinned to the head,
-//      only when every condition holds, and refuses each one that does not.
+//      only when every condition holds, and refuses each one that does not;
+//   5. the settle gate (story 551) through the tick: a merge to kubernetes/** 10 minutes
+//      earlier is the one blocker on an otherwise clean PR inside the window, the
+//      2026-11-10 shepherd merges (fixtures/settle-20261110.json) make every candidate
+//      wait until Flux settled, each read fails closed, and live mode does not merge.
 //
 // Usage: node scripts/upgrade-agent/lane-night-dryrun-selftest.mjs
 // Requires: node 24. No network (one loopback listener), no cluster access.
@@ -310,6 +314,18 @@ try {
     body: '| Package | Update | Change |\n|---|---|---|\n' + f.packages.map(p => `| ${p.name} | ${p.update || ''} | \`${p.from}\` → \`${p.to}\` |`).join('\n') + '\n',
   });
   const ready = v => ({ conditions: [{ type: 'Ready', status: v ? 'True' : 'False' }] });
+  // story 551: Flux's source sits at main's head in every world unless a test sets
+  // mainCompare (the compare <source>...main reads identical), and the Flux objects, trimmed
+  // to what the older gates read, get the generations the settle gate reads, as a settled
+  // cluster. Fields a test sets are kept, so a test can unsettle one.
+  const K8S0 = { sha: '9'.repeat(40) };
+  const fillSettled = o => {
+    if (!o || typeof o !== 'object') return o;
+    const x = structuredClone(o);
+    x.metadata = { generation: 1, ...(x.metadata || {}) };
+    x.status = { observedGeneration: x.metadata.generation, ...(x.status || {}) };
+    return x;
+  };
   const flux = (ks, ns) => ({ 'kustomize.toolkit.fluxcd.io/name': ks, 'kustomize.toolkit.fluxcd.io/namespace': ns });
   const ks = (ns, name, path, dependsOn = [], v = true) => ({ metadata: { namespace: ns, name }, spec: { targetNamespace: ns, path, dependsOn }, status: ready(v) });
   const healthy = () => ({
@@ -326,6 +342,8 @@ try {
       status: { lastSyncTime: '2026-11-02T05:00:51Z', nextSyncTime: '2026-11-03T05:00:00Z', latestMoverStatus: { result: 'Successful' } } }] },
     'backups.postgresql.cnpg.io': { items: [] }, 'scheduledbackups.postgresql.cnpg.io': { items: [] },
     'cephclusters.ceph.rook.io': { items: [{ status: { ceph: { health: 'HEALTH_OK' } } }] },
+    // story 551: Flux's source, at main's newest change to kubernetes/** (K8S0)
+    'gitrepositories.source.toolkit.fluxcd.io': { items: [{ metadata: { namespace: 'flux-system', name: 'haynes-ops', generation: 1 }, status: { observedGeneration: 1, artifact: { revision: `main@sha1:${K8S0.sha}` }, conditions: [{ type: 'Ready', status: 'True', reason: 'Succeeded', lastTransitionTime: '2026-10-01T00:00:00Z' }] } }] },
     'pods@database': { items: [{ metadata: { namespace: 'database', name: 'mosquitto-0', labels: { 'app.kubernetes.io/instance': 'mosquitto' } }, spec: { volumes: [{ name: 'data', persistentVolumeClaim: { claimName: 'data-mosquitto-0' } }] } }] },
     pods: { items: [] }, cronjobs: { items: [] }, jobs: { items: [] },
   });
@@ -361,13 +379,15 @@ if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/pulls\\/\\d+\\/commi
   if (o === 'FAIL') fail();
   out(o || w.prs[n].commits.map(c => ({ sha: c.oid, author: { login: 'renovate[bot]', type: 'Bot', id: 29139614 }, committer: { login: 'web-flow', type: 'User', id: 19864447 }, commit: { verification: { verified: true, reason: 'valid' } } })));
 }
+if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/commits\\/[0-9a-f]{40}$/.test(a)) && !argv.includes('Accept: application/vnd.github.diff')) { const sha = argv.find(a => /\\/commits\\//.test(a)).split('/').pop(); const c = (w.commitFiles || {})[sha]; if (!c || c === 'FAIL') fail(); out(c); }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/commits\\/[0-9a-f]{40}$/.test(a))) { const sha = argv.find(a => /\\/commits\\//.test(a)).split('/').pop(); const n = Object.keys(w.prs).find(k => w.prs[k].headRefOid === sha); if (w.diffs?.[n] === 'FAIL') fail(); out(w.diffs?.[n] ?? ''); }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => a.includes('contents/.renovate/holds.json5'))) out({ content: w.holds });
+if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/compare\\/[0-9a-f]{40}\\.\\.\\.main/.test(a))) { const v = w.mainCompare ?? { status: 'identical', ahead_by: 0, behind_by: 0, total_commits: 0, commits: [] }; if (v === 'FAIL') fail(); out(v); }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/compare\\//.test(a))) { const s = argv.find(a => /\\/compare\\//.test(a)).split('...')[1].split('?')[0]; const c = (w.contains || {})[s]; if (c === 'FAIL') fail(); out({ status: c === false ? 'diverged' : 'behind', ahead_by: c === false ? 1 : 0, behind_by: 3 }); }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/commits\\?sha=main&/.test(a))) {
   const q = new URLSearchParams(argv.find(a => /\\/commits\\?/.test(a)).split('?')[1]);
-  const v = q.get('since') ? (w.mainCommits || {})[q.get('path')] : (w.mainNewest || {})[q.get('path')];
-  if (v === 'FAIL') fail(); out((v || []).map(c => ({ sha: c.sha, commit: { committer: { date: c.at } } })));
+  const v = q.get('since') ? (w.mainCommits || {})[q.get('path')] : (w.mainNewest || {})[q.get('path') ?? '(all)'];
+  if (v === 'FAIL') fail(); out((v || []).map(c => (c.commit ? c : { sha: c.sha, parents: c.parents ?? [{ sha: 'e'.repeat(40) }], commit: { committer: { date: c.at }, author: { date: c.author_at ?? c.at }, message: c.message ?? '' } })));
 }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /issues\\/\\d+\\/comments/.test(a))) { const n = argv.find(a => /issues\\/\\d+\\/comments/.test(a)).match(/issues\\/(\\d+)/)[1]; out([w.comments[n] || []]); }
 if (cmd === 'kubectl' && argv[0] === 'get') {
@@ -421,6 +441,10 @@ process.exit(0);
   const tick = (world, extraEnv = {}, args = ['--write-state'], { keepNow = false } = {}) => new Promise(resolve => {
     for (const f of [logFile, mergedFile, lockFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`]) rmSync(f, { force: true });
     if (world.lock) writeFileSync(lockFile, JSON.stringify(world.lock));
+    if (!world.rawSettle) {
+      world = { ...world, k8s: { ...world.k8s } };
+      for (const kind of ['kustomizations.kustomize.toolkit.fluxcd.io', 'helmreleases.helm.toolkit.fluxcd.io']) if (Array.isArray(world.k8s[kind]?.items)) world.k8s[kind] = { ...world.k8s[kind], items: world.k8s[kind].items.map(fillSettled) };
+    }
     writeFileSync(join(tmp, 'world.json'), JSON.stringify(world));
     const e = { ...env, ...extraEnv };
     const pin = !keepNow;
@@ -543,6 +567,13 @@ process.exit(0);
     const w = baseWorld(nums);
     const ksl = w.k8s['kustomizations.kustomize.toolkit.fluxcd.io'].items;
     for (const k of gx.kustomizations) if (!ksl.some(x => x.metadata.name === k.metadata.name && x.metadata.namespace === k.metadata.namespace)) ksl.push(k);
+    // story 551: the gates fixture lists only the objects R5 reads; the settle gate also reads
+    // each Kustomization of a target's dependsOn chain (and fails closed on a missing one), so
+    // the chain objects the fixture leaves out are added here as settled
+    for (const k of [...ksl]) for (const d of k.spec?.dependsOn || []) {
+      const ns = d.namespace || k.metadata.namespace;
+      if (!ksl.some(x => x.metadata.name === d.name && x.metadata.namespace === ns)) ksl.push({ metadata: { namespace: ns, name: d.name }, spec: { path: `./kubernetes/main/apps/${ns}/${d.name}/app` }, status: { conditions: [{ type: 'Ready', status: 'True' }] } });
+    }
     w.k8s['helmreleases.helm.toolkit.fluxcd.io'].items.push(...gx.helmreleases);
     for (const [ns, v] of Object.entries(gx.namespaces)) for (const [kind, items] of Object.entries(v)) w.k8s[`${kind}@${ns}`] = { items };
     return w;
@@ -589,6 +620,9 @@ process.exit(0);
     const want = ['kubernetes/main/apps/arc-runners/demo-console/app', 'kubernetes/main/apps/arc-runners/haynes-swarm/app', 'kubernetes/main/apps/arc-runners/sigmaphiomicron-com/app', 'kubernetes/main/apps/arc-runners/sigoalumni-org/app', 'kubernetes/main/apps/arc-runners/sigo-alumni'];
     ok(r.rec(4770).lane === 'LANE-A' && want.every(t => r.rec(4770).targets.includes(t)) && !/target-unmapped/.test(blk(r, 4770)), 'tick: #4770 maps kubernetes/shared/components/arc/dind to the four runner pools that include it', `${r.rec(4770).lane} ${JSON.stringify(r.rec(4770).targets)} | ${blk(r, 4770)}`);
     ok(blk(r, 4770) === '' && r.summary.would_merge?.pr === 4770, 'tick: with every gate green #4770 would be picked', blk(r, 4770));
+    const wmiss = nightWorld([4770]); wmiss.prs[4770] = toGh(gx.prs[4770]);
+    wmiss.k8s['kustomizations.kustomize.toolkit.fluxcd.io'].items = wmiss.k8s['kustomizations.kustomize.toolkit.fluxcd.io'].items.filter(k => !(k.metadata.namespace === 'arc-systems' && k.metadata.name === 'arc-controller'));
+    ok(/settle gate: F2 Kustomization arc-systems\/arc-controller in the target's dependsOn chain or applying it does not exist/.test(blk(await tick(wmiss), 4770)), "tick: a Kustomization missing from the target's dependsOn chain fails closed (F2)");
     ok(r.rec(4770).via_components?.length === 4, 'tick: the record lists the component and its consumers (via_components)', JSON.stringify(r.rec(4770).via_components));
     // with no map entry the component path stays the target: target-unmapped (fail closed)
     const noMap = structuredClone(rules); noMap.shared_components.entries = noMap.shared_components.entries.filter(e => e.path !== 'kubernetes/shared/components/arc/dind');
@@ -766,6 +800,75 @@ process.exit(0);
     const r4 = await tick(baseWorld([4477]), {}, []);
     ok(r4.status === 0 && r4.writes.length === 0 && r4.calls.length > 0, 'without --write-state the tick makes reads only');
     ok(r4.calls.every(c => L.isReadOnlyCommand(c.cmd, c.argv)), 'every call of a local run is a read');
+  }
+
+  // ── story 551: the settle gate (facts, not clocks) and F4 through the real tick ─────
+  {
+    const sx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/settle-20261110.json'), 'utf8'));
+    const settleBlk = (r, n) => (r.rec(n).gates?.blockers || []).filter(b => /^settle gate: /.test(b));
+    const C1 = '7'.repeat(40);
+    const unapplied = (w, files, subj = "fix(container): another actor's merge (#4800)") => {
+      w.mainCompare = { status: 'ahead', ahead_by: 1, behind_by: 0, total_commits: 1, commits: [{ sha: C1, parents: [{ sha: K8S0.sha }], commit: { committer: { date: '2026-11-02T06:58:00Z' }, author: { date: '2026-11-02T06:58:00Z' }, message: subj }, author: { login: 'renovate[bot]' }, committer: { login: 'web-flow' } }] };
+      w.commitFiles = { [C1]: { sha: C1, files: files.map(filename => ({ filename })) } };
+      return w;
+    };
+    // inside the window (02:00 New York) with every other gate passing: an unapplied change
+    // to #4477's target is the one blocker; one to another app is none
+    const r1 = await tick(unapplied(baseWorld([4477]), ['kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml']));
+    ok(r1.status === 0 && JSON.stringify(settleBlk(r1, 4477)) === JSON.stringify(["settle gate: F1 main has a change Flux has not applied that reaches target kubernetes/main/apps/media/plex-hw-canary, chain media/plex-hw-canary: 77777777 fix(container): another actor's merge (#4800)"]) && blk(r1, 4477) === settleBlk(r1, 4477)[0], "tick: an unapplied change to the candidate's target is its only blocker, named by commit, not by time", blk(r1, 4477));
+    ok(r1.summary.would_merge?.pr !== 4477 && r1.rec(4477).gates.settle?.settled === false && r1.summary.settle?.read === true && r1.summary.settle.unapplied_commits?.[0]?.sha === C1, 'tick: so it is not chosen; records[].gates.settle and summary.settle say why', JSON.stringify(r1.summary.settle).slice(0, 300));
+    ok(/upgrade-night dryrun: settle gate: Flux at 99999999, 1 commit\(s\) on main not fetched yet; #4477 NOT settled \(F1 main has a change/.test(r1.stderr) && /^settle gate: #4477 NOT settled \(1 blocker\)/m.test(r1.stdout), 'tick: the log and stdout carry the settle verdict per candidate', r1.stderr.split('\n').filter(l => /settle/.test(l)).join(' | '));
+    const r2 = await tick(unapplied(baseWorld([4477]), ['kubernetes/main/apps/media/sonarr/app/helmrelease.yaml']));
+    ok(settleBlk(r2, 4477).length === 0 && r2.rec(4477).gates.settle?.settled === true && r2.summary.would_merge?.pr === 4477, 'tick: an unapplied change to an unrelated app does not hold #4477', blk(r2, 4477));
+    const r3 = await tick(unapplied(baseWorld([4477, 4670]), ['kubernetes/main/apps/network/multus/app/helmrelease.yaml'], 'feat(container): update image ghcr.io/angelnu/cni-plugins to v1.10.0 (#4760)'));
+    ok([4477, 4670].every(n => settleBlk(r3, n).some(b => /^settle gate: F1 .*reaches cluster-wide multus: 77777777 feat\(container\): update image ghcr\.io\/angelnu\/cni-plugins/.test(b))), 'tick: an unapplied change to a cluster-wide part (multus) holds every immediate candidate, and names multus', JSON.stringify([settleBlk(r3, 4477), settleBlk(r3, 4670)]));
+    const r0 = await tick(baseWorld([4477, 4662]));
+    ok(r0.rec(4477).gates.settle?.settled === true && r0.rec(4662).gates.settle?.applicable === false && settleBlk(r0, 4662).length === 0, 'tick: settled facts pass; a delayed-effect candidate (#4662) is not judged (nothing in the cluster changes now)', JSON.stringify([r0.rec(4477).gates.settle, r0.rec(4662).gates.settle]).slice(0, 300));
+    ok(!/min ago|minutes|30 min/.test(JSON.stringify(r0.summary.settle) + JSON.stringify(r1.rec(4477).gates.settle)), 'tick: no clock in what the settle gate records (ruling Q-548-04)');
+    // the 2026-11-10 shepherd merges through the tick, for #4477 (a target none of them touched):
+    // it waits while the multus change is unapplied and while multus rolls, then may merge
+    const fxWorld = inst => {
+      const w = baseWorld([4477]);
+      const c = sx.compare[`${M.revisionSha(inst.flux.gitrepository.status.artifact.revision)}...${inst.main}`];
+      w.mainCompare = c ?? 'FAIL';
+      w.commitFiles = sx.commits;
+      w.k8s['gitrepositories.source.toolkit.fluxcd.io'] = { items: [inst.flux.gitrepository] };
+      const rev = inst.flux.gitrepository.status.artifact.revision;
+      w.k8s['kustomizations.kustomize.toolkit.fluxcd.io'].items = [...w.k8s['kustomizations.kustomize.toolkit.fluxcd.io'].items.filter(k => !inst.flux.kustomizations.some(x => x.metadata.name === k.metadata.name && x.metadata.namespace === k.metadata.namespace)), ...inst.flux.kustomizations];
+      w.k8s['helmreleases.helm.toolkit.fluxcd.io'].items.push(...inst.flux.helmreleases.filter(h => h.metadata.name !== 'plex-hw-canary'));
+      void rev;
+      return w;
+    };
+    for (const inst of sx.instants.filter(i => i.id !== 'only-4767')) {
+      const r = await tick(fxWorld(inst), { FAKE_NOW: inst.at });
+      const sb = settleBlk(r, 4477);
+      const want = inst.want.unrelated;
+      ok(want === 'settled' ? sb.length === 0 && r.rec(4477).gates.settle?.settled === true : sb.length > 0 && sb.every(b => /multus/.test(b)) && !sb.some(b => /min ago/.test(b)),
+        `tick at ${inst.at} (2026-11-10, ${inst.id}): #4477 ${want === 'settled' ? 'is not held' : 'waits, and the blocker names multus'}`, sb.join(' | ') || JSON.stringify(r.rec(4477).gates.settle).slice(0, 300));
+    }
+    // fail closed through the tick
+    const wg = baseWorld([4477]); wg.k8s['gitrepositories.source.toolkit.fluxcd.io'] = 'FAIL';
+    ok(settleBlk(await tick(wg), 4477).includes('settle gate: unreadable: GitRepository flux-system/haynes-ops'), 'tick: an unreadable Flux source is a settle blocker');
+    const wm = baseWorld([4477]); wm.mainCompare = 'FAIL';
+    ok(settleBlk(await tick(wm), 4477).some(b => /^settle gate: F1 unreadable: what main has that Flux has not fetched \(unreadable: compare 99999999\.\.\.main\)$/.test(b)), 'tick: an unreadable compare of the source with main is a settle blocker');
+    const wp = baseWorld([4670]); wp.k8s['helmreleases.helm.toolkit.fluxcd.io'].items[0].status = { observedGeneration: 1, conditions: [{ type: 'Ready', status: 'Unknown', reason: 'Progressing' }] };
+    ok(settleBlk(await tick(wp), 4670).some(b => /^settle gate: F2 the target is not settled: HelmRelease database\/mosquitto: Ready Unknown \(Progressing\)$/.test(b)), "tick: a HelmRelease of the target's namespace in flight holds it (F2)");
+    const wq = baseWorld([4477]); wq.k8s['helmreleases.helm.toolkit.fluxcd.io'].items[0].status = { observedGeneration: 1, conditions: [{ type: 'Ready', status: 'Unknown', reason: 'Progressing' }] };
+    ok(settleBlk(await tick(wq), 4477).length === 0, 'tick: the same HelmRelease in another namespace does not hold #4477 (scope, not a cluster-wide hold)');
+    // live mode: the settle gate and F4 hold the merge
+    const permW = join(tmp, 'perm-write-551.json'); writeFileSync(permW, '{"contents":"write","pull_requests":"write","checks":"read"}');
+    const LV = { UPGRADE_NIGHT_MODE: 'live', UPGRADE_NIGHT_LIVE_CLASSES: 'cluster-change', GH_TOKEN_PERMISSIONS_FILE: permW };
+    const rl = await tick(unapplied(baseWorld([4477]), ['kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml']), LV);
+    ok(rl.status === 0 && rl.merges.length === 0 && rl.summary.would_merge === null && settleBlk(rl, 4477).length === 1 && rl.lock?.data?.holder === '', 'live: an unapplied change to the target holds the merge: no gh pr merge call, the lock released', `merges=${rl.merges.length} ${blk(rl, 4477)}`);
+    const rc = await tick(baseWorld([4477]), LV);
+    ok(rc.merges.length === 1, 'live, settled: the same PR merges (the facts are what held it)', JSON.stringify(rc.summary.merge_step?.lane_refusals));
+    const wj = baseWorld([4477]); wj.k8s['jobs@upgrade-agent'] = { items: [{ metadata: { name: 'upgrade-shepherd-29907120', labels: { 'app.kubernetes.io/controller': 'upgrade-shepherd' }, ownerReferences: [{ kind: 'CronJob', name: 'upgrade-shepherd' }] }, status: { active: 1 } }] };
+    const rj = await tick(wj, LV);
+    ok(rj.merges.length === 0 && (rj.summary.merge_step?.lane_refusals || []).some(x => /^F4 a Job that can merge is running: upgrade-shepherd-29907120 \(the shepherd\)$/.test(x)) && /F4 shepherd Jobs: a Job that can merge is running/.test(rj.stderr), 'live: a running shepherd Job holds the merge (F4), logged', JSON.stringify(rj.summary.merge_step?.lane_refusals));
+    const rd = await tick(wj);
+    ok(rd.merges.length === 0 && rd.summary.merge_step_shepherd_jobs?.active?.length === 1, 'dry-run: F4 is recorded like the other facts (summary.merge_step_shepherd_jobs)');
+    // static: one settle read per tick, judged per candidate
+    ok(count(night, /M\.readSettleFacts\(/g) === 1 && count(night, /M\.settleVerdict\(/g) === 1 && /blockers\.push\(\.\.\.sv\.blockers\.map\(b => `settle gate: \$\{b\}`\)\);/.test(night), 'run-night.mjs: one settle read per tick, a verdict per immediate candidate');
   }
 } finally {
   server.close();
