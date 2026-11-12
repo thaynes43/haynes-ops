@@ -8,7 +8,8 @@
 # The client carries a bearer token for the operator API. A caller that later creates
 # sessions with it reads its exit code to decide whether to retry, so 0, 2 and 3 have
 # to mean what 6.5 says: 0 created, reused or read; 2 refused (a 4xx, or refused
-# before sending); 3 unconfirmed (a 5xx, a timeout, no connection). The token must
+# before sending); 3 unconfirmed (a 5xx, a timeout, no connection, or a 2xx whose
+# transfer curl reports as failed, with no partial body on stdout). The token must
 # never reach a log, including under set -x and curl's verbose output. A create must
 # never carry a prompt: the platform renders the brief (5.6).
 #
@@ -92,6 +93,31 @@ class H(http.server.BaseHTTPRequestHandler):
         if m == "hang":
             time.sleep(30)
             return
+        # A 2xx whose transfer curl reports as failed: the headers promise 100 bytes,
+        # a partial body comes, then the connection closes (truncated) or goes quiet
+        # (stall, for a timeout after the headers).
+        if m in ("truncated", "stall"):
+            self.send_response(201 if self.command == "POST" else 200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", "100")
+            self.end_headers()
+            self.wfile.write(b'{"name":')
+            self.wfile.flush()
+            if m == "stall":
+                time.sleep(30)
+            return
+        # A whole registered session body, but the headers promise 50 more bytes
+        # than come: the body parses, yet curl reports the transfer failed.
+        if m == "registered-short":
+            doc = dict(SESSION, remoteControl={"state": "registered", "url": "https://claude.ai/code/session_0123abc"})
+            body = json.dumps(doc).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body) + 50))
+            self.end_headers()
+            self.wfile.write(body)
+            self.wfile.flush()
+            return
         if m in ("403", "422", "404", "429"):
             code = {"403": "forbidden", "422": "invalid", "404": "not_found", "429": "limit_exceeded"}[m]
             return self.answer(int(m), {"error": {"code": code, "message": "fake refusal " + m}})
@@ -170,6 +196,8 @@ run() {
   if [ "$RC" -eq "$want" ]; then ok "$name: exit $RC"; else bad "$name: exit $RC, want $want ($(tail -n 2 "$ERR" | tr '\n' ' '))"; fi
 }
 has_err() { if grep -q -- "$2" "$ERR"; then ok "$1"; else bad "$1 (stderr: $(tail -n 3 "$ERR" | tr '\n' ' '))"; fi; }
+no_out() { if [ ! -s "$OUT" ]; then ok "$1"; else bad "$1 (stdout: $(head -c 80 "$OUT" | tr '\n' ' '))"; fi; }
+err_lines() { if [ "$(wc -l < "$ERR" | tr -d ' ')" = "$2" ]; then ok "$1"; else bad "$1 (stderr: $(tr '\n' ' ' < "$ERR"))"; fi; }
 
 # ── 1. reads: 0 on 2xx, 2 on 4xx, 3 on 5xx, a timeout, no connection ────────────────
 setmode ok
@@ -190,6 +218,19 @@ took=$(( $(date +%s) - start ))
 if [ "$took" -le 6 ]; then ok "the total time limit holds (${took}s for a 2s limit)"; else bad "the call took ${took}s for a 2s limit"; fi
 has_err "a timeout logs HTTP 000" '^dev-env-api: GET /v1/sessions HTTP 000$'
 DEV_ENV_API_URL="https://127.0.0.1:1" run "no connection is unconfirmed" 3 -- list
+# A 2xx status is not an answer when curl reports the transfer failed: exit 3, no
+# partial body on stdout, the status line and one line saying it is unconfirmed.
+setmode truncated
+run "list: an incomplete 200 is unconfirmed" 3 -- list
+no_out "list: an incomplete 200 prints no partial body"
+has_err "list: an incomplete 200 still logs its status line" '^dev-env-api: GET /v1/sessions HTTP 200$'
+has_err "list: an incomplete 200 says it is unconfirmed" '^dev-env-api: unconfirmed: HTTP 200, but the transfer did not complete (curl exit [1-9][0-9]*)$'
+err_lines "list: an incomplete 200 logs two lines" 2
+setmode stall
+DEV_ENV_API_MAX_TIME=2 run "list: a timeout after a 200's headers is unconfirmed" 3 -- list
+no_out "list: a timeout after a 200's headers prints no partial body"
+has_err "list: a timeout after a 200's headers says it is unconfirmed" '^dev-env-api: unconfirmed: HTTP 200, but the transfer did not complete (curl exit 28)$'
+err_lines "list: a timeout after a 200's headers logs two lines" 2
 setmode ok
 
 # ── 2. refused before sending: usage, names, a missing token or CA ──────────────────
@@ -230,6 +271,11 @@ setmode 422; run "create 422 is refused" 2 "$WORK/req-ok" -- create
 setmode 429; run "create 429 is refused" 2 "$WORK/req-ok" -- create
 setmode 503; run "create 503 is unconfirmed" 3 "$WORK/req-ok" -- create
 setmode hang; DEV_ENV_API_MAX_TIME=2 run "create timeout is unconfirmed" 3 "$WORK/req-ok" -- create
+setmode truncated; run "create: an incomplete 201 is unconfirmed" 3 "$WORK/req-ok" -- create
+no_out "create: an incomplete 201 prints no partial body"
+has_err "create: an incomplete 201 still logs its status line" '^dev-env-api: POST /v1/sessions HTTP 201$'
+has_err "create: an incomplete 201 says it is unconfirmed" '^dev-env-api: unconfirmed: HTTP 201, but the transfer did not complete (curl exit [1-9][0-9]*)$'
+err_lines "create: an incomplete 201 logs two lines" 2
 setmode ok
 
 # ── 4. wait-registered (6.10) ───────────────────────────────────────────────────────
@@ -240,6 +286,10 @@ setmode offline; run "offline before registering is refused" 2 -- wait-registere
 setmode badurl; run "registered without a claude.ai link keeps waiting, then 3" 3 -- wait-registered esc-gate-0001 --for 2
 setmode starting; run "still starting at --for is unconfirmed" 3 -- wait-registered esc-gate-0001 --for 2
 setmode 404; run "a 404 while waiting is refused" 2 -- wait-registered esc-gate-0001 --for 5
+setmode registered-short; run "a registered body whose transfer failed is not registered, then 3" 3 -- wait-registered esc-gate-0001 --for 2
+no_out "a registered body whose transfer failed prints nothing"
+has_err "a read whose transfer failed says it is unconfirmed" '^dev-env-api: unconfirmed: HTTP 200, but the transfer did not complete'
+has_err "wait-registered goes on to its deadline" 'unconfirmed: esc-gate-0001 not registered within 2s'
 setmode ok
 
 # ── 5. selftest subcommand ──────────────────────────────────────────────────────────
@@ -321,6 +371,12 @@ if [ -n "$fn" ]; then
   if [ "$RC" -eq 0 ] && [ "$(cat "$OUT")" = "after" ] && [ ! -s "$ERR" ]; then ok "reach is silent without the client"; else bad "reach was not silent without the client"; fi
   ( DEV_ENV_API_TOKEN_FILE="$WORK/absent"; set -euo pipefail; eval "$fn"; dev_env_api_reach; echo "after" ) > "$OUT" 2> "$ERR"; RC=$?
   if [ "$RC" -eq 0 ] && [ "$(cat "$OUT")" = "after" ] && [ ! -s "$ERR" ]; then ok "reach is silent without the token"; else bad "reach was not silent without the token"; fi
+  # Without the CA alone it is not silent: the client refuses before sending, so 000.
+  before=$(nreq)
+  ( DEV_ENV_API_CA_FILE="$WORK/absent"; set -euo pipefail; eval "$fn"; dev_env_api_reach; echo "after" ) > "$OUT" 2> "$ERR"; RC=$?
+  cat "$OUT" "$ERR" >> "$ALL_OUT"
+  reach_line_ok "reach without the CA alone" 000
+  if [ "$(nreq)" -eq "$before" ]; then ok "reach without the CA sends nothing"; else bad "reach without the CA reached the server"; fi
   if grep -qF -- "$TOKEN" "$ALL_OUT"; then bad "the token appears in the reach output"; else ok "the token appears in no reach output"; fi
 fi
 

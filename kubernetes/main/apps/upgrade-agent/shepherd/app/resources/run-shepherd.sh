@@ -63,10 +63,11 @@ epoch_now() { date -u +%s; }
 # One best-effort, read-only GET /v1/sessions against the dev-env v2 operator API per
 # run, as the reach proof: one line on stderr with the HTTP status code (000 when no
 # answer came). It never changes this run's exit code or stdout, is bounded at 10
-# seconds, runs once per run (a nested script skips it), and is skipped without a word
-# when the client or the token is not mounted. The same block is in respond.sh,
-# run-shepherd.sh, triage.sh and gate.sh; scripts/upgrade-agent/dev-env-api-selftest.sh
-# extracts and checks each copy.
+# seconds, and runs once per run (a nested script skips it). It is skipped without a
+# word when the client or the token is not mounted; when only the CA is missing, the
+# client refuses before sending and the line logs HTTP 000. The same block is in
+# respond.sh, run-shepherd.sh, triage.sh and gate.sh;
+# scripts/upgrade-agent/dev-env-api-selftest.sh extracts and checks each copy.
 dev_env_api_reach() {
   local client="${DEV_ENV_API_CLIENT:-/opt/dev-env-api/dev-env-api.sh}"
   local token="${DEV_ENV_API_TOKEN_FILE:-/var/run/secrets/dev-env/token}"

@@ -11,11 +11,21 @@
 # their defaults). Its move stories (#610 upgrade, #748 escalation) set the real
 # numbers from v1's record.
 #
+# Creates are off. The operator refuses a create from this account while its flag
+# --summon-create-kinds (dev-env story 770; empty by default) does not name the
+# entry's kind, so with the flag unset this policy lets the account read its own
+# sessions and start nothing (coordinator ruling, haynes-ops PR 4850 comment
+# 6816662070). A later haynes-ops PR switches a kind on: task not before story 741
+# is installed; remote not before stories 741 and 745 are installed and the pinned
+# agent image accepts a summoned remote session.
+#
 # The briefs are inert on purpose (coordinator ruling 3, tracker #739 comment 7239):
-# until a move story replaces them, any session this policy starts is told the lane
-# has not moved, to change nothing and to stop. No brief.fields, so a create that
-# sends data is refused (422). Each move story replaces its entry's template and
-# fields in its own reviewed PR (6.4, 5.6).
+# each says the lane has not moved, to change nothing, to say so and to stop. Both
+# entries are remote: a remote entry's brief is stored with the session and is not
+# delivered until story 745 (a task entry's brief is delivered to the session). No
+# brief.fields, so a create that sends any data member is refused; an empty data is
+# accepted. Each move story replaces its entry's template and fields in its own
+# reviewed PR (6.4, 5.6).
 apiVersion: dev-env.haynesops.com/v1alpha1
 kind: CallerPolicy
 metadata:

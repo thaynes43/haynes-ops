@@ -22,7 +22,8 @@
 # wait-registered reads GET /v1/sessions/<name> every 5 seconds until its Remote
 # Control registration settles (6.10): registered with an https://claude.ai/code/
 # link is 0 and prints the session; login-required or offline before registering
-# is 2; still waiting at --for seconds (1 to 900) is 3.
+# is 2; still waiting at --for seconds (1 to 900) is 3. A read whose transfer curl
+# reports as failed counts as not registered yet, and the wait goes on.
 #
 # selftest checks this pod, offline: bash, curl (with https), jq, tr and mktemp are
 # present, and the token and CA files are mounted and readable. It sends nothing and
@@ -32,12 +33,16 @@
 #   0  created (201), reused (200) or read.
 #   2  refused: a 4xx (the API's code and message go to stderr), or refused here
 #      before sending (usage, a missing token or CA, a key 6.4 does not allow).
-#   3  unconfirmed: a 5xx, a timeout, no connection, or any other status. A create
-#      that exits 3 is retried with the same idempotencyKey; the API makes that safe.
+#   3  unconfirmed: a 5xx, a timeout, no connection, or any other status; or a
+#      transfer curl reports as failed, whatever the status (a truncated body, a
+#      timeout after 2xx headers). A create that exits 3 is retried with the same
+#      idempotencyKey; the API makes that safe.
 #
-# Output: on success stdout is the API's JSON body. stderr gets one line per HTTP
-# call, "dev-env-api: <METHOD> <path> HTTP <code>" (000 when no response came), and
-# on a refusal one line with the API's error code and message.
+# Output: on success stdout is the API's JSON body; on 2 or 3 stdout is empty, so a
+# partial body is never printed. stderr gets one line per HTTP call,
+# "dev-env-api: <METHOD> <path> HTTP <code>" (000 when no response came); on a
+# refusal one line with the API's error code and message; on 3 one line saying the
+# answer is unconfirmed.
 #
 # The token is never printed, in any mode. It is never an argument (so never in a
 # process list or an xtrace line) and never a shell variable: curl reads the
@@ -111,8 +116,10 @@ auth_header() {
 }
 
 # call METHOD PATH MAX_TIME [BODY_FILE]
-# Writes the response body to $TMPD/body, sets HTTP_CODE, logs one status line.
+# Writes the response body to $TMPD/body, sets HTTP_CODE and CURL_RC (curl's own
+# exit status, kept apart from the HTTP status), logs one status line.
 HTTP_CODE=000
+CURL_RC=0
 call() {
   local method="$1" path="$2" max_time="$3" body="${4:-}" code rc
   local args=(-q -sS --proto '=https' --noproxy '*' --cacert "$CA_FILE"
@@ -126,6 +133,7 @@ call() {
   rc=$?
   case "$code" in [0-9][0-9][0-9]) ;; *) code=000 ;; esac
   HTTP_CODE="$code"
+  CURL_RC="$rc"
   say "$method $path HTTP $code"
   if [ "$rc" -ne 0 ] && [ "$code" = 000 ]; then
     # curl's own message names the URL and the failure, never a header.
@@ -134,13 +142,24 @@ call() {
   return 0
 }
 
-# Exit code for HTTP_CODE: 2xx 0, 4xx 2, anything else 3.
+# Exit code for the last call: 3 when curl reports the transfer failed, whatever
+# HTTP_CODE says (a 2xx with a truncated body is no answer); else 2xx 0, 4xx 2,
+# anything else 3.
 status_class() {
+  [ "$CURL_RC" -eq 0 ] || return 3
   case "$HTTP_CODE" in
     2??) return 0 ;;
     4??) return 2 ;;
     *) return 3 ;;
   esac
+}
+
+say_unconfirmed() {
+  if [ "$CURL_RC" -ne 0 ] && [ "$HTTP_CODE" != 000 ]; then
+    say "unconfirmed: HTTP $HTTP_CODE, but the transfer did not complete (curl exit $CURL_RC)"
+  else
+    say "unconfirmed: HTTP $HTTP_CODE"
+  fi
 }
 
 print_refusal() {
@@ -156,7 +175,7 @@ finish() {  # print the body on success, the refusal on 4xx; exit by class
   case "$c" in
     0) cat "$TMPD/body"; [ -s "$TMPD/body" ] && printf '\n' ;;
     2) print_refusal ;;
-    *) say "unconfirmed: HTTP $HTTP_CODE" ;;
+    *) say_unconfirmed ;;
   esac
   exit "$c"
 }
@@ -221,6 +240,8 @@ cmd_wait_registered() {
     call GET "/v1/sessions/$name" "$t"
     status_class; c=$?
     if [ "$c" -eq 2 ]; then print_refusal; exit 2; fi
+    # A status with a failed transfer is not a read: say so, and keep waiting.
+    if [ "$c" -eq 3 ] && [ "$CURL_RC" -ne 0 ] && [ "$HTTP_CODE" != 000 ]; then say_unconfirmed; fi
     if [ "$c" -eq 0 ]; then
       state="$(jq -r '.remoteControl.state // ""' "$TMPD/body" 2>/dev/null)"
       url="$(jq -r '.remoteControl.url // ""' "$TMPD/body" 2>/dev/null)"

@@ -6,6 +6,15 @@
 # Deleting one revokes that caller at once. Meatball's policy stays in the frontdoor
 # app, beside its caller.
 #
+# Creates are off. The operator refuses a create from a summoning caller while its
+# flag --summon-create-kinds (dev-env story 770; empty by default) does not name the
+# entry's kind; reads of the caller's own sessions still work. A later haynes-ops PR
+# switches a kind on: task not before story 741 is installed; remote not before
+# stories 741 and 745 are installed and the pinned agent image accepts a summoned
+# remote session. A create that sends any data member is refused (no entry has
+# brief.fields); an empty data is accepted. A task entry's brief is delivered to the
+# session; a remote entry's brief is stored and is not delivered until story 745.
+#
 # Why its own app, in dev-env-system: a CallerPolicy must live in dev-env-system,
 # and the callers' own Kustomizations set targetNamespace: upgrade-agent. The
 # grant-policies app is the pattern: policy objects in their own Kustomization that
@@ -17,9 +26,11 @@
 # - dev-env-rbac: Role dev-env-operator-caller-policy names these objects, so the
 #   operator can Get each one the moment it exists.
 #
-# Not a dependsOn: the operator Deployment. Flux Ready does not prove its image. A
-# summoning policy is applied only when both operator replicas run dev-env ac1bbb58 or
-# later (the summon ledger); the coordinator checks the running images before merge.
+# Not a dependsOn: the operator Deployment. Flux Ready does not prove its image. This
+# Kustomization is applied only when both operator replicas run an operator that has
+# --summon-create-kinds, with the flag unset (coordinator ruling, haynes-ops PR 4850
+# comment 6816662070); the coordinator checks both running pods' images and the
+# HelmRelease's flags before merge.
 #
 # Nothing depends on this Kustomization. A failed apply leaves the callers refused
 # (403) and changes nothing else.
