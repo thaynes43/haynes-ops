@@ -1354,8 +1354,9 @@ An item whose events rotated out keeps its state in `items[id].base`:
 - **Edits.** The terminal comes from the history, not from the tick that recorded it. Each
   tick offers it again for `catch_up_margin_hours` (24) after it was recorded, so a tick
   whose PR-write phase did not run (no write token, a halt, a stopped tick) is made up by a
-  later one. The edit happens only when the content changes, and a PR with no lane record
-  gets no new comment (`summary.pr_records.no_record`). On an open PR `terminal` is null,
+  later one. A halt that lasts longer than that loses the mirror; the history keeps the
+  event. The edit happens only when the content changes, and a PR with no lane record gets
+  no new comment (`summary.pr_records.no_record`). On an open PR `terminal` is null,
   and a null compares equal to a record written before the field existed, so the change
   edits no current record.
 
