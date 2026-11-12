@@ -19,13 +19,6 @@ configMapGenerator:
   # ~/.claude and ~/.codex; mutable auth/state stays on the PVC (dev-init.sh
   # enforces the split).
   - name: dev-env-scripts
-    options:
-      annotations:
-        # Temporary (OP537, same as #4244/#4247): the cursor-mcp set rides the image
-        # digest's single Helm rollout, so Reloader must not roll the pod a second
-        # time for this ConfigMap. Remove after the restart is accepted; that is an
-        # annotation-only change, the data hash is unchanged and nothing restarts.
-        reloader.stakater.com/ignore: "true"
     files:
       - resources/dev-init.sh
       # The after-boot lane (2026-09-10): codex remote-control + the claude standby

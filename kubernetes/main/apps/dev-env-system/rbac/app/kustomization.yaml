@@ -5,6 +5,7 @@ kind: Kustomization
 resources:
   - ./allowance-slot.yaml
   - ./session-allowances.yaml
+  - ./summon-creates.yaml
   - ./serviceaccounts.yaml
   - ./agent.yaml
   - ./workbench.yaml

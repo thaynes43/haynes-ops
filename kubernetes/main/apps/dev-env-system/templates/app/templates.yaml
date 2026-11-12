@@ -219,8 +219,9 @@ cursor:
 # D-18. `full` and `dev` carry the cigar-journal MCP token as `ops` does (mcp.json's
 # ${CIGAR_JOURNAL_TOKEN}, from its own Secret dev-env-cigar-secret, not dev-env-mcp-secret),
 # so no profile that gets mcp.json renders a broken Authorization header.
-# MCP-Unifi uses its own Secret in these three profiles too; bounded rule canaries
-# retain their credential-minimal profiles. Platform egress already permits /mcp.
+# MCP-Unifi uses its own Secret in `full`, `dev` and `workbench`; `ops` carries none
+# (DESIGN-064 6.3). Bounded rule canaries retain their credential-minimal profiles.
+# Platform egress already permits /mcp.
 # Every Secret named below is created by 8.8 (ExternalSecrets and the empty keeper-owned
 # ones). dev-env-mcp-secret must hold v1's MCP tokens WITHOUT the Proxmox
 # operator token and the hw-ssh key (Q-07: those come only as grants).
@@ -329,17 +330,41 @@ profiles:
       - { name: gcp-sa, secret: dev-env-gcp-secret, path: /etc/gcp, defaultMode: 0440 }
       - { name: claude-access, secret: dev-env-claude-live, path: /opt/dev-env/claude-access, defaultMode: 0440 }
       - { name: codex-access, secret: dev-env-codex-live, path: /opt/dev-env/codex-access, defaultMode: 0440 }
-  # Summoned sessions (3.7): no open web. The label selects the ops egress tier, which is
-  # not built yet (an `ops` pod has the platform tier only until it is).
+  # Summoned sessions (dev-env DESIGN-064 6.3, OP737): no open web. The label selects the
+  # ops egress tier (network/app/session-ops.yaml, DESIGN-064 6.1): a name list, and
+  # neither the web tier nor the platform tier selects an ops pod.
+  # Claude: only a remote session's agent pod gets the keeper's login projection, through
+  # the `remote` block below (dev-env#1083, OP765). An operator that predates dev-env#1083
+  # refuses the whole document, so every replica must run one that has it; sha-4534516 is
+  # the pin this was checked against. A task or local pod on
+  # this profile gets neither the variable nor the mount. It runs on the static token the
+  # operator sets, and it reads attacker-influenced text, so it must not hold the
+  # account's access token (review of haynes-ops#4832). The projection is access-only:
+  # agentd never refreshes it and refuses to start the agent when the pod's credentials
+  # hold a refresh token of their own, so the keeper stays the only refresher. No Codex
+  # projection: summoned sessions run Claude only.
+  # Known limit (DESIGN-064 6.3): a remote session here is joinable from the owner's
+  # phone, so it holds the account's access token (each lasts about eight hours and the
+  # pod follows the keeper's later ones while it runs; no refresh token).
+  # Not here on purpose: UNIFI_MCP_AUTH_TOKEN (direct pod egress on this tier does not
+  # reach mcp-unifi, and mcp-unifi can write to the network) and dev-env-mcp-secret.
+  # Kept: the cigar-journal token (curation), the optional Proxmox read token (D-18;
+  # direct pod egress does not reach Proxmox without a LAN grant, and every ops grant goes
+  # to Tom) and /creds from the ops bot's token Secret. The egress tier limits what the
+  # pod connects to directly; it is not a statement about every right the pod's
+  # ServiceAccount holds.
   ops:
     env:
       - name: CIGAR_JOURNAL_TOKEN
         valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
-      - name: UNIFI_MCP_AUTH_TOKEN
-        valueFrom: { secretKeyRef: { name: dev-env-unifi-secret, key: UNIFI_MCP_AUTH_TOKEN, optional: true } }
     envFrom:
       - secretRef: { name: dev-env-proxmox-secret, optional: true }
     mounts:
       - { name: gh-token, secret: dev-env-ops-gh-token, path: /creds }
+    remote:
+      env:
+        - { name: AGENTD_CLAUDE_LIVE_FILE, value: /opt/dev-env/claude-access/access.json }
+      mounts:
+        - { name: claude-access, secret: dev-env-claude-live, path: /opt/dev-env/claude-access, defaultMode: 0440 }
     labels:
       dev-env.haynesops.com/egress: ops
