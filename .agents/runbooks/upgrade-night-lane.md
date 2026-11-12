@@ -1301,8 +1301,11 @@ An item whose events rotated out keeps its state in `items[id].base`:
   resourceVersion included, over the live object first.
 - **The first write.** When the object is missing, the tick first creates it empty under
   `upgrade-night-history-init`. A create through apply wipes the resourceVersion after the
-  preconditions, so an RV on a create would guard nothing. The tick then writes at the
-  version that create returned, so a second first writer meets a conflict.
+  preconditions, so an RV on a create would guard nothing. An apply also succeeds on an
+  object that already exists, so the tick reads what the create returned. If it already
+  holds events, another first writer got there first; this tick writes nothing and
+  reports a conflict. Otherwise it writes at the version that create returned, so a second
+  first writer meets a conflict there.
 - **A conflict or a failure** writes nothing. The log line reads
   `ERROR upgrade-night <mode>: HISTORY NOT WRITTEN: …`, and kubectl's own text goes to the
   Job log only. `summary.history.write` says `conflict` or `failed`. The next tick derives
@@ -1348,7 +1351,10 @@ An item whose events rotated out keeps its state in `items[id].base`:
   `terminal: { type, at, state, by, item, event, merge_commit }`. `terminal` is one of
   `night.pr_record.fields`, goes through the publish check, and is mapped in
   `lane-v1-to-item-v1.json`.
-- **Edits.** The edit happens only when the content changes, and a PR with no lane record
+- **Edits.** The terminal comes from the history, not from the tick that recorded it. Each
+  tick offers it again for `catch_up_margin_hours` (24) after it was recorded, so a tick
+  whose PR-write phase did not run (no write token, a halt, a stopped tick) is made up by a
+  later one. The edit happens only when the content changes, and a PR with no lane record
   gets no new comment (`summary.pr_records.no_record`). On an open PR `terminal` is null,
   and a null compares equal to a record written before the field existed, so the change
   edits no current record.

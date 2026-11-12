@@ -287,18 +287,17 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, sca
       recorded_at: Date.parse(at) > Date.parse(when) ? at : undefined, attempt: s.item.attempts.length + 1,
       reason: labels.length ? reasonOf(`labels: ${labels.join(', ')}`, cfg) : undefined, carrier: { repo, pr: e.number }, evidence: { merge_commit: mc } }), e.number);
   };
-  const terminals = [];
   for (const [id, s] of [...st.items]) {
     const pr = s.item.carrier?.pr;
     if (!OPEN.includes(s.item.state) || !Number.isInteger(pr) || openSet.has(pr)) continue;
     const f = scanByPr.has(pr) ? { state: 'MERGED', ...scanByPr.get(pr) } : fates.get(pr);
     if (!f) { notes.unread.push({ pr, item: id, why: 'the PR left the open list and its state could not be read; nothing written' }); continue; }
-    if (f.state === 'MERGED') { if (merged(s, id, f, 'lane')) terminals.push(pr); }
+    if (f.state === 'MERGED') merged(s, id, f, 'lane');
     else if (f.state === 'CLOSED') {
       const a = actorOf(f.closedBy, cfg) || { kind: 'lane', login: null };
       const when = later(iso(f.closedAt || at), s.item.observed_at);
       if (add(s, makeEvent({ item_id: id, type: 'closed', from: s.item.state, to: 'closed', at: when, actor: a.kind === 'shepherd' ? { kind: 'hand', login: a.login } : a, recorded_by: 'lane',
-        recorded_at: Date.parse(at) > Date.parse(when) ? at : undefined, reason: reasonOf(`PR #${pr} was closed without a merge${a.login ? ` by ${a.login}` : ''}`, cfg), carrier: { repo, pr } }), pr)) terminals.push(pr);
+        recorded_at: Date.parse(at) > Date.parse(when) ? at : undefined, reason: reasonOf(`PR #${pr} was closed without a merge${a.login ? ` by ${a.login}` : ''}`, cfg), carrier: { repo, pr } }), pr)) { /* terminal: terminalsOf() */ }
     } else notes.still_open.push({ pr, item: id, why: `GitHub reads it ${f.state || 'unknown'}, but the open list did not name it (a draft, or no longer Renovate's)` });
   }
 
@@ -338,12 +337,30 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, sca
   if (!rot.ok) return { ok: false, why: rot.why };
   if (rot.dropped) rot.doc.meta.rotation = { at, dropped: rot.dropped, forgotten: rot.forgotten, oldest_kept: rot.doc.events[0]?.at ?? null };
   const changed = out.length > 0 || rot.dropped > 0 || JSON.stringify(doc.meta) !== JSON.stringify(rot.doc.meta) || JSON.stringify(doc.items) !== JSON.stringify(rot.doc.items);
-  const terminalOf = new Map();
-  for (const ev of out) if (TERMINAL.includes(ev.type) && Number.isInteger(ev.carrier?.pr) && (terminals.includes(ev.carrier.pr) || ev.recorded_by === 'lane')) {
-    if (ev.type === 'closed' && openSet.has(ev.carrier.pr)) continue; // a newer version replaced it: the PR's record describes the new item
-    terminalOf.set(ev.carrier.pr, { type: ev.type, at: ev.at, state: ev.to, by: ev.actor.login ?? ev.actor.kind, item: ev.item_id, event: ev.id, ...(ev.evidence?.merge_commit ? { merge_commit: ev.evidence.merge_commit } : {}) });
+  return { ok: true, doc: rot.doc, events: out, notes, compare, rotation: rot, changed, terminals: terminalsOf(rot.doc, openSet, at, cfg), bytes: rot.bytes };
+}
+
+// Terminal events to mirror onto PR records (story 593 (d)), derived from the history, not
+// from this tick's new events: an item whose newest event is merged, merge-unknown or
+// closed, recorded by the lane (it saw the PR open, so the PR has a record), written within
+// the last catch_up_margin_hours. Each tick in that window offers it again, so a PR-write
+// phase that did not run (no write token, a halt, a stopped tick) is made up by the next
+// one; an unchanged record is not edited. A closed item whose PR is still open was replaced
+// by a newer version on that PR: the PR's record describes the new item.
+export function terminalsOf(doc, openSet, at, cfg) {
+  const last = new Map();
+  for (const ev of doc.events) last.set(ev.item_id, ev);
+  const since = Date.parse(at) - cfg.catch_up_margin_hours * 3600e3;
+  const byPr = new Map();
+  for (const ev of last.values()) {
+    if (!TERMINAL.includes(ev.type) || ev.recorded_by !== 'lane' || !Number.isInteger(ev.carrier?.pr)) continue;
+    if (Date.parse(ev.recorded_at || ev.at) < since) continue;
+    if (ev.type === 'closed' && openSet.has(ev.carrier.pr)) continue;
+    const prev = byPr.get(ev.carrier.pr);
+    if (prev && Date.parse(prev.at) > Date.parse(ev.at)) continue;
+    byPr.set(ev.carrier.pr, { type: ev.type, at: ev.at, state: ev.to, by: ev.actor.login ?? ev.actor.kind, item: ev.item_id, event: ev.id, ...(ev.evidence?.merge_commit ? { merge_commit: ev.evidence.merge_commit } : {}) });
   }
-  return { ok: true, doc: rot.doc, events: out, notes, compare, rotation: rot, changed, terminals: [...terminalOf].map(([pr, terminal]) => ({ pr, terminal })), bytes: rot.bytes };
+  return [...byPr].sort((a, b) => a[0] - b[0]).map(([pr, terminal]) => ({ pr, terminal }));
 }
 
 // ── the count comparison: merged PRs as GitHub lists them, against the history ──────
@@ -467,8 +484,12 @@ export function applyHistory(manifest, manager, env) {
       : /\(NotFound\)/.test(raw) ? 'not found' : /\(Invalid\)|\(TooLong\)|too long|exceeds/i.test(raw) ? 'rejected by the API server as invalid or too large' : `kubectl exited ${r.status}`;
     return { ok: false, conflict, detail, raw: `${M.publicDetail(raw)}` };
   }
-  const rv = parse(r.stdout)?.metadata?.resourceVersion ?? null;
-  return { ok: !!rv, rv, conflict: false, detail: rv ? null : 'the apply returned no resourceVersion' };
+  const got = parse(r.stdout);
+  const rv = got?.metadata?.resourceVersion ?? null;
+  // an apply succeeds on an object that exists: the empty create reports what it found, so
+  // a create that met another writer's data is a conflict, not a fresh object
+  const hasData = KEYS.some(k => got?.data?.[k] !== undefined);
+  return { ok: !!rv, rv, conflict: false, hasData, detail: rv ? null : 'the apply returned no resourceVersion' };
 }
 
 // ── the phase: read, derive, write (run-night.mjs calls it once per tick) ─────────────
@@ -509,13 +530,17 @@ export function historyPhase({ rules, run, env, repo, at, records, openPrs, verd
   const planned = plan.terminals;
   if (!write) return { summary: { ...sum, write: 'planned', why_not: 'a local run (no --write-state): planned, nothing written', terminals: planned.map(t => t.pr) }, terminals: planned, plan };
   sum.total.written = false;
-  if (!plan.changed) return { summary: { ...sum, write: 'not-needed', why_not: 'nothing new this tick' }, terminals: [] };
+  // nothing new: the terminals the history already holds are still offered (terminalsOf)
+  if (!plan.changed) return { summary: { ...sum, write: 'not-needed', why_not: 'nothing new this tick', terminals: planned.map(t => t.pr) }, terminals: planned };
   let rv = p.rv;
   if (!read.found) {
     // create the object empty first (create-via-apply ignores a resourceVersion), then
     // write at the version that create returned: a second first writer meets a conflict
     const w0 = apply(initManifest(), INIT_MANAGER, env);
     if (!w0.ok) return { summary: { ...sum, write: w0.conflict ? 'conflict' : 'failed', why_not: `the empty history could not be created (${w0.detail}); nothing written, the next tick derives the same events`, raw: w0.raw }, terminals: [] };
+    // another first writer created it and wrote its events since this tick read it absent:
+    // this tick's plan was built on an empty history, so it writes nothing
+    if (w0.hasData) return { summary: { ...sum, write: 'conflict', why_not: 'another writer created upgrade-ledger with events after this tick read it absent; nothing written, the next tick derives the same events' }, terminals: [] };
     rv = w0.rv;
   }
   const w = apply(historyManifest(plan.doc, rv), MANAGER, env);

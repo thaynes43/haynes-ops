@@ -448,7 +448,7 @@ if (cmd === 'kubectl' && argv[0] === 'get') {
     const base = w.k8s['configmaps@upgrade-agent'] ?? w.k8s.configmaps;
     if (base === 'FAIL' || base === undefined) fail();
     if (base === 'GARBAGE') out('not json');
-    let items = [...base.items, ...(lock() ? [lock()] : []), ...(HISTF && fs.existsSync(HISTF) ? [JSON.parse(fs.readFileSync(HISTF, 'utf8'))] : [])];
+    let items = [...base.items, ...(lock() ? [lock()] : []), ...(HISTF && fs.existsSync(HISTF) && !w.historyHiddenOnRead ? [JSON.parse(fs.readFileSync(HISTF, 'utf8'))] : [])];
     const led = LEDF && fs.existsSync(LEDF) ? fs.readFileSync(LEDF, 'utf8') : (w.ledger ?? null);
     if (led !== null || w.stateRvOnRead) items = [...items.filter(c => c.metadata.name !== 'upgrade-lane-state'), { metadata: { name: 'upgrade-lane-state', resourceVersion: w.stateRvOnRead || stateRv() }, data: led !== null ? { retry_ledger: led } : {} }];
     const reads = name === 'upgrade-lane-state' ? Number(fs.existsSync(LOCKF + '.state-reads') ? fs.readFileSync(LOCKF + '.state-reads', 'utf8') : 0) + 1 : 0;
@@ -633,6 +633,13 @@ process.exit(0);
       'story 593: a PR that left the open list is read once for its fate, unless the merged list already names it');
     const t4 = await tick(w3, {}, ['--write-state'], { keepGh: true });
     ok(hApplies(t4).length === 0 && t4.summary.history?.events === 0, 'story 593: and a tick after that writes nothing again', JSON.stringify(t4.summary.history).slice(0, 300));
+    // review of 168b2786: a tick that read the history absent while another writer created
+    // and filled it: its empty create (a server-side apply) meets that writer's events, and
+    // it writes nothing rather than overwrite them
+    const before = readFileSync(historyFile, 'utf8');
+    const t5 = await tick({ ...w3, historyHiddenOnRead: true }, {}, ['--write-state'], { keepGh: true });
+    ok(hApplies(t5).length === 1 && hApplies(t5)[0].argv[2] === '--field-manager=upgrade-night-history-init' && t5.summary.history?.write === 'conflict' && readFileSync(historyFile, 'utf8') === before && /HISTORY NOT WRITTEN: CONFLICT: .*another writer created upgrade-ledger with events after this tick read it absent/.test(t5.stderr),
+      'story 593: a second first writer meets the events of the first and writes nothing', `${hApplies(t5).map(x => x.argv[2]).join(',')} ${JSON.stringify(t5.summary.history?.why_not)}`);
   }
   // every failed read is a named blocker, and nothing is picked
   const failCases = [

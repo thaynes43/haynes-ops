@@ -111,7 +111,12 @@ ok(rules.night.pr_record.fields.includes('terminal'), 'config: the PR record car
   ok(JSON.stringify(types(p6)) === JSON.stringify(['merged:needed>merged_unverified']) && p6.events[0].actor.kind === 'renovate' && p6.events[0].actor.login === 'renovate[bot]' && p6.events[0].recorded_by === 'lane' && p6.events[0].attempt === 1 && p6.events[0].evidence.merge_commit === sha('a'),
     'tick: a PR that left the open list and is in the merged list: merged by Renovate, from the state the lane saw, attempt 1', JSON.stringify(p6.events));
   ok(p6.terminals.length === 1 && p6.terminals[0].pr === 101 && p6.terminals[0].terminal.type === 'merged' && p6.terminals[0].terminal.state === 'merged_unverified', 'tick: the merge is a terminal event for PR 101', JSON.stringify(p6.terminals));
-  ok(plan(p6.doc, { records: [b, c], openPrs: [102, 103], at: at(30), scan: scanOf([mergedPr(101, 10)]) }).events.length === 0, 'tick: the merge is recorded once (the next tick, same merged list)');
+  const p6b = plan(p6.doc, { records: [b, c], openPrs: [102, 103], at: at(30), scan: scanOf([mergedPr(101, 10)]) });
+  ok(p6b.events.length === 0, 'tick: the merge is recorded once (the next tick, same merged list)');
+  // review of 168b2786: the terminal is offered again until it is old, so a PR-write phase
+  // that did not run on the merging tick is made up by a later one
+  ok(p6b.terminals.length === 1 && p6b.terminals[0].pr === 101 && p6b.terminals[0].terminal.event === p6.terminals[0].terminal.event, 'tick: the next tick offers the same terminal again (the record converges)', JSON.stringify(p6b.terminals));
+  ok(plan(p6.doc, { records: [b, c], openPrs: [102, 103], at: at(15 + cfg.catch_up_margin_hours * 60 + 1) }).terminals.length === 0, 'tick: and stops offering it after catch_up_margin_hours'); 
   for (const [who, kind] of [['app/haynes-ops-bot', 'shepherd'], ['app/haynes-dev-bot', 'hand'], ['thaynes43', 'person'], ['app/some-other-app', 'hand']]) {
     const p = plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), scan: scanOf([mergedPr(101, 10, { mergedBy: { login: who } })]) });
     ok(p.events[0]?.actor.kind === kind && RF.checkEvent(p.events[0]).length === 0, `tick: merged by ${who} is actor ${kind}`, JSON.stringify(p.events[0]?.actor));
@@ -250,7 +255,7 @@ ok(rules.night.pr_record.fields.includes('terminal'), 'config: the PR record car
   const api = () => {
     let obj = null, rv = 100;
     const apply = (m, mgr) => {
-      if (mgr === H.INIT_MANAGER) { if (!obj) obj = { metadata: { name: m.metadata.name, resourceVersion: String(++rv) }, data: {} }; return { ok: true, rv: obj.metadata.resourceVersion, conflict: false }; }
+      if (mgr === H.INIT_MANAGER) { if (!obj) obj = { metadata: { name: m.metadata.name, resourceVersion: String(++rv) }, data: {} }; return { ok: true, rv: obj.metadata.resourceVersion, conflict: false, hasData: H.KEYS.some(k => obj.data?.[k] !== undefined) }; }
       if (!obj || m.metadata.resourceVersion !== obj.metadata.resourceVersion) return { ok: false, conflict: true, detail: 'conflict (HTTP 409)', raw: 'Error from server (Conflict)' };
       obj = { metadata: { name: m.metadata.name, resourceVersion: String(++rv) }, data: structuredClone(m.data) };
       return { ok: true, rv: obj.metadata.resourceVersion, conflict: false };
@@ -293,6 +298,17 @@ ok(rules.night.pr_record.fields.includes('terminal'), 'config: the PR record car
   const cr = H.historyPhase({ rules, run: (cmd, argv) => (cmd === 'kubectl' ? JSON.stringify({ items: [corrupt] }) : '[]'), env: {}, repo: REPO, at: at(0), records: [rec(801)], openPrs: [801], verdict: null, write: true, apply: () => { wrote++; return { ok: true, rv: '10' }; } });
   ok(wrote === 0 && !cr.summary.written && /unreadable: ConfigMap upgrade-agent\/upgrade-ledger: data.events line 1/.test(cr.summary.why_not), 'write: a corrupt history is refused and never overwritten', JSON.stringify(cr.summary.why_not));
   ok(/unreadable/.test(H.historyPhase({ rules, run: () => null, env: {}, repo: REPO, at: at(0), records: [], openPrs: [], verdict: null, write: true, apply: () => { wrote++; return { ok: true }; } }).summary.why_not) && wrote === 0, 'write: an unreadable ConfigMap list writes nothing');
+  // review of 168b2786: two first writers both read upgrade-ledger absent; the first creates
+  // it and writes; the second's empty create meets those events and must not overwrite them
+  const h = api();
+  const empty = (cmd, argv) => (cmd === 'kubectl' && argv[0] === 'get' ? JSON.stringify({ items: [] }) : h.run(cmd, argv));
+  const first = H.historyPhase({ rules, run: empty, env: {}, repo: REPO, at: at(0), records: [rec(1101)], openPrs: [1101], verdict: null, write: true, apply: h.apply });
+  const second = H.historyPhase({ rules, run: empty, env: {}, repo: REPO, at: at(1), records: [rec(1102)], openPrs: [1102], verdict: null, write: true, apply: h.apply });
+  const kept = h.get().data.events.trim().split('\n').map(JSON.parse);
+  ok(first.summary.written && !second.summary.written && second.summary.write === 'conflict' && /created upgrade-ledger with events after this tick read it absent/.test(second.summary.why_not) && kept.length === 1 && kept[0].carrier.pr === 1101,
+    'write: a second first writer whose empty create meets the first one\'s events writes nothing (conflict); the first one\'s events stay', JSON.stringify(second.summary.why_not));
+  const third = phase(h, [rec(1101), rec(1102)], { min: 15 });
+  ok(third.summary.written && h.get().data.events.trim().split('\n').length === 2, 'write: and its next tick writes its event on top');
   // a local run plans and writes nothing
   const lr = H.historyPhase({ rules, run: api().run, env: {}, repo: REPO, at: at(0), records: [rec(901)], openPrs: [901], verdict: null, write: false, apply: () => { wrote++; return { ok: true }; } });
   ok(wrote === 0 && lr.summary.write === 'planned' && lr.summary.derived === 1, 'write: a local run (no --write-state) plans and writes nothing');
