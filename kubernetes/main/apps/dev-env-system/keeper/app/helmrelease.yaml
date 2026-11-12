@@ -33,8 +33,15 @@ spec:
       retries: 3
   upgrade:
     cleanupOnFail: true
+    # One attempt, then one rollback, then stop (OpenProject 736, review of haynes-ops#4835).
+    # The keeper is one replica with strategy Recreate and it holds the rotating logins, so
+    # every Helm attempt and every rollback replaces its pod. With `retries: 3`, a release
+    # that could not become ready meant four attempts and four rollbacks: up to eight
+    # replacements. Now a failed upgrade is rolled back once and the release then waits for
+    # a new revision in git (or a manual `flux reconcile helmrelease --force`).
     remediation:
-      retries: 3
+      retries: 0
+      remediateLastFailure: true
   uninstall:
     keepHistory: false
   values:
@@ -52,8 +59,8 @@ spec:
             image:
               repository: ghcr.io/thaynes43/dev-env-operator
               # Source 1ae9c7ca2c0595157ab93bab74ff8640b3896ad7 (dev-env#1078: a second App token loop for the ops bot, DESIGN-064 6.2, OpenProject 736); publish.yml run 43120605930 signed and verified keyless (Sign the image, Verify the signature: success); digest re-checked on ghcr by tag.
-              # Keeper-path changes since 3a46b8a: in internal/keeper and cmd/dev-env-keeper, #1078 only (and one test-only commit, #1015). In packages the keeper imports: internal/reminders (#917: a Reminder with spec.projection is calendar-only, never pages, and the scheduler takes its events down at its retention end; no Reminder had spec.projection when this pin was written) and internal/asks (#1037, #1041: the grant Ask kind; nothing creates one while the broker runs without --enable-grant-asks). Flags added below: the ops token loop.
-              # Rollback: tag sha-3a46b8a@sha256:7a19d78c1c6ff5bd736f7c793ea7f66fe21277e86d2d79fa5317af9fce8ae203 (publish.yml run 41897753199) AND remove the two ops flags below: an older keeper does not know them and would not start. The github-ops-bot mount may stay.
+              # Keeper-path changes since 3a46b8a: in internal/keeper and cmd/dev-env-keeper, #1078 only (and one test-only commit, #1015). In packages the keeper imports: internal/reminders (#917: a Reminder with spec.projection never pages and is ended at its retention end; the keeper wires no calendar adapter, so it makes no remote calendar call for it; no Reminder had spec.projection when this pin was written) and internal/asks (#1037, #1041: the grant Ask kind; the Ask notifier can now recognize an open grant Ask, and nothing creates one while the broker runs without --enable-grant-asks). Also linked, on no path the keeper calls: additive API and wire types (api/v1alpha1, api/coordination/v1alpha1, internal/apiserver/apiv1, internal/agentd/protocol) and golang.org/x/oauth2 0.38.0 and golang.org/x/sys 0.50.0 (review: haynes-ops#4835 comment 6810258590). The shared GitHub input checks and the grant log of #1078 also apply to the dev bot's mints. Flags added below: the ops token loop.
+              # Rollback: tag sha-3a46b8a@sha256:7a19d78c1c6ff5bd736f7c793ea7f66fe21277e86d2d79fa5317af9fce8ae203 (publish.yml run 41897753199) AND remove the two ops flags below: an older keeper does not know them and would not start. The github-ops-bot mount may stay, but it then still needs its Secret to exist. A rollback restarts the keeper, so it follows the same timing rule as the upgrade (clear of a Claude or Codex refresh). It does not clear an ops token already minted: that token stays usable until its expiry, at most an hour, and ops sessions lose GitHub access after it.
               # Was source 3a46b8a0e5a797ec9e16567b28d4fe38df8ef24c (dev-env#885: attempt-fenced Claude refresh, durable unsent-attempt marker in the existing journal Secret, third lease fence; no new RBAC); publish.yml run 41897753199 signed and verified keyless (Sign the image, Verify the signature: success).
               # Keeper-path changes since 4deca6e: #885; #898 (internal/reminders shared schedule, used by the live reminder scheduler); #687 (ask notifications, default off: the keeper's --enable-ask-notifications was NOT set by this pin). No keeper flag changes. The flag is set below since OpenProject #264, with the pin unchanged.
               # Rollback: tag sha-4deca6e@sha256:b478e768681294b3090e84c39982960f414a08a93b45f93a11c72c4175a17386 (v2.53.0, publish.yml run 40638019892).
@@ -150,6 +157,7 @@ spec:
               # both tokens are minted, so a refused ops mint shows as NotReady. A normal mint logs
               # the granted permissions it asked for and permissionsDropped 1 (GitHub's metadata).
               # Rollback: remove these two lines; the mount, the Secret and the ExternalSecret can stay.
+              # A token already minted stays valid until its expiry (at most an hour).
               - --enable-ops-gh-token=true
               - --ops-gh-token-repositories=haynes-ops,cigar-journal
             # Other flags retain the defaults: plan 01's names (--secret-namespace dev-agents,
