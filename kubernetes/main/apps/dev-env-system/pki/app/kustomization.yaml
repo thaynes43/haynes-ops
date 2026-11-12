@@ -14,7 +14,8 @@ configMapGenerator:
   #     AGENTD_API_CA_FILE names ca.crt (agentd's heartbeat and agent-run);
   #   - the front door (dev-env-system/dev-env-frontdoor) mounts the same bytes
   #     from the second generator below, because a pod cannot mount a ConfigMap
-  #     in another namespace. One file feeds both generators;
+  #     in another namespace. One file feeds every generator;
+  #   - the upgrade-agent callers mount the third copy (DESIGN-064 6.5, #739);
   #   - the v1 pod's v2 agent-run, without a mount (a mount would restart that pod):
   #       kubectl get configmap dev-env-api-ca -n dev-agents \
   #         -o jsonpath='{.data.ca\.crt}' > ~/.cache/dev-env-api-ca.crt
@@ -44,9 +45,17 @@ configMapGenerator:
     files:
       - ca.crt
   # Same pinned certificate, for the front door. A pod in dev-env-system cannot
-  # mount the dev-agents ConfigMap. Re-pinning ca.crt updates both.
+  # mount the dev-agents ConfigMap. Re-pinning ca.crt updates every copy.
   - name: dev-env-api-ca
     namespace: dev-env-system
+    files:
+      - ca.crt
+  # Same pinned certificate, for the summoning callers in upgrade-agent
+  # (alert-responder, upgrade-shepherd and triage, upgrade-health-gate; dev-env
+  # DESIGN-064 6.5, OpenProject #739). They mount it at /etc/dev-env/ca.crt for
+  # dev-env-api.sh. dev-env-ops does not mount it, so this ConfigMap rolls nothing.
+  - name: dev-env-api-ca
+    namespace: upgrade-agent
     files:
       - ca.crt
 generatorOptions:

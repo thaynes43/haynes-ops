@@ -27,6 +27,8 @@ on:
       - kubernetes/main/apps/upgrade-agent/shepherd/app/**
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/coordination-lib.sh
       - kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
+      - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/dev-env-api.sh
+      - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/gate.sh
       - scripts/upgrade-agent/**
       - .github/workflows/**
       - .renovate/**
@@ -36,6 +38,8 @@ on:
       - kubernetes/main/apps/upgrade-agent/shepherd/app/**
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/coordination-lib.sh
       - kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
+      - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/dev-env-api.sh
+      - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/gate.sh
       - scripts/upgrade-agent/**
       - .github/workflows/**
       - .renovate/**
@@ -89,6 +93,13 @@ jobs:
             nice -n 19 bash "scripts/upgrade-agent/${t}-selftest.sh"
             echo "::endgroup::"
           done
+      # The callers' client for the dev-env v2 operator API (dev-env DESIGN-064 6.5,
+      # OpenProject #739) against a fake HTTPS server on 127.0.0.1: its exit codes,
+      # the refusal of a create that carries a prompt, that its token is in no
+      # output, and the reach line in respond.sh, run-shepherd.sh, triage.sh and
+      # gate.sh. Its own step, after the loop above.
+      - name: Caller API client against a fake server (OP739)
+        run: nice -n 19 bash scripts/upgrade-agent/dev-env-api-selftest.sh
 
   deliver:
     name: Upgrade Agent Selftests - Delivery helper

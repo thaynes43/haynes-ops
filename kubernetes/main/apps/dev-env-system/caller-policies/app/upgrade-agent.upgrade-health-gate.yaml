@@ -1,0 +1,55 @@
+---
+# CallerPolicy for upgrade-agent/upgrade-health-gate (dev-env DESIGN-064 5.1, 6.4 and
+# 6.5; OpenProject #739). Every value but the limits and the brief is the live v1 value
+# (dev-env-ops helmrelease.yaml: OPS_ESC_MODEL, OPS_FALLBACK_MODEL, OPS_SESSION_EFFORT).
+# The ids were probed on 2026-11-12 and answered (tracker #739 comment 7239, ruling 5).
+#
+# Limits: the design gives none for this caller, so these are the narrowest the schema
+# allows (concurrent 1, escalations 1, createsPerHour 1; queued and queuedUrgent keep
+# their defaults). concurrent is required even though this policy has only an
+# escalation entry, which it does not count. Its move story (#748) sets the real
+# numbers from v1's record.
+#
+# Creates are off. The operator refuses a create from this account while its flag
+# --summon-create-kinds (dev-env story 770; empty by default) does not name the
+# entry's kind, so with the flag unset this policy lets the account read its own
+# sessions and start nothing (coordinator ruling, haynes-ops PR 4850 comment
+# 6816662070). A later haynes-ops PR switches a kind on: task not before story 741
+# is installed; remote not before stories 741 and 745 are installed and the pinned
+# agent image accepts a summoned remote session.
+#
+# The brief is inert on purpose (coordinator ruling 3, tracker #739 comment 7239): it
+# says the lane has not moved, to change nothing, to say so and to stop. The entry is
+# remote: a remote entry's brief is stored with the session and is not delivered
+# until story 745 (a task entry's brief is delivered to the session). No
+# brief.fields, so a create that sends any data member is refused; an empty data is
+# accepted. #748 replaces the template and fields in its own reviewed PR (6.4, 5.6).
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: CallerPolicy
+metadata:
+  name: upgrade-agent.upgrade-health-gate
+  namespace: dev-env-system
+spec:
+  summon:
+    serviceAccount: upgrade-agent/upgrade-health-gate
+    limits:
+      concurrent: 1
+      escalations: 1
+      createsPerHour: 1
+    sessions:
+      - kind: remote
+        lane: escalation
+        priority: urgent
+        namePrefixes: [esc-gate-]
+        repo: haynes-ops
+        profile: ops
+        model:
+          default: claude-sonnet-5-5
+          fallback: claude-opus-5
+        effort: xhigh
+        onUnreported: failed
+        brief:
+          template: |
+            This lane's work has not moved to dev-env v2 yet, so this session has nothing to do.
+            Change nothing: no cluster object, no repository, no ticket.
+            Say in one line that this lane has not moved to v2, then stop.

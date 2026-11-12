@@ -400,7 +400,26 @@ spec:
               # No flag, CRD or permission change in this pin.
               # Previous pin sha-4534516@sha256:a58a59c9d00958e2d2945470f51e61b3977b9ab65437aec76f9966c0736fefff
               # (haynes-ops#4836); rollback target for the operator alone.
-              tag: sha-ac1bbb5@sha256:f29febceece8a79224504241316fa0c0038d13efa8815d71e2e42c848861628c
+              # dev-env main 0727ede0 (publish 43184844150's operator job signed and verified this
+              # digest; CI run 43184843997 on that commit was green before this pin merged). Four
+              # commits since sha-ac1bbb5:
+              # - dev-env#1088 (OP740): POST /v1/sessions/{name}/outcome for a summoned session's
+              #   own pod, and the leader closes a summoned session that ended without a report.
+              #   Both act only on a session with spec.caller, and no session has one. The
+              #   reconciler's new step returns at once when spec.caller is empty; the heartbeat's
+              #   and the decision route's managed-decision branches gain the condition
+              #   spec.caller == "", which holds for every session today. Its AgentSession CRD
+              #   change (status.summon; status.outcome.note at most 1024 bytes) was copied first
+              #   by haynes-ops#4851.
+              # - dev-env#1090 (OP770): the flag --summon-create-kinds. It is NOT set here, on
+              #   purpose: unset, every create by a summoning caller is refused with 403. List,
+              #   get, the front door's creates and every other caller are unchanged. Set it only
+              #   under its own story (OP741 and later).
+              # - dev-env#1086, #1087: Renovate, pgx v5.13.0 and golang.org/x/crypto v0.59.0.
+              # No flag, permission, ConfigMap or Secret change in this pin.
+              # Previous pin sha-ac1bbb5@sha256:f29febceece8a79224504241316fa0c0038d13efa8815d71e2e42c848861628c
+              # (haynes-ops#4849); rollback target for the operator alone. The CRD copy stays.
+              tag: sha-0727ede@sha256:0c8378c8c61f7f41e29d144177fb8f3ea592520732abccf941a1788ee62d429f
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
