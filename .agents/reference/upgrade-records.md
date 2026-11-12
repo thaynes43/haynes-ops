@@ -11,8 +11,9 @@ read-only verifier (story 553), the revert and its drill (story 753) and the his
 every attempt (story 593). This page covers the two records, the state machine that
 connects them, and how today's lane record maps onto an item.
 
-**Status.** The format, its validator and fixtures exist. Nothing writes these records
-yet; story 593 writes the first events. The lane's merge step (story 752) exists and runs
+**Status.** The format, its validator and fixtures exist. Story 593 writes the first
+events, to the history ConfigMap `upgrade-agent/upgrade-ledger` (`upgrade-history.mjs`; the
+runbook's section "The history of every attempt (story 593)" says what a tick writes). The lane's merge step (story 752) exists and runs
 in dry-run; [Merge-step verdicts and the change lock](#merge-step-verdicts-and-the-change-lock)
 says which of its verdicts become events. Metrics, counting rules and the dashboard pane
 belong to piece 2 (story 591 and question Q-547-07) and are not defined here. Tracker:
@@ -30,6 +31,7 @@ belong to piece 2 (story 591 and question Q-547-07) and are not defined here. Tr
 | `scripts/upgrade-agent/fixtures/upgrade-records/` | Valid and invalid fixtures, one file per case |
 | `scripts/upgrade-agent/fixtures/lane-tick-records-20261111.json` | Records and merge-step verdicts written by the real `run-night.mjs` in the stub ticks of `lane-night-dryrun-selftest.mjs` (synthetic world, not cluster data). The mapping test converts them. |
 | `scripts/upgrade-agent/record-format-selftest.mjs` | The selftest; CI runs it in `Upgrade Agent Selftests - Night lane` |
+| `kubernetes/main/apps/upgrade-agent/shepherd/app/resources/record-format.mjs` and the four JSON files beside it | The lane's copy (story 593): the night lane runs from the scripts ConfigMap, which is built from that directory only. The copies must be byte-identical; the selftest fails on any drift. Change the format here, then copy the five files. |
 
 ## The item record
 
@@ -286,6 +288,7 @@ also add a row that says where it goes.
 | `schedule` | `schedule` | copied (empty today) |
 | `last_attempt` | `lane_detail.last_attempt` | copied: the tick's merge-step verdict for the PR it ran on, `{}` on the others. It is not `attempts`: that list is rebuilt from events, and a live verdict becomes events as the table above says. |
 | `retry` | `lane_detail.retry` | copied (story 549): the stalled-check retry for the PR as the tick read it: `state`, `why`, `count_7d`, `limits` and `history` (`head`, `at`, `status`, `outcome`, `next_head`) from the ledger `data.retry_ledger`. A retry is a Renovate rebase, not an attempt on the item, so it writes no event. |
+| `terminal` | `state` | events (story 593): the item's terminal event as the history recorded it (`type` merged or closed, `at`, `state`, `by`, `item`, `event`, `merge_commit`); null on an open PR. Not converted: the state and attempts come from the item's events. |
 
 **Lane and state.**
 
@@ -315,7 +318,7 @@ other `BLOCKED` verdict.
 its PR: the marker `<!-- upgrade-lane v1 -->` and a JSON block holding the fields
 `night.pr_record.fields` in `upgrade-rules.json` names (`schema`, `pr`, `head`,
 `fingerprint`, `lane`, `class`, `reason`, `rules`, `checks`, `backup`, `preapproval`,
-`schedule`, `last_attempt`, `retry`, `updated`). Those fields map by the rows above. The
+`schedule`, `last_attempt`, `retry`, `terminal` (story 593), `updated`). Those fields map by the rows above. The
 runbook's section "PR records and the stalled-check retry" says how the comment is written
 and read.
 
@@ -370,12 +373,21 @@ node scripts/upgrade-agent/record-format-selftest.mjs     # offline; Node 24
 
 ## Open points
 
-- The fixture events average about 440 bytes each, about 760 at most. Story 593 planned
-  on about 3,000 compact events per MiB, about 350 bytes each. It can store them more
-  compactly (for example, without the `schema` key on each line) or rotate sooner.
-- In live mode, a PR the merge step refuses for its own reasons on every tick opens one
-  attempt per tick until it changes. Story 593 may collapse repeated refusals of the same
-  head.
+- **Size (story 593).** The history stores each event without `schema`, without `id` and
+  without a null `actor.login`; `unpack()` in `upgrade-history.mjs` restores them. A merge
+  by someone else carries no URL, lane or class (the actor and the PR say them). A stored
+  line is still about 440 bytes, plus about 130 bytes of item description. The 768 KiB cap
+  therefore holds about 1,400 single-event items, or about 75 days at an estimated 20
+  events a day, not the 3,000 per MiB first planned.
+- **Repeated refusals (story 593).** In live mode, a refusal at the same head for the same
+  reasons as the item's last refusal is recorded once.
+- **One item for two PRs (found by story 593).** The item id hashes the package and the
+  version, not the target. When Renovate opens two PRs for the same package and version in
+  different places, the two are one item. On 2026-11-12 PRs 4376 and 4377 were such a pair,
+  and 5 merged pairs fell in the 30 days before. The history lets the lowest open PR speak
+  for the item. A backfilled second merge has no event of its own; the count comparison
+  lists it as `shared_item`. Adding the targets to the id would separate them; that is a
+  change to the format, for its review.
 - The sources the lane does not write yet have only the generic item shape. Their adapter
   stories may need more fields.
 - `kind` is inferred from the version text. `semver` means the version starts with dotted

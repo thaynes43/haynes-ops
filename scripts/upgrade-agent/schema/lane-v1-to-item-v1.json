@@ -190,6 +190,12 @@
       "note": "Since story 549: the stalled-check retry for this PR as the tick read it: state (not-needed, eligible, deferred, selected, ticked, not-written, write-failed, waiting-for-renovate, new-head-checks-running, resolved, failed-again, no-new-head, not-retried-again, budget-used, not-eligible, unreadable), why, count_7d, limits and history (head, at, status, outcome, next_head) from data.retry_ledger. A retry is a Renovate rebase, not an attempt on the item: it writes no event. Copied as written."
     },
     {
+      "lane": "terminal",
+      "item": "state",
+      "how": "events",
+      "note": "Since story 593: the item's terminal event as the history (ConfigMap upgrade-agent/upgrade-ledger) recorded it: type (merged or closed), at, state, by, item, event and merge_commit; null on an open PR. Set on the record of a PR that left the open list, which the lane edits once (never a new comment). Not converted: the item's state and attempts come from its events in the history, and fromLaneRecord reads the lane verdict only."
+    },
+    {
       "lane": "last_attempt",
       "item": "lane_detail.last_attempt",
       "how": "copy",

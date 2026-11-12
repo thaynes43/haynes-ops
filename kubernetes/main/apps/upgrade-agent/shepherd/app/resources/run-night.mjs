@@ -58,6 +58,15 @@
 // edits one record comment per open Renovate PR, mirrored from the records this tick
 // writes to upgrade-lane-state. summary.pr_records, summary.retry and summary.github_writes
 // say what it did.
+//
+// STORY 593 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/593):
+// after the merge step (the lock is released by then), upgrade-history.mjs appends this
+// tick's events to the history, ConfigMap upgrade-agent/upgrade-ledger: an item first seen,
+// a new state, lane or class, a close, a merge by someone else, and once, with no marker,
+// the backfill of the last 30 days of merges with its count compared against GitHub. Its
+// own field manager, at the resourceVersion it read; a failure is logged and lands in
+// summary.history, and changes no verdict and no other write. A PR that left the open list
+// with a terminal event gets its record's terminal field through the PR-write phase.
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -65,6 +74,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as L from './lane-classify.mjs';
 import * as M from './night-merge.mjs';
+import * as H from './upgrade-history.mjs';
 
 const MODES = ['dryrun', 'live'];
 const MODE = process.env.UPGRADE_NIGHT_MODE || 'dryrun';
@@ -528,6 +538,19 @@ async function tick() {
   for (const r of records) { r.updated = summary.at; r.preapproval = {}; r.schedule = {}; r.last_attempt = {}; }
   if (subjectRec) subjectRec.last_attempt = { at: summary.at, mode: MODE, chosen: subject.chosen, verdict: verdict.verdict, pr_refusals: verdict.pr_refusals || [], lane_refusals: verdict.lane_refusals || [], merge_call: verdict.merge_call || null };
 
+  // THE HISTORY (story 593): after the merge step, whose lock is released by now. Its
+  // failure is logged and recorded; it changes no verdict and stops no other write.
+  let hist;
+  try { hist = H.historyPhase({ rules, run, env: childEnv, repo: REPO, at: summary.at, records, openPrs: nums, verdict, write: WRITE_STATE }); }
+  catch (e) { hist = { summary: { error: String(e.message).slice(0, 300), written: false }, terminals: [] }; }
+  summary.history = hist.summary;
+  const terminalOf = new Map((hist.terminals || []).map(t => [t.pr, t.terminal]));
+  for (const r of records) r.terminal = terminalOf.get(r.pr) ?? null;
+  const hLine = H.historyLine(summary.history);
+  if (summary.history.error || ['failed', 'conflict'].includes(summary.history.write)) log(`ERROR upgrade-night ${MODE}: HISTORY NOT WRITTEN: ${hLine}${summary.history.raw ? ` (${summary.history.raw})` : ''}`);
+  else log(`upgrade-night ${MODE}: history: ${hLine}`);
+  delete summary.history.raw;
+
   // THE PR-WRITE PHASE (story 549): the retry box for at most night.retry.per_tick PRs, then
   // one record per open Renovate PR, mirrored from the records this tick writes to
   // upgrade-lane-state. Only with --write-state, a token with pull_requests:write, a readable
@@ -580,6 +603,15 @@ async function tick() {
     r.retry = { ...after.field, state: res.outcome, why: res.outcome === 'ticked' ? `ticked Renovate's retry box on ${String(r.head).slice(0, 8)}${res.why ? `; ${res.why}` : ''}` : res.why };
   }
   const items = records.map(r => ({ rec: r, comments: factsByPr.get(r.pr)?.record_comments ?? null }));
+  // story 593 (d): a PR that left the open list with a terminal event: its own record, edited
+  // to carry terminal (never a new comment on a closed PR)
+  if (rcd.ok && (hist.terminals || []).length) {
+    try {
+      const t = H.terminalRecordItems(hist.terminals, nums, rcd, summary.at, run, REPO);
+      items.push(...t.items);
+      if (t.skipped.length) summary.history.terminal_skipped = t.skipped;
+    } catch (e) { summary.history.terminal_skipped = [{ why: `the terminal records were not prepared: ${String(e.message).slice(0, 200)}` }]; }
+  }
   // F5: the pause is read again just before each record write
   const pauseCheck = () => M.pauseRefusal(M.readPause(rules, run), 'just before a record write');
   const prRecords = rcd.ok ? M.writePrRecords({ items, cfg: rcd, run, env: childEnv, live: phaseLive, stopped, pauseCheck })
@@ -625,6 +657,7 @@ async function tick() {
   log(`upgrade-night ${MODE}: retry: ${rtLine}`);
   log(`upgrade-night ${MODE}: GitHub writes this tick: ${summary.github_writes} (no merge in dry-run)`);
   process.stdout.write(`PR records: ${recLine}\nretry: ${rtLine}\n`);
+  process.stdout.write(`history: ${hLine}\n`);
 
   if (!WRITE_STATE) { log('state not written (no --write-state); this was a local run'); return 0; }
   // the ledger first (its own field manager), then the tick's state

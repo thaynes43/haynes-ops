@@ -320,5 +320,21 @@ const laneRecordOf = (n, mutate) => {
   ok(F.applyEvent(r0.item, later('merge-failed', 'needed', { class: 'not-merged', reason: 'open at that head on the next read', evidence: { merge_call: unk.merge_step.merge_call } })).errors.length === 0, 'events: merge_unknown read later as not merged');
 }
 
+// ── 6. the lane's copy (story 593) ──────────────────────────────────────────────
+// The night lane runs from the scripts ConfigMap, built from the shepherd app's resources/
+// directory only, so it carries a copy of the format. The copy must be the format: a change
+// made here and not copied fails until it is.
+{
+  for (const f of ['record-format.mjs', 'upgrade-item.v1.schema.json', 'upgrade-event.v1.schema.json', 'upgrade-states.v1.json', 'lane-v1-to-item-v1.json']) {
+    const want = readFileSync(join(ROOT, 'scripts/upgrade-agent/schema', f));
+    let got = null;
+    try { got = readFileSync(join(RES, f)); } catch { got = null; }
+    ok(got !== null && Buffer.compare(want, got) === 0, `copy: resources/${f} is byte-identical to scripts/upgrade-agent/schema/${f}`, `cp scripts/upgrade-agent/schema/${f} kubernetes/main/apps/upgrade-agent/shepherd/app/resources/${f}`);
+  }
+  const kz = readFileSync(join(RES, '..', 'kustomization.yaml'), 'utf8');
+  for (const f of ['record-format.mjs', 'upgrade-item.v1.schema.json', 'upgrade-event.v1.schema.json', 'upgrade-states.v1.json', 'lane-v1-to-item-v1.json', 'upgrade-history.mjs'])
+    ok(kz.includes(`      - resources/${f}\n`), `copy: the scripts ConfigMap carries resources/${f}`);
+}
+
 console.log(`\n${passes} passed, ${fails} failed`);
 process.exit(fails ? 1 : 0);

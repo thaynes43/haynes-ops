@@ -934,10 +934,12 @@ export function projectRecord(rec, cfg) {
   for (const f of cfg.fields) out[f] = rec?.[f] === undefined ? null : rec[f];
   return out;
 }
-// The content the lane compares: everything but the tick's own time.
+// The content the lane compares: everything but the tick's own time. A null terminal (story
+// 593: an open PR) compares equal to a record written before the field existed.
 export function recordContentKey(pub) {
   const x = structuredClone(pub ?? {});
   delete x.updated;
+  if (x.terminal === null || x.terminal === undefined) delete x.terminal;
   if (x.last_attempt && typeof x.last_attempt === 'object') delete x.last_attempt.at;
   return JSON.stringify(canon(x));
 }
@@ -1254,12 +1256,14 @@ export function runRetry({ cand, rules, run, env, clock, ledger, persistLedger, 
 }
 
 // ── the record writes (every open Renovate PR) ──
-// items = [{ rec, comments }] (comments = facts.record_comments, null when unread);
-// live = false plans only (a local run). Returns the summary block.
+// items = [{ rec, comments, edit_only }] (comments = facts.record_comments, null when unread;
+// edit_only: story 593's terminal record for a PR that left the open list, which edits the
+// lane's own record and never creates one); live = false plans only (a local run). Returns
+// the summary block.
 // pauseCheck() -> a public reason when paused (or unreadable), else null: read just before
 // each write (F5). The first failed write stops the rest of the tick; a denial also halts.
 export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, stopped = null, pauseCheck = () => null }) {
-  const out = { github_writes: 0, created: [], updated: [], current: [], demoted: [], refused: [], failed: [], not_attempted: [], foreign_ignored: [], would_create: [], would_update: [], halt: null, stopped_by: stopped, raw_details: [] };
+  const out = { github_writes: 0, created: [], updated: [], current: [], demoted: [], refused: [], failed: [], not_attempted: [], foreign_ignored: [], would_create: [], would_update: [], no_record: [], halt: null, stopped_by: stopped, raw_details: [] };
   let stop = stopped;
   const fail = (pr, w) => {
     const f = writeFailure(w);
@@ -1270,7 +1274,7 @@ export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, st
   };
   const paused = (pr, listIt = true) => { const p = pauseCheck(); if (!p) return false; stop = p; out.stopped_by = p; if (listIt) out.not_attempted.push(pr); return true; };
   const stillOwn = c => c && c.user?.login === cfg.author.login && c.user?.type === cfg.author.type && String(c.body || '').startsWith(cfg.marker);
-  for (const { rec, comments } of [...items].sort((a, b) => a.rec.pr - b.rec.pr)) {
+  for (const { rec, comments, edit_only: editOnly } of [...items].sort((a, b) => a.rec.pr - b.rec.pr)) {
     const pr = rec.pr;
     if (stop) { out.not_attempted.push(pr); continue; }
     if (!Array.isArray(comments)) { out.refused.push({ pr, why: 'unreadable: the comments of this PR (its facts were not read this tick)' }); continue; }
@@ -1279,6 +1283,7 @@ export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, st
     const probs = publishProblems(pub, body, cfg);
     if (probs.length) { out.refused.push({ pr, why: probs.join('; ') }); continue; }
     let plan = planRecord(pub, comments, cfg);
+    if (editOnly && plan.action === 'create') { out.no_record.push(pr); continue; }
     if (plan.foreign.length) out.foreign_ignored.push({ pr, comments: plan.foreign.map(c => `${c.id} by ${c.author}`) });
     if (!live) { if (plan.action === 'create') out.would_create.push(pr); else if (plan.action === 'update') out.would_update.push(pr); else out.current.push(pr); continue; }
     if (plan.action === 'create') {
