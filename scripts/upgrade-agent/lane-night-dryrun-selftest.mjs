@@ -108,7 +108,7 @@ ok(count(merge, /\bspawnSync\s*\(/g) === 3, 'night-merge.mjs: exactly three spaw
   const lm2 = merge.slice(merge.indexOf('export function laneMergeStep('), merge.indexOf('// ── CLI'));
   const hr2 = merge.slice(merge.indexOf('export function handRun('), merge.indexOf('async function main('));
   ok(!/ghWrite|writePrRecords|runRetry/.test(lm2 + hr2), 'night-merge.mjs: the merge step and the hand run never write a record or tick a box');
-  ok(!/ghWrite|callMerge/.test(night) && count(night, /M\.runRetry\(/g) === 1 && count(night, /M\.writePrRecords\(/g) === 1, 'run-night.mjs: one runRetry call and one writePrRecords call, no direct GitHub write');
+  ok(!/ghWrite|callMerge/.test(night) && count(night, /M\.runRetry\(/g) === 1 && count(night, /M\.writePrRecords\(/g) === 2 && night.indexOf('M.writePrRecords({ items: t.items') > night.indexOf('summary.pr_records = '), 'run-night.mjs: one runRetry call and two writePrRecords calls (the open records, then the terminal mirrors of story 593), no direct GitHub write');
 }
 ok(!/(?<![.\w])(execSync|execFileSync|execFile|exec|spawn|fork)\s*\(/.test(merge.replace(/spawnSync\s*\(/g, '')) && /import \{ spawnSync \} from 'node:child_process'/.test(merge), 'night-merge.mjs: no other process API');
 ok(!/['"](git|flux|curl|helm)['"]/.test(merge) && count(merge, /\bfetch\s*\(/g) === 0, 'night-merge.mjs: never runs git, flux, curl or helm, and fetches nothing');
@@ -390,7 +390,7 @@ const merged = () => (fs.existsSync(MERGED) ? JSON.parse(fs.readFileSync(MERGED,
 const fsel = () => { const i = argv.indexOf('--field-selector'); return i < 0 ? null : argv[i + 1].replace(/^metadata\\.name=/, ''); };
 // story 549: GitHub's comments and PR bodies as the lane's writes leave them (STUB_GH),
 // initialised from the world; the retry ledger the lane applied (STUB_LEDGER)
-const GHF = process.env.STUB_GH, LEDF = process.env.STUB_LEDGER, RVF = process.env.STUB_LEDGER + '.rv', HISTF = process.env.STUB_HISTORY;
+const GHF = process.env.STUB_GH, LEDF = process.env.STUB_LEDGER, RVF = process.env.STUB_LEDGER + '.rv', HISTF = process.env.STUB_HISTORY, MARKF = process.env.STUB_HISTORY + '.marker';
 const stateRv = () => (fs.existsSync(RVF) ? fs.readFileSync(RVF, 'utf8') : String(w.stateRv || 8));
 const bumpRv = () => { const v = String(Number(stateRv()) + 1); fs.writeFileSync(RVF, v); return v; };
 const ghs = () => (GHF && fs.existsSync(GHF) ? JSON.parse(fs.readFileSync(GHF, 'utf8')) : { comments: w.comments || {}, pulls: {}, next: 9000 });
@@ -412,7 +412,10 @@ if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/pulls\\/\\d+$/.test(
   out({ number: Number(n), state: 'open', draft: false, base: { ref: 'main' }, user: { login: 'renovate[bot]', type: 'Bot', id: 29139614 }, head: { sha: (w.headAfterRead && k >= 2) ? w.headAfterRead : p.headRefOid, ref: p.headRefName, repo: { full_name: 'thaynes43/haynes-ops' } }, body });
 }
 // story 593: the history's merged-PR scan (gh pr list --state merged)
-if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'list' && argv.includes('merged')) { if (w.failMergedList) fail(); out(w.mergedList || []); }
+if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'list' && argv.includes('merged')) { if (w.failMergedList) fail(); const q = argv[argv.indexOf('--search') + 1] || ''; out((w.mergedList || []).filter(e => (q.startsWith('Revert') ? /^Revert "/.test(e.title) : !/^Revert "/.test(e.title)))); }
+if (cmd === 'gh' && argv[0] === 'api' && /^search\\/issues\\?/.test(argv[1] || '')) { if (w.failCount) fail(); out({ total_count: w.mergedCount ?? (w.mergedList || []).filter(e => !/^Revert "/.test(e.title)).length, incomplete_results: false }); }
+// story 593: who closed a PR (REST issue), when a world names it
+if (cmd === 'gh' && argv[0] === 'api' && /^repos\\/thaynes43\\/haynes-ops\\/issues\\/\\d+$/.test(argv[1] || '')) { const v = (w.issues || {})[argv[1].split('/').pop()]; if (!v) fail('gh: Not Found (HTTP 404)'); out(v); }
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'list') { if (w.failList) fail(); out(w.list); }
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'merge') {
   if (lock()) fs.writeFileSync(LOCKF + '.at-merge', JSON.stringify(lock()));
@@ -421,7 +424,7 @@ if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'merge') {
 }
 if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'view') {
   const n = argv[2], f = argv[argv.indexOf('--json') + 1] || '', p = w.prs[n] && ghs().pulls[n] ? { ...w.prs[n], body: ghs().pulls[n] } : w.prs[n];
-  if (f.includes('mergedAt')) out(merged()[n] ? { state: 'MERGED', mergedAt: '2026-11-02T07:00:30Z', headRefOid: p.headRefOid, mergeCommit: { oid: 'f'.repeat(40) } } : p.state === 'CLOSED' ? { state: 'CLOSED', mergedAt: null, closedAt: '2026-11-02T06:30:00Z', headRefOid: p.headRefOid, mergeCommit: null } : { state: 'OPEN', mergedAt: null, headRefOid: p.headRefOid, mergeCommit: null });
+  if (f.includes('mergedAt')) out(merged()[n] ? { ...p, state: 'MERGED', mergedAt: '2026-11-02T07:00:30Z', headRefOid: p.headRefOid, mergeCommit: { oid: 'f'.repeat(40) } } : p.state === 'CLOSED' ? { ...p, state: 'CLOSED', mergedAt: null, closedAt: '2026-11-02T06:30:00Z', headRefOid: p.headRefOid, mergeCommit: null } : { ...p, state: 'OPEN', mergedAt: null, headRefOid: p.headRefOid, mergeCommit: null });
   if (f.includes('mergeStateStatus')) { const o = (w.mergeViews || {})[n]; if (o === 'FAIL') fail(); out({ ...p, author: { ...p.author, is_bot: true }, isCrossRepository: false, state: 'OPEN', baseRefName: 'main', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', ...(o || {}) }); }
   out(p);
 }
@@ -448,7 +451,7 @@ if (cmd === 'kubectl' && argv[0] === 'get') {
     const base = w.k8s['configmaps@upgrade-agent'] ?? w.k8s.configmaps;
     if (base === 'FAIL' || base === undefined) fail();
     if (base === 'GARBAGE') out('not json');
-    let items = [...base.items, ...(lock() ? [lock()] : []), ...(HISTF && fs.existsSync(HISTF) && !w.historyHiddenOnRead ? [JSON.parse(fs.readFileSync(HISTF, 'utf8'))] : [])];
+    let items = [...base.items, ...(lock() ? [lock()] : []), ...(HISTF && fs.existsSync(HISTF) && !w.historyHiddenOnRead ? [JSON.parse(fs.readFileSync(HISTF, 'utf8'))] : []), ...(fs.existsSync(MARKF) && !w.markerHiddenOnRead ? [JSON.parse(fs.readFileSync(MARKF, 'utf8'))] : [])];
     const led = LEDF && fs.existsSync(LEDF) ? fs.readFileSync(LEDF, 'utf8') : (w.ledger ?? null);
     if (led !== null || w.stateRvOnRead) items = [...items.filter(c => c.metadata.name !== 'upgrade-lane-state'), { metadata: { name: 'upgrade-lane-state', resourceVersion: w.stateRvOnRead || stateRv() }, data: led !== null ? { retry_ledger: led } : {} }];
     const reads = name === 'upgrade-lane-state' ? Number(fs.existsSync(LOCKF + '.state-reads') ? fs.readFileSync(LOCKF + '.state-reads', 'utf8') : 0) + 1 : 0;
@@ -476,7 +479,12 @@ if (cmd === 'kubectl' && argv[0] === 'apply' && argv.includes('--field-manager=u
   fs.writeFileSync(LEDF, m.data.retry_ledger); out({ metadata: { name: 'upgrade-lane-state', resourceVersion: bumpRv() } });
 }
 if (cmd === 'kubectl' && argv[0] === 'apply' && w.failApply) fail();
-// story 593: ConfigMap upgrade-ledger: the empty create, then writes at a resourceVersion
+// story 593: ConfigMap upgrade-ledger-marker (no version), then upgrade-ledger: the empty
+// create, then writes at a resourceVersion
+if (cmd === 'kubectl' && argv[0] === 'apply' && argv[2] === '--field-manager=upgrade-night-history-marker') {
+  if (w.failHistory || w.failMarker) fail('Error from server (Forbidden): configmaps "upgrade-ledger-marker" is forbidden');
+  const m = JSON.parse(stdin); const o = { metadata: { name: 'upgrade-ledger-marker', resourceVersion: '700' }, data: m.data }; fs.writeFileSync(MARKF, JSON.stringify(o)); out(o);
+}
 if (cmd === 'kubectl' && argv[0] === 'apply' && /^--field-manager=upgrade-night-history(-init)?$/.test(argv[2])) {
   if (w.failHistory) fail('Error from server (Forbidden): configmaps "upgrade-ledger" is forbidden');
   const m = JSON.parse(stdin), cur = fs.existsSync(HISTF) ? JSON.parse(fs.readFileSync(HISTF, 'utf8')) : null;
@@ -507,7 +515,7 @@ process.exit(0);
   // default NOW); keepNow passes UPGRADE_NIGHT_NOW through to test those refusals.
   const FAKE_CLOCK = join(ROOT, 'scripts/upgrade-agent/test-fake-clock.mjs');
   const tick = (world, extraEnv = {}, args = ['--write-state'], { keepNow = false, keepGh = false } = {}) => new Promise(resolve => {
-    for (const f of [logFile, mergedFile, lockFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`, `${ghFile}.pull-reads`, ...(keepGh ? [] : [ghFile, ledgerFile, `${ledgerFile}.rv`, historyFile])]) rmSync(f, { force: true });
+    for (const f of [logFile, mergedFile, lockFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`, `${ghFile}.pull-reads`, ...(keepGh ? [] : [ghFile, ledgerFile, `${ledgerFile}.rv`, historyFile, `${historyFile}.marker`])]) rmSync(f, { force: true });
     if (world.lock) writeFileSync(lockFile, JSON.stringify(world.lock));
     if (!world.rawSettle) {
       world = { ...world, k8s: { ...world.k8s } };
@@ -555,12 +563,15 @@ process.exit(0);
     ok(r.status === 0, 'dry-run tick exits 0', `exit ${r.status}: ${r.stderr.slice(0, 400)}`);
     ok(r.calls.every(c => ['gh', 'kubectl'].includes(c.cmd)), 'only gh and kubectl were run', [...new Set(r.calls.map(c => c.cmd))].join(','));
     const shape = r.writes.map(w => `${w.cmd} ${w.argv[0]}`);
-    ok(JSON.stringify(shape) === JSON.stringify(['kubectl create', 'kubectl replace', 'kubectl apply', 'kubectl apply', 'kubectl apply']) && isSsa(r.writes[4]), 'the non-read calls are: take the lock (create), release it (replace), the history (story 593: its empty create, then its events), the server-side apply of the state', JSON.stringify(r.writes.map(w => [w.cmd, ...w.argv])));
+    ok(JSON.stringify(shape) === JSON.stringify(['kubectl create', 'kubectl replace', 'kubectl apply', 'kubectl apply', 'kubectl apply', 'kubectl apply']) && isSsa(r.writes[5]), 'the non-read calls are: take the lock (create), release it (replace), the history (story 593: its empty create, its events, its marker), the server-side apply of the state', JSON.stringify(r.writes.map(w => [w.cmd, ...w.argv])));
+    const mw = JSON.parse(r.writes[4].stdin);
+    ok(r.writes[4].argv[2] === '--field-manager=upgrade-night-history-marker' && mw.metadata.name === 'upgrade-ledger-marker' && mw.metadata.namespace === 'upgrade-agent' && !mw.metadata.resourceVersion && JSON.parse(mw.data.marker).schema === 'haynes.upgrade-ledger-marker/v1', 'story 593 (M5): the marker goes to its own ConfigMap upgrade-agent/upgrade-ledger-marker, after the history it vouches for', JSON.stringify(mw.metadata));
     const hw = r.writes.slice(2, 4).map(w => ({ argv: w.argv, m: JSON.parse(w.stdin) }));
     ok(hw.every(x => x.m.metadata.name === 'upgrade-ledger' && x.m.metadata.namespace === 'upgrade-agent' && JSON.stringify(x.argv.slice(0, 2)) === JSON.stringify(['apply', '--server-side']) && x.argv.includes('--force-conflicts'))
       && hw[0].argv[2] === '--field-manager=upgrade-night-history-init' && !hw[0].m.data && hw[1].argv[2] === '--field-manager=upgrade-night-history' && hw[1].m.metadata.resourceVersion === '500'
       && r.writes.indexOf(r.writes[2]) > r.writes.findIndex(w => w.argv[0] === 'replace'), 'story 593: the history writes only ConfigMap upgrade-agent/upgrade-ledger, after the lock is released: empty under its init manager, then its data at the resourceVersion that create returned', JSON.stringify(hw.map(x => [x.argv[2], x.m.metadata])));
-    ok(r.summary.history?.written === true && r.summary.history.by_type?.observed === 5 && r.summary.history.backfill?.state === 'this tick' && /upgrade-night dryrun: history: WRITTEN: 5 new events \(observed 5\)/.test(r.stderr), 'story 593: the tick wrote the 5 first sightings and its (empty) backfill, and said so', `${JSON.stringify(r.summary.history).slice(0, 400)} | ${r.stderr.split('\n').filter(l => /history/.test(l)).join(' | ')}`);
+    ok(r.summary.history?.written === true && r.summary.history.by_type?.observed === 5 && r.summary.history.backfill?.state === 'this tick' && r.summary.history.backfill.compare?.github_count === 0 && r.summary.history.backfill.compare.match === true && /upgrade-night dryrun: history: WRITTEN: 5 new events \(observed 5\)/.test(r.stderr), 'story 593: the tick wrote the 5 first sightings and its (empty) backfill, compared with GitHub\'s count, and said so', `${JSON.stringify(r.summary.history).slice(0, 400)} | ${r.stderr.split('\n').filter(l => /history/.test(l)).join(' | ')}`);
+    ok(r.calls.filter(c => c.cmd === 'gh' && c.argv[1] === 'list' && c.argv.includes('merged')).every(c => /^(author:app\/renovate|Revert in:title) merged:/.test(c.argv[c.argv.indexOf('--search') + 1])) && r.calls.some(c => c.cmd === 'gh' && /^search\/issues\?q=/.test(c.argv[1] || '')), 'story 593 (M1, M2): the merged lists ask only for Renovate\'s PRs and the revert candidates; GitHub\'s own count is read separately');
     ok(r.lockWrites.every(x => JSON.parse(x.stdin).metadata.name === 'upgrade-change-lock' && JSON.parse(x.stdin).metadata.namespace === 'upgrade-agent' && JSON.stringify(x.argv.slice(1)) === JSON.stringify(['-f', '-', '-o', 'json'])), 'the lock writes touch only ConfigMap upgrade-agent/upgrade-change-lock');
     ok(r.merges.length === 0 && !r.calls.some(c => c.cmd === 'gh' && !L.isReadOnlyCommand(c.cmd, c.argv)), 'dry-run: no gh call but reads (no merge)');
     ok(r.m.kind === 'ConfigMap' && r.m.metadata?.name === 'upgrade-lane-state' && r.m.metadata?.namespace === 'upgrade-agent', 'it writes only ConfigMap upgrade-agent/upgrade-lane-state', JSON.stringify(r.m.metadata));
@@ -615,20 +626,27 @@ process.exit(0);
     const t1 = await tick(baseWorld(nums));
     const t2 = await tick(baseWorld(nums), {}, ['--write-state'], { keepGh: true });
     const hApplies = r => r.writes.filter(w => /^--field-manager=upgrade-night-history/.test(w.argv[2] || ''));
-    ok(hApplies(t1).length === 2 && hApplies(t2).length === 0 && t2.summary.history?.write === 'not-needed' && t2.summary.history.events === 0 && /history: NOT-NEEDED: 0 events derived, none written; nothing new this tick/.test(t2.stderr),
+    ok(hApplies(t1).length === 3 && hApplies(t2).length === 0 && t2.summary.history?.write === 'not-needed' && t2.summary.history.events === 0 && /history: NOT-NEEDED: 0 events derived, none written; nothing new this tick/.test(t2.stderr),
       'story 593: the same tick run twice writes the history once; the second run writes nothing', `${hApplies(t1).length} then ${hApplies(t2).length}: ${JSON.stringify(t2.summary.history).slice(0, 300)}`);
     // the next night: #4477 left the open list, merged by Renovate's auto-merge; #4670 closed
     const w3 = baseWorld([4708, 4376, 4662]);
-    w3.mergedList = [{ number: 4477, title: fx.prs.find(p => p.facts.number === 4477).facts.title, author: { login: 'app/renovate' }, mergedAt: '2026-11-02T06:58:00Z', mergedBy: { login: 'app/renovate' }, labels: [{ name: 'type/patch' }], mergeCommit: { oid: 'c'.repeat(40) }, headRefOid: fact(4477).head_sha }];
+    // the merged list carries what the lane's route names the item by (body, labels, files)
+    const g4477 = toGh(fact(4477));
+    w3.mergedList = [{ number: 4477, title: g4477.title, author: { login: 'app/renovate' }, mergedAt: '2026-11-02T06:58:00Z', mergedBy: { login: 'app/renovate' }, labels: g4477.labels, body: g4477.body, files: g4477.files, mergeCommit: { oid: 'c'.repeat(40) }, headRefOid: fact(4477).head_sha }];
     w3.prs['4670'] = { ...w3.prs['4670'], state: 'CLOSED' };
+    // M3: who closed #4670 cannot be read this tick: no event for it
+    const t3u = await tick(w3, {}, ['--write-state'], { keepGh: true });
+    ok(t3u.status === 0 && t3u.summary.history?.by_type?.closed === undefined && (t3u.summary.history?.notes?.unread || []).some(x => x.pr === 4670 && /who closed it could not be read/.test(x.why)), 'story 593 (M3): a PR closed by someone the tick could not read writes no event (never the lane as the closer)', JSON.stringify(t3u.summary.history?.notes));
+    w3.issues = { 4670: { number: 4670, state: 'closed', closed_by: { login: 'renovate[bot]', type: 'Bot' } } };
     const t3 = await tick(w3, {}, ['--write-state'], { keepGh: true });
     const evs = (() => { try { return JSON.parse(readFileSync(historyFile, 'utf8')).data.events.trim().split('\n').map(JSON.parse); } catch { return []; } })();
     const mergedEv = evs.filter(e => e.type === 'merged' && e.carrier?.pr === 4477);
-    ok(t3.status === 0 && mergedEv.length === 1 && mergedEv[0].from === 'needed' && mergedEv[0].actor.kind === 'renovate' && mergedEv[0].recorded_by === 'lane' && mergedEv[0].evidence.merge_commit === 'c'.repeat(40) && t3.summary.history?.by_type?.merged === 1,
-      'story 593: the next tick records #4477 merged by Renovate once, from the state the lane last saw', `${JSON.stringify(mergedEv)} ${JSON.stringify(t3.summary.history?.by_type)}`);
+    ok(t3.status === 0 && mergedEv.length === 1 && mergedEv[0].from === 'needed' && mergedEv[0].actor.kind === 'renovate' && mergedEv[0].recorded_by === 'lane' && mergedEv[0].evidence.merge_commit === 'c'.repeat(40) && t3u.summary.history?.by_type?.merged === 1 && t3.summary.history?.by_type?.merged === undefined,
+      'story 593: the next tick records #4477 merged by Renovate once (and the tick after that not again), from the state the lane last saw', `${JSON.stringify(mergedEv)} ${JSON.stringify(t3.summary.history?.by_type)}`);
     const closedEv = evs.filter(e => e.type === 'closed' && e.carrier?.pr === 4670);
-    ok(closedEv.length === 1 && closedEv[0].to === 'closed' && closedEv[0].actor.kind === 'lane' && /closed without a merge/.test(closedEv[0].reason) && t3.summary.history?.by_type?.closed === 1,
-      'story 593: and #4670, closed without a merge, once (who closed it unread: the lane observed it)', JSON.stringify(closedEv));
+    ok(closedEv.length === 1 && closedEv[0].to === 'closed' && closedEv[0].actor.kind === 'renovate' && closedEv[0].actor.login === 'renovate[bot]' && /closed without a merge by renovate\[bot\]/.test(closedEv[0].reason) && t3.summary.history?.by_type?.closed === 1,
+      'story 593: and, once its closer reads, #4670 closed without a merge by Renovate, once', JSON.stringify(closedEv));
+    ok(mergedEv[0]?.item_id === JSON.parse(readFileSync(historyFile, 'utf8')).data.events.trim().split('\n').map(JSON.parse).find(e => e.type === 'observed' && e.carrier?.pr === 4477)?.item_id, 'story 593 (H2): the merge is on the item the lane observed for #4477 (the same id by the lane\'s route)');
     ok(t3.calls.some(c => c.cmd === 'gh' && c.argv[1] === 'view' && c.argv[2] === '4670') && !t3.calls.some(c => c.cmd === 'gh' && c.argv[1] === 'view' && c.argv[2] === '4477' && c.argv.join(' ').includes('mergedAt')),
       'story 593: a PR that left the open list is read once for its fate, unless the merged list already names it');
     const t4 = await tick(w3, {}, ['--write-state'], { keepGh: true });
@@ -637,9 +655,21 @@ process.exit(0);
     // and filled it: its empty create (a server-side apply) meets that writer's events, and
     // it writes nothing rather than overwrite them
     const before = readFileSync(historyFile, 'utf8');
-    const t5 = await tick({ ...w3, historyHiddenOnRead: true }, {}, ['--write-state'], { keepGh: true });
+    const t5 = await tick({ ...w3, historyHiddenOnRead: true, markerHiddenOnRead: true }, {}, ['--write-state'], { keepGh: true });
     ok(hApplies(t5).length === 1 && hApplies(t5)[0].argv[2] === '--field-manager=upgrade-night-history-init' && t5.summary.history?.write === 'conflict' && readFileSync(historyFile, 'utf8') === before && /HISTORY NOT WRITTEN: CONFLICT: .*another writer created upgrade-ledger with events after this tick read it absent/.test(t5.stderr),
       'story 593: a second first writer meets the events of the first and writes nothing', `${hApplies(t5).map(x => x.argv[2]).join(',')} ${JSON.stringify(t5.summary.history?.why_not)}`);
+    // M5: the history is gone while its marker stays: nothing is written, every tick says so,
+    // and the rest of the tick runs
+    const t6 = await tick({ ...w3, historyHiddenOnRead: true }, {}, ['--write-state'], { keepGh: true });
+    ok(t6.status === 0 && hApplies(t6).length === 0 && t6.summary.history?.write === 'stuck' && /ERROR upgrade-night dryrun: HISTORY NOT WRITTEN: STUCK: .*the history was lost: upgrade-ledger-marker says a history exists .* a person restores upgrade-ledger or deletes upgrade-ledger-marker/.test(t6.stderr) && t6.writes.some(isSsa),
+      'story 593 (M5): a lost history with its marker left writes nothing, logs an ERROR naming both ways out, and the tick still writes its state', `${t6.summary.history?.write} ${t6.stderr.split('\n').filter(l => /HISTORY/.test(l)).join(' | ').slice(0, 400)}`);
+    // L1: a history that cannot be read is an ERROR every tick, not an info line
+    writeFileSync(historyFile, JSON.stringify({ metadata: { name: 'upgrade-ledger', resourceVersion: '900' }, data: { meta: '{"schema":"haynes.upgrade-ledger/v1"}', items: '{}', events: 'not json\n' } }));
+    const t7 = await tick(w3, {}, ['--write-state'], { keepGh: true });
+    ok(hApplies(t7).length === 0 && t7.summary.history?.write === 'stuck' && /ERROR upgrade-night dryrun: HISTORY NOT WRITTEN: STUCK: .*data\.events line 1/.test(t7.stderr), 'story 593 (L1): an unreadable history is an ERROR line and a summary field, and is not overwritten', t7.stderr.split('\n').filter(l => /HISTORY|history:/.test(l)).join(' | ').slice(0, 300));
+    // the scan failed: the backfill is not marked done, and the next tick backfills
+    const t8 = await tick({ ...baseWorld(nums), failMergedList: true });
+    ok(t8.summary.history?.backfill?.state === 'not yet' && !JSON.parse(readFileSync(historyFile, 'utf8')).data.meta.includes('"window"'), 'story 593: an unreadable merged list leaves the backfill not done (no marker in meta)', JSON.stringify(t8.summary.history?.backfill));
   }
   // every failed read is a named blocker, and nothing is picked
   const failCases = [
@@ -1025,6 +1055,33 @@ process.exit(0);
     const c2 = await tick(calm, W, ['--write-state'], { keepGh: true });
     ok(c2.ghWrites.length === 0 && c2.summary.github_writes === 0 && c2.summary.pr_records?.current?.join() === '4477,4708' && own(4477).length === 1, 'records: the next identical tick makes no GitHub write (steady state 0), and still one record per PR', JSON.stringify(c2.summary.pr_records));
     ok(mirrors(c2, 4477) && mirrors(c2, 4708), 'records: the unchanged comments still match the state, apart from the time');
+    // story 593 (M5): the first tick also wrote the history and its marker, and the PR-write
+    // phase still wrote (the marker is its own ConfigMap, not a write to upgrade-lane-state)
+    ok(c1.writes.some(w => w.argv[2] === '--field-manager=upgrade-night-history-marker') && c1.summary.history?.marker === 'written' && c1.summary.pr_records?.created?.join() === '4477,4708' && c1.summary.pr_records.why_not === null,
+      'story 593 (M5): a tick that writes the history marker still writes the PR records', JSON.stringify({ marker: c1.summary.history?.marker, created: c1.summary.pr_records?.created, why: c1.summary.pr_records?.why_not }));
+    // story 593 (L2, L3): #4477 left the open list, merged by Renovate: after the open records
+    // (#4708, current), one edit carries terminal on #4477's record, and the history marks it
+    const gone = baseWorld([4708]);
+    const g7 = toGh(fact(4477));
+    gone.mergedList = [{ number: 4477, title: g7.title, author: { login: 'app/renovate' }, mergedAt: '2026-11-02T06:58:00Z', mergedBy: { login: 'app/renovate' }, labels: g7.labels, body: g7.body, files: g7.files, mergeCommit: { oid: 'c'.repeat(40) }, headRefOid: fact(4477).head_sha }];
+    const c3 = await tick(gone, W, ['--write-state'], { keepGh: true });
+    const rec4477 = own(4477).length === 1 ? M.parseRecord(own(4477)[0].body, cfg549) : null;
+    const hist = () => JSON.parse(readFileSync(historyFile, 'utf8'));
+    const mergedEv = hist().data.events.trim().split('\n').map(JSON.parse).find(e => e.type === 'merged' && e.carrier?.pr === 4477);
+    ok(c3.ghWrites.length === 1 && /issues\/comments\/\d+$/.test(c3.ghWrites[0].argv[3]) && rec4477?.terminal?.type === 'merged' && rec4477.terminal.merge_commit === 'c'.repeat(40) && c3.summary.pr_records?.current?.join() === '4708' && c3.summary.history?.mirrors?.updated?.join() === '4477',
+      'story 593 (L2, L3): after the open records, one edit puts terminal (merged) on #4477\'s record', JSON.stringify({ writes: c3.ghWrites.map(w => w.argv[3]), mirrors: c3.summary.history?.mirrors, terminal: rec4477?.terminal }));
+    ok(Object.values(JSON.parse(hist().data.items)).some(d => d.mirrored && d.pr === 4477) && c3.summary.history.mirrors.marked?.written === true, 'story 593 (L2): the history marks the terminal mirrored', JSON.stringify(c3.summary.history.mirrors.marked));
+    const c4 = await tick(gone, W, ['--write-state'], { keepGh: true });
+    ok(c4.ghWrites.length === 0 && !c4.summary.history?.mirrors, 'story 593 (L2): the next tick owes nothing and reads no comment for it', JSON.stringify(c4.summary.history?.mirrors));
+    // L3: a denial on a terminal mirror halts only the mirrors; the open records are not halted
+    const gone2 = baseWorld([4708]);
+    gone2.mergedList = [{ ...gone.mergedList[0], number: 4708, title: toGh(fact(4708)).title, body: toGh(fact(4708)).body, labels: toGh(fact(4708)).labels, files: toGh(fact(4708)).files }];
+    gone2.list = gone2.list.filter(x => x.number !== 4708);
+    const c5 = await tick({ ...gone2, ghWriteFail: true }, W, ['--write-state'], { keepGh: true });
+    ok(c5.summary.history?.mirrors?.halt && /a denial is a stop/.test(c5.summary.history.mirrors.halt.why) && !ledgerNow()?.halt && /ERROR upgrade-night dryrun: TERMINAL MIRRORS HALTED/.test(c5.stderr) && JSON.parse(hist().data.meta).mirror_halt,
+      'story 593 (L3): a denied terminal edit halts the mirrors (meta.mirror_halt), not the open-PR records (no retry_ledger.halt)', JSON.stringify({ mirrors: c5.summary.history?.mirrors, ledgerHalt: ledgerNow()?.halt }));
+    const c6 = await tick(baseWorld([4477]), W, ['--write-state'], { keepGh: true });
+    ok(c6.summary.pr_records?.why_not === null && /halted/.test(c6.summary.history?.mirrors?.why_not || ''), 'story 593 (L3): on the next tick the open-PR records still write; the mirrors wait for a person', JSON.stringify({ pr: c6.summary.pr_records?.why_not, mirrors: c6.summary.history?.mirrors }));
 
     // two stalled PRs: the per-tick cap ticks one; the record shows it; the ledger first
     const fw = failWorld([4477, 4670, 4708], [4477, 4670]);

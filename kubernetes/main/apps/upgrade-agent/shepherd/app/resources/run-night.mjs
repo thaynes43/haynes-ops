@@ -66,7 +66,9 @@
 // the backfill of the last 30 days of merges with its count compared against GitHub. Its
 // own field manager, at the resourceVersion it read; a failure is logged and lands in
 // summary.history, and changes no verdict and no other write. A PR that left the open list
-// with a terminal event gets its record's terminal field through the PR-write phase.
+// with a terminal event gets its record's terminal field after the open-PR records, with
+// its own stop and halt. The module is loaded inside the guarded step: one that does not
+// load is an ERROR line, and the tick goes on.
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -74,7 +76,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as L from './lane-classify.mjs';
 import * as M from './night-merge.mjs';
-import * as H from './upgrade-history.mjs';
 
 const MODES = ['dryrun', 'live'];
 const MODE = process.env.UPGRADE_NIGHT_MODE || 'dryrun';
@@ -540,14 +541,18 @@ async function tick() {
 
   // THE HISTORY (story 593): after the merge step, whose lock is released by now. Its
   // failure is logged and recorded; it changes no verdict and stops no other write.
-  let hist;
-  try { hist = H.historyPhase({ rules, run, env: childEnv, repo: REPO, at: summary.at, records, openPrs: nums, verdict, write: WRITE_STATE }); }
-  catch (e) { hist = { summary: { error: String(e.message).slice(0, 300), written: false }, terminals: [] }; }
+  let H = null, hist;
+  try {
+    H = await import('./upgrade-history.mjs');
+    hist = H.historyPhase({ rules, run, env: childEnv, repo: REPO, at: summary.at, records, openPrs: nums, verdict, write: WRITE_STATE, clock, startedAt: now });
+  } catch (e) { hist = { summary: { error: `${H ? '' : 'upgrade-history.mjs did not load: '}${String(e.message).slice(0, 300)}`, written: false, write: 'failed' }, terminals: [] }; }
   summary.history = hist.summary;
   const terminalOf = new Map((hist.terminals || []).map(t => [t.pr, t.terminal]));
   for (const r of records) r.terminal = terminalOf.get(r.pr) ?? null;
-  const hLine = H.historyLine(summary.history);
-  if (summary.history.error || ['failed', 'conflict'].includes(summary.history.write)) log(`ERROR upgrade-night ${MODE}: HISTORY NOT WRITTEN: ${hLine}${summary.history.raw ? ` (${summary.history.raw})` : ''}`);
+  const hLine = H ? H.historyLine(summary.history) : `FAILED: ${summary.history.error}`;
+  const hRaw = summary.history.raw ? ` (${summary.history.raw})` : '';
+  if (summary.history.error || ['failed', 'conflict', 'stuck'].includes(summary.history.write)) log(`ERROR upgrade-night ${MODE}: HISTORY NOT WRITTEN: ${hLine}${hRaw}`);
+  else if (H.historyError(summary.history)) log(`ERROR upgrade-night ${MODE}: HISTORY NEEDS A PERSON: ${hLine}`);
   else log(`upgrade-night ${MODE}: history: ${hLine}`);
   delete summary.history.raw;
 
@@ -603,15 +608,6 @@ async function tick() {
     r.retry = { ...after.field, state: res.outcome, why: res.outcome === 'ticked' ? `ticked Renovate's retry box on ${String(r.head).slice(0, 8)}${res.why ? `; ${res.why}` : ''}` : res.why };
   }
   const items = records.map(r => ({ rec: r, comments: factsByPr.get(r.pr)?.record_comments ?? null }));
-  // story 593 (d): a PR that left the open list with a terminal event: its own record, edited
-  // to carry terminal (never a new comment on a closed PR)
-  if (rcd.ok && (hist.terminals || []).length) {
-    try {
-      const t = H.terminalRecordItems(hist.terminals, nums, rcd, summary.at, run, REPO);
-      items.push(...t.items);
-      if (t.skipped.length) summary.history.terminal_skipped = t.skipped;
-    } catch (e) { summary.history.terminal_skipped = [{ why: `the terminal records were not prepared: ${String(e.message).slice(0, 200)}` }]; }
-  }
   // F5: the pause is read again just before each record write
   const pauseCheck = () => M.pauseRefusal(M.readPause(rules, run), 'just before a record write');
   const prRecords = rcd.ok ? M.writePrRecords({ items, cfg: rcd, run, env: childEnv, live: phaseLive, stopped, pauseCheck })
@@ -623,6 +619,29 @@ async function tick() {
   if (halt && ledger) ledger.halt = { at: new Date(clock()).toISOString(), ...halt };
   summary.github_writes = retryWrites + (prRecords.github_writes || 0);
   summary.pr_records = { written: phaseLive, why_not: phaseWhy, identity: rcd.author?.login ?? null, ...prRecords };
+  // STORY 593 (d), after the open-PR records: the terminal mirrors on PRs that left the open
+  // list, owed until the record carries the event (the history marks it). Their own stop:
+  // a failure here stops only them, and a denial halts only them (meta.mirror_halt in
+  // upgrade-ledger). No comment is read when the phase cannot write.
+  if (H && rcd.ok && (hist.terminals || []).some(t => !nums.includes(t.pr))) {
+    const owed = hist.terminals.filter(t => !nums.includes(t.pr)).map(t => t.pr);
+    const notNow = !phaseLive ? phaseWhy : prRecords.stopped_by ? `not tried: ${prRecords.stopped_by}` : summary.history.mirror_halt ? `halted: ${summary.history.mirror_halt.why}` : !hist.ctx ? 'the history was not written this tick' : null;
+    if (notNow) summary.history.mirrors = { owed, why_not: notNow };
+    else {
+      try {
+        const t = H.terminalRecordItems(hist.terminals, nums, rcd, summary.at, run, REPO, H.historyConfig(rules), hist.budget);
+        const w = M.writePrRecords({ items: t.items, cfg: rcd, run, env: childEnv, live: true, stopped: null, pauseCheck });
+        for (const line of w.raw_details || []) log(`upgrade-night ${MODE}: terminal record write failed: ${line}`);
+        delete w.raw_details;
+        const c = H.commitMirrors({ ctx: hist.ctx, terminals: hist.terminals, result: w, halt: w.halt, at: summary.at, env: childEnv });
+        if (c.raw) log(`upgrade-night ${MODE}: marking the mirrored terminals failed: ${c.raw}`);
+        delete c.raw;
+        summary.github_writes += w.github_writes || 0;
+        summary.history.mirrors = { owed, updated: w.updated, current: w.current, no_record: w.no_record, refused: w.refused, failed: w.failed, not_attempted: w.not_attempted, skipped: t.skipped, deferred: t.deferred, halt: w.halt, marked: c };
+        if (w.halt) log(`ERROR upgrade-night ${MODE}: TERMINAL MIRRORS HALTED: ${w.halt.why} (the open-PR records are not affected)`);
+      } catch (e) { summary.history.mirrors = { owed, error: String(e.message).slice(0, 300) }; log(`ERROR upgrade-night ${MODE}: terminal mirrors failed: ${String(e.message).slice(0, 300)}`); }
+    }
+  }
   summary.retry = { ledger: !ledger ? lg.why : lg.absent ? 'absent (a new ledger)' : 'read', limits: rcfg.ok ? { per_head: rcfg.per_head, per_pr: rcfg.per_pr, window_days: rcfg.window_days, per_tick: rcfg.per_tick } : rcfg.why,
     eligible: retryEligible.map(r => r.pr), tried: attempts.map(a => a.pr), attempts, github_writes: retryWrites, max_preflights_per_tick: rcfg.max_preflights_per_tick ?? null,
     by_state: Object.fromEntries([...new Set(records.map(r => r.retry?.state))].map(s => [s, records.filter(r => r.retry?.state === s).map(r => r.pr)])) };

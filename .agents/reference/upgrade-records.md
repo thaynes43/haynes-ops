@@ -373,6 +373,17 @@ node scripts/upgrade-agent/record-format-selftest.mjs     # offline; Node 24
 
 ## Open points
 
+- **The backfill names items by the lane's route (story 593 review, 2026-11-12).** The
+  backfill fixture `seq-backfill-renovate-automerge.json` first named PR 4817's item from
+  its title (`ghcr.io/stakater/charts/reloader` at `v2.2.20`, no packages). The lane names
+  the same update from the PR's package table (`2.2.20`, one package), so the two routes
+  gave different ids: 29 of 40 recent merged Renovate PRs differed. A reverted version
+  recorded on a backfilled item would then not be the item the lane computes when Renovate
+  reopens it. The fixture now follows the lane's route: the package table, labels and files
+  through `fromLaneRecord()`. Its item id is now `renovate-pr:9fb8e67929834ecfbbafd7c9` and
+  its event id `ev:2914356bada44957bbea009f`, and its carrier lists the PR's files. The
+  history names an item from a title only when the PR's body cannot be read, and marks it
+  `basis: "title"` in its item description, which is not part of the item record.
 - **Size (story 593).** The history stores each event without `schema`, without `id` and
   without a null `actor.login`; `unpack()` in `upgrade-history.mjs` restores them. A merge
   by someone else carries no URL, lane or class (the actor and the PR say them). A stored
@@ -381,13 +392,21 @@ node scripts/upgrade-agent/record-format-selftest.mjs     # offline; Node 24
   events a day, not the 3,000 per MiB first planned.
 - **Repeated refusals (story 593).** In live mode, a refusal at the same head for the same
   reasons as the item's last refusal is recorded once.
-- **One item for two PRs (found by story 593).** The item id hashes the package and the
-  version, not the target. When Renovate opens two PRs for the same package and version in
-  different places, the two are one item. On 2026-11-12 PRs 4376 and 4377 were such a pair,
-  and 5 merged pairs fell in the 30 days before. The history lets the lowest open PR speak
-  for the item. A backfilled second merge has no event of its own; the count comparison
-  lists it as `shared_item`. Adding the targets to the id would separate them; that is a
-  change to the format, for its review.
+- **One item for two PRs.** The item id hashes the package and the version, not the
+  target. When Renovate opens two PRs for the same package and version in different places
+  (PRs 4376 and 4377 on 2026-11-12; 5 merged pairs in the 30 days before), the two are one
+  item. A revert of one would also remember the version for the other, and the second
+  merge has no event of its own. Adding the targets to the id would separate them.
+- **No edge for a merge of a remembered version.** A merge of a version in state
+  `reverted` cannot be recorded: `merged` leaves only the open states and `merge_unknown`.
+  The history keeps such merges in `meta.remembered_merges` and logs an ERROR on every tick.
+- **No edge for an item first seen at its close.** When Renovate moves a PR to a newer
+  version and the PR then closes, the newer version's item was never seen open, and
+  `closed` has no edge from first sight. The old item closes, and the newer one is named
+  in the summary only.
+- **No actor for the shepherd's close.** The `closed` edge allows `lane`, `renovate`,
+  `hand` and `person`. A PR the shepherd closes gets no event. Another bot is recorded as
+  `hand`, with its login in `actor.login`; the event has no evidence field for a login.
 - The sources the lane does not write yet have only the generic item shape. Their adapter
   stories may need more fields.
 - `kind` is inferred from the version text. `semver` means the version starts with dotted
