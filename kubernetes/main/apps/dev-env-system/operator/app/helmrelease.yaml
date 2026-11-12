@@ -419,7 +419,25 @@ spec:
               # No flag, permission, ConfigMap or Secret change in this pin.
               # Previous pin sha-ac1bbb5@sha256:f29febceece8a79224504241316fa0c0038d13efa8815d71e2e42c848861628c
               # (haynes-ops#4849); rollback target for the operator alone. The CRD copy stays.
-              tag: sha-0727ede@sha256:0c8378c8c61f7f41e29d144177fb8f3ea592520732abccf941a1788ee62d429f
+              # dev-env main c4bc870d (publish 43269196297's operator job signed and verified this
+              # digest; CI run 43269196497 on that commit was green before this pin merged). Two
+              # commits since sha-0727ede:
+              # - dev-env#1091 (OP777, with its review fixes #1092): a summoned session gets a
+              #   volume and a pod only after the operator leader admits it, and never after a
+              #   close. It acts only on a session with spec.caller, and no session has one: the
+              #   gate before a pod is built, the release step in the reconciler and the build
+              #   refusal each return at once when spec.caller is empty. Its AgentSession CRD
+              #   change (status.summon.admittedAt, closed.released) was copied first by
+              #   haynes-ops#4858.
+              # - dev-env#1082: the 2.106.0 release commit (manifest and changelog).
+              # One flag is added below with this pin: --enable-summoned-lanes=true.
+              # --summon-create-kinds stays unset, so no summoned session can be created.
+              # No permission, ConfigMap or Secret change.
+              # Previous pin sha-0727ede@sha256:0c8378c8c61f7f41e29d144177fb8f3ea592520732abccf941a1788ee62d429f
+              # (haynes-ops#4852). Rollback: that image AND remove --enable-summoned-lanes in the
+              # same change; the older binary does not know the flag and would not start with it.
+              # The CRD copy stays.
+              tag: sha-c4bc870@sha256:c7ffda11220a0e868250a0490b1761ace0b33957b1138ddfef8bb3963104a90e
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
@@ -711,6 +729,13 @@ spec:
               - --grant-policy-delegates=dev-agents/dev-env-agent
               - --grant-legacy-delegates=dev-agents/dev-env-agent:5d30e3de-96a5-421c-8919-90459b1cb298:dev-env-1029-132039:ea234e80-f991-4e47-90e6-bc1a23f97ca7:dev-env-1029-132039:db36f5d3-6d3c-46a6-830e-67c196253a96
               - --reserved-decision-classes=rd2
+              # Summoned lanes (dev-env DESIGN-064 5.9 and 6.7, dev-env#1091; OpenProject #777, slice a
+              # of #741). The operator leader admits summoned sessions: once a minute it lists the
+              # sessions, and when none has spec.caller it does nothing more (no ledger read, no
+              # write). Needs leader election, which is on by default and not overridden here, and
+              # operator sha-c4bc870 or newer. It admits nothing today: no summoned session can be
+              # created while --summon-create-kinds is unset.
+              - --enable-summoned-lanes=true
             env:
               POD_NAMESPACE:
                 valueFrom:
