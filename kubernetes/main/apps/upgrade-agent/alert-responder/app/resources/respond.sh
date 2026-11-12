@@ -105,6 +105,31 @@ NOW="$(date -u +%s)"
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >&2; }
 
+# >>> dev-env-api reach (dev-env DESIGN-064 6.5, OpenProject #739) >>>
+# One best-effort, read-only GET /v1/sessions against the dev-env v2 operator API per
+# run, as the reach proof: one line on stderr with the HTTP status code (000 when no
+# answer came). It never changes this run's exit code or stdout, is bounded at 10
+# seconds, and runs once per run (a nested script skips it). It is skipped without a
+# word when the client or the token is not mounted; when only the CA is missing, the
+# client refuses before sending and the line logs HTTP 000. The same block is in
+# respond.sh, run-shepherd.sh, triage.sh and gate.sh;
+# scripts/upgrade-agent/dev-env-api-selftest.sh extracts and checks each copy.
+dev_env_api_reach() {
+  local client="${DEV_ENV_API_CLIENT:-/opt/dev-env-api/dev-env-api.sh}"
+  local token="${DEV_ENV_API_TOKEN_FILE:-/var/run/secrets/dev-env/token}"
+  local code="" bound=()
+  [ "${DEV_ENV_API_REACHED:-}" = 1 ] && return 0
+  { [ -x "$client" ] && [ -r "$token" ]; } || return 0
+  export DEV_ENV_API_REACHED=1
+  if command -v timeout >/dev/null 2>&1; then bound=(timeout -k 1 9); fi
+  code="$(DEV_ENV_API_CONNECT_TIMEOUT=3 DEV_ENV_API_MAX_TIME=8 ${bound[@]+"${bound[@]}"} "$client" list 2>&1 >/dev/null \
+    | sed -n 's|^dev-env-api: GET /v1/sessions HTTP \([0-9][0-9][0-9]\)$|\1|p' | head -n 1)" || true
+  printf '%s dev-env-api reach: GET /v1/sessions HTTP %s\n' "$(date -u +%FT%TZ)" "${code:-000}" >&2
+  return 0
+}
+dev_env_api_reach || true
+# <<< dev-env-api reach <<<
+
 # Quiet claude-code's phone-home (the egress CNP would block it anyway).
 export DISABLE_TELEMETRY=1 CLAUDE_CODE_ENABLE_TELEMETRY=0 \
        DISABLE_ERROR_REPORTING=1 DISABLE_AUTOUPDATER=1 DISABLE_NON_ESSENTIAL_MODEL_CALLS=1

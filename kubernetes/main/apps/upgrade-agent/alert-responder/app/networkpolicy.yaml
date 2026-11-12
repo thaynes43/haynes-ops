@@ -46,6 +46,9 @@ spec:
               - matchName: "claude.ai"
               - matchPattern: "*.claude.ai"
               - matchName: "api.pushover.net"
+              # The dev-env v2 operator API (DESIGN-064 5.5, #739). The patterns above
+              # do not match this multi-label name, so it is named exactly.
+              - matchName: "dev-env-operator.dev-env-system.svc.cluster.local"
     # 2. Kube API server — read-only diagnosis (kubectl get/describe, flux get).
     - toEntities: [kube-apiserver]
       toPorts:
@@ -99,5 +102,17 @@ spec:
       toPorts:
         - ports:
             - port: "443"
+              protocol: TCP
+    # 7. The dev-env v2 operator API (dev-env DESIGN-064 5.5 and 6.5, OpenProject #739):
+    #    8443 on the operator pods only, with the pinned CA and a projected token for
+    #    this account's CallerPolicy. The operator's own policy admits this pod by its
+    #    app label.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-operator
+      toPorts:
+        - ports:
+            - port: "8443"
               protocol: TCP
   # No ingress rules -> all ingress denied.

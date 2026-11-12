@@ -1,0 +1,11 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# One CallerPolicy per summoning ServiceAccount (DESIGN-064 6.4). Each name is also
+# in Role dev-env-operator-caller-policy (rbac app); a policy whose name is not there
+# cannot be read by the operator, and its caller gets 403.
+resources:
+  - ./upgrade-agent.alert-responder.yaml
+  - ./upgrade-agent.upgrade-shepherd.yaml
+  - ./upgrade-agent.upgrade-health-gate.yaml
