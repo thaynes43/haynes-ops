@@ -4,10 +4,14 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main at the merge of PR #1041 (OP525), verified byte for byte by the coordinator:
-# 7980695c3605b876f249837ce5b97c891b9fa4ed. Adds status.ask and status.askUnreadAt (ADR-022: a grant's route to
-# its Ask on the board) and the rule that a stored route cannot be removed or changed. Nothing writes them while
-# the broker runs without --enable-grant-asks, and that flag needs both fields here first.
+# Source: dev-env main 83a125e6eb1129181048d79ed11e371c9c98f8cc (merge of PR #1077),
+# verified byte for byte (SHA-256 46912d67c8378f767e7f6a0d091a7a22fd3adc24ef514f4115edca8c392d03bd
+# below this header). One line since the copy from 7980695c3605 (PR #1041, OP525):
+# maxLength 8 on spec.requester.agent, an enum whose longest value has 8 characters
+# (dev-env 66201204c557, PR #1079). From PR #1041: status.ask and status.askUnreadAt
+# (ADR-022: a grant's route to its Ask on the board) and the rule that a stored route cannot
+# be removed or changed. Nothing writes them while the broker runs without
+# --enable-grant-asks, and that flag needs both fields here first.
 #
 # Keep it in step with the operator: copy a changed file here before (or with) the pin
 # that writes its new fields.
@@ -522,6 +526,7 @@ spec:
                     - codex
                     - cursor
                     - opencode
+                    maxLength: 8
                     type: string
                   parent:
                     description: |-
