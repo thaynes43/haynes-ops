@@ -333,24 +333,36 @@ profiles:
   # Summoned sessions (dev-env DESIGN-064 6.3, OP737): no open web. The label selects the
   # ops egress tier (network/app/session-ops.yaml, DESIGN-064 6.1): a name list, and
   # neither the web tier nor the platform tier selects an ops pod.
-  # Claude: a remote session follows the keeper's single login through the access-only
-  # projection, as `full` does. agentd never refreshes it, and it stops the agent if the
-  # pod holds a refresh token of its own, so the keeper stays the only refresher. Task
-  # and local sessions keep the static token the operator sets. No Codex projection:
-  # summoned sessions run Claude only.
-  # Not here on purpose: UNIFI_MCP_AUTH_TOKEN (an ops pod cannot reach mcp-unifi, and
-  # mcp-unifi can write to the network) and dev-env-mcp-secret. Kept: the cigar-journal
-  # token (curation), the optional Proxmox read token (D-18; unusable without a LAN
-  # grant, and every ops grant goes to Tom) and /creds from the ops bot's token Secret.
+  # Claude: only a remote session's agent pod gets the keeper's login projection, through
+  # the `remote` block below (dev-env#1083, OP765). It needs operator sha-4534516 or later
+  # on every replica: an older operator refuses the whole document. A task or local pod on
+  # this profile gets neither the variable nor the mount. It runs on the static token the
+  # operator sets, and it reads attacker-influenced text, so it must not hold the
+  # account's access token (review of haynes-ops#4832). The projection is access-only:
+  # agentd never refreshes it and refuses to start the agent when the pod's credentials
+  # hold a refresh token of their own, so the keeper stays the only refresher. No Codex
+  # projection: summoned sessions run Claude only.
+  # Known limit (DESIGN-064 6.3): a remote session here is joinable from the owner's
+  # phone, so it holds the account's access token (about eight hours, no refresh token).
+  # Not here on purpose: UNIFI_MCP_AUTH_TOKEN (direct pod egress on this tier does not
+  # reach mcp-unifi, and mcp-unifi can write to the network) and dev-env-mcp-secret.
+  # Kept: the cigar-journal token (curation), the optional Proxmox read token (D-18;
+  # direct pod egress does not reach Proxmox without a LAN grant, and every ops grant goes
+  # to Tom) and /creds from the ops bot's token Secret. The egress tier limits what the
+  # pod connects to directly; it is not a statement about every right the pod's
+  # ServiceAccount holds.
   ops:
     env:
-      - { name: AGENTD_CLAUDE_LIVE_FILE, value: /opt/dev-env/claude-access/access.json }
       - name: CIGAR_JOURNAL_TOKEN
         valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
     envFrom:
       - secretRef: { name: dev-env-proxmox-secret, optional: true }
     mounts:
       - { name: gh-token, secret: dev-env-ops-gh-token, path: /creds }
-      - { name: claude-access, secret: dev-env-claude-live, path: /opt/dev-env/claude-access, defaultMode: 0440 }
+    remote:
+      env:
+        - { name: AGENTD_CLAUDE_LIVE_FILE, value: /opt/dev-env/claude-access/access.json }
+      mounts:
+        - { name: claude-access, secret: dev-env-claude-live, path: /opt/dev-env/claude-access, defaultMode: 0440 }
     labels:
       dev-env.haynesops.com/egress: ops
