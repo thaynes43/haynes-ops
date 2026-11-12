@@ -29,7 +29,11 @@
 //   6. story 549 through the tick against a stubbed GitHub: one record per PR, no write
 //      when nothing changed, the per-tick retry cap, the ledger before the box, a second
 //      failure that blocks, a refused write, a changed body or head, a forged record, the
-//      token, a local run, the halt and a pause;
+//      token, a local run, the halt and a pause; and, after the review of 2aa270e4, F1 a
+//      PR refused at the write hands the slot on (and the reads are bounded), F2 a workflow
+//      run queued for the head, F4 a denial halts the next tick, F5 a pause before a record
+//      write, F6 an intent left by an interrupted Job and an unwritable ledger, and F8 an
+//      overlapping writer (the ledger's resourceVersion) makes no tick;
 //   5. the settle gate (story 551) through the tick: a merge to kubernetes/** 10 minutes
 //      earlier is the one blocker on an otherwise clean PR inside the window, the
 //      2026-11-10 shepherd merges (fixtures/settle-20261110.json) make every candidate
@@ -54,7 +58,7 @@ const bk = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/la
 const rebase = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-rebase-pairs-20261110.json'), 'utf8'));
 const gx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-gates-20261110.json'), 'utf8'));
 const rules = L.loadRules(join(RES, 'upgrade-rules.json'));
-const SSA = ['apply', '--server-side', '--field-manager=upgrade-night', '--force-conflicts', '-f', '-'];
+const SSA = ['apply', '--server-side', '--field-manager=upgrade-night', '--force-conflicts', '-o', 'json', '-f', '-'];
 
 let fails = 0, passes = 0;
 const ok = (cond, name, detail = '') => { if (cond) passes++; else { fails++; console.log(`FAIL ${name}${detail ? `\n     ${detail}` : ''}`); } };
@@ -73,7 +77,7 @@ for (const [name, src] of [['run-night.mjs', night], ['lane-classify.mjs', class
   ok(!/['"](git|flux|curl|helm)['"]/.test(src), `${name}: never runs git, flux, curl or helm`);
 }
 ok(/runReadOnly[\s\S]*?if \(!isReadOnlyCommand\(cmd, argv\)\) throw[\s\S]*?spawnSync\(cmd, argv/.test(classify), 'lane-classify.mjs: the spawn sits behind isReadOnlyCommand');
-ok(/function writeLaneState\(manifest, manager = 'upgrade-night'\)[\s\S]*?m\.name !== STATE\.name[\s\S]*?!\['upgrade-night', LEDGER_MANAGER\]\.includes\(manager\)[\s\S]*?throw new Error[\s\S]*?spawnSync\('kubectl', \['apply', '--server-side', `--field-manager=\$\{manager\}`, '--force-conflicts', '-f', '-'\]/.test(night), "run-night.mjs: the spawn is writeLaneState's server-side apply, after the name and field-manager checks");
+ok(/function writeLaneState\(manifest, manager = 'upgrade-night'\)[\s\S]*?m\.name !== STATE\.name[\s\S]*?!\['upgrade-night', LEDGER_MANAGER\]\.includes\(manager\)[\s\S]*?throw new Error[\s\S]*?spawnSync\('kubectl', \['apply', '--server-side', `--field-manager=\$\{manager\}`, '--force-conflicts', '-o', 'json', '-f', '-'\]/.test(night), "run-night.mjs: the spawn is writeLaneState's server-side apply, after the name and field-manager checks");
 ok(/const LEDGER_MANAGER = 'upgrade-night-ledger';/.test(night) && /\(manager === LEDGER_MANAGER\) !== \(Object\.keys\(manifest\.data \|\| \{\}\)\.join\(\) === 'retry_ledger'\)/.test(night), 'run-night.mjs (story 549): the ledger field manager writes data.retry_ledger and nothing else, and the tick\'s manager never writes it');
 ok(/const STATE = \{ name: 'upgrade-lane-state', namespace: 'upgrade-agent' \}/.test(night), 'run-night.mjs: the state object name is a constant');
 ok(count(night, /\bfetch\s*\(/g) === 1 && /fetch\(url, \{ method: 'GET'/.test(night), 'run-night.mjs: one fetch, GET only');
@@ -386,17 +390,20 @@ const merged = () => (fs.existsSync(MERGED) ? JSON.parse(fs.readFileSync(MERGED,
 const fsel = () => { const i = argv.indexOf('--field-selector'); return i < 0 ? null : argv[i + 1].replace(/^metadata\\.name=/, ''); };
 // story 549: GitHub's comments and PR bodies as the lane's writes leave them (STUB_GH),
 // initialised from the world; the retry ledger the lane applied (STUB_LEDGER)
-const GHF = process.env.STUB_GH, LEDF = process.env.STUB_LEDGER;
+const GHF = process.env.STUB_GH, LEDF = process.env.STUB_LEDGER, RVF = process.env.STUB_LEDGER + '.rv';
+const stateRv = () => (fs.existsSync(RVF) ? fs.readFileSync(RVF, 'utf8') : String(w.stateRv || 8));
+const bumpRv = () => { const v = String(Number(stateRv()) + 1); fs.writeFileSync(RVF, v); return v; };
 const ghs = () => (GHF && fs.existsSync(GHF) ? JSON.parse(fs.readFileSync(GHF, 'utf8')) : { comments: w.comments || {}, pulls: {}, next: 9000 });
 const ghsSave = s => fs.writeFileSync(GHF, JSON.stringify(s));
 if (cmd === 'gh' && argv[0] === 'api' && argv[1] === '--method') {
-  if (w.ghWriteFail) fail('gh: Resource not accessible by integration (HTTP 403)');
+  if (w.ghWriteFail) fail(w.ghWriteFailLine || 'gh: Resource not accessible by integration (HTTP 403)');
   const s = ghs(), body = JSON.parse(stdin).body, p = argv[3]; let m;
   if (argv[2] === 'POST' && (m = /issues\\/(\\d+)\\/comments$/.exec(p))) { const c = { id: s.next++, user: { login: w.botLogin || 'haynes-ops-bot[bot]', type: 'Bot' }, body }; s.comments[m[1]] = [...(s.comments[m[1]] || []), c]; ghsSave(s); out(c); }
   if (argv[2] === 'PATCH' && (m = /issues\\/comments\\/(\\d+)$/.exec(p))) { for (const k of Object.keys(s.comments)) { const c = s.comments[k].find(x => x.id === Number(m[1])); if (c) { c.body = body; ghsSave(s); out(c); } } fail('gh: Not Found (HTTP 404)'); }
   if (argv[2] === 'PATCH' && (m = /pulls\\/(\\d+)$/.exec(p))) { s.pulls[m[1]] = body; ghsSave(s); out({ number: Number(m[1]), head: { sha: w.prs[m[1]].headRefOid }, body }); }
   fail('unexpected write');
 }
+if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/commits\\/[0-9a-f]{40}\\/check-suites/.test(a))) { const sha = argv.find(a => /check-suites/.test(a)).split('/')[4]; const v = (w.suites || {})[sha]; if (v === 'FAIL') fail(); out(v || { total_count: 1, check_suites: [{ id: 1, app: { slug: 'github-actions' }, status: 'completed' }] }); }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /issues\\/comments\\/\\d+$/.test(a))) { const id = Number(argv.find(a => /issues\\/comments\\//.test(a)).split('/').pop()); for (const list of Object.values(ghs().comments)) { const c = list.find(x => x.id === id); if (c) out(c); } fail('gh: Not Found (HTTP 404)'); }
 if (cmd === 'gh' && argv[0] === 'api' && argv.some(a => /\\/pulls\\/\\d+$/.test(a))) {
   const n = argv.find(a => /\\/pulls\\/\\d+$/.test(a)).split('/').pop(), p = w.prs[n], rf = GHF + '.pull-reads';
@@ -441,7 +448,7 @@ if (cmd === 'kubectl' && argv[0] === 'get') {
     if (base === 'GARBAGE') out('not json');
     let items = [...base.items, ...(lock() ? [lock()] : [])];
     const led = LEDF && fs.existsSync(LEDF) ? fs.readFileSync(LEDF, 'utf8') : (w.ledger ?? null);
-    if (led !== null) items = [...items.filter(c => c.metadata.name !== 'upgrade-lane-state'), { metadata: { name: 'upgrade-lane-state', resourceVersion: '8' }, data: { retry_ledger: led } }];
+    if (led !== null || w.stateRvOnRead) items = [...items.filter(c => c.metadata.name !== 'upgrade-lane-state'), { metadata: { name: 'upgrade-lane-state', resourceVersion: w.stateRvOnRead || stateRv() }, data: led !== null ? { retry_ledger: led } : {} }];
     const reads = name === 'upgrade-lane-state' ? Number(fs.existsSync(LOCKF + '.state-reads') ? fs.readFileSync(LOCKF + '.state-reads', 'utf8') : 0) + 1 : 0;
     if (name === 'upgrade-lane-state') fs.writeFileSync(LOCKF + '.state-reads', String(reads));
     const pz = w.pauseOnReread || (w.pauseFromRead && reads >= w.pauseFromRead ? w.pauseFromReadValue : null);
@@ -460,8 +467,14 @@ if (cmd === 'kubectl' && (argv[0] === 'create' || argv[0] === 'replace')) {
   m.metadata.resourceVersion = String(cur ? Number(cur.metadata.resourceVersion) + 1 : 100);
   fs.writeFileSync(LOCKF, JSON.stringify(m)); out(m);
 }
-if (cmd === 'kubectl' && argv[0] === 'apply' && argv.includes('--field-manager=upgrade-night-ledger')) { if (w.failLedger) fail(); fs.writeFileSync(LEDF, JSON.parse(stdin).data.retry_ledger); process.exit(0); }
+if (cmd === 'kubectl' && argv[0] === 'apply' && argv.includes('--field-manager=upgrade-night-ledger')) {
+  if (w.failLedger) fail();
+  const m = JSON.parse(stdin), want = m.metadata.resourceVersion;
+  if (want && want !== stateRv()) fail('Error from server (Conflict): Operation cannot be fulfilled on configmaps "upgrade-lane-state": the object has been modified; please apply your changes to the latest version and try again');
+  fs.writeFileSync(LEDF, m.data.retry_ledger); out({ metadata: { name: 'upgrade-lane-state', resourceVersion: bumpRv() } });
+}
 if (cmd === 'kubectl' && argv[0] === 'apply' && w.failApply) fail();
+if (cmd === 'kubectl' && argv[0] === 'apply' && argv.includes('--field-manager=upgrade-night')) out({ metadata: { name: 'upgrade-lane-state', resourceVersion: bumpRv() } });
 process.exit(0);
 `;
   for (const c of ['gh', 'kubectl', 'git', 'flux', 'curl']) { writeFileSync(join(bin, c), stub); chmodSync(join(bin, c), 0o755); }
@@ -484,7 +497,7 @@ process.exit(0);
   // default NOW); keepNow passes UPGRADE_NIGHT_NOW through to test those refusals.
   const FAKE_CLOCK = join(ROOT, 'scripts/upgrade-agent/test-fake-clock.mjs');
   const tick = (world, extraEnv = {}, args = ['--write-state'], { keepNow = false, keepGh = false } = {}) => new Promise(resolve => {
-    for (const f of [logFile, mergedFile, lockFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`, `${ghFile}.pull-reads`, ...(keepGh ? [] : [ghFile, ledgerFile])]) rmSync(f, { force: true });
+    for (const f of [logFile, mergedFile, lockFile, `${lockFile}.at-merge`, `${lockFile}.state-reads`, `${ghFile}.pull-reads`, ...(keepGh ? [] : [ghFile, ledgerFile, `${ledgerFile}.rv`])]) rmSync(f, { force: true });
     if (world.lock) writeFileSync(lockFile, JSON.stringify(world.lock));
     if (!world.rawSettle) {
       world = { ...world, k8s: { ...world.k8s } };
@@ -956,12 +969,17 @@ process.exit(0);
     const fw = failWorld([4477, 4670, 4708], [4477, 4670]);
     const t1 = await tick(fw, W);
     ok(t1.rec(4477).lane === 'BLOCKED' && t1.rec(4477).class === 'check-failing' && t1.rec(4670).class === 'check-failing', 'retry: the stalled PRs read BLOCKED check-failing', `${t1.rec(4477).class} ${t1.rec(4670).class}`);
-    ok(JSON.stringify(t1.summary.retry?.eligible) === '[4477,4670]' && JSON.stringify(t1.summary.retry?.selected) === '[4477]' && t1.summary.retry.attempts[0]?.outcome === 'ticked', 'retry: two eligible, the per-tick cap (1) ticks #4477', JSON.stringify(t1.summary.retry));
-    ok(t1.rec(4477).retry?.state === 'ticked' && t1.rec(4670).retry?.state === 'deferred' && /per-tick cap \(1\) went to #4477/.test(t1.rec(4670).retry.why), 'retry: the records say ticked and deferred');
+    ok(JSON.stringify(t1.summary.retry?.eligible) === '[4477,4670]' && JSON.stringify(t1.summary.retry?.tried) === '[4477]' && t1.summary.retry.attempts[0]?.outcome === 'ticked', 'retry: two eligible, the per-tick cap (1 box write) ticks #4477', JSON.stringify(t1.summary.retry));
+    ok(t1.rec(4477).retry?.state === 'ticked' && t1.rec(4670).retry?.state === 'deferred' && /per-tick cap \(1 box write\) is used this tick/.test(t1.rec(4670).retry.why), 'retry: the records say ticked and deferred');
     const pw = pullWrites(t1, 4477);
     ok(pw.length === 1 && pullWrites(t1, 4670).length === 0 && JSON.parse(pw[0].stdin).body === M.tickRetryBox(fw.prs[4477].body).body, 'retry: one PR body edit, the box ticked and nothing else changed');
-    const iLedger = t1.calls.findIndex(c => c.cmd === 'kubectl' && c.argv.includes('--field-manager=upgrade-night-ledger'));
-    ok(iLedger >= 0 && iLedger < t1.calls.indexOf(pw[0]) && JSON.parse(JSON.parse(t1.calls[iLedger].stdin).data.retry_ledger).retries[4477][0].status === 'intent', 'retry: the ledger entry (intent) is written before the box is ticked');
+    const ledgerApplies = t1.calls.filter(c => c.cmd === 'kubectl' && c.argv.includes('--field-manager=upgrade-night-ledger'));
+    const ledOf = c => JSON.parse(JSON.parse(c.stdin).data.retry_ledger);
+    const iIntent = t1.calls.findIndex(c => c.cmd === 'kubectl' && c.argv.includes('--field-manager=upgrade-night-ledger') && ledOf(c).retries?.[4477]?.[0]?.status === 'intent');
+    ok(iIntent >= 0 && iIntent < t1.calls.indexOf(pw[0]), 'retry: the ledger entry (intent) is written before the box is ticked');
+    // F6/F8: before any GitHub write the ledger is proved writable, at the version the tick read
+    const iFirstGh = t1.calls.findIndex(c => c.cmd === 'gh' && c.argv[1] === '--method');
+    ok(t1.calls.indexOf(ledgerApplies[0]) < iFirstGh && JSON.parse(ledgerApplies[0].stdin).metadata.resourceVersion === undefined && ledgerApplies.slice(1).every(c => /^\d+$/.test(JSON.parse(c.stdin).metadata.resourceVersion || '')), 'retry (F6/F8): the ledger is written before any GitHub write, and every later ledger write carries the version it last saw', JSON.stringify(ledgerApplies.map(c => JSON.parse(c.stdin).metadata.resourceVersion)));
     ok(ledgerNow()?.retries?.[4477]?.[0]?.status === 'ticked' && ledgerNow().retries[4477][0].head === fact(4477).head_sha, 'retry: the ledger ends with the tick on that head (data.retry_ledger, its own field manager)');
     ok(t1.ghWrites.length === 4 && t1.summary.github_writes === 4 && t1.ghWrites.every(isPrWrite) && t1.merges.length === 0, 'first night: 3 records and 1 retry, 4 GitHub writes, no merge', JSON.stringify(t1.ghWrites.map(c => c.argv.slice(2, 4))));
     ok(own(4477).length === 1 && M.parseRecord(own(4477)[0].body, cfg549).retry.state === 'ticked' && M.parseRecord(own(4477)[0].body, cfg549).retry.history[0]?.status === 'ticked', 'retry: the retry count shows in the PR record');
@@ -986,8 +1004,13 @@ process.exit(0);
     const t6 = await tick({ ...failWorld([4477, 4708], [4477]), ghWriteFail: true }, W);
     ok(t6.status === 0 && t6.summary.retry.attempts[0]?.outcome === 'write-failed' && /HTTP 403|Resource not accessible/.test(t6.summary.retry.attempts[0].why) && JSON.stringify(t6.summary.pr_records?.not_attempted) === '[4477,4708]' && !(t6.summary.pr_records.current || []).length, 'refused write: the retry write is reported with its reason, the records are not attempted, none is called current', JSON.stringify({ r: t6.summary.retry.attempts, p: t6.summary.pr_records }));
     ok(t6.ghWrites.length === 1 && ledgerNow()?.retries?.[4477]?.[0]?.status === 'write-failed' && t6.m.data?.summary, 'refused write: one write tried, counted in the ledger, the tick state written');
+    ok(/a denial is a stop/.test(ledgerNow()?.halt?.why || '') && /retry write on #4477 failed: gh api --method PATCH repos\/thaynes43\/haynes-ops\/pulls\/4477: gh: Resource not accessible by integration \(HTTP 403\)/.test(t6.stderr) && !JSON.stringify(t6.summary).includes('Resource not accessible'), 'refused write (F3/F4): a 403 halts in the ledger; the raw line is in the Job log, not in the state', JSON.stringify(ledgerNow()?.halt));
+    const t6b = await tick(failWorld([4477, 4708], [4477]), W, ['--write-state'], { keepGh: true });
+    ok(t6b.ghWrites.length === 0 && /^halted: the retry box write on #4477 was refused by GitHub \(HTTP 403\)/.test(t6b.summary.pr_records?.why_not || ''), 'refused write (F4): the next tick makes no GitHub write (a denial is a stop)', t6b.summary.pr_records?.why_not);
+    const t6c = await tick({ ...baseWorld([4477, 4708]), ghWriteFail: true, ghWriteFailLine: 'gh: Bad Gateway (HTTP 502)' }, W);
+    ok(t6c.ghWrites.length === 1 && !ledgerNow()?.halt && /GitHub server error \(HTTP 502\)/.test(t6c.summary.pr_records?.failed?.[0]?.why || ''), 'refused write (F4): a 5xx stops this tick only, no halt', JSON.stringify(t6c.summary.pr_records?.failed));
     const t7 = await tick({ ...baseWorld([4477, 4708]), ghWriteFail: true }, W);
-    ok(t7.summary.pr_records?.failed?.[0]?.pr === 4477 && /Resource not accessible by integration/.test(t7.summary.pr_records.failed[0].why) && JSON.stringify(t7.summary.pr_records.not_attempted) === '[4708]' && t7.ghWrites.length === 1 && /FAILED #4477/.test(t7.stderr), 'refused write: a record write refused by GitHub is reported, and no other write follows', JSON.stringify(t7.summary.pr_records));
+    ok(t7.summary.pr_records?.failed?.[0]?.pr === 4477 && /refused by GitHub \(HTTP 403\)/.test(t7.summary.pr_records.failed[0].why) && JSON.stringify(t7.summary.pr_records.not_attempted) === '[4708]' && t7.ghWrites.length === 1 && /FAILED #4477/.test(t7.stderr) && /record write failed: #4477 .*Resource not accessible by integration/.test(t7.stderr), 'refused write: a record write refused by GitHub is reported with a fixed reason (the raw line in the log), and no other write follows', JSON.stringify(t7.summary.pr_records));
     // the body changed between the read and the write; the head moved between them
     const t8 = await tick({ ...failWorld([4477], [4477]), bodyChangesAfterRead: true }, W);
     ok(pullWrites(t8, 4477).length === 0 && t8.summary.retry.attempts[0]?.outcome === 'not-written' && /PR body changed between the read and the write/.test(t8.summary.retry.attempts[0].why) && ledgerNow()?.retries?.[4477]?.[0]?.status === 'abandoned', 'retry: the body changed between the read and the write: not written this tick, nothing counted', JSON.stringify(t8.summary.retry.attempts));
@@ -1004,7 +1027,7 @@ process.exit(0);
     const t11 = await tick(failWorld([4477], [4477]), { GH_TOKEN_PERMISSIONS_FILE: permR });
     ok(t11.ghWrites.length === 0 && /the token cannot write pull requests/.test(t11.summary.pr_records?.why_not) && t11.summary.retry.attempts[0]?.outcome === 'planned', 'no PR write with a token that cannot write pull requests', JSON.stringify(t11.summary.pr_records?.why_not));
     const t12 = await tick(failWorld([4477], [4477]), W, []);
-    ok(t12.ghWrites.length === 0 && t12.writes.length === 0 && t12.summary && /would create #4477/.test(t12.stderr) && /#4477 [0-9a-f]{8} PLANNED/.test(t12.stderr), 'a local run (no --write-state) writes nothing and says what it would write and retry', t12.stderr.split('\n').filter(l => /PR records|retry:/.test(l)).join(' | '));
+    ok(t12.ghWrites.length === 0 && t12.writes.length === 0 && t12.summary && /would create #4477/.test(t12.stderr) && /#4477 [0-9a-f]{8} WOULD-TICK/.test(t12.stderr), 'a local run (no --write-state) writes nothing and says what it would write and retry (after reading the facts at the write)', t12.stderr.split('\n').filter(l => /PR records|retry:/.test(l)).join(' | '));
     const hw = failWorld([4477], [4477]); hw.ledger = JSON.stringify({ schema: M.LEDGER_SCHEMA, retries: {}, halt: { at: '2026-11-01T00:00:00Z', why: 'test halt' } });
     const t13 = await tick(hw, W);
     ok(t13.ghWrites.length === 0 && /^halted: test halt/.test(t13.summary.pr_records?.why_not), 'a halt in the ledger stops every PR write');
@@ -1015,6 +1038,47 @@ process.exit(0);
     ok(t15.ghWrites.length === 1 && /written as haynes-dev-bot\[bot\]/.test(t15.summary.pr_records?.halt?.why) && /written as haynes-dev-bot/.test(ledgerNow()?.halt?.why || ''), 'identity mismatch: one comment, then a durable halt in the ledger', JSON.stringify(t15.summary.pr_records?.halt));
     const t16 = await tick({ ...baseWorld([4477, 4708]), botLogin: 'haynes-dev-bot[bot]' }, W, ['--write-state'], { keepGh: true });
     ok(t16.ghWrites.length === 0 && /^halted:/.test(t16.summary.pr_records?.why_not), 'identity mismatch: the next tick writes nothing (no comment per tick)');
+    // F1: a PR the facts at the write refuse (a non-required check stuck QUEUED) hands the slot on
+    const stuck = failWorld([4477, 4670, 4708], [4477, 4670]);
+    stuck.prs[4477].statusCheckRollup.push({ __typename: 'CheckRun', workflowName: 'Other', name: 'lint', status: 'QUEUED', conclusion: null, startedAt: null, completedAt: null });
+    const f1 = await tick(stuck, W);
+    ok(JSON.stringify(f1.summary.retry?.tried) === '[4477,4670]' && f1.summary.retry.attempts[0]?.outcome === 'not-written' && /queued or running on the head: Other \/ lint/.test(f1.summary.retry.attempts[0].why) && f1.summary.retry.attempts[1]?.outcome === 'ticked' && pullWrites(f1, 4477).length === 0 && pullWrites(f1, 4670).length === 1, 'retry (F1): the stuck PR first is refused at the write, and the next eligible PR gets the tick', JSON.stringify(f1.summary.retry?.attempts));
+    ok(f1.rec(4477).retry?.state === 'not-written' && !(ledgerNow()?.retries?.[4477]) && f1.summary.github_writes === 4, 'retry (F1): the refused PR leaves no ledger entry; 3 records and 1 box this tick');
+    const rulesOne = join(tmp, 'rules-one-preflight.json');
+    writeFileSync(rulesOne, JSON.stringify({ ...rules, night: { ...rules.night, retry: { ...rules.night.retry, max_preflights_per_tick: 1 } } }));
+    const f1b = await tick(stuck, { ...W, UPGRADE_RULES: rulesOne });
+    ok(JSON.stringify(f1b.summary.retry?.tried) === '[4477]' && f1b.rec(4670).retry?.state === 'deferred' && /the 1 write-time reads allowed per tick are used/.test(f1b.rec(4670).retry.why) && f1b.ghWrites.filter(c => /pulls\/\d+$/.test(c.argv[3])).length === 0, 'retry (F1): the write-time reads are bounded per tick (max_preflights_per_tick)', JSON.stringify(f1b.summary.retry));
+    // F2: a workflow run for the head not started yet (its check suite queued, no check run)
+    const f2w = failWorld([4477, 4670, 4708], [4477, 4670]);
+    f2w.suites = { [fact(4477).head_sha]: { total_count: 2, check_suites: [{ id: 41, app: { slug: 'github-actions' }, status: 'queued' }, { id: 42, app: { slug: 'claude' }, status: 'queued' }] } };
+    const f2 = await tick(f2w, W);
+    ok(/a workflow run for the head is queued \(check suite 41\)/.test(f2.summary.retry?.attempts?.[0]?.why || '') && pullWrites(f2, 4477).length === 0 && pullWrites(f2, 4670).length === 1, 'retry (F2): a workflow run queued for the head stops its retry; the next PR gets the tick', JSON.stringify(f2.summary.retry?.attempts));
+    ok(f2.calls.some(c => c.cmd === 'gh' && c.argv[1] === `repos/thaynes43/haynes-ops/commits/${fact(4477).head_sha}/check-suites?per_page=100`), 'retry (F2): the check suites are read by head SHA with gh api GET (checks:read)');
+    const f2u = failWorld([4477], [4477]); f2u.suites = { [fact(4477).head_sha]: 'FAIL' };
+    const f2b = await tick(f2u, W);
+    ok(/unreadable: the check suites of the head/.test(f2b.summary.retry?.attempts?.[0]?.why || '') && pullWrites(f2b, 4477).length === 0, 'retry (F2): unreadable check suites refuse the write');
+    // F5: the pause is read again just before each record write
+    const f5 = await tick({ ...baseWorld([4477, 4708]), pauseFromRead: 4, pauseFromReadValue: 'tom: hold' }, W);
+    ok(f5.summary.pr_records?.created?.join() === '4477' && JSON.stringify(f5.summary.pr_records?.not_attempted) === '[4708]' && /paused just before a record write/.test(f5.summary.pr_records?.stopped_by || '') && f5.ghWrites.length === 1, 'records (F5): a pause set after the first record write stops the next one', JSON.stringify(f5.summary.pr_records));
+    // F6: an intent left by a Job that ended between its ledger writes
+    const intentLedger = (head, at = '2026-11-02T06:45:00.000Z') => JSON.stringify({ schema: M.LEDGER_SCHEMA, retries: { 4477: [{ head, at, status: 'intent', checks: ['x'] }] }, halt: null });
+    const f6w = failWorld([4477], [4477]); f6w.ledger = intentLedger(fact(4477).head_sha);
+    const f6 = await tick(f6w, W);
+    ok(f6.rec(4477).retry?.state === 'ticked' && pullWrites(f6, 4477).length === 1 && ledgerNow().retries[4477][0].status === 'abandoned' && ledgerNow().retries[4477][1].status === 'ticked', 'interrupted (F6): an intent with the box unticked at the same head was not made: it is abandoned and the PR ticked now', JSON.stringify(ledgerNow()?.retries));
+    const f6t = failWorld([4477], [4477]); f6t.ledger = intentLedger(fact(4477).head_sha); f6t.prs[4477].body = M.tickRetryBox(f6t.prs[4477].body).body;
+    const f6b = await tick(f6t, W);
+    ok(f6b.rec(4477).retry?.state === 'waiting-for-renovate' && pullWrites(f6b, 4477).length === 0 && ledgerNow().retries[4477][0].status === 'ticked', 'interrupted (F6): an intent with the box ticked was made: counted, waiting for Renovate, no second tick', JSON.stringify(f6b.rec(4477).retry));
+    const f6m = structuredClone(f6w); f6m.ledger = intentLedger('e'.repeat(40));
+    const f6c = await tick(f6m, W);
+    ok(f6c.rec(4477).class === 'check-failing-after-retry' && pullWrites(f6c, 4477).length === 0, 'interrupted (F6): an intent followed by a new head that fails again blocks the PR', `${f6c.rec(4477).class}`);
+    const f6d = await tick({ ...failWorld([4477, 4708], [4477]), failLedger: true }, W);
+    ok(f6d.ghWrites.length === 0 && /the retry ledger could not be written/.test(f6d.summary.pr_records?.why_not || ''), 'interrupted (F6): a ledger that cannot be written means no GitHub write this tick', f6d.summary.pr_records?.why_not);
+    // F8: an overlapping Job wrote the state after this tick read it: this tick makes no tick
+    const f8w = failWorld([4477, 4708], [4477]); f8w.ledger = JSON.stringify({ schema: M.LEDGER_SCHEMA, retries: {}, halt: null }); f8w.stateRv = 12; f8w.stateRvOnRead = '11';
+    const f8 = await tick(f8w, W);
+    ok(f8.ghWrites.length === 0 && pullWrites(f8, 4477).length === 0 && /could not be written at the version this tick read/.test(f8.summary.pr_records?.why_not || '') && /Conflict/.test(f8.stderr), 'overlap (F8): the second writer\'s ledger write fails on the resourceVersion, so it makes no tick and no record', f8.summary.pr_records?.why_not);
+    const f8ok = await tick({ ...f8w, stateRvOnRead: '12' }, W);
+    ok(pullWrites(f8ok, 4477).length === 1, 'overlap (F8): the same tick at the current version ticks (the conflict test is not vacuous)');
     // the state of every record the tick wrote carries retry, which the mapping covers
     ok(t1.recs.every(r => r.retry && typeof r.retry.state === 'string'), 'every record in upgrade-lane-state carries retry');
   }

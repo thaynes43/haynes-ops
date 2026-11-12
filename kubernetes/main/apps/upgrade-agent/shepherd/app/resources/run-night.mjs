@@ -393,9 +393,8 @@ async function tick() {
     r.retry = a.field;
     if (a.eligible) eligibleSet.add(r.pr);
   }
+  // the PR-write phase below tries them in PR order; the cap counts box writes, not PRs tried
   const retryEligible = records.filter(r => eligibleSet.has(r.pr)).sort((a, b) => a.pr - b.pr);
-  const retrySelected = retryEligible.slice(0, rcfg.ok ? rcfg.per_tick : 0);
-  for (const r of retryEligible.slice(retrySelected.length)) r.retry = { ...r.retry, state: 'deferred', why: `eligible, but the per-tick cap (${rcfg.per_tick}) went to ${retrySelected.map(x => `#${x.pr}`).join(', ') || 'no PR'}` };
 
   const lanes = records.filter(r => r.lane === 'LANE-A');
   const cluster = lanes.some(r => r.cluster_effect === 'immediate');
@@ -538,31 +537,62 @@ async function tick() {
   let phaseWhy = !WRITE_STATE ? 'a local run (no --write-state): planned, nothing written'
     : !rcd.ok ? rcd.why : !prWrite.ok ? prWrite.why : !ledger ? `${lg.why}; it also holds the PR-write halt` : ledger.halt ? `halted: ${ledger.halt.why}` : null;
   if (!phaseWhy) phaseWhy = M.pauseRefusal(M.readPause(rules, run), 'before the PR writes');
+  // F6/F8 (story 549 review): every ledger write carries the resourceVersion of the last
+  // read or write of upgrade-lane-state, and before any GitHub write the tick proves the
+  // ledger writable with one such write. A Job that overlaps this one and wrote the state
+  // since makes that write fail, and this tick then writes nothing to GitHub; so does a
+  // ledger that cannot be written (the halt it may need to hold would be lost).
+  let ledgerRv = stateCm?.metadata?.resourceVersion ?? null;
+  const persistLedger = l => {
+    if (!WRITE_STATE) return false;
+    const w = writeLaneState(ledgerManifest(l, ledgerRv), LEDGER_MANAGER);
+    if (w.ok && w.rv) ledgerRv = w.rv;
+    return w.ok;
+  };
+  if (!phaseWhy && !persistLedger(ledger)) phaseWhy = 'the retry ledger could not be written at the version this tick read (another writer since, or the write was refused); no GitHub write this tick';
   const phaseLive = !phaseWhy;
-  const persistLedger = l => WRITE_STATE && writeLaneState(ledgerManifest(l), LEDGER_MANAGER);
+  const planOnly = !WRITE_STATE; // a local run reads the facts at the write and says what it would tick
   const attempts = [];
-  let stopped = null, retryWrites = 0;
-  for (const r of retrySelected) {
-    if (!phaseLive || stopped) {
-      attempts.push({ pr: r.pr, head: r.head, outcome: 'planned', why: stopped || phaseWhy });
-      r.retry = { ...r.retry, state: 'selected', why: `would tick the box: ${r.retry.why}` };
+  let stopped = null, retryWrites = 0, boxWrites = 0, preflights = 0, retryHalt = null;
+  for (const r of retryEligible) {
+    // F1: a PR the facts at the write refuse hands its slot to the next eligible PR; the
+    // write-time reads are bounded too, so a long queue cannot spend the tick
+    const deferWhy = stopped ? `not tried: ${stopped}`
+      : boxWrites >= rcfg.per_tick ? `eligible, but the per-tick cap (${rcfg.per_tick} box write${rcfg.per_tick === 1 ? '' : 's'}) is used this tick`
+        : preflights >= rcfg.max_preflights_per_tick ? `eligible, but the ${rcfg.max_preflights_per_tick} write-time reads allowed per tick are used` : null;
+    if (deferWhy) { r.retry = { ...r.retry, state: 'deferred', why: deferWhy }; continue; }
+    if (!phaseLive && !planOnly) {
+      boxWrites++;
+      attempts.push({ pr: r.pr, head: r.head, outcome: 'planned', why: phaseWhy });
+      r.retry = { ...r.retry, state: 'selected', why: `would read the facts and tick the box: ${r.retry.why}` };
       continue;
     }
-    const res = M.runRetry({ cand: { pr: r.pr, head: r.head, files: r.files || [], failing: r.checks?.failing || [] }, rules, run, env: childEnv, clock, ledger, persistLedger });
+    preflights++;
+    const res = M.runRetry({ cand: { pr: r.pr, head: r.head, files: r.files || [], failing: r.checks?.failing || [] }, rules, run, env: childEnv, clock, ledger, persistLedger, plan: planOnly });
+    if (res.raw_detail) log(`upgrade-night ${MODE}: retry write on #${r.pr} failed: ${res.raw_detail}`);
+    delete res.raw_detail;
     attempts.push(res);
     retryWrites += res.writes;
-    if (res.outcome === 'write-failed') stopped = `the retry write on #${r.pr} failed`;
+    if (res.writes > 0 || res.outcome === 'would-tick') boxWrites++;
+    if (res.outcome === 'write-failed') stopped = `the retry write on #${r.pr} failed (${res.failure})`;
+    if (res.halt) retryHalt = res.halt;
     const after = M.retryAssess({ rec: r, box: res.outcome === 'ticked' ? 'ticked' : factsByPr.get(r.pr)?.retry_box ?? null, entries: ledger.retries[String(r.pr)] || [], cfg: rcfg, now });
     r.retry = { ...after.field, state: res.outcome, why: res.outcome === 'ticked' ? `ticked Renovate's retry box on ${String(r.head).slice(0, 8)}${res.why ? `; ${res.why}` : ''}` : res.why };
   }
   const items = records.map(r => ({ rec: r, comments: factsByPr.get(r.pr)?.record_comments ?? null }));
-  const prRecords = rcd.ok ? M.writePrRecords({ items, cfg: rcd, run, env: childEnv, live: phaseLive, stopped })
+  // F5: the pause is read again just before each record write
+  const pauseCheck = () => M.pauseRefusal(M.readPause(rules, run), 'just before a record write');
+  const prRecords = rcd.ok ? M.writePrRecords({ items, cfg: rcd, run, env: childEnv, live: phaseLive, stopped, pauseCheck })
     : { github_writes: 0, refused: records.map(r => ({ pr: r.pr, why: rcd.why })) };
-  if (prRecords.halt && ledger) ledger.halt = { at: new Date(clock()).toISOString(), ...prRecords.halt };
+  for (const line of prRecords.raw_details || []) log(`upgrade-night ${MODE}: record write failed: ${line}`);
+  delete prRecords.raw_details;
+  // F4: a denial (or a record written under another identity) is a stop: a durable halt
+  const halt = retryHalt || prRecords.halt;
+  if (halt && ledger) ledger.halt = { at: new Date(clock()).toISOString(), ...halt };
   summary.github_writes = retryWrites + (prRecords.github_writes || 0);
   summary.pr_records = { written: phaseLive, why_not: phaseWhy, identity: rcd.author?.login ?? null, ...prRecords };
   summary.retry = { ledger: !ledger ? lg.why : lg.absent ? 'absent (a new ledger)' : 'read', limits: rcfg.ok ? { per_head: rcfg.per_head, per_pr: rcfg.per_pr, window_days: rcfg.window_days, per_tick: rcfg.per_tick } : rcfg.why,
-    eligible: retryEligible.map(r => r.pr), selected: retrySelected.map(r => r.pr), attempts, github_writes: retryWrites,
+    eligible: retryEligible.map(r => r.pr), tried: attempts.map(a => a.pr), attempts, github_writes: retryWrites, max_preflights_per_tick: rcfg.max_preflights_per_tick ?? null,
     by_state: Object.fromEntries([...new Set(records.map(r => r.retry?.state))].map(s => [s, records.filter(r => r.retry?.state === s).map(r => r.pr)])) };
 
   const table = L.formatTable(records);
@@ -599,7 +629,7 @@ async function tick() {
   if (!WRITE_STATE) { log('state not written (no --write-state); this was a local run'); return 0; }
   // the ledger first (its own field manager), then the tick's state
   if (ledger && JSON.stringify(ledger) !== ledgerBefore) summary.retry.ledger_written = persistLedger(ledger);
-  const ok = writeLaneState(stateManifest({ mode: MODE, updated: summary.at, summary: JSON.stringify(summary), table, records: JSON.stringify(records) }));
+  const ok = writeLaneState(stateManifest({ mode: MODE, updated: summary.at, summary: JSON.stringify(summary), table, records: JSON.stringify(records) })).ok;
   return ok ? 0 : 2;
 }
 
@@ -608,7 +638,9 @@ const stateManifest = data => ({ apiVersion: 'v1', kind: 'ConfigMap', metadata: 
 // tick's apply (which owns every other key it writes, and drops what it leaves out, as the
 // error record does) never removes it.
 const LEDGER_MANAGER = 'upgrade-night-ledger';
-const ledgerManifest = l => ({ apiVersion: 'v1', kind: 'ConfigMap', metadata: { ...STATE }, data: { retry_ledger: JSON.stringify(l) } });
+// rv = the resourceVersion of the last read or write of the ConfigMap: a precondition, so a
+// writer that overlapped since makes this write fail (F8).
+const ledgerManifest = (l, rv) => ({ apiVersion: 'v1', kind: 'ConfigMap', metadata: { ...STATE, ...(rv ? { resourceVersion: String(rv) } : {}) }, data: { retry_ledger: JSON.stringify(l) } });
 
 // THE ONLY CLUSTER WRITE: one ConfigMap, fixed name and namespace, runtime state like
 // upgrade-orphan-report (not Flux-managed). Server-side apply: no last-applied
@@ -622,10 +654,12 @@ function writeLaneState(manifest, manager = 'upgrade-night') {
   }
   const body = JSON.stringify(manifest);
   if (Buffer.byteLength(body) > MAX_STATE_BYTES) throw new Error(`state is ${Buffer.byteLength(body)} bytes, over the ${MAX_STATE_BYTES}-byte budget for one ConfigMap`);
-  const r = spawnSync('kubectl', ['apply', '--server-side', `--field-manager=${manager}`, '--force-conflicts', '-f', '-'], { input: body, encoding: 'utf8', env: childEnv });
-  if (r.status !== 0) { log(`ERROR upgrade-night: STATE WRITE FAILED for ${STATE.namespace}/${STATE.name} (kubectl exit ${r.status}): ${String(r.stderr).slice(0, 300)}`); return false; }
+  const r = spawnSync('kubectl', ['apply', '--server-side', `--field-manager=${manager}`, '--force-conflicts', '-o', 'json', '-f', '-'], { input: body, encoding: 'utf8', env: childEnv, maxBuffer: 64 * 1024 * 1024 });
+  if (r.status !== 0) { log(`ERROR upgrade-night: STATE WRITE FAILED for ${STATE.namespace}/${STATE.name}${manager === LEDGER_MANAGER ? ' (data.retry_ledger)' : ''} (kubectl exit ${r.status}): ${String(r.stderr).slice(0, 300)}`); return { ok: false, rv: null }; }
+  let rv = null;
+  try { rv = JSON.parse(r.stdout)?.metadata?.resourceVersion ?? null; } catch { rv = null; }
   log(`wrote ConfigMap ${STATE.namespace}/${STATE.name}${manager === LEDGER_MANAGER ? ' (data.retry_ledger)' : ''}`);
-  return true;
+  return { ok: true, rv };
 }
 
 // Exit codes: 0 = tick done (or paused); 2 = the state write failed, the one failure
@@ -637,7 +671,7 @@ if (L.isMain(import.meta.url)) {
   tick().then(code => process.exit(code)).catch(e => {
     const at = new Date().toISOString();
     log(`upgrade-night: FAILED: ${e.message}`);
-    const written = WRITE_STATE && writeLaneState(stateManifest({ mode: MODE, updated: at, error: String(e.message).slice(0, 2000), summary: JSON.stringify({ mode: MODE, at, error: String(e.message).slice(0, 500), would_merge: null }) }));
+    const written = WRITE_STATE && writeLaneState(stateManifest({ mode: MODE, updated: at, error: String(e.message).slice(0, 2000), summary: JSON.stringify({ mode: MODE, at, error: String(e.message).slice(0, 500), would_merge: null }) })).ok;
     process.exit(written ? 0 : 1);
   });
 }

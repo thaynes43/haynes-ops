@@ -915,9 +915,9 @@ export function recordConfig(rules) {
 export function retryConfig(rules) {
   const c = rules?.night?.retry || {};
   const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
-  const ok = c.per_head === 1 && int(c.per_pr, 1, 5) && int(c.window_days, 1, 30) && int(c.per_tick, 0, 3);
-  return { ok, per_head: c.per_head, per_pr: c.per_pr, window_days: c.window_days, per_tick: c.per_tick,
-    why: ok ? null : 'night.retry in upgrade-rules.json is invalid (per_head 1; per_pr 1 to 5; window_days 1 to 30; per_tick 0 to 3)' };
+  const ok = c.per_head === 1 && int(c.per_pr, 1, 5) && int(c.window_days, 1, 30) && int(c.per_tick, 0, 3) && int(c.max_preflights_per_tick, 1, 10) && c.max_preflights_per_tick >= c.per_tick;
+  return { ok, per_head: c.per_head, per_pr: c.per_pr, window_days: c.window_days, per_tick: c.per_tick, max_preflights_per_tick: c.max_preflights_per_tick,
+    why: ok ? null : 'night.retry in upgrade-rules.json is invalid (per_head 1; per_pr 1 to 5; window_days 1 to 30; per_tick 0 to 3; max_preflights_per_tick 1 to 10 and at least per_tick)' };
 }
 // The PR writes need pull_requests:write (GitHub's permission tables for installation
 // tokens list all three endpoints under "Pull requests", write). Unreadable = no write.
@@ -964,7 +964,30 @@ const SECRET_SHAPES = Object.freeze([
   [/\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/i, 'a URL with credentials'], [/\bbearer\s+[A-Za-z0-9._~+/-]{12,}/i, 'a bearer credential'],
   [/\b(?:password|passwd|secret|api[_-]?key|client[_-]?secret)\s*["']?\s*[:=]\s*\S/i, 'a credential assignment'],
   [/\bxox[abprs]-[A-Za-z0-9-]{10,}/, 'a Slack token'], [/\bAKIA[0-9A-Z]{16}\b/, 'an AWS key'],
+  // F3 (story 549 review): the cluster's network is not public. Object, pod, commit and
+  // backup target names may stay (they are in this public repository); addresses and
+  // in-cluster DNS names may not.
+  [/\b(?:10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|127(?:\.\d{1,3}){3}|169\.254(?:\.\d{1,3}){2}|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2})\b/, 'a private network address'],
+  [/\b(?:f[cd][0-9a-f]{2}|fe80):[0-9a-f]{0,4}:/i, 'a private network address'],
+  [/[A-Za-z0-9-]\.svc\b|\.cluster\.local\b/i, 'an in-cluster name'],
 ]);
+// F3/F4 (story 549 review): what a failed GitHub write publishes is a fixed vocabulary,
+// never gh's or GitHub's own text (a network error's last line can name the cluster's
+// resolver); the raw line goes to the Job log only. A denial (401, or a 403 that is not a
+// rate limit) halts the PR writes until a person clears it; a rate limit, a 5xx, a timeout
+// or a network error stops only that tick's writes.
+export function writeFailure(w) {
+  const raw = String(w?.detail || ''), h = Number.isInteger(w?.http) ? w.http : null;
+  const kind = (w?.exit === null && h === null) || /^no exit status/.test(raw) ? 'timeout'
+    : h === 429 || ((h === 403 || h === 401) && /rate limit/i.test(raw)) ? 'rate-limited'
+      : h === 401 || h === 403 ? 'denied' : h === 404 ? 'not-found' : h === 409 || h === 422 ? 'rejected'
+        : h !== null && h >= 500 ? 'server-error' : h !== null ? 'other-http' : 'network';
+  const reason = { timeout: 'timed out or killed', 'rate-limited': `rate limited by GitHub (HTTP ${h})`, denied: `refused by GitHub (HTTP ${h})`, 'not-found': 'not found (HTTP 404)',
+    rejected: `rejected by GitHub as invalid (HTTP ${h})`, 'server-error': `GitHub server error (HTTP ${h})`, 'other-http': `failed (HTTP ${h})`, network: 'network or client error (no HTTP status)' }[kind];
+  return { kind, reason, halts: kind === 'denied' };
+}
+// The pause, as a public reason: never the pause's own text.
+const pauseWhy = (p, when) => (!p ? `unreadable: data.pause on upgrade-lane-state (${when})` : p.pause ? `paused (data.pause on upgrade-lane-state) ${when}` : null);
 export function publishProblems(pub, body, cfg) {
   const out = [];
   const raw = JSON.stringify(pub);
@@ -1016,10 +1039,25 @@ const counts = e => e && e.status !== 'abandoned';
 export function retryAssess({ rec, box, entries, cfg, now }) {
   const limits = { per_head: cfg.per_head, per_pr: cfg.per_pr, window_days: cfg.window_days, per_tick: cfg.per_tick };
   if (entries === null) return { field: { state: 'unreadable', why: 'unreadable: the retry ledger (data.retry_ledger on upgrade-lane-state); no retry', count_7d: null, limits, history: [] }, eligible: false, block: null, update: null };
-  const counted = (entries || []).filter(counts).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  let counted = (entries || []).filter(counts).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  // F6 (story 549 review): an intent the tick never resolved (the Job ended between the
+  // ledger write and the next one) is decided from facts. The box ticked, or the head moved
+  // since, means the write was made; the box unticked at the same head means it was not.
+  // Anything else stays an intent, which counts (fail closed).
+  let resolved = null;
+  const open = counted[counted.length - 1];
+  if (open && open.status === 'intent' && !open.outcome) {
+    if (rec?.head !== open.head || box === 'ticked') resolved = { status: 'ticked', why: 'the tick ended before it recorded the write; the box ticked or the head moved since shows it was made' };
+    else if (box === 'unticked') resolved = { status: 'abandoned', why: 'the tick ended before the write; the box unticked at the same head shows it was not made' };
+    if (resolved) counted = counted.map(e => (e === open ? { ...e, ...resolved } : e)).filter(counts);
+  }
   const inWin = counted.filter(e => now - Date.parse(e.at) < cfg.window_days * 864e5);
   const history = counted.map(e => ({ head: e.head, at: e.at, status: e.status, outcome: e.outcome ?? null, next_head: e.next_head ?? null }));
-  const out = (state, why, extra = {}) => ({ field: { state, why, count_7d: inWin.length, limits, history }, eligible: false, block: null, update: null, ...extra });
+  const out = (state, why, extra = {}) => {
+    const r = { field: { state, why, count_7d: inWin.length, limits, history }, eligible: false, block: null, update: null, ...extra };
+    if (resolved) r.update = { ...resolved, ...(r.update || {}) };
+    return r;
+  };
   const failing = rec?.checks?.failing || [], pending = rec?.checks?.pending || [], missing = rec?.checks?.missing || [];
   const blockWith = reason => (rec?.lane === 'BLOCKED' && failing.length ? { class: 'check-failing-after-retry', reason } : null);
   const last = counted[counted.length - 1] || null;
@@ -1054,7 +1092,12 @@ export function retryAssess({ rec, box, entries, cfg, now }) {
 }
 // PURE. The facts at the moment of the write. pull = REST GET pulls/<n>; view = gh pr view
 // (commits, headRefOid, statusCheckRollup); commits = REST pulls/<n>/commits.
-export function retryPreflight({ pull, view, commits, head, files, rules, now }) {
+// suites = REST GET commits/<head>/check-suites (F2): a workflow run that is queued,
+// waiting, pending, requested or in progress has a github-actions check suite in that state
+// before any of its check runs exist (read live 2026-11-12: head 6bd661d7 had 4 queued
+// workflow runs, 4 queued github-actions suites and no check run). Other apps' suites
+// (claude, cursor, renovate, cloudflare) stay queued on every head and are not judged.
+export function retryPreflight({ pull, view, commits, suites, head, files, rules, now }) {
   if (!pull || typeof pull !== 'object') return ['unreadable: the pull request (REST)'];
   const out = [];
   if (pull.state !== 'open') out.push(`not open (state ${pull.state ?? 'unknown'})`);
@@ -1080,6 +1123,11 @@ export function retryPreflight({ pull, view, commits, head, files, rules, now })
     }
     if (!(files || []).length) out.push('unreadable: the PR files (for the expected checks)');
     else if (!L.evaluateChecks(L.expectedChecks(files, rules).expected, runs, now, rules.check_max_age_days).failing.length) out.push('the newest run of every required and expected check on the head did not fail');
+  }
+  if (!suites || !Array.isArray(suites.check_suites) || !Number.isInteger(suites.total_count)) out.push('unreadable: the check suites of the head (workflow runs that have not started a check)');
+  else {
+    if (suites.total_count > suites.check_suites.length) out.push(`the check suite list may be truncated (${suites.check_suites.length} of ${suites.total_count})`);
+    for (const c of suites.check_suites) if (c?.app?.slug === 'github-actions' && c.status !== 'completed') out.push(`a workflow run for the head is ${c.status || 'in an unknown state'} (check suite ${c.id})`);
   }
   const box = L.retryBox(pull.body);
   if (box.state !== 'unticked') out.push(`Renovate's retry box is ${box.state}`);
@@ -1135,6 +1183,7 @@ export function readIssueComments(repo, pr, run) {
   return Array.isArray(j) ? j.flat() : null;
 }
 const RETRY_VIEW_FIELDS = 'number,headRefOid,commits,statusCheckRollup';
+export const readCheckSuites = (repo, head, run) => { const j = parse(tryRun(run, 'gh', ['api', `repos/${repo}/commits/${head}/check-suites?per_page=100`])); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; };
 
 // ── THE GITHUB WRITES (not merges) ──
 export const GH_WRITE_KINDS = Object.freeze(['record-create', 'record-edit', 'record-demote', 'retry-box']);
@@ -1167,20 +1216,23 @@ export function ghWrite(kind, a, env) {
 
 // ── the retry write (one PR) ──
 // cand = { pr, head, files, failing }; ledger = { retries: { "<pr>": [entry] } } (mutated);
-// persistLedger(ledger) -> true when written. Returns { pr, head, outcome, why, writes, call }.
-export function runRetry({ cand, rules, run, env, clock, ledger, persistLedger, write = ghWrite }) {
-  const res = { pr: cand.pr, head: cand.head, outcome: 'not-written', why: null, writes: 0, call: null };
-  const p0 = pauseRefusal(readPause(rules, run), 'before the retry');
-  if (p0) return { ...res, why: p0 };
+// persistLedger(ledger) -> true when written. plan = true (a local run): the reads and the
+// preflight only, outcome would-tick; no ledger write, no GitHub write. Returns { pr, head,
+// outcome (ticked | write-failed | not-written | would-tick), why (public), raw_detail (the
+// Job log only), writes, call, halt }.
+export function runRetry({ cand, rules, run, env, clock, ledger, persistLedger, write = ghWrite, plan = false }) {
+  const res = { pr: cand.pr, head: cand.head, outcome: 'not-written', why: null, writes: 0, call: null, halt: null, raw_detail: null };
+  if (!plan) { const p0 = pauseWhy(readPause(rules, run), 'before the retry'); if (p0) return { ...res, why: p0 }; }
   const pull = readPull(REPO, cand.pr, run);
   const view = parse(tryRun(run, 'gh', ['pr', 'view', String(cand.pr), '-R', REPO, '--json', RETRY_VIEW_FIELDS]));
-  const refusals = retryPreflight({ pull, view, commits: readPrCommits(REPO, cand.pr, run), head: cand.head, files: cand.files, rules, now: clock() });
-  if (refusals.length) return { ...res, why: `the facts at the write refuse it: ${refusals.join('; ')}` };
+  const refusals = retryPreflight({ pull, view, commits: readPrCommits(REPO, cand.pr, run), suites: readCheckSuites(REPO, cand.head, run), head: cand.head, files: cand.files, rules, now: clock() });
+  if (refusals.length) return { ...res, why: `the facts at the write refuse it: ${refusals.join('; ')}`, preflight: false };
+  if (plan) return { ...res, outcome: 'would-tick', why: 'every fact at the write allows it (a local run writes nothing)', preflight: true };
   const key = String(cand.pr);
   const entry = { head: cand.head, at: iso(clock()), status: 'intent', checks: cand.failing || [] };
   ledger.retries[key] = [...(ledger.retries[key] || []), entry];
   if (!persistLedger(ledger)) { ledger.retries[key].pop(); return { ...res, why: 'the retry ledger could not be written before the tick; nothing was ticked' }; }
-  const p1 = pauseRefusal(readPause(rules, run), 'just before the retry write');
+  const p1 = pauseWhy(readPause(rules, run), 'just before the retry write');
   const again = p1 ? null : readPull(REPO, cand.pr, run);
   const why = p1 || (!again ? 'unreadable: the pull request just before the write'
     : again.head?.sha !== cand.head ? `the head moved between the read and the write (${short(again.head?.sha)})`
@@ -1189,7 +1241,12 @@ export function runRetry({ cand, rules, run, env, clock, ledger, persistLedger, 
   const t = tickRetryBox(pull.body);
   const w = write('retry-box', { repo: REPO, pr: cand.pr, body: t.body, before: pull.body }, env);
   res.writes = 1; res.call = w.call;
-  if (!w.ok) { entry.status = 'write-failed'; entry.why = w.detail; return { ...res, outcome: 'write-failed', why: `${w.call}: ${w.detail}`, http: w.http }; }
+  if (!w.ok) {
+    const f = writeFailure(w);
+    entry.status = 'write-failed'; entry.why = f.reason;
+    return { ...res, outcome: 'write-failed', why: `the box write was ${f.reason}`, http: w.http, failure: f.kind, raw_detail: `${w.call}: ${w.detail}`,
+      halt: f.halts ? { why: `the retry box write on #${cand.pr} was ${f.reason}; a denial is a stop: PR writes halt until a person removes retry_ledger.halt` } : null };
+  }
   entry.status = 'ticked';
   const echoed = L.retryBox(w.json?.body).state;
   if (echoed !== 'ticked' || w.json?.head?.sha !== cand.head) entry.why = `GitHub's reply reads the box ${echoed} at head ${short(w.json?.head?.sha)}`;
@@ -1199,10 +1256,19 @@ export function runRetry({ cand, rules, run, env, clock, ledger, persistLedger, 
 // ── the record writes (every open Renovate PR) ──
 // items = [{ rec, comments }] (comments = facts.record_comments, null when unread);
 // live = false plans only (a local run). Returns the summary block.
-export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, stopped = null }) {
-  const out = { github_writes: 0, created: [], updated: [], current: [], demoted: [], refused: [], failed: [], not_attempted: [], foreign_ignored: [], would_create: [], would_update: [], halt: null, stopped_by: stopped };
+// pauseCheck() -> a public reason when paused (or unreadable), else null: read just before
+// each write (F5). The first failed write stops the rest of the tick; a denial also halts.
+export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, stopped = null, pauseCheck = () => null }) {
+  const out = { github_writes: 0, created: [], updated: [], current: [], demoted: [], refused: [], failed: [], not_attempted: [], foreign_ignored: [], would_create: [], would_update: [], halt: null, stopped_by: stopped, raw_details: [] };
   let stop = stopped;
-  const fail = (pr, w) => { out.failed.push({ pr, why: `${w.call}: ${w.detail}${w.http ? ` (HTTP ${w.http})` : ''}` }); stop = `an earlier GitHub write failed this tick (#${pr})`; out.stopped_by = stop; };
+  const fail = (pr, w) => {
+    const f = writeFailure(w);
+    out.failed.push({ pr, why: `${w.call}: ${f.reason}`, failure: f.kind });
+    out.raw_details.push(`#${pr} ${w.call}: ${w.detail}`);
+    if (f.halts && !out.halt) out.halt = { why: `the record write on #${pr} was ${f.reason}; a denial is a stop: PR writes halt until a person removes retry_ledger.halt` };
+    stop = `an earlier GitHub write failed this tick (#${pr}, ${f.kind})`; out.stopped_by = stop;
+  };
+  const paused = (pr, listIt = true) => { const p = pauseCheck(); if (!p) return false; stop = p; out.stopped_by = p; if (listIt) out.not_attempted.push(pr); return true; };
   const stillOwn = c => c && c.user?.login === cfg.author.login && c.user?.type === cfg.author.type && String(c.body || '').startsWith(cfg.marker);
   for (const { rec, comments } of [...items].sort((a, b) => a.rec.pr - b.rec.pr)) {
     const pr = rec.pr;
@@ -1229,11 +1295,13 @@ export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, st
     }
     if (plan.action === 'current') out.current.push(pr);
     else if (plan.action === 'update') {
+      if (paused(pr)) continue;
       const w = write('record-edit', { repo: REPO, commentId: plan.id, body }, env);
       out.github_writes++;
       if (!w.ok) { fail(pr, w); continue; }
       out.updated.push(pr);
     } else {
+      if (paused(pr)) continue;
       const w = write('record-create', { repo: REPO, pr, body }, env);
       out.github_writes++;
       if (!w.ok) { fail(pr, w); continue; }
@@ -1253,6 +1321,7 @@ export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, st
       if (stop) break;
       const c = readComment(REPO, id, run);
       if (!stillOwn(c)) continue;
+      if (paused(pr, false)) break;
       const w = write('record-demote', { repo: REPO, commentId: id, body: demoteBody(REPO, pr, plan.id) }, env);
       out.github_writes++;
       if (!w.ok) { fail(pr, w); break; }

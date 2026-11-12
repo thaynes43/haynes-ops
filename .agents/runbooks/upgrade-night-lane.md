@@ -1028,14 +1028,36 @@ PR-write phase in `run-night.mjs`. The settings are `night.pr_record` and `night
   one comment per open PR: 14 on 2026-11-12, plus one retry. After that, an unchanged tick
   makes no GitHub write, and a PR whose record changed (lane, class, checks, retry state,
   the merge-step verdict) costs one edit.
+- **One identity, shared with the shepherd.** The lane and the shepherd write as the same
+  bot. A record is never an input to a decision: the lane reads its own record only to decide
+  whether to write it again. So a record the shepherd's LLM wrote could only be overwritten or
+  demoted by the lane.
+- **Live mode (story 556).** The advisory review of PR 4856 noted that in live mode some text
+  in the merge step's refusals depends on the clock (lease seconds left, `now HH:MM`, the
+  gates' age). The comparison leaves out only `last_attempt.at`, so the merge step's subject
+  could be edited on every tick, about 20 a night. Dry-run does not write that text. Story 556
+  should leave those values out of the comparison when it turns on the first live class.
 - **Never two records.** The lane lists the PR's comments again just before it creates one.
   If it ever finds two or more of its own records, it keeps the oldest and edits each newer
   one into a one-line note without the marker that links to the record. It does not delete
   comments.
-- **A failed write.** The tick reports a refused or failed write in `summary.pr_records.failed`
-  with the HTTP status and GitHub's reason. That PR is not listed as current, and the tick
-  makes no further GitHub write: the remaining PRs go to `not_attempted`. The next tick
-  tries again by the same route; there is no other route.
+- **A failed write.** The tick reports a refused or failed write in `summary.pr_records.failed`.
+  The reason comes from a fixed vocabulary: `refused by GitHub (HTTP 401|403)`, `rate limited
+  by GitHub (HTTP 403|429)`, `not found (HTTP 404)`, `rejected by GitHub as invalid`, `GitHub
+  server error (HTTP 5xx)`, `timed out or killed`, `network or client error (no HTTP
+  status)`. The record, the ledger and the state never carry gh's or GitHub's own text, because
+  a network error's last line can name the cluster's resolver. That text goes to the Job log
+  only, in the lines `record write failed: …` and `retry write on #<n> failed: …`. The PR is
+  not listed as current, and the tick makes no further GitHub write: the remaining PRs go to
+  `not_attempted`.
+- **A denial is a stop.** A 401, or a 403 that is not a rate limit, sets the durable `halt`
+  in the ledger, as an identity mismatch does. The lane then makes no PR write until a person
+  removes the halt (see [Kill switch](#kill-switch)). A rate limit, a 5xx, a timeout or a
+  network error stops only that tick's writes, and the next tick tries again by the same
+  route. There is no other route.
+- **The pause before each write.** The PR-write phase reads `data.pause` before it starts,
+  the retry reads it again before its write, and the record writer reads it just before each
+  create, edit or demotion. A tick that finds nothing to write reads it once.
 - **Identity check.** GitHub's reply to a create names the comment's author. If the author
   is not the configured identity, every later tick would add another comment the lane does
   not recognise as its own. So the tick sets `halt` in the ledger and makes no PR write
@@ -1076,6 +1098,19 @@ never retried.
 
 - the newest run of the failing check on that head failed, and no check run on the head is
   queued or running and no commit status is pending;
+- no workflow run for the head is queued, waiting, pending, requested or in progress. Such a
+  run (a re-run waiting in a concurrency group, for example) has no check run yet, so the
+  lane reads the head's check suites:
+  - `gh api repos/<repo>/commits/<head>/check-suites`, which needs `checks:read`, a
+    permission the token holds;
+  - any `github-actions` suite that is not `completed`, or a list that cannot be read, stops
+    the retry.
+
+  The workflow-runs endpoint (`actions/runs?head_sha=`) would need `actions:read`, which the
+  night token does not hold. Read live on 2026-11-12, head `6bd661d7` had 4 queued workflow
+  runs, 4 queued `github-actions` suites and no check run. The suites of other apps
+  (`claude`, `cursor`, `renovate`, `cloudflare-workers-and-pages`) stay `queued` on every
+  head, so they are not judged;
 - the box is in the body exactly once and is unticked;
 - the PR is open, not a draft, based on main, opened by `renovate[bot]` (Bot, id 29139614)
   from a `renovate/` branch of this repository, and every commit is the Renovate app's
@@ -1085,12 +1120,20 @@ never retried.
 The story's first text said "failed at least 30 minutes ago". That clock is not used: the
 facts above decide.
 
-**Limits** (`night.retry`): once per head; at most 2 per PR in 7 days; at most 1 per tick.
-The per-tick cap is a budget, not a wait. When two PRs are eligible, the lower PR number
-goes first and the other reads `deferred`.
+**Limits** (`night.retry`): once per head; at most 2 per PR in 7 days; at most 1 box write
+per tick. The per-tick cap is a budget, not a wait, and it counts writes, not PRs tried:
 
-**The write.** The lane checks the pause, reads the PR (REST and `gh pr view`) and checks
-the facts. It writes the ledger entry (`intent`) to `upgrade-lane-state`. Then it reads the
+- Eligible PRs are tried in PR order. If the facts at the write refuse one (a check stuck
+  `QUEUED`, say), it reads `not-written` with the reason and the next eligible PR is tried.
+- At most `max_preflights_per_tick` (3) PRs are read at the write per tick, so a long queue
+  cannot spend the tick. The rest read `deferred`.
+
+One retry per tick bounds how many happen at once, not how many in a night: up to about 20
+a night in theory, one per tick. The per-head and per-PR limits bound the total.
+
+**The write.** The lane checks the pause, reads the PR (REST, `gh pr view`, the REST
+commits and the head's check suites) and checks the facts. It writes the ledger entry
+(`intent`) to `upgrade-lane-state`. Then it reads the
 pause and the PR again. If the tick is now paused, the head moved or the body changed, it
 writes nothing this tick and the entry becomes `abandoned`, which does not count. Otherwise
 it sends the body it read with the box's one character changed (`ghWrite` refuses any other
@@ -1110,6 +1153,16 @@ the write would be overwritten. Renovate rewrites its body on its next run.
 | `no-new-head` | Renovate cleared the box and pushed nothing, and the check still fails | blocked the same way |
 | `budget-used` | 2 retries in the last 7 days | none; the failing check keeps it blocked |
 
+**An interrupted write.** A Job killed between the `intent` write and the next ledger write
+leaves the entry at `intent`. The next tick decides it from facts:
+
+- the box ticked, or the head moved since the intent: the write was made. The entry becomes
+  `ticked` and counts for the per-head limit, the 7-day budget and the second-failure rule;
+- the box unticked at the same head: it was not made. The entry becomes `abandoned`, and the
+  PR may be retried;
+- anything else (the box absent, the same head): it stays `intent`, which counts (fail
+  closed).
+
 One case only a wait could decide, so the lane does not decide it: a ticked box that
 Renovate never acts on reads `waiting-for-renovate` for as long as that lasts. No second
 tick is made on that head, and the failing check keeps the PR blocked. A person reads the
@@ -1120,15 +1173,32 @@ manager `upgrade-night-ledger`. The tick's server-side apply under `upgrade-nigh
 error record on a failed tick, therefore never remove it. It keeps entries for open PRs for
 30 days. An unreadable ledger allows no retry and no PR write.
 
+- **Proved writable first.** Before any GitHub write the tick writes the ledger once. If that
+  write fails, the tick makes no GitHub write: a halt it might need to record would be lost,
+  and without one a mismatched identity would add a comment on every tick.
+- **Written at a version (F8).** Every ledger write carries the `resourceVersion` of the
+  tick's last read or write of the ConfigMap as a precondition. If another Job (a hand-made
+  Job overlapping a tick, say) wrote the state after this tick read it, this tick's first
+  ledger write fails with a Conflict. It then makes no retry and no record write. A person
+  changing `data.pause` mid-tick has the same effect.
+- **Not proved against the API server.** The selftests check the precondition against a stub
+  that enforces it. That the API server enforces `metadata.resourceVersion` on a server-side
+  apply is taken from Kubernetes' behavior; it was not run against the cluster from a
+  session, which cannot write ConfigMaps in `upgrade-agent`. If the server ignored it, an
+  overlap would fall back to the last writer winning, and the 7-day budget could undercount
+  by one.
+
 ### When the lane writes to GitHub
 
 The PR-write phase runs after the merge step, and only when all of these hold:
 
-- the tick runs with `--write-state` (the CronJob does; a local run only plans and logs
-  `would create`, `would update` and `PLANNED`);
+- the tick runs with `--write-state`. The CronJob does. A local run writes nothing: it reads
+  the facts at the write for the eligible PRs and logs `would create`, `would update` and
+  `WOULD-TICK`;
 - the token's recorded permissions include `pull_requests:write`;
-- the ledger is readable and has no `halt`;
-- the pause, read again just before the phase, is not set.
+- the ledger is readable, has no `halt`, and its proving write succeeds at the version the
+  tick read;
+- the pause, read again just before the phase, is not set. It is read again before each write.
 
 GitHub's permission tables for installation tokens list all three endpoints the lane calls
 under "Pull requests", write: `POST /repos/{owner}/{repo}/issues/{n}/comments`,
@@ -1288,8 +1358,9 @@ For one PR, use the [hand run](#the-hand-run-rehearsal) with `--check-only`.
   [Pause and suspend in live mode](#pause-and-suspend-in-live-mode).
 
 - **PR writes only** (story 549): a `halt` in `data.retry_ledger` stops every PR record
-  and retry and nothing else. The lane sets it itself when GitHub reports that a record
-  was written under an identity other than `night.pr_record.author`. To clear it, after
+  and retry and nothing else. The lane sets it itself in two cases: GitHub reports that a
+  record was written under an identity other than `night.pr_record.author`, or GitHub denies
+  a write (401, or a 403 that is not a rate limit). To clear it, after
   fixing the cause, remove the key:
 
   ```bash
