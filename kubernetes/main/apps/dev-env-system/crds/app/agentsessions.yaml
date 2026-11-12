@@ -4,22 +4,23 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main db8f0a3f497ace8505b1f50d42da70002fcf9158 (merge of PR #1088),
-# verified byte for byte (SHA-256 69f7f41aef0dc87627ee8e955fc458852bee30fc565b13fd0882eca822a2817d
-# below this header). One change since the copy from 83a125e6:
-# - dev-env db8f0a3f497a, PR #1088, DESIGN-064 6.6 and 5.9, OpenProject #740:
-#   status.summon, the record of a summoned session's one terminal write
-#   (closed: at, source, reason; escalation: the pending filing of a remediation that
-#   ended escalated), and a bound on status.outcome.note (maxLength 1024 and a rule that
-#   it is at most 1024 bytes). Status only; nothing in spec changed.
-#   It must be here before the operator pin that writes it: an operator at or after
-#   db8f0a3f treats a terminal write whose answer lacks status.summon.closed as an
-#   error, so a copy that lags fails loudly instead of losing the record.
-#   Install precondition: no AgentSession holds a status.outcome.note over 1024 bytes
-#   (read in the cluster before this copy merged; the PR records it).
-# Earlier changes in this file, still in force: spec.summon and its rules (dev-env
-# 66201204c557, PR #1079, OpenProject #756) and status.agent.podUID (dev-env
-# 83a125e6eb11, PR #1077, OpenProject #709).
+# Source: dev-env main c4bc870d914e48d2ac446e29ba39b6ba58c7d34a (merge of PR #1091),
+# verified byte for byte (SHA-256 849e35412498455b98602a8680d615b6f7bfaa1db71b6a42b7cbee4714f6930e
+# below this header). One change since the copy from db8f0a3f:
+# - dev-env c4bc870d914e, PR #1091, DESIGN-064 5.9 and 6.7, OpenProject #777 (slice a of
+#   #741): status.summon.admittedAt (when the operator leader admitted a summoned session;
+#   set once), status.summon.closed.released (its lane and pool slot are free; true is
+#   never reversed), and rules that keep the summon record: admittedAt never changes, the
+#   closed record cannot be removed, and status.summon cannot be removed, also by removing
+#   status. Status only; nothing in spec changed.
+#   It must be here before the operator pin that writes these fields: with an older
+#   schema the API server would drop admittedAt and no summoned session could ever start.
+#   Install precondition: no AgentSession has status.summon yet (read in the cluster
+#   before this copy merged; the PR records it), so no stored object meets the new rules.
+# Earlier changes in this file, still in force: status.summon (closed, escalation) and the
+# status.outcome.note bound (dev-env db8f0a3f497a, PR #1088, OpenProject #740); spec.summon
+# and its rules (dev-env 66201204c557, PR #1079, OpenProject #756); status.agent.podUID
+# (dev-env 83a125e6eb11, PR #1077, OpenProject #709).
 # Do not roll this file back once a session with spec.summon or status.summon exists (an
 # older schema drops them at the next write) or once an operator writes
 # status.agent.podUID.
@@ -3315,9 +3316,18 @@ spec:
                 maxLength: 128
                 type: string
               summon:
-                description: Summon records the summoned session's terminal transition
-                  (DESIGN-064 5.9).
+                description: |-
+                  Summon records the summoned session's admission and its terminal
+                  transition (DESIGN-064 5.9).
                 properties:
+                  admittedAt:
+                    description: |-
+                      AdmittedAt is when the operator leader admitted the session: its charge
+                      was in the create ledger under its own name, its single-flight lane was
+                      free and its pool had a slot (DESIGN-064 5.9, OP777). Until it is set the
+                      session has no volume and no pod. It is set once and never changes.
+                    format: date-time
+                    type: string
                   closed:
                     description: Closed is written atomically with the first terminal
                       outcome.
@@ -3331,6 +3341,12 @@ spec:
                         maxLength: 32
                         minLength: 1
                         type: string
+                      released:
+                        description: |-
+                          Released is true once the session's reservation, its lane and its pool
+                          slot, is free: at once for a report, and for an operator close once no
+                          further launch can follow (DESIGN-064 5.9). True is never reversed.
+                        type: boolean
                       source:
                         enum:
                         - report
@@ -3342,6 +3358,10 @@ spec:
                     - reason
                     - source
                     type: object
+                    x-kubernetes-validations:
+                    - message: released is never reversed
+                      rule: '!has(oldSelf.released) || !oldSelf.released || (has(self.released)
+                        && self.released)'
                   escalation:
                     description: |-
                       Escalation is the pending filing for a remediation ending escalated.
@@ -3362,6 +3382,12 @@ spec:
                     - state
                     type: object
                 type: object
+                x-kubernetes-validations:
+                - message: admittedAt is set once and never changes
+                  rule: '!has(oldSelf.admittedAt) || (has(self.admittedAt) && self.admittedAt
+                    == oldSelf.admittedAt)'
+                - message: the closed record cannot be removed
+                  rule: '!has(oldSelf.closed) || has(self.closed)'
               suspendedAt:
                 description: |-
                   SuspendedAt is when the operator first saw the session suspended with
@@ -3932,6 +3958,8 @@ spec:
               rule: '!has(oldSelf.sharedAdmission) || has(self.sharedAdmission)'
             - message: private history retention cannot be removed
               rule: '!has(oldSelf.privateHistory) || has(self.privateHistory)'
+            - message: the summon record cannot be removed
+              rule: '!has(oldSelf.summon) || has(self.summon)'
             - message: captured usage ledger cannot be removed
               rule: '!has(oldSelf.capturedUsage) || has(self.capturedUsage)'
             - message: directory creation evidence cannot be removed
@@ -3977,6 +4005,9 @@ spec:
         - message: original task outcome cannot be erased
           rule: '!has(oldSelf.status) || !has(oldSelf.status.taskOutcome) || (has(self.status)
             && has(self.status.taskOutcome))'
+        - message: the summon record cannot be removed, including with status
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.summon) || (has(self.status)
+            && has(self.status.summon))'
     served: true
     storage: true
     subresources:
