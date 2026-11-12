@@ -505,7 +505,9 @@ async function tick() {
   const lk = step.lock;
   log(`upgrade-night ${MODE}: change lock ${lk.configmap}: ${lk.outcome} (before: ${lk.before?.state ?? 'not read'}${lk.before?.holder ? ` by ${lk.before.holder}` : ''}${lk.took_over_from ? `; took over ${lk.took_over_from}, phase ${lk.took_over_phase || 'unknown'}` : ''})${lk.taken_at ? ` taken_at=${lk.taken_at} expires_at=${lk.expires_at}` : ''}${lk.released_at ? ` released_at=${lk.released_at}` : ''}${lk.why ? `; ${lk.why}` : ''}`);
   const refusals = [...(verdict.pr_refusals || []), ...(verdict.lane_refusals || [])];
-  const stepLine = subject ? `#${subject.pr} ${String(subject.head).slice(0, 8)} (${subject.class}${subject.chosen ? '' : ', not chosen'}): ${String(verdict.verdict).toUpperCase()}${refusals.length ? `: ${refusals.join(' | ')}` : ''}; merge call: ${verdict.merge_call || 'none'}` : `not run (${verdict.why})`;
+  // story 773: how many reads GitHub took to answer the PR's mergeability (summary.merge_step.facts.mergeable_reads)
+  const reads = Number.isInteger(verdict.facts?.mergeable_reads) ? `; mergeability ${verdict.facts.mergeable}/${verdict.facts.merge_state} after ${verdict.facts.mergeable_reads} read${verdict.facts.mergeable_reads === 1 ? '' : 's'}` : '';
+  const stepLine = subject ? `#${subject.pr} ${String(subject.head).slice(0, 8)} (${subject.class}${subject.chosen ? '' : ', not chosen'}): ${String(verdict.verdict).toUpperCase()}${refusals.length ? `: ${refusals.join(' | ')}` : ''}; merge call: ${verdict.merge_call || 'none'}${reads}` : `not run (${verdict.why})`;
   log(`upgrade-night ${MODE}: merge step ${stepLine}`);
   process.stdout.write(table + '\n');
   for (const r of lanes) process.stdout.write(`#${r.pr} gates: ${r.gates.blockers.length ? r.gates.blockers.join(' | ') : 'all pass'}\n`);

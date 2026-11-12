@@ -19,9 +19,13 @@
 // changed one of its files after its checks ran (story 550's R7, the same functions);
 // and the head contains the newest main commit that touches each of its files (a head
 // behind main by such a commit is refused: "require branches to be up to date" is off
-// for main, so GitHub would merge it). Just before the call, live mode re-checks the
-// lease, the merge window, the age of the tick's gates (300s) and the pause, then moves the
-// lock to phase "merging" with the post-merge lease. The merge is `gh pr merge <n>
+// for main, so GitHub would merge it). GitHub computes mergeability lazily and answers
+// UNKNOWN on the first read after main moves, so the step reads the view again, at most
+// MERGEABLE_REREAD.pauses_ms.length more times, until GitHub has answered; it judges the
+// last view read, whole, and refuses if the head moved between reads (story 773). Just
+// before the call, live mode re-checks the lease, the merge window, the age of the tick's
+// gates (300s) and the pause, then moves the lock to phase "merging" with the post-merge
+// lease. The merge is `gh pr merge <n>
 // --squash --match-head-commit <head>`: never --admin, --auto or a force flag. A call with
 // no exit status is merge-unknown and keeps the hold.
 //
@@ -139,6 +143,41 @@ export function readNamedConfigMap(name, run) {
 export function readMergeView(repo, pr, run) {
   const v = parse(tryRun(run, 'gh', ['pr', 'view', String(pr), '-R', repo, '--json', VIEW_FIELDS]));
   return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+}
+
+// ── GitHub's mergeability, read until it has answered (story 773) ────────────────────
+// Story: https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/773
+// GitHub works out whether a PR can merge only when asked: the first read after main
+// moves answers mergeable UNKNOWN (or mergeStateStatus UNKNOWN) while a background job
+// computes it. On 2026-11-12, 5 of 20 dry-run ticks refused PR 4752 that way, each the
+// first tick after a merge to main. So while an open PR reads UNKNOWN the step reads the
+// view again after each pause below: at most 4 reads and 14s of pauses. This polls
+// GitHub's own answer about this one PR; it waits on no other actor (ruling Q-548-04).
+// The bound is a count of reads; what counts as mergeable is unchanged.
+export const MERGEABLE_REREAD = Object.freeze({ pauses_ms: Object.freeze([2000, 4000, 8000]) });
+// The step is synchronous (every read is a spawnSync), so the pause blocks the thread
+// without spinning. Injectable: the selftests pass one that does not sleep.
+export const sleepSync = ms => { if (Number.isFinite(ms) && ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
+// Pending = an open PR whose mergeable reads UNKNOWN, or reads MERGEABLE with the merge
+// state still UNKNOWN. An answer that refuses (CONFLICTING) is final: it is not re-read.
+export const mergeabilityPending = v => v?.state === 'OPEN' && (v.mergeable === 'UNKNOWN' || (v.mergeable === 'MERGEABLE' && v.mergeStateStatus === 'UNKNOWN'));
+// { view, reads, why }. view = the LAST view read, whole, never fields mixed from two
+// reads; null when a read failed (fail closed, and no earlier view is used instead).
+// why = a refusal when the head moved between reads (two readable heads that differ):
+// the step does not go on with the new head in the same tick. An unreadable head is the
+// preflight's refusal ("unreadable: the PR head SHA"), not a move.
+export function readMergeViewAnswered(repo, pr, run, { rereadPause = sleepSync } = {}) {
+  const headOf = v => (SHA.test(v?.headRefOid || '') ? v.headRefOid : null);
+  let view = readMergeView(repo, pr, run), reads = 1;
+  const first = headOf(view);
+  for (const ms of MERGEABLE_REREAD.pauses_ms) {
+    if (!view || !mergeabilityPending(view)) break;
+    rereadPause(ms);
+    view = readMergeView(repo, pr, run); reads++;
+    const cur = headOf(view);
+    if (first && cur && cur !== first) return { view, reads, why: `head moved between reads of the pull request (${short(first)} on read 1, ${short(cur)} on read ${reads}); not judging the new head in this tick` };
+  }
+  return { view, reads, why: null };
 }
 
 // The newest commit on main that touches each path (gh api GET, one per path). null for
@@ -284,14 +323,18 @@ export function readPause(rules, run) {
 }
 const pauseRefusal = (p, when) => (!p ? `unreadable: data.pause on upgrade-lane-state (${when})` : p.pause ? `paused ${when}: data.pause=${JSON.stringify(p.pause.slice(0, 80))}` : null);
 
-// The whole PR-side preflight: one fresh view, the REST commit identities, story 550's
-// R7 (the same three exported functions the tick uses) and the behind-main rule.
-export function evaluate({ repo, pr, head, rules, now, run }) {
-  const view = readMergeView(repo, pr, run);
-  if (!view) return { refusals: ['unreadable: the pull request (gh pr view)'], facts: null };
+// The whole PR-side preflight: one fresh view (read again while GitHub has not computed
+// its mergeability, story 773), the REST commit identities, story 550's R7 (the same
+// three exported functions the tick uses) and the behind-main rule. Every decision below
+// is on the last view read. rereadPause = the wait between reads (sleepSync unless injected).
+export function evaluate({ repo, pr, head, rules, now, run, rereadPause }) {
+  const r = readMergeViewAnswered(repo, pr, run, { rereadPause });
+  const view = r.view;
+  if (!view) return { refusals: [r.reads === 1 ? 'unreadable: the pull request (gh pr view)' : `unreadable: the pull request (gh pr view, read ${r.reads} of ${MERGEABLE_REREAD.pauses_ms.length + 1}, while GitHub had not yet computed its mergeability)`], facts: null };
   const p = prRefusals(view, head, rules, now);
+  const facts = { head: p.head, files: p.files, mergeable: view.mergeable, merge_state: view.mergeStateStatus, mergeable_reads: r.reads, reference_time: null, main_newer: [], behind_main: [] };
+  if (r.why) return { refusals: [...new Set([r.why, ...p.refusals])], facts };
   const refusals = [...p.refusals, ...commitRefusals(readPrCommits(repo, pr, run), view)];
-  const facts = { head: p.head, files: p.files, mergeable: view.mergeable, merge_state: view.mergeStateStatus, reference_time: null, main_newer: [], behind_main: [] };
   if (!p.truncated && SHA.test(p.head || '')) {
     const ref = L.checksReferenceTime(p.head_committed_at, p.ev.ran_at);
     facts.reference_time = ref;
@@ -836,8 +879,9 @@ export function owedWork({ mode, paused }) {
 // this is the nearest lane-A candidate, exercised in dry-run only.
 // windowOpen(ms) = { open, local } for the merge window; tickStartedAt = when the tick
 // began (its gates are that old). Live mode re-checks both, and the pause, just before
-// the merge call.
-export function laneMergeStep({ mode, subject, rules, run, env, clock, liveClasses, token, holder, takeAllowed, windowOpen, tickStartedAt }) {
+// the merge call. rereadPause = the wait between mergeability reads (default sleepSync); the
+// re-reads sit in evaluate(), among the fact reads, so the freshness checks measure them.
+export function laneMergeStep({ mode, subject, rules, run, env, clock, liveClasses, token, holder, takeAllowed, windowOpen, tickStartedAt, rereadPause }) {
   const cfg = lockConfig(rules);
   const out = { mode, lock: { configmap: `${LOCK.namespace}/${LOCK.name}`, outcome: 'not-taken' }, verdict: null };
   const notRun = why => ({ verdict: 'not-run', why });
@@ -865,7 +909,7 @@ export function laneMergeStep({ mode, subject, rules, run, env, clock, liveClass
   }
   try {
     if (!subject) { out.verdict = notRun('no lane-A candidate this tick'); return out; }
-    const ev = evaluate({ repo: REPO, pr: subject.pr, head: subject.head, rules, now: clock(), run });
+    const ev = evaluate({ repo: REPO, pr: subject.pr, head: subject.head, rules, now: clock(), run, rereadPause });
     const prRef = [...(held ? [] : [out.lock.why || 'no change lock held']), ...ev.refusals];
     const laneRef = laneRefusals({ klass: subject.class, liveClasses, token });
     if (!subject.chosen) laneRef.unshift('not chosen by the tick: it has gate blockers (records[].gates.blockers)');
@@ -961,7 +1005,7 @@ export function parseCli(argv) {
 // merge step's preflight must pass. It skips what only the tick knows: the merge window,
 // the class allowlist and the tick's gates (backups, the Flux baseline, critical alerts,
 // work orders). It needs the owner's yes for the PR; it reads no approval.
-export function handRun(opt, { rules, run, env, now }) {
+export function handRun(opt, { rules, run, env, now, rereadPause }) {
   const out = { mode: opt.merge ? 'hand --merge' : 'hand --check-only', pr: opt.pr, head: opt.head, refusals: [], notes: [] };
   const p0 = pauseRefusal(readPause(rules, run), 'at the start');
   if (p0) out.refusals.push(p0);
@@ -994,7 +1038,7 @@ export function handRun(opt, { rules, run, env, now }) {
   out.settle = settleBrief(g0.st);
   out.shepherd_jobs = g0.jobs;
   out.refusals.push(...g0.refusals);
-  const ev = evaluate({ repo: REPO, pr: opt.pr, head: opt.head, rules, now, run });
+  const ev = evaluate({ repo: REPO, pr: opt.pr, head: opt.head, rules, now, run, rereadPause });
   out.refusals.push(...ev.refusals);
   out.facts = ev.facts;
   if (opt.merge) {
@@ -1034,7 +1078,7 @@ async function main(argv) {
     lines.push(`  lock: ${LOCK.namespace}/${LOCK.name} ${r.lock.state}${r.lock.holder ? ` (holder ${r.lock.holder} until ${r.lock.expires_at})` : ''}`);
     if (r.settle) lines.push(`  settle gate: ${settleLine(r.settle)}`);
     for (const n of r.notes) lines.push(`  note: ${n}`);
-    if (r.facts) lines.push(`  facts: reference_time=${r.facts.reference_time} mergeable=${r.facts.mergeable} merge_state=${r.facts.merge_state} files=${r.facts.files.join(',')}`);
+    if (r.facts) lines.push(`  facts: reference_time=${r.facts.reference_time} mergeable=${r.facts.mergeable} merge_state=${r.facts.merge_state} mergeable_reads=${r.facts.mergeable_reads} files=${r.facts.files.join(',')}`);
     lines.push(`  merge call: ${r.merge_call}`);
     if (r.merged) lines.push(`  after: state=${r.merged.state} head=${short(r.merged.head)} merge_commit=${short(r.merged.merge_commit)}`);
     process.stdout.write(lines.join('\n') + '\n');
