@@ -8,9 +8,10 @@
 # and a CA Issuer signs the serving certificate).
 #
 # It also pins the CA's certificate (public) as ConfigMap dev-env-api-ca, once in
-# dev-agents and once in dev-env-system. That is the trust anchor of every /v1 client:
-# session pods mount the dev-agents copy (dev-env-templates), the front door mounts the
-# dev-env-system copy, and the v1 pod's agent-run reads it through the API
+# dev-agents, once in dev-env-system and once in upgrade-agent. That is the trust anchor
+# of every /v1 client: session pods mount the dev-agents copy (dev-env-templates), the
+# front door mounts the dev-env-system copy, the upgrade-agent callers mount theirs
+# (DESIGN-064 6.5, OpenProject #739), and the v1 pod's agent-run reads it through the API
 # (app/kustomization.yaml says how, and how to re-pin). Nothing here runs a pod. The
 # operator HelmRelease mounts the API's Secret.
 #

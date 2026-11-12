@@ -570,6 +570,7 @@
           "kubernetes/main/apps/upgrade-agent/shepherd/app/**",
           "kubernetes/main/apps/upgrade-agent/health-gate/app/resources/coordination-lib.sh",
           "kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh",
+          "kubernetes/main/apps/upgrade-agent/health-gate/app/resources/dev-env-api.sh",
           "scripts/upgrade-agent/**",
           ".github/workflows/**",
           ".renovate/**"

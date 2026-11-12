@@ -77,3 +77,59 @@ spec:
         type: emptyDir
         globalMounts:
           - path: /tmp
+      # ── dev-env v2 operator API transport (dev-env DESIGN-064 6.5, OpenProject #739) ──
+      # The client, the CA and a token the operator API accepts. The CallerPolicy
+      # dev-env-system/upgrade-agent.upgrade-health-gate sets what this account may
+      # start. Story 739 starts nothing: each run makes one read-only GET /v1/sessions.
+      # Moving the gate's escalation summons is #748.
+      # The client (ConfigMap dev-env-api-client, built by this app's kustomization).
+      # optional, here and for the CA: a missing ConfigMap leaves the directory empty
+      # and the run skips its reach line, instead of holding the pod in
+      # ContainerCreating, which with concurrencyPolicy Forbid would block every
+      # later run. (app-template's configMap type has no optional, hence custom.)
+      dev-env-api-client:
+        type: custom
+        volumeSpec:
+          configMap:
+            name: dev-env-api-client
+            defaultMode: 0555
+            optional: true
+        advancedMounts:
+          upgrade-health-gate:
+            app:
+              - path: /opt/dev-env-api
+                readOnly: true
+      # The pinned dev-env CA (public), published into upgrade-agent by dev-env-pki.
+      dev-env-api-ca:
+        type: custom
+        volumeSpec:
+          configMap:
+            name: dev-env-api-ca
+            defaultMode: 0444
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt
+        advancedMounts:
+          upgrade-health-gate:
+            app:
+              - path: /etc/dev-env
+                readOnly: true
+      # A projected ServiceAccount token for the operator API's audience, as the front
+      # door has (dev-env-system/frontdoor/app/deployment.yaml). It is not the
+      # Kubernetes API token, and the Kubernetes API does not accept it. The kubelet
+      # rotates it; it expires after an hour and when the pod is deleted.
+      dev-env-api-token:
+        type: custom
+        volumeSpec:
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: dev-env-operator
+                  expirationSeconds: 3600
+        advancedMounts:
+          upgrade-health-gate:
+            app:
+              - path: /var/run/secrets/dev-env
+                readOnly: true
