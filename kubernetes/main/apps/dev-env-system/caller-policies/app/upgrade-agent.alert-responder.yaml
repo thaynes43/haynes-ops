@@ -1,6 +1,6 @@
 ---
 # CallerPolicy for upgrade-agent/alert-responder (dev-env DESIGN-064 5.1, 6.4 and 6.5;
-# OpenProject #739). Every value but the brief is the live v1 value (dev-env-ops
+# OpenProject #739). Every value but the limits and the brief is the live v1 value (dev-env-ops
 # helmrelease.yaml: OPS_REM_MODEL, OPS_ESC_MODEL, OPS_FALLBACK_MODEL,
 # OPS_SESSION_EFFORT, OPS_REM_TIMEOUT, OPS_REM_MAX_TURNS; maxHold is respond.sh's
 # REM_PENDING_DEADLINE_MIN default). The three ids were probed on 2026-11-12 and

@@ -3,7 +3,8 @@
 # CallerPolicy objects for the summoning callers in upgrade-agent (dev-env DESIGN-064
 # 6.4 and 6.5, OpenProject #739): one per ServiceAccount, named <namespace>.<name>.
 # The operator API reads exactly that object, uncached, each time the account calls.
-# Deleting one revokes that caller at once. Meatball's policy stays in the frontdoor
+# A missing or deleted policy refuses its caller on that caller's next request; a
+# request already admitted is not cancelled. Meatball's policy stays in the frontdoor
 # app, beside its caller.
 #
 # Creates are off. The operator refuses a create from a summoning caller while its
@@ -32,8 +33,10 @@
 # comment 6816662070); the coordinator checks both running pods' images and the
 # HelmRelease's flags before merge.
 #
-# Nothing depends on this Kustomization. A failed apply leaves the callers refused
-# (403) and changes nothing else.
+# Nothing depends on this Kustomization. A failed apply leaves a policy that was not
+# yet applied missing, so its caller is refused (403); a policy applied earlier stays
+# in force. The API checks each caller's own policy at each request, not this
+# Kustomization's Ready condition.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
