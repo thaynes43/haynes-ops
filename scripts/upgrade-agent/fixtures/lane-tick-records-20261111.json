@@ -1,0 +1,890 @@
+{
+  "note": "Captured 2026-11-11 by running the real run-night.mjs (merge bfe9866f) through the stub ticks of scripts/upgrade-agent/lane-night-dryrun-selftest.mjs (its stub gh and kubectl, its world and its pinned clock), recording each tick's upgrade-lane-state. Not cluster data. 'records' are records[] entries chosen to cover every field the tick writes; 'merge_steps' are summary.merge_step, one per distinct (mode, verdict, has PR refusals, has lane refusals), with the tick's summary.at.",
+  "repo": "thaynes43/haynes-ops",
+  "records": [
+    {
+      "why": "not lane A: no gates or backup",
+      "record": {
+        "schema": "haynes.upgrade-lane/v1",
+        "pr": 4376,
+        "head": "9001597e92788d01094011b1abc2bced61f55cda",
+        "fingerprint": null,
+        "fingerprint_basis": "unavailable",
+        "commit_count": 1,
+        "change_key": "fb5689ac5434b7a0",
+        "title": "feat(container)!: Update image node to v26",
+        "package": "node",
+        "from": "24-slim",
+        "to": "26-slim",
+        "packages": [
+          {
+            "name": "node",
+            "update": "major",
+            "from": "24-slim",
+            "to": "26-slim"
+          }
+        ],
+        "update_type": "major",
+        "lane": "LANE-B-OWNER",
+        "class": "major",
+        "reason": "update type major",
+        "rules": [
+          "hold:3"
+        ],
+        "findings": [
+          "LANE-B-OWNER/major: update type major",
+          "LANE-B-OWNER/hold: node: 26-slim is outside <23 \u2014 HELD docker.io/library/node majors: ride the 22 LTS (\"Jod\") line until its EOL \u2014 splash-screen build shim only."
+        ],
+        "checks": {
+          "expected": [
+            "Diff Scope / Diff Scope - Success",
+            "Flux Local / Flux Local - Success",
+            "Build and Push Dev Env Image / build-and-push"
+          ],
+          "missing": [],
+          "failing": [],
+          "pending": [],
+          "stale": [],
+          "ran_at": "2026-10-29T01:00:59.000Z",
+          "reference_time": "2026-10-29T01:00:59.000Z"
+        },
+        "files": [
+          "scripts/dev-env/Dockerfile"
+        ],
+        "head_committed_at": null,
+        "cluster_effect": "none",
+        "targets": [],
+        "own_images": [
+          "dev-env-v1"
+        ],
+        "via_components": [],
+        "cluster_wide": [],
+        "cluster_effect_wait": null,
+        "updated": "2026-11-02T07:00:00.000Z",
+        "preapproval": {},
+        "schedule": {},
+        "last_attempt": {}
+      }
+    },
+    {
+      "why": "dry-run subject: last_attempt refused",
+      "record": {
+        "schema": "haynes.upgrade-lane/v1",
+        "pr": 4662,
+        "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+        "fingerprint": null,
+        "fingerprint_basis": "unavailable",
+        "commit_count": 1,
+        "change_key": "153c42122b6670e6",
+        "title": "chore(deps): update sentencepiece to 0.2.3",
+        "package": "sentencepiece",
+        "from": "==0.2.2",
+        "to": "==0.2.3",
+        "packages": [
+          {
+            "name": "sentencepiece",
+            "update": null,
+            "from": "==0.2.2",
+            "to": "==0.2.3"
+          }
+        ],
+        "update_type": "patch",
+        "lane": "LANE-A",
+        "class": "delayed-cluster-change",
+        "reason": "3 expected checks SUCCESS on 5285e48; Renovate-only commits; delayed-cluster-change via own image audio-authoring",
+        "rules": [],
+        "findings": [],
+        "checks": {
+          "expected": [
+            "Diff Scope / Diff Scope - Success",
+            "Flux Local / Flux Local - Success",
+            "Build and Push Audio Authoring Image / build-and-push"
+          ],
+          "missing": [],
+          "failing": [],
+          "pending": [],
+          "stale": [],
+          "ran_at": "2026-11-05T05:44:59.000Z",
+          "reference_time": "2026-11-05T05:44:59.000Z",
+          "main_newer": []
+        },
+        "files": [
+          "scripts/audio-authoring/requirements.txt"
+        ],
+        "head_committed_at": null,
+        "cluster_effect": "delayed",
+        "targets": [],
+        "own_images": [
+          "audio-authoring"
+        ],
+        "via_components": [],
+        "cluster_wide": [],
+        "cluster_effect_wait": {
+          "waits_for": "renovate-pin-after-next-push-to-main",
+          "images": [
+            "audio-authoring"
+          ],
+          "verified_when": "the main build for the merge is green, the pin PR for the new digest has merged, Flux applied it and the workload soaked on the new digest"
+        },
+        "backup": {
+          "rule": "Per source: the newest successful VolSync sync (status.lastSyncTime, latestMoverStatus.result=Successful) or completed CNPG Backup (metadata.creationTimestamp, phase=completed) must be at or after that source's most recent scheduled run and no older than 24 hours at merge time. VolSync: the most recent run is status.nextSyncTime when that is already past, else nextSyncTime minus the schedule's period (spec.trigger.schedule). CNPG: ScheduledBackup status.lastScheduleTime. CNPG startedAt/stoppedAt are not used: some instances stamp local time with Z.",
+          "targets": [],
+          "stateful": false
+        },
+        "gates": {
+          "namespaces": [],
+          "blockers": [],
+          "alerts_not_blocking": {
+            "unrelated": [],
+            "cluster": []
+          },
+          "would_be_eligible": true
+        },
+        "updated": "2026-11-02T07:00:00.000Z",
+        "preapproval": {},
+        "schedule": {},
+        "last_attempt": {
+          "at": "2026-11-02T07:00:00.000Z",
+          "mode": "dryrun",
+          "chosen": true,
+          "verdict": "refused",
+          "pr_refusals": [],
+          "lane_refusals": [
+            "class delayed-cluster-change is not in the live allowlist (UPGRADE_NIGHT_LIVE_CLASSES: empty)",
+            "unreadable: the token permissions the mint-token init container recorded (/creds/gh_token_permissions)"
+          ],
+          "merge_call": "not reached (dry-run)"
+        }
+      }
+    },
+    {
+      "why": "lane A with gates.alerts_not_blocking",
+      "record": {
+        "schema": "haynes.upgrade-lane/v1",
+        "pr": 4477,
+        "head": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+        "fingerprint": "sha256:dec9b218809fef55a25fb1a9fd62902b23b517f9ea3f1173309d588f69f44bc0",
+        "fingerprint_basis": "commit-diff",
+        "commit_count": 1,
+        "change_key": "bb9992cc873e5ccb",
+        "title": "fix(container): update image docker.io/alpine/kubectl to v1.37.2",
+        "package": "docker.io/alpine/kubectl",
+        "from": "1.37.1",
+        "to": "1.37.2",
+        "packages": [
+          {
+            "name": "docker.io/alpine/kubectl",
+            "update": "patch",
+            "from": "1.37.1",
+            "to": "1.37.2"
+          }
+        ],
+        "update_type": "patch",
+        "lane": "LANE-A",
+        "class": "cluster-change",
+        "reason": "5 expected checks SUCCESS on 871dab8; Renovate-only commits; cluster-change (kubernetes/main/apps/kube-system/node-out-of-service, kubernetes/main/apps/media/plex-hw-canary)",
+        "rules": [],
+        "findings": [
+          "LANE-A/note: ignored vet marker by untrusted author haynes-ops-bot"
+        ],
+        "checks": {
+          "expected": [
+            "Diff Scope / Diff Scope - Success",
+            "Flux Local / Flux Local - Success",
+            "Flux Local / Flux Local - Test (main)",
+            "Flux Local / Flux Local - Diff (main/helmrelease)",
+            "Flux Local / Flux Local - Diff (main/kustomization)"
+          ],
+          "missing": [],
+          "failing": [],
+          "pending": [],
+          "stale": [],
+          "ran_at": "2026-10-31T03:28:30.000Z",
+          "reference_time": "2026-10-31T03:28:30.000Z",
+          "main_newer": []
+        },
+        "files": [
+          "kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml",
+          "kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml"
+        ],
+        "head_committed_at": null,
+        "cluster_effect": "immediate",
+        "targets": [
+          "kubernetes/main/apps/kube-system/node-out-of-service",
+          "kubernetes/main/apps/media/plex-hw-canary"
+        ],
+        "own_images": [],
+        "via_components": [],
+        "cluster_wide": [],
+        "cluster_effect_wait": null,
+        "backup": {
+          "rule": "Per source: the newest successful VolSync sync (status.lastSyncTime, latestMoverStatus.result=Successful) or completed CNPG Backup (metadata.creationTimestamp, phase=completed) must be at or after that source's most recent scheduled run and no older than 24 hours at merge time. VolSync: the most recent run is status.nextSyncTime when that is already past, else nextSyncTime minus the schedule's period (spec.trigger.schedule). CNPG: ScheduledBackup status.lastScheduleTime. CNPG startedAt/stoppedAt are not used: some instances stamp local time with Z.",
+          "targets": [],
+          "stateful": false
+        },
+        "gates": {
+          "namespaces": [
+            "kube-system",
+            "media"
+          ],
+          "blockers": [],
+          "alerts_not_blocking": {
+            "unrelated": [
+              "MediaAutomationJobFailed (job_name=recyclarr-29903670) belongs to media/recyclarr, not to the target"
+            ],
+            "cluster": [
+              "DevEnvRescueFailed: no namespace label; the target is not cluster-wide",
+              "DevEnvRescueFailed: no namespace label; the target is not cluster-wide"
+            ]
+          },
+          "would_be_eligible": true
+        },
+        "updated": "2026-11-02T07:00:00.000Z",
+        "preapproval": {},
+        "schedule": {},
+        "last_attempt": {
+          "at": "2026-11-02T07:00:00.000Z",
+          "mode": "dryrun",
+          "chosen": true,
+          "verdict": "refused",
+          "pr_refusals": [],
+          "lane_refusals": [
+            "class cluster-change is not in the live allowlist (UPGRADE_NIGHT_LIVE_CLASSES: empty)",
+            "unreadable: the token permissions the mint-token init container recorded (/creds/gh_token_permissions)"
+          ],
+          "merge_call": "not reached (dry-run)"
+        }
+      }
+    },
+    {
+      "why": "lane A with checks.main_newer",
+      "record": {
+        "schema": "haynes.upgrade-lane/v1",
+        "pr": 4334,
+        "head": "81c84f1b836b4e713e4e6bce534116b4bb674523",
+        "fingerprint": null,
+        "fingerprint_basis": "unavailable",
+        "commit_count": 1,
+        "change_key": "9db23556b9628a9b",
+        "title": "chore(container): update image python to 9aaa474",
+        "package": "python",
+        "from": "35caba8",
+        "to": "9aaa474",
+        "packages": [
+          {
+            "name": "python",
+            "update": "digest",
+            "from": "35caba8",
+            "to": "9aaa474"
+          }
+        ],
+        "update_type": "digest",
+        "lane": "LANE-A",
+        "class": "no-cluster-effect",
+        "reason": "4 expected checks SUCCESS on 81c84f1; Renovate-only commits; no-cluster-effect via own image source-only-sha-tags, comfyui",
+        "rules": [],
+        "findings": [],
+        "checks": {
+          "expected": [
+            "Diff Scope / Diff Scope - Success",
+            "Flux Local / Flux Local - Success",
+            "Book Copy Writer / Book Copy Writer - Success",
+            "Build and Push ComfyUI Image / build-and-push-comfyui"
+          ],
+          "missing": [],
+          "failing": [],
+          "pending": [],
+          "stale": [],
+          "ran_at": "2026-11-08T04:27:59.000Z",
+          "reference_time": "2026-11-08T04:27:45.000Z",
+          "main_newer": [
+            {
+              "path": "scripts/comfyui/Dockerfile",
+              "sha": "a5ccd7c24fc2c8f33164b346df1c8b37cdd6b8e7",
+              "at": "2026-11-10T00:00:50Z"
+            }
+          ]
+        },
+        "files": [
+          "scripts/book-copy-writer/Dockerfile",
+          "scripts/comfyui/Dockerfile"
+        ],
+        "head_committed_at": "2026-11-08T04:27:45Z",
+        "cluster_effect": "none",
+        "targets": [],
+        "own_images": [
+          "source-only-sha-tags",
+          "comfyui"
+        ],
+        "via_components": [],
+        "cluster_wide": [],
+        "cluster_effect_wait": null,
+        "backup": {
+          "rule": "Per source: the newest successful VolSync sync (status.lastSyncTime, latestMoverStatus.result=Successful) or completed CNPG Backup (metadata.creationTimestamp, phase=completed) must be at or after that source's most recent scheduled run and no older than 24 hours at merge time. VolSync: the most recent run is status.nextSyncTime when that is already past, else nextSyncTime minus the schedule's period (spec.trigger.schedule). CNPG: ScheduledBackup status.lastScheduleTime. CNPG startedAt/stoppedAt are not used: some instances stamp local time with Z.",
+          "targets": [],
+          "stateful": false
+        },
+        "gates": {
+          "namespaces": [],
+          "blockers": [
+            "checks predate main: scripts/comfyui/Dockerfile changed by a5ccd7c2 at 2026-11-10T00:00:50Z, after the head's checks (2026-11-08T04:27:45.000Z); needs a Renovate rebase first"
+          ],
+          "alerts_not_blocking": {
+            "unrelated": [],
+            "cluster": []
+          },
+          "would_be_eligible": false
+        },
+        "updated": "2026-11-02T07:00:00.000Z",
+        "preapproval": {},
+        "schedule": {},
+        "last_attempt": {
+          "at": "2026-11-02T07:00:00.000Z",
+          "mode": "dryrun",
+          "chosen": false,
+          "verdict": "refused",
+          "pr_refusals": [
+            "checks predate main: scripts/comfyui/Dockerfile changed by a5ccd7c2 at 2026-11-10T00:00:50Z, after the head's checks (2026-11-08T04:27:45.000Z); needs a Renovate rebase first"
+          ],
+          "lane_refusals": [
+            "not chosen by the tick: it has gate blockers (records[].gates.blockers)",
+            "class no-cluster-effect is not in the live allowlist (UPGRADE_NIGHT_LIVE_CLASSES: empty)",
+            "unreadable: the token permissions the mint-token init container recorded (/creds/gh_token_permissions)"
+          ],
+          "merge_call": "not reached (dry-run)"
+        }
+      }
+    },
+    {
+      "why": "via shared components",
+      "record": {
+        "schema": "haynes.upgrade-lane/v1",
+        "pr": 4770,
+        "head": "3987a9e87b2ab4f0dd1075c4ab9bcdd7b26d5d8f",
+        "fingerprint": null,
+        "fingerprint_basis": "unavailable",
+        "commit_count": 1,
+        "change_key": "a034a30befccb6b8",
+        "title": "fix(container): update image ghcr.io/thaynes43/actions-runner to v0.1.2",
+        "package": "ghcr.io/thaynes43/actions-runner",
+        "from": "0.1.1",
+        "to": "0.1.2",
+        "packages": [
+          {
+            "name": "ghcr.io/thaynes43/actions-runner",
+            "update": "patch",
+            "from": "0.1.1",
+            "to": "0.1.2"
+          }
+        ],
+        "update_type": "patch",
+        "lane": "LANE-A",
+        "class": "cluster-change",
+        "reason": "5 expected checks SUCCESS on 3987a9e; Renovate-only commits; cluster-change (kubernetes/main/apps/arc-runners/sigo-alumni, kubernetes/main/apps/arc-runners/demo-console/app, kubernetes/main/apps/arc-runners/haynes-swarm/app, kubernetes/main/apps/arc-runners/sigmaphiomicron-com/app, kubernetes/main/apps/arc-runners/sigoalumni-org/app)",
+        "rules": [],
+        "findings": [],
+        "checks": {
+          "expected": [
+            "Diff Scope / Diff Scope - Success",
+            "Flux Local / Flux Local - Success",
+            "Flux Local / Flux Local - Test (main)",
+            "Flux Local / Flux Local - Diff (main/helmrelease)",
+            "Flux Local / Flux Local - Diff (main/kustomization)"
+          ],
+          "missing": [],
+          "failing": [],
+          "pending": [],
+          "stale": [],
+          "ran_at": "2026-11-10T06:42:42.000Z",
+          "reference_time": "2026-11-10T06:42:31.000Z",
+          "main_newer": []
+        },
+        "files": [
+          "kubernetes/main/apps/arc-runners/sigo-alumni/app/helmrelease.yaml",
+          "kubernetes/shared/components/arc/dind/helmrelease.yaml"
+        ],
+        "head_committed_at": "2026-11-10T06:42:31Z",
+        "cluster_effect": "immediate",
+        "targets": [
+          "kubernetes/main/apps/arc-runners/sigo-alumni",
+          "kubernetes/main/apps/arc-runners/demo-console/app",
+          "kubernetes/main/apps/arc-runners/haynes-swarm/app",
+          "kubernetes/main/apps/arc-runners/sigmaphiomicron-com/app",
+          "kubernetes/main/apps/arc-runners/sigoalumni-org/app"
+        ],
+        "own_images": [],
+        "via_components": [
+          "kubernetes/shared/components/arc/dind -> kubernetes/main/apps/arc-runners/demo-console/app",
+          "kubernetes/shared/components/arc/dind -> kubernetes/main/apps/arc-runners/haynes-swarm/app",
+          "kubernetes/shared/components/arc/dind -> kubernetes/main/apps/arc-runners/sigmaphiomicron-com/app",
+          "kubernetes/shared/components/arc/dind -> kubernetes/main/apps/arc-runners/sigoalumni-org/app"
+        ],
+        "cluster_wide": [],
+        "cluster_effect_wait": null,
+        "backup": {
+          "rule": "Per source: the newest successful VolSync sync (status.lastSyncTime, latestMoverStatus.result=Successful) or completed CNPG Backup (metadata.creationTimestamp, phase=completed) must be at or after that source's most recent scheduled run and no older than 24 hours at merge time. VolSync: the most recent run is status.nextSyncTime when that is already past, else nextSyncTime minus the schedule's period (spec.trigger.schedule). CNPG: ScheduledBackup status.lastScheduleTime. CNPG startedAt/stoppedAt are not used: some instances stamp local time with Z.",
+          "targets": [],
+          "stateful": false
+        },
+        "gates": {
+          "namespaces": [
+            "arc-runners"
+          ],
+          "blockers": [],
+          "alerts_not_blocking": {
+            "unrelated": [],
+            "cluster": []
+          },
+          "would_be_eligible": true
+        },
+        "updated": "2026-11-02T07:00:00.000Z",
+        "preapproval": {},
+        "schedule": {},
+        "last_attempt": {
+          "at": "2026-11-02T07:00:00.000Z",
+          "mode": "dryrun",
+          "chosen": true,
+          "verdict": "refused",
+          "pr_refusals": [],
+          "lane_refusals": [
+            "class cluster-change is not in the live allowlist (UPGRADE_NIGHT_LIVE_CLASSES: empty)",
+            "unreadable: the token permissions the mint-token init container recorded (/creds/gh_token_permissions)"
+          ],
+          "merge_call": "not reached (dry-run)"
+        }
+      }
+    },
+    {
+      "why": "cluster-wide target",
+      "record": {
+        "schema": "haynes.upgrade-lane/v1",
+        "pr": 4607,
+        "head": "d91793d3e1be1dd719a04b0061a4bbe83d8d1965",
+        "fingerprint": null,
+        "fingerprint_basis": "unavailable",
+        "commit_count": 1,
+        "change_key": "5418a2a03e4376c7",
+        "title": "fix(helm): update chart ceph-csi-rbd to 3.18.2",
+        "package": "ceph-csi-rbd",
+        "from": "3.18.1",
+        "to": "3.18.2",
+        "packages": [
+          {
+            "name": "ceph-csi-rbd",
+            "update": "patch",
+            "from": "3.18.1",
+            "to": "3.18.2"
+          }
+        ],
+        "update_type": "patch",
+        "lane": "LANE-B-AGENT",
+        "class": "rule-agent",
+        "reason": "ceph-csi-chart: ceph-csi backs every dev-env session home (gasha01-rbd) plus Prometheus and Loki: a driver roll while a session volume is being created or attached can fail that session. Merge only after the dev-env v2 coordinator confirms no session volume create, resume or attach is in flight (lane B agent; the in-flight check itself is lane-B work, not evaluated by the night lane)",
+        "rules": [
+          "ceph-csi-chart",
+          "ceph-csi-apps"
+        ],
+        "findings": [
+          "LANE-B-AGENT/rule-agent: ceph-csi-chart: ceph-csi backs every dev-env session home (gasha01-rbd) plus Prometheus and Loki: a driver roll while a session volume is being created or attached can fail that session. Merge only after the dev-env v2 coordinator confirms no session volume create, resume or attach is in flight (lane B agent; the in-flight check itself is lane-B work, not evaluated by the night lane)",
+          "LANE-B-AGENT/rule-agent: ceph-csi-apps: ceph-csi backs every dev-env session home (gasha01-rbd) plus Prometheus and Loki: a driver roll while a session volume is being created or attached can fail that session. Merge only after the dev-env v2 coordinator confirms no session volume create, resume or attach is in flight (lane B agent; the in-flight check itself is lane-B work, not evaluated by the night lane)"
+        ],
+        "checks": {
+          "expected": [
+            "Diff Scope / Diff Scope - Success",
+            "Flux Local / Flux Local - Success",
+            "Flux Local / Flux Local - Test (main)",
+            "Flux Local / Flux Local - Diff (main/helmrelease)",
+            "Flux Local / Flux Local - Diff (main/kustomization)"
+          ],
+          "missing": [],
+          "failing": [],
+          "pending": [],
+          "stale": [],
+          "ran_at": "2026-11-03T04:01:17.000Z",
+          "reference_time": "2026-11-03T04:01:17.000Z"
+        },
+        "files": [
+          "kubernetes/main/apps/storage/ceph-csi/gasha01-rbd/app/helmrelease.yaml"
+        ],
+        "head_committed_at": null,
+        "cluster_effect": "immediate",
+        "targets": [
+          "kubernetes/main/apps/storage/ceph-csi"
+        ],
+        "own_images": [],
+        "via_components": [],
+        "cluster_wide": [
+          "csi"
+        ],
+        "cluster_effect_wait": null,
+        "updated": "2026-11-02T07:00:00.000Z",
+        "preapproval": {},
+        "schedule": {},
+        "last_attempt": {}
+      }
+    },
+    {
+      "why": "live subject: last_attempt merged",
+      "record": {
+        "schema": "haynes.upgrade-lane/v1",
+        "pr": 4662,
+        "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+        "fingerprint": null,
+        "fingerprint_basis": "unavailable",
+        "commit_count": 1,
+        "change_key": "153c42122b6670e6",
+        "title": "chore(deps): update sentencepiece to 0.2.3",
+        "package": "sentencepiece",
+        "from": "==0.2.2",
+        "to": "==0.2.3",
+        "packages": [
+          {
+            "name": "sentencepiece",
+            "update": null,
+            "from": "==0.2.2",
+            "to": "==0.2.3"
+          }
+        ],
+        "update_type": "patch",
+        "lane": "LANE-A",
+        "class": "delayed-cluster-change",
+        "reason": "3 expected checks SUCCESS on 5285e48; Renovate-only commits; delayed-cluster-change via own image audio-authoring",
+        "rules": [],
+        "findings": [],
+        "checks": {
+          "expected": [
+            "Diff Scope / Diff Scope - Success",
+            "Flux Local / Flux Local - Success",
+            "Build and Push Audio Authoring Image / build-and-push"
+          ],
+          "missing": [],
+          "failing": [],
+          "pending": [],
+          "stale": [],
+          "ran_at": "2026-11-05T05:44:59.000Z",
+          "reference_time": "2026-11-05T05:44:59.000Z",
+          "main_newer": []
+        },
+        "files": [
+          "scripts/audio-authoring/requirements.txt"
+        ],
+        "head_committed_at": null,
+        "cluster_effect": "delayed",
+        "targets": [],
+        "own_images": [
+          "audio-authoring"
+        ],
+        "via_components": [],
+        "cluster_wide": [],
+        "cluster_effect_wait": {
+          "waits_for": "renovate-pin-after-next-push-to-main",
+          "images": [
+            "audio-authoring"
+          ],
+          "verified_when": "the main build for the merge is green, the pin PR for the new digest has merged, Flux applied it and the workload soaked on the new digest"
+        },
+        "backup": {
+          "rule": "Per source: the newest successful VolSync sync (status.lastSyncTime, latestMoverStatus.result=Successful) or completed CNPG Backup (metadata.creationTimestamp, phase=completed) must be at or after that source's most recent scheduled run and no older than 24 hours at merge time. VolSync: the most recent run is status.nextSyncTime when that is already past, else nextSyncTime minus the schedule's period (spec.trigger.schedule). CNPG: ScheduledBackup status.lastScheduleTime. CNPG startedAt/stoppedAt are not used: some instances stamp local time with Z.",
+          "targets": [],
+          "stateful": false
+        },
+        "gates": {
+          "namespaces": [],
+          "blockers": [],
+          "alerts_not_blocking": {
+            "unrelated": [],
+            "cluster": []
+          },
+          "would_be_eligible": true
+        },
+        "updated": "2026-11-02T07:00:00.000Z",
+        "preapproval": {},
+        "schedule": {},
+        "last_attempt": {
+          "at": "2026-11-02T07:00:00.000Z",
+          "mode": "live",
+          "chosen": true,
+          "verdict": "merged",
+          "pr_refusals": [],
+          "lane_refusals": [],
+          "merge_call": "pr merge 4662 --repo thaynes43/haynes-ops --squash --match-head-commit 5285e48eab3ed7df5458a884cb98001843e55bdc (exit 0)"
+        }
+      }
+    }
+  ],
+  "merge_steps": [
+    {
+      "at": "2026-11-02T07:00:00.000Z",
+      "merge_step": {
+        "pr": 4662,
+        "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+        "class": "delayed-cluster-change",
+        "chosen": true,
+        "mode": "dryrun",
+        "verdict": "refused",
+        "pr_refusals": [],
+        "lane_refusals": [
+          "class delayed-cluster-change is not in the live allowlist (UPGRADE_NIGHT_LIVE_CLASSES: empty)",
+          "unreadable: the token permissions the mint-token init container recorded (/creds/gh_token_permissions)"
+        ],
+        "pr_ready": true,
+        "facts": {
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "files": [
+            "scripts/audio-authoring/requirements.txt"
+          ],
+          "mergeable": "MERGEABLE",
+          "merge_state": "CLEAN",
+          "reference_time": "2026-11-05T05:44:59.000Z",
+          "main_newer": [],
+          "behind_main": []
+        },
+        "merge_call": "not reached (dry-run)"
+      }
+    },
+    {
+      "at": "2026-11-02T07:00:00.000Z",
+      "merge_step": {
+        "pr": 4477,
+        "head": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+        "class": "cluster-change",
+        "chosen": false,
+        "mode": "dryrun",
+        "verdict": "refused",
+        "pr_refusals": [
+          "unreadable: data.pause on upgrade-lane-state (before the lock take)"
+        ],
+        "lane_refusals": [],
+        "pr_ready": false,
+        "merge_call": "not reached (dry-run)"
+      }
+    },
+    {
+      "at": "2026-11-02T07:00:00.000Z",
+      "merge_step": {
+        "pr": 4334,
+        "head": "81c84f1b836b4e713e4e6bce534116b4bb674523",
+        "class": "no-cluster-effect",
+        "chosen": false,
+        "mode": "dryrun",
+        "verdict": "refused",
+        "pr_refusals": [
+          "checks predate main: scripts/comfyui/Dockerfile changed by a5ccd7c2 at 2026-11-10T00:00:50Z, after the head's checks (2026-11-08T04:27:45.000Z); needs a Renovate rebase first"
+        ],
+        "lane_refusals": [
+          "not chosen by the tick: it has gate blockers (records[].gates.blockers)",
+          "class no-cluster-effect is not in the live allowlist (UPGRADE_NIGHT_LIVE_CLASSES: empty)",
+          "unreadable: the token permissions the mint-token init container recorded (/creds/gh_token_permissions)"
+        ],
+        "pr_ready": false,
+        "facts": {
+          "head": "81c84f1b836b4e713e4e6bce534116b4bb674523",
+          "files": [
+            "scripts/book-copy-writer/Dockerfile",
+            "scripts/comfyui/Dockerfile"
+          ],
+          "mergeable": "MERGEABLE",
+          "merge_state": "CLEAN",
+          "reference_time": "2026-11-08T04:27:45.000Z",
+          "main_newer": [
+            {
+              "path": "scripts/comfyui/Dockerfile",
+              "sha": "a5ccd7c24fc2c8f33164b346df1c8b37cdd6b8e7",
+              "at": "2026-11-10T00:00:50Z"
+            }
+          ],
+          "behind_main": []
+        },
+        "merge_call": "not reached (dry-run)"
+      }
+    },
+    {
+      "at": "2026-11-02T07:00:00.000Z",
+      "merge_step": {
+        "verdict": "not-run",
+        "why": "no lane-A candidate this tick"
+      }
+    },
+    {
+      "at": "2026-11-02T07:00:00.000Z",
+      "merge_step": {
+        "pr": 4662,
+        "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+        "class": "delayed-cluster-change",
+        "chosen": true,
+        "mode": "dryrun",
+        "verdict": "would-merge",
+        "pr_refusals": [],
+        "lane_refusals": [],
+        "pr_ready": true,
+        "facts": {
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "files": [
+            "scripts/audio-authoring/requirements.txt"
+          ],
+          "mergeable": "MERGEABLE",
+          "merge_state": "CLEAN",
+          "reference_time": "2026-11-05T05:44:59.000Z",
+          "main_newer": [],
+          "behind_main": []
+        },
+        "merge_call": "not reached (dry-run)"
+      }
+    },
+    {
+      "at": "2026-11-02T07:00:00.000Z",
+      "merge_step": {
+        "pr": 4662,
+        "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+        "class": "delayed-cluster-change",
+        "chosen": true,
+        "mode": "live",
+        "verdict": "merged",
+        "pr_refusals": [],
+        "lane_refusals": [],
+        "pr_ready": true,
+        "facts": {
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "files": [
+            "scripts/audio-authoring/requirements.txt"
+          ],
+          "mergeable": "MERGEABLE",
+          "merge_state": "CLEAN",
+          "reference_time": "2026-11-05T05:44:59.000Z",
+          "main_newer": [],
+          "behind_main": []
+        },
+        "merge_call": "pr merge 4662 --repo thaynes43/haynes-ops --squash --match-head-commit 5285e48eab3ed7df5458a884cb98001843e55bdc (exit 0)",
+        "merged": {
+          "merged": true,
+          "state": "MERGED",
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "merged_at": "2026-11-02T07:00:30Z",
+          "merge_commit": "ffffffffffffffffffffffffffffffffffffffff"
+        }
+      }
+    },
+    {
+      "at": "2026-11-02T07:00:00.000Z",
+      "merge_step": {
+        "pr": 4662,
+        "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+        "class": "delayed-cluster-change",
+        "chosen": true,
+        "mode": "live",
+        "verdict": "refused",
+        "pr_refusals": [],
+        "lane_refusals": [
+          "class delayed-cluster-change is not in the live allowlist (UPGRADE_NIGHT_LIVE_CLASSES: empty)"
+        ],
+        "pr_ready": true,
+        "facts": {
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "files": [
+            "scripts/audio-authoring/requirements.txt"
+          ],
+          "mergeable": "MERGEABLE",
+          "merge_state": "CLEAN",
+          "reference_time": "2026-11-05T05:44:59.000Z",
+          "main_newer": [],
+          "behind_main": []
+        },
+        "merge_call": "not made (refused)"
+      }
+    },
+    {
+      "at": "2026-11-02T07:00:00.000Z",
+      "merge_step": {
+        "pr": 4662,
+        "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+        "class": "delayed-cluster-change",
+        "chosen": true,
+        "mode": "live",
+        "verdict": "refused",
+        "pr_refusals": [
+          "commit status ci/external is pending (PENDING)"
+        ],
+        "lane_refusals": [],
+        "pr_ready": false,
+        "facts": {
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "files": [
+            "scripts/audio-authoring/requirements.txt"
+          ],
+          "mergeable": "MERGEABLE",
+          "merge_state": "CLEAN",
+          "reference_time": "2026-11-05T05:44:59.000Z",
+          "main_newer": [],
+          "behind_main": []
+        },
+        "merge_call": "not made (refused)"
+      }
+    },
+    {
+      "at": "2026-11-02T07:00:00.000Z",
+      "merge_step": {
+        "pr": 4662,
+        "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+        "class": "delayed-cluster-change",
+        "chosen": true,
+        "mode": "live",
+        "verdict": "merge-failed",
+        "pr_refusals": [],
+        "lane_refusals": [],
+        "pr_ready": true,
+        "facts": {
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "files": [
+            "scripts/audio-authoring/requirements.txt"
+          ],
+          "mergeable": "MERGEABLE",
+          "merge_state": "CLEAN",
+          "reference_time": "2026-11-05T05:44:59.000Z",
+          "main_newer": [],
+          "behind_main": []
+        },
+        "merge_call": "pr merge 4662 --repo thaynes43/haynes-ops --squash --match-head-commit 5285e48eab3ed7df5458a884cb98001843e55bdc (exit 1: GraphQL: merge refused)",
+        "merged": {
+          "merged": false,
+          "state": "OPEN",
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "merged_at": null,
+          "merge_commit": null
+        }
+      }
+    },
+    {
+      "at": "2026-11-02T07:00:00.000Z",
+      "merge_step": {
+        "pr": 4662,
+        "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+        "class": "delayed-cluster-change",
+        "chosen": true,
+        "mode": "live",
+        "verdict": "merge-unknown",
+        "pr_refusals": [],
+        "lane_refusals": [],
+        "pr_ready": true,
+        "facts": {
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "files": [
+            "scripts/audio-authoring/requirements.txt"
+          ],
+          "mergeable": "MERGEABLE",
+          "merge_state": "CLEAN",
+          "reference_time": "2026-11-05T05:44:59.000Z",
+          "main_newer": [],
+          "behind_main": []
+        },
+        "merge_call": "pr merge 4662 --repo thaynes43/haynes-ops --squash --match-head-commit 5285e48eab3ed7df5458a884cb98001843e55bdc (exit null: no exit status (SIGKILL))",
+        "merged": {
+          "merged": false,
+          "state": "OPEN",
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "merged_at": null,
+          "merge_commit": null
+        }
+      }
+    }
+  ]
+}

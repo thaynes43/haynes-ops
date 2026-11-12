@@ -1,0 +1,106 @@
+{
+  "case": "Only a person releases a remembered version: a hand run may not record resolved out of reverted.",
+  "kind": "sequence",
+  "expect": {
+    "refused": "/actor/kind: hand may not record resolved from reverted"
+  },
+  "record": {
+    "item": {
+      "schema": "haynes.upgrade-item/v1",
+      "id": "renovate-pr:78ee8938e12fead7783d26e9",
+      "source": "renovate-pr",
+      "item": {
+        "name": "ghcr.io/haraldkoch/rsync",
+        "repo": "thaynes43/haynes-ops",
+        "packages": [
+          {
+            "name": "ghcr.io/haraldkoch/rsync",
+            "update": "patch",
+            "from": "3.5.0",
+            "to": "3.5.2"
+          }
+        ],
+        "targets": [
+          "kubernetes/main/apps/storage/storage-util"
+        ],
+        "own_images": []
+      },
+      "installed": {
+        "version": "3.5.0",
+        "kind": "semver"
+      },
+      "available": {
+        "version": "3.5.2",
+        "kind": "semver",
+        "update_type": "patch"
+      },
+      "behind": {
+        "age_days": 2.72,
+        "versions_behind": null,
+        "days_to_expiry": null,
+        "basis": "first-seen"
+      },
+      "lane": "A-night",
+      "class": "cluster-change",
+      "reason": "5 expected checks SUCCESS on dcc5c39; Renovate-only commits; cluster-change (kubernetes/main/apps/storage/storage-util)",
+      "state": "reverted",
+      "approval": {},
+      "schedule": {},
+      "attempts": [
+        {
+          "n": 1,
+          "actor": {
+            "kind": "lane",
+            "login": null
+          },
+          "started_at": "2026-11-12T06:31:00.000Z",
+          "at": "2026-11-12T07:12:00.000Z",
+          "result": "reverted",
+          "recovery": "verified",
+          "drill": false,
+          "evidence_url": null
+        }
+      ],
+      "first_seen": "2026-11-12T00:10:00.000Z",
+      "observed_at": "2026-11-12T07:12:00.000Z",
+      "coverage": {
+        "status": "read"
+      },
+      "carrier": {
+        "kind": "github-pr",
+        "repo": "thaynes43/haynes-ops",
+        "pr": 4693,
+        "head": "dcc5c39fd678ad9fbda59874461f9280419bbf05",
+        "title": "fix(container): update image ghcr.io/haraldkoch/rsync to v3.5.2",
+        "fingerprint": null,
+        "fingerprint_basis": "unavailable",
+        "commit_count": 1,
+        "change_key": "72e28ef39cbdf656",
+        "files": [
+          "kubernetes/main/apps/storage/storage-util/rsync-music/app/helmrelease.yaml",
+          "kubernetes/main/apps/storage/storage-util/rsync-photos/app/helmrelease.yaml",
+          "kubernetes/main/apps/storage/storage-util/rsync-scans/app/helmrelease.yaml"
+        ],
+        "head_committed_at": null
+      }
+    },
+    "events": [
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:0deed9480dc6a7a639d1a345",
+        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "type": "resolved",
+        "from": "reverted",
+        "to": "needed",
+        "at": "2026-11-12T15:00:00.000Z",
+        "actor": {
+          "kind": "hand",
+          "login": "haynes-dev-bot[bot]"
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "reason": "release"
+      }
+    ]
+  }
+}

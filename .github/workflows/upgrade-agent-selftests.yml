@@ -5,7 +5,8 @@
 # Runs every selftest under scripts/upgrade-agent/ that needs no cluster, network or
 # LLM: the night lane's classifier (with the check-map drift test, which reads every
 # file in .github/workflows and .renovate), its dry-run tick, its merge step and change
-# lock (story 752) and the settle gate (story 551), the six shell selftests of the shepherd
+# lock (story 752), the settle gate (story 551) and the record format of update items and
+# events (OP592, which maps the lane's records), the six shell selftests of the shepherd
 # (its stand-aside for the night lane included, story 551), triage, gate and responder
 # helpers, and the delivery helper's offline suite. Before this workflow nothing ran them
 # in CI.
@@ -76,6 +77,8 @@ jobs:
         run: nice -n 19 node scripts/upgrade-agent/lane-night-dryrun-selftest.mjs
       - name: Merge step and change lock against stubs (story 752)
         run: nice -n 19 node scripts/upgrade-agent/lane-merge-step-selftest.mjs
+      - name: Record format of update items and events (OP592)
+        run: nice -n 19 node scripts/upgrade-agent/record-format-selftest.mjs
 
   shell:
     name: Upgrade Agent Selftests - Shell

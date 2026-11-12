@@ -1,0 +1,115 @@
+{
+  "case": "own-image: PR 4662 (sentencepiece in the audio-authoring image), lane A, needed; cluster effect waits for the digest pin. Lane record built as for item-renovate-pr.json",
+  "kind": "item",
+  "expect": "valid",
+  "from_pr": 4662,
+  "record": {
+    "schema": "haynes.upgrade-item/v1",
+    "id": "own-image:65d1acd0b3646b7b9f03fd41",
+    "source": "own-image",
+    "item": {
+      "name": "sentencepiece",
+      "repo": "thaynes43/haynes-ops",
+      "packages": [
+        {
+          "name": "sentencepiece",
+          "update": null,
+          "from": "==0.2.2",
+          "to": "==0.2.3"
+        }
+      ],
+      "targets": [],
+      "own_images": [
+        "audio-authoring"
+      ]
+    },
+    "installed": {
+      "version": "==0.2.2",
+      "kind": "semver"
+    },
+    "available": {
+      "version": "==0.2.3",
+      "kind": "semver",
+      "update_type": "patch"
+    },
+    "behind": {
+      "age_days": 4.75,
+      "versions_behind": null,
+      "days_to_expiry": null,
+      "basis": "first-seen"
+    },
+    "lane": "A-night",
+    "class": "delayed-cluster-change",
+    "reason": "3 expected checks SUCCESS on 5285e48; Renovate-only commits; delayed-cluster-change via own image audio-authoring",
+    "state": "needed",
+    "approval": {},
+    "schedule": {},
+    "attempts": [],
+    "first_seen": "2026-11-05T05:44:47.000Z",
+    "observed_at": "2026-11-09T23:40:00.000Z",
+    "coverage": {
+      "status": "read"
+    },
+    "carrier": {
+      "kind": "github-pr",
+      "repo": "thaynes43/haynes-ops",
+      "pr": 4662,
+      "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+      "title": "chore(deps): update sentencepiece to 0.2.3",
+      "fingerprint": null,
+      "fingerprint_basis": "unavailable",
+      "commit_count": 1,
+      "change_key": "153c42122b6670e6",
+      "files": [
+        "scripts/audio-authoring/requirements.txt"
+      ],
+      "head_committed_at": null
+    },
+    "lane_detail": {
+      "from_schema": "haynes.upgrade-lane/v1",
+      "rules": [],
+      "findings": [],
+      "checks": {
+        "expected": [
+          "Diff Scope / Diff Scope - Success",
+          "Flux Local / Flux Local - Success",
+          "Build and Push Audio Authoring Image / build-and-push"
+        ],
+        "missing": [],
+        "failing": [],
+        "pending": [],
+        "stale": [],
+        "ran_at": "2026-11-05T05:44:59.000Z",
+        "reference_time": "2026-11-05T05:44:59.000Z",
+        "main_newer": []
+      },
+      "cluster_effect": "delayed",
+      "cluster_effect_wait": {
+        "waits_for": "renovate-pin-after-next-push-to-main",
+        "images": [
+          "audio-authoring"
+        ],
+        "verified_when": "the main build for the merge is green, the pin PR for the new digest has merged, Flux applied it and the workload soaked on the new digest"
+      },
+      "via_components": [],
+      "cluster_wide": [],
+      "gates": {
+        "namespaces": [],
+        "blockers": [
+          "outside the merge window (01:30-04:45 America/New_York, now 18:40)"
+        ],
+        "alerts_not_blocking": {
+          "unrelated": [],
+          "cluster": []
+        },
+        "would_be_eligible": false
+      },
+      "backup": {
+        "rule": "Per source: the newest successful VolSync sync (status.lastSyncTime, latestMoverStatus.result=Successful) or completed CNPG Backup (metadata.creationTimestamp, phase=completed) must be at or after that source's most recent scheduled run and no older than 24 hours at merge time. VolSync: the most recent run is status.nextSyncTime when that is already past, else nextSyncTime minus the schedule's period (spec.trigger.schedule). CNPG: ScheduledBackup status.lastScheduleTime. CNPG startedAt/stoppedAt are not used: some instances stamp local time with Z.",
+        "targets": [],
+        "stateful": false
+      },
+      "last_attempt": {}
+    }
+  }
+}

@@ -1,0 +1,229 @@
+{
+  "schema": "haynes.upgrade-mapping/v1",
+  "from": "haynes.upgrade-lane/v1",
+  "to": "haynes.upgrade-item/v1",
+  "doc": "Where every field of a lane record lands in an item record. fromLaneRecord() in record-format.mjs implements it. how: copy = the value as written, at the item path; map = converted by the rule in note; reserved = kept empty in piece 1. The selftest fails when the lane writes a field that has no row here, or a row names a field the lane no longer writes, so a new lane field must state where it goes. Context, not a record field: repo comes from the tick (summary.repo, UPGRADE_AGENT_REPO).",
+  "fields": [
+    {
+      "lane": "schema",
+      "item": "lane_detail.from_schema",
+      "how": "copy",
+      "note": "The item's own schema is haynes.upgrade-item/v1."
+    },
+    {
+      "lane": "pr",
+      "item": "carrier.pr",
+      "how": "copy"
+    },
+    {
+      "lane": "head",
+      "item": "carrier.head",
+      "how": "copy"
+    },
+    {
+      "lane": "fingerprint",
+      "item": "carrier.fingerprint",
+      "how": "copy"
+    },
+    {
+      "lane": "fingerprint_basis",
+      "item": "carrier.fingerprint_basis",
+      "how": "copy"
+    },
+    {
+      "lane": "commit_count",
+      "item": "carrier.commit_count",
+      "how": "copy"
+    },
+    {
+      "lane": "change_key",
+      "item": "carrier.change_key",
+      "how": "copy",
+      "note": "Not the item id: change_key also hashes the changed files and the from versions."
+    },
+    {
+      "lane": "title",
+      "item": "carrier.title",
+      "how": "copy"
+    },
+    {
+      "lane": "files",
+      "item": "carrier.files",
+      "how": "copy",
+      "note": "Added by story 550 (R7: the files compared with main)."
+    },
+    {
+      "lane": "head_committed_at",
+      "item": "carrier.head_committed_at",
+      "how": "copy",
+      "note": "Added by story 550 (R7)."
+    },
+    {
+      "lane": "package",
+      "item": "item.name",
+      "how": "map",
+      "note": "Copied; when the PR has no package table (null) the name is '<repo>#<pr>'."
+    },
+    {
+      "lane": "from",
+      "item": "installed.version",
+      "how": "copy",
+      "note": "installed.kind is inferred: digest, semver (dotted numbers, an exact pin like ==1.2.3 included), other, unknown (null)."
+    },
+    {
+      "lane": "to",
+      "item": "available.version",
+      "how": "copy",
+      "note": "available.kind is inferred the same way."
+    },
+    {
+      "lane": "packages",
+      "item": "item.packages",
+      "how": "copy",
+      "note": "Also the basis of the item id."
+    },
+    {
+      "lane": "update_type",
+      "item": "available.update_type",
+      "how": "copy",
+      "note": "Also decides source: digest or pinDigest tokens only, and no own image, is image-pin."
+    },
+    {
+      "lane": "lane",
+      "item": "lane",
+      "how": "map",
+      "note": "LANE-A to A-night, LANE-B-AGENT to B-agent, LANE-B-OWNER to B-owner, EXCLUDED to excluded. BLOCKED to A-night (no stricter finding exists, so the blocker is all that stops lane A), except class facts-incomplete to unknown. Also decides state: BLOCKED is blocked; a hold or vet-hold finding is held; anything else is needed."
+    },
+    {
+      "lane": "class",
+      "item": "class",
+      "how": "copy"
+    },
+    {
+      "lane": "reason",
+      "item": "reason",
+      "how": "copy"
+    },
+    {
+      "lane": "rules",
+      "item": "lane_detail.rules",
+      "how": "copy"
+    },
+    {
+      "lane": "findings",
+      "item": "lane_detail.findings",
+      "how": "copy",
+      "note": "Also decides state held (a '/hold:' or '/vet-hold:' finding)."
+    },
+    {
+      "lane": "checks",
+      "item": "lane_detail.checks",
+      "how": "copy",
+      "note": "Includes ran_at and reference_time (classifier, story 550) and main_newer (set by the tick on lane-A records)."
+    },
+    {
+      "lane": "cluster_effect",
+      "item": "lane_detail.cluster_effect",
+      "how": "copy"
+    },
+    {
+      "lane": "targets",
+      "item": "item.targets",
+      "how": "copy"
+    },
+    {
+      "lane": "own_images",
+      "item": "item.own_images",
+      "how": "copy",
+      "note": "Also decides source: any own image is own-image."
+    },
+    {
+      "lane": "cluster_effect_wait",
+      "item": "lane_detail.cluster_effect_wait",
+      "how": "copy"
+    },
+    {
+      "lane": "via_components",
+      "item": "lane_detail.via_components",
+      "how": "copy",
+      "note": "Added by story 550 (R8). The item's reach stays item.targets; this is how the lane derived it."
+    },
+    {
+      "lane": "cluster_wide",
+      "item": "lane_detail.cluster_wide",
+      "how": "copy",
+      "note": "Added by story 550 (R5)."
+    },
+    {
+      "lane": "backup",
+      "item": "lane_detail.backup",
+      "how": "copy",
+      "note": "Written by run-night.mjs on lane-A records only; null otherwise."
+    },
+    {
+      "lane": "gates",
+      "item": "lane_detail.gates",
+      "how": "copy",
+      "note": "Written by run-night.mjs on lane-A records only; null otherwise. Includes alerts_not_blocking (story 550). Tonight's gates, not the item's state: a gate blocker leaves the item needed."
+    },
+    {
+      "lane": "updated",
+      "item": "observed_at",
+      "how": "copy"
+    },
+    {
+      "lane": "preapproval",
+      "item": "approval",
+      "how": "reserved",
+      "note": "Renamed. Empty in piece 1 (saga 547 comment 6922); the validator refuses any content."
+    },
+    {
+      "lane": "schedule",
+      "item": "schedule",
+      "how": "copy",
+      "note": "Empty today."
+    },
+    {
+      "lane": "last_attempt",
+      "item": "lane_detail.last_attempt",
+      "how": "copy",
+      "note": "Since story 752: the tick's merge-step verdict for the PR it ran on (at, mode, chosen, verdict, pr_refusals, lane_refusals, merge_call), {} on every other record. Copied as written. It is not the item's attempts: attempts[] is rebuilt from events, and a live verdict becomes events by the table merge_step_verdicts below (eventsFromMergeStep, which reads the full verdict summary.merge_step because only it carries the merge commit)."
+    }
+  ],
+  "merge_step_verdicts": {
+    "doc": "What one merge-step verdict (summary.merge_step, story 752) writes to the history. Only live mode writes events: a dry-run verdict was never acted on and stays in lane_detail.last_attempt. A refusal that names any lane refusal (class not allowlisted, token, not chosen, lease, window, gate age, lock move, a settle fact or a yield to a shepherd Job, story 551) is the lane declining, not an attempt on the item, and writes nothing. eventsFromMergeStep() in record-format.mjs implements this table; every event carries the attempt the first one opens.",
+    "verdicts": {
+      "not-run": [],
+      "would-merge": [],
+      "refused (dry-run)": [],
+      "refused (live, any lane refusal)": [],
+      "refused (live, PR refusals only)": [
+        "merge-attempted",
+        "merge-refused (class merge-step-refused, to needed: the open state follows the lane's next read)"
+      ],
+      "merged": [
+        "merge-attempted",
+        "merged (evidence merge_commit from merged.merge_commit; with no merge commit it is recorded as merge-unknown)"
+      ],
+      "merge-failed": [
+        "merge-attempted",
+        "merge-failed (class merge-call-failed, to needed)"
+      ],
+      "merge-unknown": [
+        "merge-attempted",
+        "merge-unknown (class merge-outcome-unread)"
+      ],
+      "merging (hand run, night-merge.mjs --merge)": [
+        "recorded by the hand run itself, actor hand (story 712)"
+      ]
+    }
+  },
+  "not_item_fields": {
+    "doc": "Tick-level summary keys of upgrade-lane-state that are not item fields. They stay in upgrade-lane-state; the history keeps what matters from them as events.",
+    "summary.merge_step": "the source of the merge-step events (table above)",
+    "summary.change_lock": "the lock's outcome and phase; each phase goes with an item state (lock_phases in upgrade-states.v1.json)",
+    "summary.token_permissions": "the tick's token, a lane refusal when it cannot merge",
+    "summary.owed_work": "verification and revert owed (stories 553, 753, 754): the item states merged_unverified, awaiting_pin, failed, reverting, reverted_unverified, merge_unknown",
+    "summary.live_classes": "the live allowlist, a lane refusal when the class is not on it"
+  }
+}

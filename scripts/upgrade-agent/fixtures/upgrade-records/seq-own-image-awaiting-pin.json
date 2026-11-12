@@ -1,0 +1,179 @@
+{
+  "case": "Illustrative (story 553): PR 4662 changes the audio-authoring image; it counts as verified only after the digest pin merged and soaked. Commit ids are synthetic.",
+  "kind": "sequence",
+  "expect": "valid",
+  "final_state": "done",
+  "record": {
+    "item": {
+      "schema": "haynes.upgrade-item/v1",
+      "id": "own-image:65d1acd0b3646b7b9f03fd41",
+      "source": "own-image",
+      "item": {
+        "name": "sentencepiece",
+        "repo": "thaynes43/haynes-ops",
+        "packages": [
+          {
+            "name": "sentencepiece",
+            "update": null,
+            "from": "==0.2.2",
+            "to": "==0.2.3"
+          }
+        ],
+        "targets": [],
+        "own_images": [
+          "audio-authoring"
+        ]
+      },
+      "installed": {
+        "version": "==0.2.2",
+        "kind": "semver"
+      },
+      "available": {
+        "version": "==0.2.3",
+        "kind": "semver",
+        "update_type": "patch"
+      },
+      "behind": {
+        "age_days": 4.75,
+        "versions_behind": null,
+        "days_to_expiry": null,
+        "basis": "first-seen"
+      },
+      "lane": "A-night",
+      "class": "delayed-cluster-change",
+      "reason": "3 expected checks SUCCESS on 5285e48; Renovate-only commits; delayed-cluster-change via own image audio-authoring",
+      "state": null,
+      "approval": {},
+      "schedule": {},
+      "attempts": [],
+      "first_seen": "2026-11-05T05:44:47.000Z",
+      "observed_at": "2026-11-09T23:40:00.000Z",
+      "coverage": {
+        "status": "read"
+      },
+      "carrier": {
+        "kind": "github-pr",
+        "repo": "thaynes43/haynes-ops",
+        "pr": 4662,
+        "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+        "title": "chore(deps): update sentencepiece to 0.2.3",
+        "fingerprint": null,
+        "fingerprint_basis": "unavailable",
+        "commit_count": 1,
+        "change_key": "153c42122b6670e6",
+        "files": [
+          "scripts/audio-authoring/requirements.txt"
+        ],
+        "head_committed_at": null
+      }
+    },
+    "events": [
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:a404f4a5e478c1df2d9d9153",
+        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "type": "observed",
+        "from": null,
+        "to": "needed",
+        "at": "2026-11-12T00:10:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "lane": "A-night",
+        "class": "delayed-cluster-change",
+        "reason": "3 expected checks SUCCESS on 5285e48; Renovate-only commits; delayed-cluster-change via own image audio-authoring",
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4662,
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "fingerprint": null
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:99be9595c9555c9e31942ce4",
+        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "type": "merge-attempted",
+        "from": "needed",
+        "to": "in_progress",
+        "at": "2026-11-12T06:31:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "lane": "A-night",
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4662,
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "fingerprint": null
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:0eacc3fe839b7048b7a45203",
+        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "type": "merged",
+        "from": "in_progress",
+        "to": "merged_unverified",
+        "at": "2026-11-12T06:31:40.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4662,
+          "head": "5285e48eab3ed7df5458a884cb98001843e55bdc",
+          "fingerprint": null
+        },
+        "evidence": {
+          "merge_commit": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:ed9221fb51f75f012baf265c",
+        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "type": "awaiting-pin",
+        "from": "merged_unverified",
+        "to": "awaiting_pin",
+        "at": "2026-11-12T06:40:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:e27460096db172aef1ff6b49",
+        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "type": "verified",
+        "from": "awaiting_pin",
+        "to": "done",
+        "at": "2026-11-12T08:05:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "evidence": {
+          "checks": [
+            "digest pin merged: ok",
+            "rollout on the new digest: ok",
+            "soak 10m: ok"
+          ]
+        }
+      }
+    ]
+  }
+}

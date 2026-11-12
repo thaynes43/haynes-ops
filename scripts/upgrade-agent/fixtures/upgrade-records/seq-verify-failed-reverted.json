@@ -1,0 +1,231 @@
+{
+  "case": "Illustrative (stories 553 and 753): PR 4693 merged, failed verification, reverted by night/revert-4693 after one refused merge of the revert, recovery verified. The version is now remembered. PR and commit ids are synthetic.",
+  "kind": "sequence",
+  "expect": "valid",
+  "final_state": "reverted",
+  "record": {
+    "item": {
+      "schema": "haynes.upgrade-item/v1",
+      "id": "renovate-pr:78ee8938e12fead7783d26e9",
+      "source": "renovate-pr",
+      "item": {
+        "name": "ghcr.io/haraldkoch/rsync",
+        "repo": "thaynes43/haynes-ops",
+        "packages": [
+          {
+            "name": "ghcr.io/haraldkoch/rsync",
+            "update": "patch",
+            "from": "3.5.0",
+            "to": "3.5.2"
+          }
+        ],
+        "targets": [
+          "kubernetes/main/apps/storage/storage-util"
+        ],
+        "own_images": []
+      },
+      "installed": {
+        "version": "3.5.0",
+        "kind": "semver"
+      },
+      "available": {
+        "version": "3.5.2",
+        "kind": "semver",
+        "update_type": "patch"
+      },
+      "behind": {
+        "age_days": 2.72,
+        "versions_behind": null,
+        "days_to_expiry": null,
+        "basis": "first-seen"
+      },
+      "lane": "A-night",
+      "class": "cluster-change",
+      "reason": "5 expected checks SUCCESS on dcc5c39; Renovate-only commits; cluster-change (kubernetes/main/apps/storage/storage-util)",
+      "state": null,
+      "approval": {},
+      "schedule": {},
+      "attempts": [],
+      "first_seen": "2026-11-07T06:17:59.000Z",
+      "observed_at": "2026-11-09T23:40:00.000Z",
+      "coverage": {
+        "status": "read"
+      },
+      "carrier": {
+        "kind": "github-pr",
+        "repo": "thaynes43/haynes-ops",
+        "pr": 4693,
+        "head": "dcc5c39fd678ad9fbda59874461f9280419bbf05",
+        "title": "fix(container): update image ghcr.io/haraldkoch/rsync to v3.5.2",
+        "fingerprint": null,
+        "fingerprint_basis": "unavailable",
+        "commit_count": 1,
+        "change_key": "72e28ef39cbdf656",
+        "files": [
+          "kubernetes/main/apps/storage/storage-util/rsync-music/app/helmrelease.yaml",
+          "kubernetes/main/apps/storage/storage-util/rsync-photos/app/helmrelease.yaml",
+          "kubernetes/main/apps/storage/storage-util/rsync-scans/app/helmrelease.yaml"
+        ],
+        "head_committed_at": null
+      }
+    },
+    "events": [
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:675e441e050394f378d1e143",
+        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "type": "observed",
+        "from": null,
+        "to": "needed",
+        "at": "2026-11-12T00:10:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "lane": "A-night",
+        "class": "cluster-change",
+        "reason": "5 expected checks SUCCESS on dcc5c39; Renovate-only commits; cluster-change (kubernetes/main/apps/storage/storage-util)",
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4693,
+          "head": "dcc5c39fd678ad9fbda59874461f9280419bbf05",
+          "fingerprint": null
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:4d540b854d28ff8f07767ae9",
+        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "type": "merge-attempted",
+        "from": "needed",
+        "to": "in_progress",
+        "at": "2026-11-12T06:31:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "lane": "A-night",
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4693,
+          "head": "dcc5c39fd678ad9fbda59874461f9280419bbf05",
+          "fingerprint": null
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:d95b8724fb7a68f9097e7ada",
+        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "type": "merged",
+        "from": "in_progress",
+        "to": "merged_unverified",
+        "at": "2026-11-12T06:31:40.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4693,
+          "head": "dcc5c39fd678ad9fbda59874461f9280419bbf05",
+          "fingerprint": null
+        },
+        "evidence": {
+          "merge_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:ddaf11a4c9e6b6d09f9d4900",
+        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "type": "verification-failed",
+        "from": "merged_unverified",
+        "to": "failed",
+        "at": "2026-11-12T06:45:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "class": "restart-growth",
+        "reason": "restarts grew during the 10-minute soak"
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:aa844e8e3384370488b56ad3",
+        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "type": "revert-opened",
+        "from": "failed",
+        "to": "reverting",
+        "at": "2026-11-12T06:46:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "evidence": {
+          "revert_pr": 99001,
+          "revert_branch": "night/revert-4693"
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:eff30d2472a3ea099d0b4d6d",
+        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "type": "merge-refused",
+        "from": "reverting",
+        "to": "reverting",
+        "at": "2026-11-12T06:50:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "class": "checks-pending",
+        "reason": "required checks still running on the revert head"
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:05f2917ed3ceb7a3656895d6",
+        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "type": "revert-merged",
+        "from": "reverting",
+        "to": "reverted_unverified",
+        "at": "2026-11-12T06:58:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1,
+        "evidence": {
+          "revert_commit": "cccccccccccccccccccccccccccccccccccccccc",
+          "revert_pr": 99001
+        }
+      },
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:858f1247c679fe75f68225d4",
+        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "type": "recovery-verified",
+        "from": "reverted_unverified",
+        "to": "reverted",
+        "at": "2026-11-12T07:12:00.000Z",
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "recorded_by": "lane",
+        "attempt": 1
+      }
+    ]
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "case": "Backfill (story 593), real: PR 4817 auto-merged by Renovate on 2026-11-11. The first sight of the item is its merge; nobody verified it, so it stays merged_unverified.",
+  "kind": "sequence",
+  "expect": "valid",
+  "final_state": "merged_unverified",
+  "record": {
+    "item": {
+      "schema": "haynes.upgrade-item/v1",
+      "id": "renovate-pr:7240c067ea9941b6f380811d",
+      "source": "renovate-pr",
+      "item": {
+        "name": "ghcr.io/stakater/charts/reloader",
+        "repo": "thaynes43/haynes-ops",
+        "packages": [],
+        "targets": []
+      },
+      "installed": {
+        "version": null,
+        "kind": "unknown"
+      },
+      "available": {
+        "version": "v2.2.20",
+        "kind": "semver",
+        "update_type": "unknown"
+      },
+      "behind": {
+        "age_days": null,
+        "versions_behind": null,
+        "days_to_expiry": null,
+        "basis": "unknown"
+      },
+      "lane": "auto",
+      "class": "renovate-automerge",
+      "reason": "merged by Renovate auto-merge before the lane recorded a verdict; found by the backfill",
+      "state": null,
+      "approval": {},
+      "schedule": {},
+      "attempts": [],
+      "first_seen": "2026-11-11T08:49:05.000Z",
+      "observed_at": "2026-11-11T08:49:05.000Z",
+      "coverage": {
+        "status": "partial",
+        "detail": "backfilled from the merged PR: title, actor and time only"
+      },
+      "carrier": {
+        "kind": "github-pr",
+        "repo": "thaynes43/haynes-ops",
+        "pr": 4817,
+        "head": "1593cd32f2458a1b06d215b1d6b12a24805e8971",
+        "title": "fix(container): update image ghcr.io/stakater/charts/reloader to v2.2.20",
+        "fingerprint": null,
+        "fingerprint_basis": null,
+        "commit_count": null,
+        "change_key": null
+      }
+    },
+    "events": [
+      {
+        "schema": "haynes.upgrade-event/v1",
+        "id": "ev:0cd571c6d7e70f01602f6a9d",
+        "item_id": "renovate-pr:7240c067ea9941b6f380811d",
+        "type": "merged",
+        "from": null,
+        "to": "merged_unverified",
+        "at": "2026-11-11T08:49:05.000Z",
+        "actor": {
+          "kind": "renovate",
+          "login": "renovate[bot]"
+        },
+        "recorded_by": "backfill",
+        "recorded_at": "2026-11-11T15:00:00.000Z",
+        "attempt": 1,
+        "carrier": {
+          "repo": "thaynes43/haynes-ops",
+          "pr": 4817,
+          "head": "1593cd32f2458a1b06d215b1d6b12a24805e8971"
+        },
+        "evidence": {
+          "merge_commit": "fbfb7fd03a9e51fcf68de8e77d2d611aa51a8490",
+          "url": "https://github.com/thaynes43/haynes-ops/pull/4817"
+        }
+      }
+    ]
+  }
+}

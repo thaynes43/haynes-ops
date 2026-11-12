@@ -1,0 +1,29 @@
+{
+  "case": "A merge-unknown must carry the merge call it could not read the outcome of.",
+  "kind": "event",
+  "expect": {
+    "refused": "/evidence/merge_call: merge-unknown requires evidence.merge_call"
+  },
+  "record": {
+    "schema": "haynes.upgrade-event/v1",
+    "id": "ev:2c9a776438bbc3e1d5ab6be8",
+    "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+    "type": "merge-unknown",
+    "from": "in_progress",
+    "to": "merge_unknown",
+    "at": "2026-11-02T07:00:00.000Z",
+    "actor": {
+      "kind": "lane",
+      "login": null
+    },
+    "recorded_by": "lane",
+    "attempt": 1,
+    "class": "merge-outcome-unread",
+    "reason": "pr merge 4662 --repo thaynes43/haynes-ops --squash --match-head-commit 5285e48eab3ed7df5458a884cb98001843e55bdc (exit null: no exit status (SIGKILL))",
+    "carrier": {
+      "repo": "thaynes43/haynes-ops",
+      "pr": 4662,
+      "head": "5285e48eab3ed7df5458a884cb98001843e55bdc"
+    }
+  }
+}

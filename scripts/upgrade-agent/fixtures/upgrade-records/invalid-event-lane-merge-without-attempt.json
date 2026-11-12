@@ -1,0 +1,31 @@
+{
+  "case": "The lane cannot record a merge it did not attempt through the merge step.",
+  "kind": "event",
+  "expect": {
+    "refused": "/actor/kind: lane may not record merged from needed"
+  },
+  "record": {
+    "schema": "haynes.upgrade-event/v1",
+    "id": "ev:b06d0d051666cbb72d6eebaf",
+    "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+    "type": "merged",
+    "from": "needed",
+    "to": "merged_unverified",
+    "at": "2026-11-12T06:31:40.000Z",
+    "actor": {
+      "kind": "lane",
+      "login": null
+    },
+    "recorded_by": "lane",
+    "attempt": 1,
+    "carrier": {
+      "repo": "thaynes43/haynes-ops",
+      "pr": 4477,
+      "head": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+      "fingerprint": null
+    },
+    "evidence": {
+      "merge_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  }
+}

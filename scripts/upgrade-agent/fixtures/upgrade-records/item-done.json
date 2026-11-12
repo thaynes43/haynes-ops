@@ -1,0 +1,84 @@
+{
+  "case": "renovate-pr item after one verified attempt: the final item of seq-lane-merge-verified.json",
+  "kind": "item",
+  "expect": "valid",
+  "record": {
+    "schema": "haynes.upgrade-item/v1",
+    "id": "renovate-pr:1d7a362939cd391c85d1adb5",
+    "source": "renovate-pr",
+    "item": {
+      "name": "docker.io/alpine/kubectl",
+      "repo": "thaynes43/haynes-ops",
+      "packages": [
+        {
+          "name": "docker.io/alpine/kubectl",
+          "update": "patch",
+          "from": "1.37.1",
+          "to": "1.37.2"
+        }
+      ],
+      "targets": [
+        "kubernetes/main/apps/kube-system/node-out-of-service",
+        "kubernetes/main/apps/media/plex-hw-canary"
+      ],
+      "own_images": []
+    },
+    "installed": {
+      "version": "1.37.1",
+      "kind": "semver"
+    },
+    "available": {
+      "version": "1.37.2",
+      "kind": "semver",
+      "update_type": "patch"
+    },
+    "behind": {
+      "age_days": 9.84,
+      "versions_behind": null,
+      "days_to_expiry": null,
+      "basis": "first-seen"
+    },
+    "lane": "A-night",
+    "class": "cluster-change",
+    "reason": "5 expected checks SUCCESS on 871dab8; Renovate-only commits; cluster-change (kubernetes/main/apps/kube-system/node-out-of-service, kubernetes/main/apps/media/plex-hw-canary)",
+    "state": "done",
+    "approval": {},
+    "schedule": {},
+    "attempts": [
+      {
+        "n": 1,
+        "actor": {
+          "kind": "lane",
+          "login": null
+        },
+        "started_at": "2026-11-12T06:31:00.000Z",
+        "at": "2026-11-12T06:52:00.000Z",
+        "result": "verified",
+        "recovery": null,
+        "drill": false,
+        "evidence_url": "https://github.com/thaynes43/haynes-ops/pull/4477"
+      }
+    ],
+    "first_seen": "2026-11-12T00:10:00.000Z",
+    "observed_at": "2026-11-12T06:52:00.000Z",
+    "coverage": {
+      "status": "read"
+    },
+    "carrier": {
+      "kind": "github-pr",
+      "repo": "thaynes43/haynes-ops",
+      "pr": 4477,
+      "head": "871dab84d3944e3b9bf042063ed08b330206ba4e",
+      "title": "fix(container): update image docker.io/alpine/kubectl to v1.37.2",
+      "fingerprint": null,
+      "fingerprint_basis": "unavailable",
+      "commit_count": 1,
+      "change_key": "bb9992cc873e5ccb",
+      "files": [
+        "kubernetes/main/apps/kube-system/node-out-of-service/app/cronjob.yaml",
+        "kubernetes/main/apps/media/plex-hw-canary/app/cronjob.yaml"
+      ],
+      "head_committed_at": null
+    }
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "case": "renovate-pr: PR 3915 (kubernetes monorepo), held by a hold rule, lane B-owner",
+  "kind": "item",
+  "expect": "valid",
+  "from_pr": 3915,
+  "record": {
+    "schema": "haynes.upgrade-item/v1",
+    "id": "renovate-pr:89b2c4e648f16b67a7aee2ec",
+    "source": "renovate-pr",
+    "item": {
+      "name": "k8s.io/api",
+      "repo": "thaynes43/haynes-ops",
+      "packages": [
+        {
+          "name": "k8s.io/api",
+          "update": null,
+          "from": "v0.36.3",
+          "to": "v0.37.2"
+        },
+        {
+          "name": "k8s.io/apimachinery",
+          "update": null,
+          "from": "v0.36.3",
+          "to": "v0.37.2"
+        },
+        {
+          "name": "k8s.io/apiserver",
+          "update": null,
+          "from": "v0.36.3",
+          "to": "v0.37.2"
+        }
+      ],
+      "targets": [],
+      "own_images": []
+    },
+    "installed": {
+      "version": "v0.36.3",
+      "kind": "semver"
+    },
+    "available": {
+      "version": "v0.37.2",
+      "kind": "semver",
+      "update_type": "minor"
+    },
+    "behind": {
+      "age_days": 26.9,
+      "versions_behind": null,
+      "days_to_expiry": null,
+      "basis": "first-seen"
+    },
+    "lane": "B-owner",
+    "class": "hold",
+    "reason": "k8s.io/api: v0.37.2 is outside <0.37.0 — HELD Kubernetes Go modules (k8s.io/api, apimachinery, apiserver and their monorepo siblings) 0.37 and newer in scripts/tests/dev-env-archive-guard/go.mod only. 0.36.x patches stay allowed.",
+    "state": "held",
+    "approval": {},
+    "schedule": {},
+    "attempts": [],
+    "first_seen": "2026-10-14T02:03:19.000Z",
+    "observed_at": "2026-11-09T23:40:00.000Z",
+    "coverage": {
+      "status": "read"
+    },
+    "carrier": {
+      "kind": "github-pr",
+      "repo": "thaynes43/haynes-ops",
+      "pr": 3915,
+      "head": "2ca786e6e472602b6ec7ecff7b20f07e005cfe1f",
+      "title": "fix(deps): update kubernetes monorepo to v0.37.2",
+      "fingerprint": null,
+      "fingerprint_basis": "unavailable",
+      "commit_count": 1,
+      "change_key": "4aafaf894cbf8332",
+      "files": [
+        "scripts/tests/dev-env-archive-guard/go.mod",
+        "scripts/tests/dev-env-archive-guard/go.sum"
+      ],
+      "head_committed_at": null
+    },
+    "lane_detail": {
+      "from_schema": "haynes.upgrade-lane/v1",
+      "rules": [
+        "hold:18"
+      ],
+      "findings": [
+        "LANE-B-OWNER/hold: k8s.io/api: v0.37.2 is outside <0.37.0 — HELD Kubernetes Go modules (k8s.io/api, apimachinery, apiserver and their monorepo siblings) 0.37 and newer in scripts/tests/dev-env-archive-guard/go.mod only. 0.36.x patches stay allowed.",
+        "LANE-B-OWNER/hold: k8s.io/apimachinery: v0.37.2 is outside <0.37.0 — HELD Kubernetes Go modules (k8s.io/api, apimachinery, apiserver and their monorepo siblings) 0.37 and newer in scripts/tests/dev-env-archive-guard/go.mod only. 0.36.x patches stay allowed.",
+        "LANE-B-OWNER/hold: k8s.io/apiserver: v0.37.2 is outside <0.37.0 — HELD Kubernetes Go modules (k8s.io/api, apimachinery, apiserver and their monorepo siblings) 0.37 and newer in scripts/tests/dev-env-archive-guard/go.mod only. 0.36.x patches stay allowed.",
+        "BLOCKED/check-failing: failing: dev-env archive guard source tests / Archive Guard Source - Success (FAILURE)"
+      ],
+      "checks": {
+        "expected": [
+          "Diff Scope / Diff Scope - Success",
+          "Flux Local / Flux Local - Success",
+          "dev-env archive guard source tests / Archive Guard Source - Success"
+        ],
+        "missing": [],
+        "failing": [
+          "dev-env archive guard source tests / Archive Guard Source - Success (FAILURE)"
+        ],
+        "pending": [],
+        "stale": [],
+        "ran_at": "2026-11-05T17:00:38.000Z",
+        "reference_time": "2026-11-05T17:00:38.000Z"
+      },
+      "cluster_effect": "none",
+      "cluster_effect_wait": null,
+      "via_components": [],
+      "cluster_wide": [],
+      "gates": null,
+      "backup": null,
+      "last_attempt": {}
+    }
+  }
+}
