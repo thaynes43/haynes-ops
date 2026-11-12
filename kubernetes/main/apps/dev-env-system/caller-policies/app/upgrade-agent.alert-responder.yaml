@@ -1,0 +1,66 @@
+---
+# CallerPolicy for upgrade-agent/alert-responder (dev-env DESIGN-064 5.1, 6.4 and 6.5;
+# OpenProject #739). Every value but the brief is the live v1 value (dev-env-ops
+# helmrelease.yaml: OPS_REM_MODEL, OPS_ESC_MODEL, OPS_FALLBACK_MODEL,
+# OPS_SESSION_EFFORT, OPS_REM_TIMEOUT, OPS_REM_MAX_TURNS; maxHold is respond.sh's
+# REM_PENDING_DEADLINE_MIN default). The three ids were probed on 2026-11-12 and
+# answered (tracker #739 comment 7239, ruling 5).
+#
+# Limits: 6.4's example for this caller. Its move stories (#747 remediation, #748
+# escalation) set the real numbers from v1's record.
+#
+# The briefs are inert on purpose (coordinator ruling 3, tracker #739 comment 7239):
+# until a move story replaces them, any session this policy starts is told the lane
+# has not moved, to change nothing and to stop. No brief.fields, so a create that
+# sends data is refused (422). Each move story replaces its entry's template and
+# fields in its own reviewed PR (6.4, 5.6).
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: CallerPolicy
+metadata:
+  name: upgrade-agent.alert-responder
+  namespace: dev-env-system
+spec:
+  summon:
+    serviceAccount: upgrade-agent/alert-responder
+    limits:
+      concurrent: 1
+      escalations: 2
+      queued: 4
+      queuedUrgent: 4
+      createsPerHour: 6
+    sessions:
+      - kind: task
+        lane: remediation
+        priority: urgent
+        namePrefixes: [rem-responder-]
+        repo: haynes-ops
+        profile: ops
+        model:
+          default: claude-opus-5-5
+          fallback: claude-opus-5
+        effort: xhigh
+        timeout: 40m
+        maxTurns: 120
+        maxHold: 20m
+        onUnreported: escalated
+        brief:
+          template: |
+            This lane's work has not moved to dev-env v2 yet, so this session has nothing to do.
+            Change nothing: no cluster object, no repository, no ticket.
+            Say in one line that this lane has not moved to v2, then stop.
+      - kind: remote
+        lane: escalation
+        priority: urgent
+        namePrefixes: [esc-responder-]
+        repo: haynes-ops
+        profile: ops
+        model:
+          default: claude-sonnet-5-5
+          fallback: claude-opus-5
+        effort: xhigh
+        onUnreported: failed
+        brief:
+          template: |
+            This lane's work has not moved to dev-env v2 yet, so this session has nothing to do.
+            Change nothing: no cluster object, no repository, no ticket.
+            Say in one line that this lane has not moved to v2, then stop.

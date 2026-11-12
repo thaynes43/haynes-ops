@@ -3,6 +3,12 @@
 # (dev-env internal/apiserver/callerpolicy.go, readCallerPolicy). That is the
 # only verb: it does not list, watch, or write the object. A missing object
 # enrolls nobody. This Role does not change the operator Deployment.
+#
+# The summoning callers (dev-env DESIGN-064 6.4, OpenProject #739): the API reads
+# the policy named <namespace>.<serviceaccount> with the same one uncached Get
+# (internal/apiserver/summon.go, readSummonPolicy). Each name is listed here, beside
+# meatball; an unlisted one is refused and its caller gets 403. The objects are in
+# the caller-policies app.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -11,7 +17,11 @@ metadata:
 rules:
   - apiGroups: [dev-env.haynesops.com]
     resources: [callerpolicies]
-    resourceNames: [meatball]
+    resourceNames:
+      - meatball
+      - upgrade-agent.alert-responder
+      - upgrade-agent.upgrade-shepherd
+      - upgrade-agent.upgrade-health-gate
     verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

@@ -1,0 +1,64 @@
+---
+# CallerPolicy for upgrade-agent/upgrade-shepherd, the account of the upgrade-shepherd,
+# triage and upgrade-night CronJobs (dev-env DESIGN-064 5.1, 6.4 and 6.5; OpenProject
+# #739). Every value but the limits and the brief is the live v1 value (dev-env-ops
+# helmrelease.yaml: OPS_SESSION_MODEL, OPS_ESC_MODEL, OPS_FALLBACK_MODEL,
+# OPS_SESSION_EFFORT, OPS_WO_STALE_MINUTES). The three ids were probed on 2026-11-12
+# and answered (tracker #739 comment 7239, ruling 5).
+#
+# Limits: the design gives none for this caller, so these are the narrowest the schema
+# allows (concurrent 1, escalations 1, createsPerHour 1; queued and queuedUrgent keep
+# their defaults). Its move stories (#610 upgrade, #748 escalation) set the real
+# numbers from v1's record.
+#
+# The briefs are inert on purpose (coordinator ruling 3, tracker #739 comment 7239):
+# until a move story replaces them, any session this policy starts is told the lane
+# has not moved, to change nothing and to stop. No brief.fields, so a create that
+# sends data is refused (422). Each move story replaces its entry's template and
+# fields in its own reviewed PR (6.4, 5.6).
+apiVersion: dev-env.haynesops.com/v1alpha1
+kind: CallerPolicy
+metadata:
+  name: upgrade-agent.upgrade-shepherd
+  namespace: dev-env-system
+spec:
+  summon:
+    serviceAccount: upgrade-agent/upgrade-shepherd
+    limits:
+      concurrent: 1
+      escalations: 1
+      createsPerHour: 1
+    sessions:
+      - kind: remote
+        lane: upgrade
+        priority: normal
+        namePrefixes: [wo-]
+        repo: haynes-ops
+        profile: ops
+        model:
+          default: claude-opus-5-5
+          fallback: claude-opus-5
+        effort: xhigh
+        staleAfter: 180m
+        onUnreported: failed
+        brief:
+          template: |
+            This lane's work has not moved to dev-env v2 yet, so this session has nothing to do.
+            Change nothing: no cluster object, no repository, no ticket.
+            Say in one line that this lane has not moved to v2, then stop.
+      - kind: remote
+        lane: escalation
+        priority: urgent
+        namePrefixes: [esc-shepherd-]
+        repo: haynes-ops
+        profile: ops
+        model:
+          default: claude-sonnet-5-5
+          fallback: claude-opus-5
+        effort: xhigh
+        onUnreported: failed
+        brief:
+          template: |
+            This lane's work has not moved to dev-env v2 yet, so this session has nothing to do.
+            Change nothing: no cluster object, no repository, no ticket.
+            Say in one line that this lane has not moved to v2, then stop.
