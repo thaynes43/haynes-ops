@@ -629,11 +629,11 @@ async function tick() {
     if (notNow) summary.history.mirrors = { owed, why_not: notNow };
     else {
       try {
-        const t = H.terminalRecordItems(hist.terminals, nums, rcd, summary.at, run, REPO, H.historyConfig(rules), hist.budget);
-        const w = M.writePrRecords({ items: t.items, cfg: rcd, run, env: childEnv, live: true, stopped: null, pauseCheck });
+        const t = H.terminalRecordItems(hist.terminals, nums, rcd, summary.at, run, REPO, H.historyConfig(rules), hist.budget, hist.ctx.doc.meta.tried?.mirror);
+        const w = M.writePrRecords({ items: t.items, cfg: rcd, run, env: childEnv, live: true, stopped: null, pauseCheck, haltKey: 'meta.mirror_halt in ConfigMap upgrade-ledger (the terminal mirrors only)' });
         for (const line of w.raw_details || []) log(`upgrade-night ${MODE}: terminal record write failed: ${line}`);
         delete w.raw_details;
-        const c = H.commitMirrors({ ctx: hist.ctx, terminals: hist.terminals, result: w, halt: w.halt, at: summary.at, env: childEnv });
+        const c = H.commitMirrors({ ctx: hist.ctx, terminals: hist.terminals, result: w, halt: w.halt, at: summary.at, env: childEnv, read: t.read });
         if (c.raw) log(`upgrade-night ${MODE}: marking the mirrored terminals failed: ${c.raw}`);
         delete c.raw;
         summary.github_writes += w.github_writes || 0;

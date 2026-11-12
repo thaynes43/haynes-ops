@@ -405,8 +405,9 @@ node scripts/upgrade-agent/record-format-selftest.mjs     # offline; Node 24
   `closed` has no edge from first sight. The old item closes, and the newer one is named
   in the summary only.
 - **No actor for the shepherd's close.** The `closed` edge allows `lane`, `renovate`,
-  `hand` and `person`. A PR the shepherd closes gets no event. Another bot is recorded as
-  `hand`, with its login in `actor.login`; the event has no evidence field for a login.
+  `hand` and `person`. The history records a PR the shepherd closes as `hand`, with the
+  login `haynes-ops-bot[bot]` in `actor.login` and the reason naming the shepherd's
+  identity; another bot likewise. The event has no evidence field for a login.
 - The sources the lane does not write yet have only the generic item shape. Their adapter
   stories may need more fields.
 - `kind` is inferred from the version text. `semver` means the version starts with dotted

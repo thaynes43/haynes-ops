@@ -1262,14 +1262,16 @@ export function runRetry({ cand, rules, run, env, clock, ledger, persistLedger, 
 // the summary block.
 // pauseCheck() -> a public reason when paused (or unreadable), else null: read just before
 // each write (F5). The first failed write stops the rest of the tick; a denial also halts.
-export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, stopped = null, pauseCheck = () => null }) {
+// haltKey: where the halt a denial sets is kept (story 593: the terminal mirrors keep theirs
+// in upgrade-ledger's meta.mirror_halt), named in the halt's text.
+export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, stopped = null, pauseCheck = () => null, haltKey = 'retry_ledger.halt' }) {
   const out = { github_writes: 0, created: [], updated: [], current: [], demoted: [], refused: [], failed: [], not_attempted: [], foreign_ignored: [], would_create: [], would_update: [], no_record: [], halt: null, stopped_by: stopped, raw_details: [] };
   let stop = stopped;
   const fail = (pr, w) => {
     const f = writeFailure(w);
     out.failed.push({ pr, why: `${w.call}: ${f.reason}`, failure: f.kind });
     out.raw_details.push(`#${pr} ${w.call}: ${w.detail}`);
-    if (f.halts && !out.halt) out.halt = { why: `the record write on #${pr} was ${f.reason}; a denial is a stop: PR writes halt until a person removes retry_ledger.halt` };
+    if (f.halts && !out.halt) out.halt = { why: `the record write on #${pr} was ${f.reason}; a denial is a stop: PR writes halt until a person removes ${haltKey}` };
     stop = `an earlier GitHub write failed this tick (#${pr}, ${f.kind})`; out.stopped_by = stop;
   };
   const paused = (pr, listIt = true) => { const p = pauseCheck(); if (!p) return false; stop = p; out.stopped_by = p; if (listIt) out.not_attempted.push(pr); return true; };
@@ -1314,7 +1316,7 @@ export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, st
       if (who.login !== cfg.author.login || who.type !== cfg.author.type) {
         // the token is not the identity the lane reads its records by: every later tick
         // would add another comment. Halt (data.retry_ledger.halt) until a person clears it.
-        out.halt = { why: `the record on #${pr} was written as ${who.login ?? 'unknown'} (${who.type ?? '?'}), not ${cfg.author.login} (${cfg.author.type}); PR writes halt until a person removes retry_ledger.halt`, comment: w.json?.id ?? null };
+        out.halt = { why: `the record on #${pr} was written as ${who.login ?? 'unknown'} (${who.type ?? '?'}), not ${cfg.author.login} (${cfg.author.type}); PR writes halt until a person removes ${haltKey}`, comment: w.json?.id ?? null };
         out.failed.push({ pr, why: out.halt.why });
         stop = 'the record identity check failed this tick'; out.stopped_by = stop;
         continue;

@@ -1078,7 +1078,7 @@ process.exit(0);
     gone2.mergedList = [{ ...gone.mergedList[0], number: 4708, title: toGh(fact(4708)).title, body: toGh(fact(4708)).body, labels: toGh(fact(4708)).labels, files: toGh(fact(4708)).files }];
     gone2.list = gone2.list.filter(x => x.number !== 4708);
     const c5 = await tick({ ...gone2, ghWriteFail: true }, W, ['--write-state'], { keepGh: true });
-    ok(c5.summary.history?.mirrors?.halt && /a denial is a stop/.test(c5.summary.history.mirrors.halt.why) && !ledgerNow()?.halt && /ERROR upgrade-night dryrun: TERMINAL MIRRORS HALTED/.test(c5.stderr) && JSON.parse(hist().data.meta).mirror_halt,
+    ok(c5.summary.history?.mirrors?.halt && /a denial is a stop/.test(c5.summary.history.mirrors.halt.why) && /until a person removes meta\.mirror_halt in ConfigMap upgrade-ledger/.test(c5.summary.history.mirrors.halt.why) && !ledgerNow()?.halt && /ERROR upgrade-night dryrun: TERMINAL MIRRORS HALTED/.test(c5.stderr) && JSON.parse(hist().data.meta).mirror_halt,
       'story 593 (L3): a denied terminal edit halts the mirrors (meta.mirror_halt), not the open-PR records (no retry_ledger.halt)', JSON.stringify({ mirrors: c5.summary.history?.mirrors, ledgerHalt: ledgerNow()?.halt }));
     const c6 = await tick(baseWorld([4477]), W, ['--write-state'], { keepGh: true });
     ok(c6.summary.pr_records?.why_not === null && /halted/.test(c6.summary.history?.mirrors?.why_not || ''), 'story 593 (L3): on the next tick the open-PR records still write; the mirrors wait for a person', JSON.stringify({ pr: c6.summary.pr_records?.why_not, mirrors: c6.summary.history?.mirrors }));

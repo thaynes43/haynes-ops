@@ -1256,7 +1256,7 @@ each of these events once:
 | Event | When |
 |---|---|
 | `observed` | An open Renovate PR's item is seen for the first time, or its state (`needed`, `held`, `blocked`), lane or class changed. |
-| `closed` | The PR closed without a merge, by whoever GitHub says closed it. Also when Renovate replaced the item with a newer version on the same PR, whether the lane saw the newer version open or only at the merge (actor `renovate`). |
+| `closed` | The PR closed without a merge, by whoever GitHub says closed it. A close by the shepherd is recorded with actor `hand` (the format's `closed` edge has no shepherd actor), its login `haynes-ops-bot[bot]` and a reason that says it is the shepherd's identity. Also when Renovate replaced the item with a newer version on the same PR, whether the lane saw the newer version open or only at the merge (actor `renovate`). |
 | `merged` | Someone other than the lane merged it: Renovate's auto-merge, the shepherd, a session or a person. It goes on the item that was merged. When Renovate moved the PR to a newer version before it merged, the old item closes and the merge goes on the new one. A PR the lane never saw open is recorded with `recorded_by: backfill`. |
 | `revert-merged` | A merged PR titled `Revert "<title>"` whose body names (`Reverts #N`) a PR of exactly that title that the history holds as merged, merged by a session or a person. |
 
@@ -1280,8 +1280,10 @@ hand the item to the other one.
 title and files, read the way `gatherFacts` and `classify` read them, through
 `fromLaneRecord()`. A backfilled item is therefore the same item the lane computes for the
 same update while it is open.
-- When a PR's body cannot be read, the item is named from its title instead and marked
-  `basis: "title"` in `data.items`. `summary.history.total.title_items` counts these items.
+- When a PR's body cannot be read, or gives no package table (edited to empty, say), the
+  item is named from its title instead and marked `basis: "title"` in `data.items`.
+  `summary.history.total.title_items` counts these items. A title-named item is never
+  taken as a move to a newer version.
 - On the 2026-11-09 queue, all 30 real PRs get the same id by both routes
   (`lane-history-selftest.mjs`).
 
@@ -1291,7 +1293,7 @@ same update while it is open.
 |---|---|
 | `upgrade-ledger` `data.events` | One event per line, oldest first. Each line is the format's event without the constant `schema` key, without `id` (that is `eventId()` over item, type, time and attempt) and without a null `actor.login`. `unpack()` restores all three. |
 | `upgrade-ledger` `data.items` | For each item, what the events cannot say: `name`, `from`, `to`, `type` (update type), `pr` and, for an item named from a title, `basis`. Also `base`, the item's state when its earlier events rotated out, and `mirrored`, the terminal event its PR record now carries. |
-| `upgrade-ledger` `data.meta` | `schema` `haynes.upgrade-ledger/v1`; the backfill marker (`backfill.at`, `window`, `query`, `events`, `compare`); the last rotation; `remembered_merges`; and `mirror_halt`. |
+| `upgrade-ledger` `data.meta` | `schema` `haynes.upgrade-ledger/v1`; the backfill marker (`backfill.at`, `window`, `query`, `events`, `compare`); the last rotation; `remembered_merges`; `mirror_halt`; `catch_up_mismatch` (a catch-up disagreement waiting for the next tick); and `tried` (`fate`, `mirror`: when each PR still waiting was last tried, for the fair order). |
 | `upgrade-ledger-marker` `data.marker` | `schema` `haynes.upgrade-ledger-marker/v1`, `created_at` and `backfilled_at`: that a history exists. |
 
 **Rotation.** `night.history.max_bytes` caps the bytes of `upgrade-ledger`'s data, which is
@@ -1336,6 +1338,9 @@ holds as `reverted`, the format has no edge to record it. The tick keeps it in
   exists. So the tick reads what the create returned: if it already holds events, another
   first writer got there first, and this tick writes nothing (a conflict). Otherwise the
   tick writes at the version the create returned.
+- **Reading them.** The tick reads the marker first, then the history. A first writer
+  writes the history and then the marker, so this order cannot read a marker without its
+  history.
 - **The marker.** After the history it vouches for, the tick writes the marker under
   `upgrade-night-history-marker`: once at the first write, and again when the backfill
   completes. It is its own ConfigMap, so it never moves the resourceVersion of
@@ -1394,7 +1399,11 @@ ERROR upgrade-night dryrun: HISTORY NOT WRITTEN: STUCK: …; the history was los
   `listed`, `recorded`, `shared_item`, `missing`, `reverts` and `match`.
   - `match` is true only when GitHub's count equals both the list and what the history
     holds, and none is missing.
-  - It is null, never true, when GitHub's count could not be read.
+  - It is null, never true, when GitHub's count could not be read. The comparison is then
+    still owed: each later tick reads GitHub's count for the backfill's window again (one
+    search, the backfill is not re-run) until a count has been read. A mismatch is an
+    ERROR line on every tick until a later count matches. To re-run the backfill instead,
+    remove `meta.backfill` (the events are kept, and their ids make it idempotent).
   - `shared_item` is a PR whose package and version another PR in the window already
     carried: the format holds one item per package and version.
 - **Read-only run on 2026-11-12 17:33Z** (`run-night.mjs` without `--write-state`): GitHub
@@ -1405,11 +1414,19 @@ ERROR upgrade-night dryrun: HISTORY NOT WRITTEN: STUCK: …; the history was los
 - **The catch-up.** Each later tick reads the merges since the newest one the history
   holds, less `catch_up_margin_hours` (24, for GitHub's search index). It records the PRs
   it does not hold yet, and compares that window the same way in
-  `summary.history.catch_up`. A mismatch is an ERROR line.
+  `summary.history.catch_up`. The list and the count are read seconds apart for a window
+  that ends at the tick's start, so GitHub's search index can put a merge just before the
+  tick in one and not the other. A first disagreement is therefore an info line and a
+  summary field (`meta.catch_up_mismatch`). It becomes an ERROR when the next tick
+  disagrees again (`catch_up.repeated`). No wait is added.
 - **The budget.** Per tick, at most `max_pr_reads_per_tick` (30) per-PR reads: a PR's fate,
   who closed it, a revert's body, a reverted PR's title, a record to mirror. No read starts
   once the tick has run `time_budget_seconds` (300; the Job's deadline is 600). What is left
   carries over to the next tick, and the backfill marker waits until nothing is left.
+- **The fair order.** A PR that stays unread is tried again on later ticks in the order of
+  when it was last tried, the least recent first (`meta.tried.fate`), so one stuck PR
+  cannot hold a read on every tick. The terminal mirrors use the same order
+  (`meta.tried.mirror`).
 
 ### Terminal events on the PR record
 
@@ -1421,12 +1438,13 @@ ERROR upgrade-night dryrun: HISTORY NOT WRITTEN: STUCK: …; the history was los
   history marks it mirrored (`items[id].mirrored`): its record carries it, or the PR has no
   lane record. Backfilled merges are never owed, because the lane did not watch those PRs.
 - **When the mirrors are written.** After the open-PR records, at most
-  `max_mirrors_per_tick` (10) per tick, and only when the PR-write phase can write: no
-  comment is read otherwise. The edit happens only when the content changes, and a PR with
+  `max_mirrors_per_tick` (10) per tick, in the fair order, and only when the PR-write phase
+  can write: no comment is read otherwise. A record that is refused or cannot be parsed
+  stays owed and takes its turn, so it cannot starve the others. The edit happens only when the content changes, and a PR with
   no lane record gets no new comment (`summary.history.mirrors.no_record`).
 - **Their own stop.** A failure on a mirror stops only the mirrors. A denial halts only the
-  mirrors: it is kept in `meta.mirror_halt` and logged as `ERROR … TERMINAL MIRRORS HALTED`,
-  and the open-PR records go on. To clear it, after fixing the cause:
+  mirrors: it is kept in `meta.mirror_halt`, whose text names that key, and logged as
+  `ERROR … TERMINAL MIRRORS HALTED`. The open-PR records go on. To clear it, after fixing the cause:
 
   ```bash
   kubectl -n upgrade-agent get cm upgrade-ledger -o json \
@@ -1466,8 +1484,9 @@ upgrade-night dryrun: history: WRITTEN: 311 new events (observed 13, merged 298)
   tick that merged, the next tick finds the PR merged by `haynes-ops-bot`. It would record
   that as the shepherd's merge, because the lane and the shepherd share the identity. Story
   556 should read the change lock's last holder before turning on the first live class.
-- **A shepherd's close.** The format's `closed` edge has no `shepherd` actor. A PR the
-  shepherd closes is named in the summary and gets no event.
+- **A shepherd's close.** The format's `closed` edge has no `shepherd` actor, so a PR the
+  shepherd closes is recorded with actor `hand`. Its login `haynes-ops-bot[bot]` and the
+  reason say whose identity it is. The event has no evidence field for a login.
 - **A deferred revert.** A revert left unread by the budget is read on a later tick only
   while its merge time is inside the catch-up window. During the backfill, that is the whole
   window, because the marker waits.

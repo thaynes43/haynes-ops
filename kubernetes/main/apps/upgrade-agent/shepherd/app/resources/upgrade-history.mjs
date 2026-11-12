@@ -68,7 +68,7 @@ export const OBSERVABLE = Object.freeze([...OPEN, 'closed']);
 export const STICKY = Object.freeze(['reverted']);
 const REVERTABLE = ['failed', 'merged_unverified', 'awaiting_pin', 'done'];
 const AFTER_MERGE = ['merged_unverified', 'awaiting_pin', 'done', 'failed', 'reverting', 'reverted_unverified', 'reverted', 'escalated'];
-const TERMINAL = ['merged', 'closed', 'merge-unknown'];
+const TERMINAL = ['merged', 'closed'];
 const SHA = /^[0-9a-f]{40}$/;
 const LIST_FIELDS = 'number,title,author,mergedAt,mergedBy,labels,mergeCommit,headRefOid,body,files';
 const REVERT_FIELDS = 'number,title,author,mergedAt,mergedBy,mergeCommit';
@@ -204,6 +204,10 @@ export function prIndex(st) {
   return by;
 }
 
+// The fair order for what stays unread (fates, mirrors): the least recently tried first, so
+// one stuck PR cannot hold a slot on every tick. tried = meta.tried.<kind>: { "<pr>": at }.
+export const fairOrder = (prs, tried = {}) => [...prs].sort((a, b) => String(tried[a] ?? '').localeCompare(String(tried[b] ?? '')) || a - b);
+
 // ── the item of a PR, by the lane's route ───────────────────────────────────────────
 // e: a PR as gh reads it (title, labels, body, files). The same facts the classifier reads
 // (parsePackageTable, updateTypes, clusterEffect) through fromLaneRecord, so a merged PR's
@@ -213,10 +217,13 @@ export function prIndex(st) {
 const TITLE = /^[a-z]+(?:\([^)]*\))?!?:\s+update\s+(?:(?:image|chart|dependency|helm release|module|docker tag)\s+)?(.+?)(?:\s+(?:action|image|digest))?\s+to\s+(\S+)$/i;
 export function laneItem(e, repo, rules, at) {
   const labels = labelNames(e);
-  const byTitle = typeof e.body !== 'string';
-  let packages = [], name = null, to = null;
+  // no body read, or a body that gives no package table (edited to empty, say): the title
+  // route, marked basis title, and never taken as a move to a newer version
+  let packages = typeof e.body === 'string' ? L.parsePackageTable(e.body) : [];
+  const byTitle = !packages.length;
+  let name = null, to = null;
   if (byTitle) { const m = TITLE.exec(String(e.title || '').trim()); if (m) { name = m[1].trim(); to = m[2]; } }
-  else { packages = L.parsePackageTable(e.body); const pk = packages[0] || {}; name = pk.name ?? null; to = pk.to ?? null; }
+  else { const pk = packages[0] || {}; name = pk.name ?? null; to = pk.to ?? null; }
   const files = (e.files || []).map(f => (typeof f === 'string' ? f : f?.path)).filter(Boolean);
   const types = L.updateTypes({ labels, packages, title: e.title || '' });
   const ce = files.length ? L.clusterEffect(files, rules) : { own_images: [], targets: [] };
@@ -261,7 +268,8 @@ function listSplit(repo, q, since, until, cfg, run, budget, fields, depth = 0) {
   const mid = iso(Math.floor((Date.parse(since) + Date.parse(until)) / 2));
   const a = listSplit(repo, q, since, mid, cfg, run, budget, fields, depth + 1);
   if (!a.ok) return a;
-  const b = listSplit(repo, q, iso(Date.parse(mid) + 1000), until, cfg, run, budget, fields, depth + 1);
+  // GitHub honours sub-second bounds: the second half starts a millisecond after the middle
+  const b = listSplit(repo, q, iso(Date.parse(mid) + 1), until, cfg, run, budget, fields, depth + 1);
   if (!b.ok) return b;
   return { ok: true, list: [...a.list, ...b.list], splits: Math.max(a.splits, b.splits) };
 }
@@ -322,7 +330,7 @@ export function catchUpSince(doc, cfg) {
 // fates: Map pr -> PR (readFate) | null (unreadable); a gone PR missing from it was not
 // read this tick (the budget). reverts: Map revert pr -> { targets: [pr] | null, titles:
 // Map pr -> title }.
-export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rules, scan, fates = new Map(), reverts = new Map(), backfilling, renovateAuthors }) {
+export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rules, scan, fates = new Map(), reverts = new Map(), backfilling, renovateAuthors, recount = null, triedFates = [] }) {
   const st = replay(doc);
   if (st.errors.length) return { ok: false, why: `the history does not replay (${st.errors.length} event(s) refused): ${st.errors[0]}` };
   const out = [];
@@ -414,7 +422,7 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
     let li;
     try { li = laneItem(f, repo, rules, at); } catch (e) { notes.unrecorded.push({ pr, item: id, why: `its item could not be named: ${e.message}` }); continue; }
     const when = iso(f.state === 'MERGED' ? f.mergedAt : f.closedAt || at);
-    if (li.id !== id) {
+    if (li.id !== id && li.basis !== 'title') {
       // Renovate moved the PR to a newer version before it merged or closed. A merge whose
       // merger or commit was not read waits: the old item must not close without the new one.
       if (f.state === 'MERGED' && (!actorOf(f.mergedBy?.login ?? f.mergedBy, cfg) || !SHA.test(f.mergeCommit?.oid ?? f.mergeCommit ?? ''))) { notes.unread.push({ pr, item: id, why: 'the PR merged a newer version, and who merged it or its merge commit could not be read; nothing written' }); continue; }
@@ -427,8 +435,10 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
     if (f.state === 'MERGED') mergedOn(id, f, 'lane');
     else {
       const a = actorOf(f.closedBy, cfg);
-      if (a.kind === 'shepherd') { notes.unrecorded.push({ pr, item: id, type: 'closed', why: `closed by the shepherd (${a.login}); the format's closed edge has no shepherd actor` }); continue; }
-      close(s, id, pr, when, a, `PR #${pr} was closed without a merge by ${a.login}`, at);
+      // the format's closed edge has no shepherd actor: the nearest it allows is hand (an
+      // automated session-like actor), with the shepherd's login, and the reason says so
+      if (a.kind === 'shepherd') close(s, id, pr, when, { kind: 'hand', login: a.login }, `PR #${pr} was closed without a merge by ${a.login}, the shepherd's identity (recorded as hand: the format's closed edge has no shepherd actor)`, at);
+      else close(s, id, pr, when, a, `PR #${pr} was closed without a merge by ${a.login}`, at);
     }
   }
 
@@ -474,12 +484,32 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
   const compare = scan?.ok ? compareCounts({ scan, st, events: next.events, renovateAuthors, rules, repo, at }) : null;
   const complete = scan?.ok && !notes.deferred.some(d => !Number.isInteger(d.item));
   if (backfilling && complete) next.meta.backfill = { at, window: scan.window, query: scan.query, events: out.filter(e => e.recorded_by === 'backfill').length, compare };
+  // the backfill's comparison, owed until made: GitHub's count read again (recount) against
+  // what the backfill listed and holds
+  const bc = next.meta.backfill?.compare;
+  if (!backfilling && bc && bc.match !== true && Number.isInteger(recount)) {
+    next.meta.backfill = { ...next.meta.backfill, compare: { ...bc, github_count: recount, match: recount === bc.listed && bc.history_count === recount && (bc.missing || []).length === 0, compared_at: at } };
+  }
+  // the catch-up's comparison: one disagreement can be GitHub's search index (the list and the
+  // count are read seconds apart); it is an ERROR only when the next tick disagrees again
+  let catchUpRepeated = false;
+  if (!backfilling && compare) {
+    if (compare.match === false) { catchUpRepeated = !!doc.meta.catch_up_mismatch; next.meta.catch_up_mismatch = { since: doc.meta.catch_up_mismatch?.since ?? at, window: compare.window, github_count: compare.github_count, listed: compare.listed, history_count: compare.history_count }; }
+    else if (compare.match === true) delete next.meta.catch_up_mismatch;
+  }
+  // the fair order: when each PR still waiting for its fate was last tried
+  const pending = new Set([...st.items.values()].filter(x => OPEN.includes(x.item.state) && Number.isInteger(x.item.carrier?.pr) && !openSet.has(x.item.carrier.pr)).map(x => x.item.carrier.pr));
+  const fateTried = {};
+  for (const pr of pending) { const t = triedFates.includes(pr) ? at : doc.meta.tried?.fate?.[pr]; if (t) fateTried[pr] = t; }
+  const tried = { ...(next.meta.tried || {}), fate: fateTried };
+  if (!Object.keys(tried.fate).length) delete tried.fate;
+  if (Object.keys(tried).length) next.meta.tried = tried; else delete next.meta.tried;
   const rot = rotate(next, cfg.max_bytes);
   if (!rot.ok) return { ok: false, stuck: true, why: rot.why };
   if (rot.dropped) rot.doc.meta.rotation = { at, dropped: rot.dropped, forgotten: rot.forgotten, oldest_kept: rot.doc.events[0]?.at ?? null };
   const changed = out.length > 0 || rot.dropped > 0 || JSON.stringify(doc.meta) !== JSON.stringify(rot.doc.meta) || JSON.stringify(doc.items) !== JSON.stringify(rot.doc.items);
   const titleItems = Object.values(rot.doc.items).filter(d => d.basis === 'title').length;
-  return { ok: true, doc: rot.doc, events: out, notes, compare, rotation: rot, changed, backfill_complete: backfilling ? complete : null, title_items: titleItems, terminals: terminalsOf(rot.doc, openSet), bytes: rot.bytes };
+  return { ok: true, doc: rot.doc, events: out, notes, compare, rotation: rot, changed, backfill_complete: backfilling ? complete : null, title_items: titleItems, terminals: terminalsOf(rot.doc, openSet), bytes: rot.bytes, catch_up_repeated: catchUpRepeated };
 }
 
 // Terminal events owed to PR records (story 593 (d)), on facts: an item whose newest event
@@ -495,7 +525,8 @@ export function terminalsOf(doc, openSet) {
     if (doc.items[ev.item_id]?.mirrored === ev.id) continue;
     if (ev.type === 'closed' && openSet.has(ev.carrier.pr)) continue;
     const prev = byPr.get(ev.carrier.pr);
-    if (prev && Date.parse(prev.terminal.at) > Date.parse(ev.at)) continue;
+    // the newest wins; at the same instant (a PR moved to a newer version, then merged) the merge
+    if (prev && (Date.parse(prev.terminal.at) > Date.parse(ev.at) || (Date.parse(prev.terminal.at) === Date.parse(ev.at) && prev.terminal.type === 'merged'))) continue;
     byPr.set(ev.carrier.pr, { item: ev.item_id, terminal: { type: ev.type, at: ev.at, state: ev.to, by: ev.actor.login ?? ev.actor.kind, item: ev.item_id, event: ev.id, ...(ev.evidence?.merge_commit ? { merge_commit: ev.evidence.merge_commit } : {}) } });
   }
   // a superseded item and the merged one on the same PR: both are done once the merge is
@@ -611,8 +642,10 @@ export function historyPhase({ rules, run, env, repo, at, records, openPrs, verd
   const cfg = historyConfig(rules);
   if (!cfg.ok) return stuck(cfg.why);
   const budget = makeBudget(cfg, clock, startedAt);
-  const read = M.readNamedConfigMap(HISTORY.name, run);
+  // the marker first: a first writer writes the history, then the marker, so a marker read
+  // before the history cannot meet a history that is not there yet
   const mread = M.readNamedConfigMap(MARKER.name, run);
+  const read = M.readNamedConfigMap(HISTORY.name, run);
   if (!read || !mread) return { summary: { ...sum, read: 'unreadable', write: 'failed', why_not: `unreadable: ConfigMap upgrade-agent/${!read ? HISTORY.name : MARKER.name}; nothing derived or written`, elapsed_ms: clock() - t0 }, terminals: [] };
   const mk = parseMarker(mread.found ? mread.cm : null);
   if (!mk.ok) return stuck(`${mk.why}; nothing written`);
@@ -627,9 +660,8 @@ export function historyPhase({ rules, run, env, repo, at, records, openPrs, verd
   const openSet = new Set(openPrs);
   const fates = new Map(), reverts = new Map();
   const scanPrs = new Set(scan.ok ? scan.list.map(e => e.number) : []);
-  for (const [, s] of st0.items) {
-    const pr = s.item.carrier?.pr;
-    if (!OPEN.includes(s.item.state) || !Number.isInteger(pr) || openSet.has(pr) || scanPrs.has(pr) || fates.has(pr)) continue;
+  const gone = [...new Set([...st0.items.values()].filter(s => OPEN.includes(s.item.state) && Number.isInteger(s.item.carrier?.pr) && !openSet.has(s.item.carrier.pr) && !scanPrs.has(s.item.carrier.pr)).map(s => s.item.carrier.pr))];
+  for (const pr of fairOrder(gone, p.doc.meta.tried?.fate)) {
     if (!budget.pr()) break;
     const f = readFate(repo, pr, run);
     if (f?.state === 'CLOSED') budget.pr(); // the closer read
@@ -646,7 +678,16 @@ export function historyPhase({ rules, run, env, repo, at, records, openPrs, verd
       reverts.set(e.number, { targets, titles: tmap });
     }
   }
-  const plan = planHistory({ doc: p.doc, records, openPrs, verdict, at, repo, cfg, rules, scan, fates, reverts, backfilling, renovateAuthors: rules.renovate_pr_authors || [] });
+  // the backfill's comparison is owed until GitHub's count has been read and matches: read the
+  // count again for the backfill's window (one search per author; the backfill is not re-run)
+  let recount = null;
+  const bfc = p.doc.meta.backfill?.compare;
+  if (!backfilling && bfc && bfc.match !== true && budget.time()) {
+    const { since: s0, until: u0 } = p.doc.meta.backfill.window;
+    const counts = (rules.renovate_pr_authors || []).map(a => readCount(repo, `author:${a} merged:${s0}..${u0}`, run));
+    recount = counts.every(Number.isInteger) ? counts.reduce((x, y) => x + y, 0) : null;
+  }
+  const plan = planHistory({ doc: p.doc, records, openPrs, verdict, at, repo, cfg, rules, scan, fates, reverts, backfilling, renovateAuthors: rules.renovate_pr_authors || [], recount, triedFates: [...fates.keys()] });
   sum.reads = { per_pr: budget.reads, cap: cfg.max_pr_reads_per_tick, stopped: budget.stopped };
   if (!plan.ok) return stuck(`${plan.why}; nothing written`);
   for (const ev of plan.events) sum.by_type[ev.type] = (sum.by_type[ev.type] || 0) + 1;
@@ -654,8 +695,8 @@ export function historyPhase({ rules, run, env, repo, at, records, openPrs, verd
   sum.total = { events: plan.doc.events.length, items: Object.keys(plan.doc.items).length, title_items: plan.title_items, bytes: plan.bytes, cap: cfg.max_bytes, oldest: plan.doc.events[0]?.at ?? null };
   sum.rotation = plan.rotation.dropped ? { dropped: plan.rotation.dropped, forgotten: plan.rotation.forgotten } : null;
   sum.backfill = backfilling ? (plan.backfill_complete ? { state: 'this tick', window: scan.window, events: plan.doc.meta.backfill.events, compare: plan.compare } : { state: 'not yet', why: scan.ok ? 'reads left for a later tick (budget)' : scan.why, window: scan.window, ...(scan.ok ? { compare: plan.compare } : {}) })
-    : { state: 'done', at: p.doc.meta.backfill.at, window: p.doc.meta.backfill.window, compare: p.doc.meta.backfill.compare };
-  sum.catch_up = backfilling ? null : scan.ok ? { window: scan.window, ...pick(plan.compare, ['compared', 'github_count', 'listed', 'history_count', 'shared_item', 'missing', 'reverts', 'match']) } : { window: scan.window, why: scan.why };
+    : { state: 'done', at: p.doc.meta.backfill.at, window: p.doc.meta.backfill.window, compare: plan.doc.meta.backfill?.compare ?? p.doc.meta.backfill.compare };
+  sum.catch_up = backfilling ? null : scan.ok ? { window: scan.window, ...pick(plan.compare, ['compared', 'github_count', 'listed', 'history_count', 'shared_item', 'missing', 'reverts', 'match']), ...(plan.compare?.match === false ? { repeated: plan.catch_up_repeated } : {}) } : { window: scan.window, why: scan.why };
   sum.notes = Object.fromEntries(Object.entries(plan.notes).filter(([, v]) => (Array.isArray(v) ? v.length : v)));
   sum.remembered_merges = plan.doc.meta.remembered_merges || [];
   sum.mirror_halt = plan.doc.meta.mirror_halt ?? null;
@@ -693,12 +734,26 @@ const pick = (o, keys) => Object.fromEntries(keys.filter(k => o && k in o).map(k
 // After the PR-write phase: mark the terminals whose record now carries them (updated,
 // current) or that have no record (no_record), and keep a denial on a mirror as the
 // mirrors' own halt. One more write at the version the first one returned.
-export function commitMirrors({ ctx, terminals, result, halt, at, env, apply = applyHistory }) {
+// read = the PRs whose record was read this tick: those still owed keep that time in
+// meta.tried.mirror (the fair order), the rest leave it.
+export function commitMirrors({ ctx, terminals, result, halt, at, env, read = [], apply = applyHistory }) {
   if (!ctx?.rv) return { written: false, why: 'the history was not written this tick' };
   const ok = new Set([...(result?.updated || []), ...(result?.current || []), ...(result?.no_record || [])]);
   const marks = terminals.filter(t => ok.has(t.pr)).flatMap(t => t.items);
   let { doc, marked } = markMirrored(ctx.doc, marks);
   if (halt && !doc.meta.mirror_halt) { doc = { ...doc, meta: { ...doc.meta, mirror_halt: { at, why: halt.why } } }; marked++; }
+  const owed = new Set(terminals.filter(t => !ok.has(t.pr)).map(t => t.pr));
+  const before = doc.meta.tried?.mirror || {};
+  const mirror = {};
+  for (const pr of owed) { const t = read.includes(pr) ? at : before[pr]; if (t) mirror[pr] = t; }
+  if (JSON.stringify(mirror) !== JSON.stringify(before)) {
+    const tried = { ...(doc.meta.tried || {}), mirror };
+    if (!Object.keys(mirror).length) delete tried.mirror;
+    const meta = { ...doc.meta, tried };
+    if (!Object.keys(tried).length) delete meta.tried;
+    doc = { ...doc, meta };
+    marked++;
+  }
   if (!marked) return { written: false, why: 'nothing to mark' };
   const w = apply(historyManifest(doc, ctx.rv), MANAGER, env);
   return w.ok ? { written: true, marked: marks.length, rv: w.rv } : { written: false, why: `${w.conflict ? 'conflict' : w.detail}; the next tick reads the records again`, raw: w.raw };
@@ -709,8 +764,9 @@ export function historyLine(h) {
   if (!h) return 'not run';
   if (h.error) return `FAILED: ${h.error}`;
   const types = Object.entries(h.by_type || {}).map(([k, v]) => `${k} ${v}`).join(', ');
-  const bf = h.backfill?.state === 'this tick' ? `; backfill this tick: ${h.backfill.events} merged events, ${cmpLine(h.backfill.compare)}` : h.backfill?.state === 'not yet' ? `; backfill not yet: ${h.backfill.why}` : '';
-  const cu = h.catch_up ? (h.catch_up.why ? `; catch-up unreadable: ${h.catch_up.why}` : `; catch-up since ${h.catch_up.window.since}: ${cmpLine(h.catch_up)}`) : '';
+  const bf = h.backfill?.state === 'this tick' ? `; backfill this tick: ${h.backfill.events} merged events, ${cmpLine(h.backfill.compare)}` : h.backfill?.state === 'not yet' ? `; backfill not yet: ${h.backfill.why}`
+    : h.backfill?.compare && h.backfill.compare.match !== true ? `; backfill comparison still owed: ${cmpLine(h.backfill.compare)}` : '';
+  const cu = h.catch_up ? (h.catch_up.why ? `; catch-up unreadable: ${h.catch_up.why}` : `; catch-up since ${h.catch_up.window.since}: ${cmpLine(h.catch_up)}${h.catch_up.match === false ? (h.catch_up.repeated ? ' on two ticks in a row' : ' (first disagreement: GitHub\'s search index may lag; an ERROR if the next tick disagrees again)') : ''}`) : '';
   const tot = h.total ? `; ${h.write === 'written' ? 'holds' : 'would hold'} ${h.total.events} events, ${h.total.items} items (${h.total.title_items} named from a title), ${h.total.bytes} of ${h.total.cap} bytes` : '';
   const n = h.write === 'written' ? `${h.events} new event${h.events === 1 ? '' : 's'}${types ? ` (${types})` : ''}` : `${h.derived || 0} event${h.derived === 1 ? '' : 's'} derived${types ? ` (${types})` : ''}, none written`;
   const rm = (h.remembered_merges || []).length ? `; MERGED WHILE REMEMBERED: ${h.remembered_merges.map(x => `#${x.pr} (${x.state})`).join(', ')}` : '';
@@ -719,14 +775,19 @@ export function historyLine(h) {
 const cmpLine = c => (c ? `GitHub counts ${c.github_count ?? 'unread'} merged Renovate PRs, listed ${c.listed}, the history holds ${c.history_count} (${c.shared_item?.length || 0} through another PR's item), missing ${c.missing.length ? c.missing.map(x => `#${x}`).join(', ') : 'none'}${c.match === false ? ' (MISMATCH)' : c.match === null ? ' (GitHub count unread: not compared)' : ''}` : 'no comparison');
 // what the tick logs at ERROR level: anything that leaves the history unwritten or stuck,
 // and a merge seen on a remembered item
-export const historyError = h => !!h && !!(h.error || ['failed', 'conflict', 'stuck'].includes(h.write) || (h.remembered_merges || []).length > 0 || h.marker_error || (h.backfill?.state === 'this tick' && h.backfill.compare?.match === false) || h.catch_up?.match === false);
+export const historyError = h => !!h && !!(h.error || ['failed', 'conflict', 'stuck'].includes(h.write) || (h.remembered_merges || []).length > 0 || h.marker_error || h.backfill?.compare?.match === false || (h.catch_up?.match === false && h.catch_up.repeated));
 
 // The PR-record items owed a terminal (story 593 (d)): the lane's own record, with
 // terminal set; edit only, never a new comment on a closed PR. At most max_mirrors_per_tick.
-export function terminalRecordItems(terminals, openPrs, rcd, at, run, repo, cfg, budget) {
-  const items = [], skipped = [], deferred = [];
-  for (const t of terminals.filter(x => !openPrs.includes(x.pr))) {
+// In the fair order (meta.tried.mirror): a record that stays refused or unparseable cannot
+// hold a slot on every tick.
+export function terminalRecordItems(terminals, openPrs, rcd, at, run, repo, cfg, budget, tried = {}) {
+  const items = [], skipped = [], deferred = [], read = [];
+  const byPr = new Map(terminals.map(t => [t.pr, t]));
+  for (const pr of fairOrder(terminals.filter(x => !openPrs.includes(x.pr)).map(x => x.pr), tried)) {
+    const t = byPr.get(pr);
     if (items.length + skipped.length >= cfg.max_mirrors_per_tick || (budget && !budget.pr())) { deferred.push(t.pr); continue; }
+    read.push(t.pr);
     const raw = M.readIssueComments(repo, t.pr, run);
     const comments = raw ? L.recordComments(raw) : null;
     const own = comments ? M.ownRecords(comments, rcd).own : [];
@@ -734,5 +795,5 @@ export function terminalRecordItems(terminals, openPrs, rcd, at, run, repo, cfg,
     if (own.length && !(cur && cur.pr === t.pr)) { skipped.push({ pr: t.pr, why: 'the lane record on this PR cannot be parsed; not edited' }); continue; }
     items.push({ rec: cur ? { ...cur, terminal: t.terminal, updated: at } : { schema: 'haynes.upgrade-lane/v1', pr: t.pr, terminal: t.terminal, updated: at }, comments, edit_only: true });
   }
-  return { items, skipped, deferred };
+  return { items, skipped, deferred, read };
 }

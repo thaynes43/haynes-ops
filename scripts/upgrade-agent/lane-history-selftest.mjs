@@ -133,7 +133,9 @@ const p1 = plan(withMarker(H.emptyDoc()), { records: [a, b, c], openPrs: [101, 1
   ok(JSON.stringify(types(p7)) === JSON.stringify(['closed:needed>closed']) && p7.events[0].actor.kind === 'renovate' && /closed without a merge by renovate\[bot\]/.test(p7.events[0].reason) && p7.terminals[0]?.terminal.type === 'closed', 'M3: a PR closed without a merge: closed, by who closed it');
   const p7u = plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), fates: new Map([[101, closedFate(101, { closedBy: null, closed_by_read: false })]]) });
   ok(p7u.events.length === 0 && p7u.notes.unread.some(x => x.pr === 101 && /who closed it could not be read/.test(x.why)), 'M3: who closed it could not be read: no event this tick (never the lane as the closer)');
-  ok(!plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), fates: new Map([[101, closedFate(101, { closedBy: 'haynes-ops-bot[bot]' })]]) }).events.length, 'M3: closed by the shepherd: no event (the format\'s closed edge has no shepherd actor; an open point)');
+  const sh = plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), fates: new Map([[101, closedFate(101, { closedBy: 'haynes-ops-bot[bot]' })]]) });
+  ok(JSON.stringify(types(sh)) === JSON.stringify(['closed:needed>closed']) && sh.events[0].actor.kind === 'hand' && sh.events[0].actor.login === 'haynes-ops-bot[bot]' && /the shepherd's identity \(recorded as hand: the format's closed edge has no shepherd actor\)/.test(sh.events[0].reason) && RF.checkEvent(sh.events[0]).length === 0,
+    'second review 2: a close by the shepherd is recorded (actor hand, the nearest the format allows; the shepherd\'s login and identity kept), so the item does not stay open', JSON.stringify(sh.events[0]));
   const ga = plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), fates: new Map([[101, closedFate(101, { closedBy: 'github-actions[bot]' })]]) });
   ok(ga.events[0]?.actor.kind === 'hand' && ga.events[0].actor.login === 'github-actions[bot]', 'M3: closed by another bot: actor hand, its login kept');
   ok(plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), fates: new Map([[101, null]]) }).notes.unread.some(x => x.pr === 101), 'tick: a PR that left the open list and cannot be read: no event');
@@ -203,7 +205,7 @@ const p1 = plan(withMarker(H.emptyDoc()), { records: [a, b, c], openPrs: [101, 1
   ok(p.ok && JSON.stringify(types(p)) === JSON.stringify(['merged:new>merged_unverified', 'merged:new>merged_unverified', 'merged:new>merged_unverified', 'revert-merged:merged_unverified>reverted_unverified']), 'backfill: three Renovate merges and one revert by a person', JSON.stringify(types(p)));
   ok(cmp.github_count === 4 && cmp.listed === 4 && cmp.history_count === 4 && cmp.recorded === 3 && cmp.shared_item.length === 1 && cmp.shared_item[0].pr === 304 && cmp.missing.length === 0 && cmp.match === true && cmp.reverts.titled === 1 && cmp.reverts.recorded === 1 && /github_count .* against history_count/.test(cmp.compared),
     'M2: the comparison: GitHub\'s own count 4 against the 4 the history holds (3 on their own item, 1 through another PR\'s), none missing', JSON.stringify(cmp));
-  ok(p.doc.items[H.laneItem(list[2], REPO, rules, at(0)).id]?.name === `${REPO}#303`, 'backfill: a PR with no package table is named <repo>#<pr>, as fromLaneRecord names it');
+  ok(p.doc.items[H.laneItem(list[2], REPO, rules, at(0)).id]?.name === `${REPO}#303` && p.doc.items[H.laneItem(list[2], REPO, rules, at(0)).id]?.basis === 'title', 'backfill: a PR whose body gives no package table takes the title route (here a group title with no version: <repo>#<pr>), marked basis title');
   ok(p.doc.meta.backfill?.compare?.match === true, 'backfill: the marker is set with its comparison');
   // M2: a list shorter than GitHub's count is a mismatch, whatever the history holds
   const cut = plan(H.emptyDoc(), { backfilling: true, scan: { ...scanOf(list), github_count: 5 } });
@@ -432,6 +434,114 @@ const phase = (f, recs, o = {}) => H.historyPhase({ rules, run: f.run, env: {}, 
   const lines = H.renderData(p.doc).events.trim().split('\n');
   ok(lines.every(l => !/"schema"|"id"|"login":null/.test(l)) && lines.map(l => H.unpack(JSON.parse(l))).every((e, i) => e.id === p.events[i].id && RF.checkEvent(e).length === 0), 'size: a stored line leaves out schema, id and a null login; unpack restores the event');
   console.log(`size: one observed line ${Buffer.byteLength(lines[0])} bytes (a ${cfg.max_reason_chars}-character reason), one merged line ${Buffer.byteLength(lines[1])} bytes`);
+}
+
+// ── 10. the second review (LOW points on bac73879) ──────────────────────────────────
+{
+  // 1: a split boundary: the second half starts a millisecond after the middle
+  const since = at(-30 * 1440), until = at(0);
+  const mid = new Date(Math.floor((Date.parse(since) + Date.parse(until)) / 2)).toISOString();
+  const atMid = { ...mergedPr(7001, 0), mergedAt: mid }, after = { ...mergedPr(7002, 0), mergedAt: new Date(Date.parse(mid) + 1).toISOString() };
+  const runB = (cmd, argv) => {
+    if (argv[0] === 'api') return JSON.stringify({ total_count: 2, incomplete_results: false });
+    const q = argv[argv.indexOf('--search') + 1];
+    if (q.startsWith('Revert')) return '[]';
+    const [s0, u0] = q.split('merged:')[1].split('..');
+    if (s0 === since && u0 === until) return JSON.stringify(Array.from({ length: cfg.max_search_results }, (_, i) => mergedPr(8000 + i, -1)));
+    return JSON.stringify([atMid, after].filter(e => Date.parse(e.mergedAt) >= Date.parse(s0) && Date.parse(e.mergedAt) <= Date.parse(u0)));
+  };
+  const rb = H.readMerged(REPO, since, until, cfg, runB, H.makeBudget(cfg), AUTHORS);
+  ok(rb.ok && rb.list.filter(e => e.number === 7001).length === 1 && rb.list.filter(e => e.number === 7002).length === 1, 'second review 1: at a split, a PR merged at the middle and one a millisecond later are each listed once', JSON.stringify(rb.list?.map(e => [e.number, e.mergedAt])));
+
+  // 2: a stuck PR at the front does not stop a later one from being read on the next tick
+  const r1 = { ...rules, night: { ...rules.night, history: { ...rules.night.history, max_pr_reads_per_tick: 1 } } };
+  const f = api();
+  const seen = [];
+  const runF = (cmd, argv) => {
+    if (cmd === 'gh' && argv[0] === 'pr' && argv[1] === 'view') { seen.push(Number(argv[2])); return argv[2] === '9102' ? JSON.stringify({ ...mergedPr(9102, 5), state: 'MERGED' }) : null; }
+    return f.run(cmd, argv);
+  };
+  H.historyPhase({ rules: r1, run: runF, env: {}, repo: REPO, at: at(0), records: [rec(9101), rec(9102)], openPrs: [9101, 9102], verdict: null, write: true, apply: f.apply });
+  const t1 = H.historyPhase({ rules: r1, run: runF, env: {}, repo: REPO, at: at(15), records: [], openPrs: [], verdict: null, write: true, apply: f.apply });
+  const t2 = H.historyPhase({ rules: r1, run: runF, env: {}, repo: REPO, at: at(30), records: [], openPrs: [], verdict: null, write: true, apply: f.apply });
+  ok(JSON.stringify(seen) === JSON.stringify([9101, 9102]) && t1.summary.events === 0 && t2.summary.by_type?.merged === 1 && JSON.parse(f.get().data.meta).tried?.fate?.[9101] === at(15),
+    'second review 2: with one read a tick, the stuck #9101 is read first, then #9102 on the next tick (least recently tried first)', JSON.stringify({ seen, t2: t2.summary.by_type, tried: JSON.parse(f.get().data.meta).tried }));
+
+  // 3: closed against merged at the same instant: merged wins, also when the merged item had earlier events
+  const y = rec(9201, { to: '2.0.0', pkg: 'ghcr.io/example/app9202' });
+  const x = rec(9202);
+  const d0 = plan(withMarker(H.emptyDoc()), { records: [y, x], openPrs: [9201, 9202] }).doc;
+  const d1 = plan(d0, { records: [y], openPrs: [9201], at: at(15), scan: scanOf([mergedPr(9202, 10, { to: '2.0.0' })]) });
+  ok(types(d1).join() === 'closed:needed>closed,merged:needed>merged_unverified' && d1.events[0].at === d1.events[1].at && d1.terminals.find(t => t.pr === 9202)?.terminal.type === 'merged',
+    'second review 3: a PR moved to a version another item already had, then merged: the close and the merge share an instant, and the PR\'s terminal says merged', JSON.stringify({ types: types(d1), t: d1.terminals }));
+
+  // 4: the backfill's comparison is owed until GitHub's count has been read and matches
+  const list = [mergedPr(9301, -100), mergedPr(9302, -50)];
+  const bf = plan(H.emptyDoc(), { backfilling: true, scan: { ...scanOf(list), github_count: null } });
+  ok(bf.doc.meta.backfill && bf.doc.meta.backfill.compare.match === null, 'second review 4: a backfill whose GitHub count was unread completes, its comparison pending (match null)');
+  const later1 = plan(bf.doc, { at: at(15), recount: null });
+  ok(later1.doc.meta.backfill.compare.match === null && !H.historyError({ write: 'written', backfill: { state: 'done', compare: later1.doc.meta.backfill.compare } }), 'second review 4: still pending while the count stays unread (not an ERROR)');
+  const later2 = plan(bf.doc, { at: at(30), recount: 2 });
+  ok(later2.doc.meta.backfill.compare.match === true && later2.doc.meta.backfill.compare.github_count === 2 && later2.doc.meta.backfill.compare.compared_at === at(30) && later2.events.length === 0, 'second review 4: a later tick reads the count and makes the comparison (no backfill re-run)');
+  const bad = plan(bf.doc, { at: at(30), recount: 3 });
+  ok(bad.doc.meta.backfill.compare.match === false && H.historyError({ write: 'not-needed', backfill: { state: 'done', compare: bad.doc.meta.backfill.compare } }), 'second review 4: a mismatch is an ERROR on every tick until it matches');
+  ok(plan(bad.doc, { at: at(45), recount: 2 }).doc.meta.backfill.compare.match === true, 'second review 4: and stops when a later count matches');
+
+  // 5: a catch-up disagreement is an ERROR only when the next tick disagrees again
+  const base = plan(H.emptyDoc(), { backfilling: true, scan: scanOf(list) }).doc;
+  const c1 = plan(base, { at: at(15), scan: { ...scanOf(list, at(-100), at(15)), github_count: 3 } });
+  const s1 = { write: 'written', catch_up: { match: c1.compare.match, repeated: c1.catch_up_repeated } };
+  ok(c1.compare.match === false && !c1.catch_up_repeated && !H.historyError(s1) && c1.doc.meta.catch_up_mismatch, 'second review 5: a first catch-up disagreement is an info line and a summary field');
+  const c2 = plan(c1.doc, { at: at(30), scan: { ...scanOf(list, at(-100), at(30)), github_count: 3 } });
+  ok(c2.catch_up_repeated && H.historyError({ write: 'written', catch_up: { match: false, repeated: true } }), 'second review 5: the same disagreement on the next tick is an ERROR');
+  ok(!plan(c1.doc, { at: at(30), scan: scanOf(list, at(-100), at(30)) }).doc.meta.catch_up_mismatch, 'second review 5: a matching tick clears it');
+
+  // 6: mirrors in the fair order; a PR with no record is marked mirrored
+  const rcd = M.recordConfig(rules);
+  const one = { ...cfg, max_mirrors_per_tick: 1 };
+  const term = { type: 'merged', at: at(0), state: 'merged_unverified', by: 'renovate[bot]', item: 'i', event: 'e' };
+  const bodies = { 9401: [{ id: 1, user: { login: rcd.author.login, type: rcd.author.type }, body: `${rcd.marker}\nbroken` }], 9402: [] };
+  const runM = (cmd, argv) => { const m = argv.join(' ').match(/issues\/(\d+)\/comments/); return m ? JSON.stringify([bodies[m[1]] || []]) : null; };
+  const owed = [{ pr: 9401, terminal: term, items: [] }, { pr: 9402, terminal: term, items: [] }];
+  const m1 = H.terminalRecordItems(owed, [], rcd, at(0), runM, REPO, one, null, {});
+  const m2 = H.terminalRecordItems(owed, [], rcd, at(15), runM, REPO, one, null, { 9401: at(0) });
+  ok(m1.read.join() === '9401' && m1.skipped.length === 1 && m2.read.join() === '9402', 'second review 6: an unparseable record tried first does not hold the one mirror slot on the next tick', JSON.stringify({ m1: m1.read, m2: m2.read }));
+  const ctxDoc = plan(withMarker(H.emptyDoc()), { records: [rec(9403)], openPrs: [9403] }).doc;
+  const g = api(); g.objs['upgrade-ledger'] = { metadata: { name: 'upgrade-ledger', resourceVersion: '50' }, data: H.renderData(ctxDoc) };
+  const id = itemOf(rec(9403)), evId = ctxDoc.events[0].id;
+  const cm = H.commitMirrors({ ctx: { doc: ctxDoc, rv: '50' }, terminals: [{ pr: 9403, terminal: term, items: [[id, evId]] }], result: { no_record: [9403] }, halt: null, at: at(5), env: {}, apply: g.apply });
+  ok(cm.written && JSON.parse(g.get().data.items)[id].mirrored === evId, 'second review 6: a PR with no lane record is marked mirrored (it owes nothing more)');
+  const ctx2 = H.parseDoc(g.get());
+  const cm2 = H.commitMirrors({ ctx: { doc: ctx2.doc, rv: ctx2.rv }, terminals: [{ pr: 9404, terminal: term, items: [] }], result: {}, halt: null, at: at(10), env: {}, read: [9404], apply: g.apply });
+  ok(cm2.written && JSON.parse(g.get().data.meta).tried?.mirror?.[9404] === at(10), 'second review 6: a mirror tried and still owed keeps its time in meta.tried.mirror');
+
+  // 7: the mirror halt names the key that holds it
+  const w7 = M.writePrRecords({ items: [{ rec: { schema: 'haynes.upgrade-lane/v1', pr: 9501, terminal: term }, comments: [{ id: 5, author: rcd.author.login, author_type: rcd.author.type, body: M.renderRecord({ schema: 'haynes.upgrade-lane/v1', pr: 9501 }, rcd) }], edit_only: true }], cfg: rcd,
+    run: (cmd, argv) => JSON.stringify({ id: 5, user: { login: rcd.author.login, type: rcd.author.type }, body: M.renderRecord({ schema: 'haynes.upgrade-lane/v1', pr: 9501 }, rcd) }), env: {}, live: true, haltKey: 'meta.mirror_halt in ConfigMap upgrade-ledger (the terminal mirrors only)',
+    write: () => ({ ok: false, exit: 1, http: 403, call: 'gh api --method PATCH x', detail: 'HTTP 403' }) });
+  ok(/until a person removes meta\.mirror_halt in ConfigMap upgrade-ledger/.test(w7.halt?.why || '') && !/retry_ledger\.halt/.test(w7.halt?.why || ''), 'second review 7: a mirror denial\'s halt names meta.mirror_halt, not retry_ledger.halt', w7.halt?.why);
+
+  // 8: the marker is read before the history
+  const order = [];
+  const f8 = api();
+  H.historyPhase({ rules, run: (cmd, argv) => { if (cmd === 'kubectl') order.push(argv[argv.indexOf('--field-selector') + 1]); return f8.run(cmd, argv); }, env: {}, repo: REPO, at: at(0), records: [], openPrs: [], verdict: null, write: true, apply: f8.apply });
+  ok(order.join() === 'metadata.name=upgrade-ledger-marker,metadata.name=upgrade-ledger', 'second review 8: the marker is read before the history (a first writer writes the history, then the marker)', order.join());
+
+  // 9: no marker without a history
+  const f9 = api();
+  const only = (m, mgr) => (mgr === H.MANAGER ? { ok: false, conflict: false, detail: 'refused by the API server (Forbidden)', raw: 'x' } : f9.apply(m, mgr));
+  const t9 = H.historyPhase({ rules, run: f9.run, env: {}, repo: REPO, at: at(0), records: [rec(9601)], openPrs: [9601], verdict: null, write: true, apply: only });
+  ok(t9.summary.write === 'failed' && !f9.objs['upgrade-ledger-marker'] && !f9.writes.includes(H.MARKER_MANAGER), 'second review 9: when only the history write fails, the marker is not written');
+  const f9b = api();
+  const t9b = H.historyPhase({ rules, run: (cmd, argv) => (cmd === 'gh' ? null : f9b.run(cmd, argv)), env: {}, repo: REPO, at: at(0), records: [], openPrs: [], verdict: null, write: true, apply: f9b.apply });
+  ok(t9b.summary.write === 'not-needed' && f9b.writes.length === 0 && !f9b.objs['upgrade-ledger-marker'], 'second review 9: a tick that writes no history (nothing derived, the scan unread) writes no marker either', JSON.stringify({ w: t9b.summary.write, writes: f9b.writes }));
+
+  // 10: a body edited to empty is the title route and never a move; the mapping row agrees with the code
+  const e10 = plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), scan: scanOf([{ ...mergedPr(101, 10), body: '', title: 'chore(deps): update something' }]) });
+  ok(types(e10).join() === 'merged:needed>merged_unverified' && e10.events[0].item_id === itemOf(a) && !e10.notes.superseded.length, 'second review 10: a PR whose body was edited to empty merges on the item the lane saw (never a move)', JSON.stringify(types(e10)));
+  const row = JSON.parse(readFileSync(join(RES, 'lane-v1-to-item-v1.json'), 'utf8')).fields.find(r => r.lane === 'terminal');
+  const src = readFileSync(join(RES, 'upgrade-history.mjs'), 'utf8');
+  ok(/type \(merged or closed\)/.test(row.note) && /const TERMINAL = \['merged', 'closed'\];/.test(src), 'second review 10: the terminal mapping row and the code agree: merged or closed');
 }
 
 console.log(`\n${passes} passed, ${fails} failed`);
