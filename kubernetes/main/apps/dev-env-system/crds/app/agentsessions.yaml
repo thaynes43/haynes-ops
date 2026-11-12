@@ -4,20 +4,21 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main c4bc870d914e48d2ac446e29ba39b6ba58c7d34a (merge of PR #1091),
-# verified byte for byte (SHA-256 849e35412498455b98602a8680d615b6f7bfaa1db71b6a42b7cbee4714f6930e
-# below this header). One change since the copy from db8f0a3f:
-# - dev-env c4bc870d914e, PR #1091, DESIGN-064 5.9 and 6.7, OpenProject #777 (slice a of
-#   #741): status.summon.admittedAt (when the operator leader admitted a summoned session;
-#   set once), status.summon.closed.released (its lane and pool slot are free; true is
-#   never reversed), and rules that keep the summon record: admittedAt never changes, the
-#   closed record cannot be removed, and status.summon cannot be removed, also by removing
-#   status. Status only; nothing in spec changed.
-#   It must be here before the operator pin that writes these fields: with an older
-#   schema the API server would drop admittedAt and no summoned session could ever start.
-#   Install precondition: no AgentSession has status.summon yet (read in the cluster
-#   before this copy merged; the PR records it), so no stored object meets the new rules.
-# Earlier changes in this file, still in force: status.summon (closed, escalation) and the
+# Source: dev-env main 59169f1ff9685a73945df985b372abe304659188 (merge of PR #1095),
+# verified byte for byte (SHA-256 b634125eda2aff61a4cc364131880e768352a651219099abbe1b2d78b5ac705a
+# below this header). One change since the copy from c4bc870d:
+# - dev-env 59169f1ff968, PR #1095, DESIGN-064 6.7 and 6.8, OpenProject #779 (slice c of
+#   #741): status.summon.pages (the page events the operator leader records on a summoned
+#   session, {event, at}, at most 8; this slice writes escalation-held and
+#   escalation-reminder, once each), and a rule that an entry is never removed or changed.
+#   Status only; nothing in spec changed.
+#   It must be here before the operator pin that writes the field: with an older schema
+#   the API server would drop pages and the leader would record the same event on every
+#   pass. Install precondition: no AgentSession has status.summon yet (read in the cluster
+#   before this copy merged; the PR records it), so no stored object meets the new rule.
+# Earlier changes in this file, still in force: status.summon.admittedAt,
+# status.summon.closed.released and the rules that keep the summon record (dev-env
+# c4bc870d914e, PR #1091, OpenProject #777); status.summon (closed, escalation) and the
 # status.outcome.note bound (dev-env db8f0a3f497a, PR #1088, OpenProject #740); spec.summon
 # and its rules (dev-env 66201204c557, PR #1079, OpenProject #756); status.agent.podUID
 # (dev-env 83a125e6eb11, PR #1077, OpenProject #709).
@@ -3381,6 +3382,37 @@ spec:
                     - name
                     - state
                     type: object
+                  pages:
+                    description: |-
+                      Pages are the session's page events, each recorded once by the operator
+                      leader (DESIGN-064 6.8, ruling D9 on item 741, OP779). The keeper sends
+                      them (story 742); nothing sends them yet. Story 742 adds the terminal
+                      events. An entry is never removed or changed.
+                    items:
+                      description: |-
+                        SummonPage is one page event: what happened and when the operator
+                        recorded it (DESIGN-064 6.8's {event, at}).
+                      properties:
+                        at:
+                          format: date-time
+                          type: string
+                        event:
+                          description: |-
+                            SummonPageEvent is a page event of DESIGN-064 6.8 recorded on a session.
+                            This slice writes the two lifecycle events it decides; story 742 adds the
+                            terminal events and the rest of 6.8's lifecycle events.
+                          enum:
+                          - escalation-held
+                          - escalation-reminder
+                          maxLength: 32
+                          type: string
+                      required:
+                      - at
+                      - event
+                      type: object
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-type: atomic
                 type: object
                 x-kubernetes-validations:
                 - message: admittedAt is set once and never changes
@@ -3388,6 +3420,9 @@ spec:
                     == oldSelf.admittedAt)'
                 - message: the closed record cannot be removed
                   rule: '!has(oldSelf.closed) || has(self.closed)'
+                - message: a page event is never removed or changed
+                  rule: '!has(oldSelf.pages) || (has(self.pages) && oldSelf.pages.all(p,
+                    p in self.pages))'
               suspendedAt:
                 description: |-
                   SuspendedAt is when the operator first saw the session suspended with
