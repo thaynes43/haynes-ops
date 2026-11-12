@@ -5,6 +5,14 @@
 # critical, the one severity Alertmanager sends to Tom's phone by Pushover. Those
 # two are warnings: nothing routes them, so they show only in Alertmanager and Grafana.
 #
+# Every critical rule sets a static namespace label (OP772). Their expressions drop the
+# scrape target's namespace (max by, absent), and the nightly update lane holds every
+# cluster-wide update while a critical alert without a namespace fires. The label names
+# where the affected thing lives: dev-agents for a session (the operator's
+# --session-namespace), dev-env-system for the operator itself. Nothing else about the
+# rules changed: same expressions, same times, same severity. The two warnings carry no
+# namespace; the lane's gate reads critical alerts only.
+#
 # DevEnvReapedStopUnproven (dev-env DESIGN-025 25.4; OP490, OP515): a reaped session
 # whose agent's stop is still not proven an hour after the reap. A stop normally lands
 # within a minute. Nothing is at risk while it fires (the HOME volume is kept), so it
@@ -48,6 +56,7 @@ spec:
           keep_firing_for: 30m
           labels:
             severity: critical
+            namespace: dev-agents
           annotations:
             summary: >-
               dev-env session {{ $labels.session }}: recovery failed, so its volume is
@@ -68,6 +77,7 @@ spec:
           for: 15m
           labels:
             severity: critical
+            namespace: dev-env-system
           annotations:
             summary: >-
               The dev-env v2 operator reports no session metrics: it is down or cannot
@@ -122,6 +132,7 @@ spec:
           for: 1h
           labels:
             severity: critical
+            namespace: dev-env-system
           annotations:
             summary: >-
               dev-env project {{ $labels.project }} holds {{ $value | humanizePercentage }}
