@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Self-test for dev-env-api.sh, the upgrade-agent callers' client for the dev-env v2
-# operator API (dev-env DESIGN-064 6.5, OpenProject #739).
+# operator API (dev-env DESIGN-064 6.5, OpenProject #739), and for the reach line each
+# caller runs once per run.
 #
 # WHY THIS EXISTS
 # ---------------
@@ -13,7 +14,8 @@
 #
 # It runs the shipped client against a fake HTTPS server (python3, a throwaway
 # self-signed certificate made with openssl), the way the caller pods run it against
-# the operator.
+# the operator. The reach function is EXTRACTED from each caller's shipped script,
+# never copy-pasted, and the four copies must be byte-identical.
 #
 # Usage: scripts/upgrade-agent/dev-env-api-selftest.sh
 # Requires: bash, curl, jq, openssl, python3, timeout. No cluster access, no network
@@ -23,6 +25,12 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APPS="$REPO_ROOT/kubernetes/main/apps/upgrade-agent"
 CLIENT="${CLIENT:-$APPS/health-gate/app/resources/dev-env-api.sh}"
+REACH_SOURCES=(
+  "$APPS/alert-responder/app/resources/respond.sh"
+  "$APPS/shepherd/app/resources/run-shepherd.sh"
+  "$APPS/shepherd/app/resources/triage.sh"
+  "$APPS/health-gate/app/resources/gate.sh"
+)
 [ -r "$CLIENT" ] || { echo "FATAL: cannot read $CLIENT"; exit 1; }
 for t in curl jq openssl python3 timeout; do
   command -v "$t" >/dev/null 2>&1 || { echo "FATAL: $t is not installed"; exit 1; }
@@ -266,6 +274,55 @@ env SHELLOPTS=xtrace bash -x "$WORK/bin/client-xtrace.sh" wait-registered esc-ga
 setmode ok
 if [ "$(grep -c -- '^+' "$WORK/xtrace-out")" -gt 50 ]; then ok "forced xtrace traced the client ($(grep -c -- '^+' "$WORK/xtrace-out") lines)"; else bad "forced xtrace produced too few lines to prove anything"; fi
 if grep -qF -- "$TOKEN" "$WORK/xtrace-out"; then bad "the token appears in a forced xtrace line"; else ok "the token appears in no line of a forced xtrace"; fi
+
+
+# ── 7. the reach line in each caller's script ───────────────────────────────────────
+extract_reach() {
+  awk '/^# >>> dev-env-api reach/ { inside = 1 } inside { print } /^# <<< dev-env-api reach/ { exit }' "$1"
+}
+first=""
+for src in "${REACH_SOURCES[@]}"; do
+  rel="${src#"$REPO_ROOT"/}"
+  body="$(extract_reach "$src")"
+  case "$body" in *"dev_env_api_reach() {"*"# <<< dev-env-api reach"*) ok "reach block found in $rel" ;; *) bad "no reach block in $rel"; continue ;; esac
+  if [ -z "$first" ]; then first="$body"; elif [ "$body" = "$first" ]; then ok "reach block in $rel is identical to the first"; else bad "reach block in $rel differs from the first"; fi
+done
+# Only the function; the call that follows it in each script is not run here.
+fn="$(printf '%s\n' "$first" | awk '/^dev_env_api_reach\(\) \{/ { inside = 1 } inside { print } inside && /^}/ { exit }')"
+eval "$fn" || { bad "the reach function does not parse"; fn=""; }
+
+# reach_run NAME: runs the function in a fresh shell, with set -euo pipefail as a
+# strict caller would have, and keeps its stdout, stderr and exit code.
+reach_run() {
+  ( set -euo pipefail; eval "$fn"; dev_env_api_reach; echo "after" ) > "$OUT" 2> "$ERR"
+  RC=$?
+  cat "$OUT" "$ERR" >> "$ALL_OUT"
+}
+reach_line_ok() {  # NAME CODE
+  if [ "$RC" -eq 0 ] && [ "$(cat "$OUT")" = "after" ] && [ "$(wc -l < "$ERR" | tr -d ' ')" = 1 ] \
+     && grep -Eq "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z dev-env-api reach: GET /v1/sessions HTTP $2\$" "$ERR"; then
+    ok "$1: one line, HTTP $2, run continues"
+  else bad "$1: rc=$RC out=$(tr '\n' ' ' < "$OUT") err=$(tr '\n' ' ' < "$ERR")"; fi
+}
+if [ -n "$fn" ]; then
+  export DEV_ENV_API_CLIENT="$RUN_CLIENT"
+  setmode ok; unset DEV_ENV_API_REACHED; reach_run; reach_line_ok "reach 200" 200
+  setmode 403; unset DEV_ENV_API_REACHED; reach_run; reach_line_ok "reach 403 (no policy yet)" 403
+  setmode 500; unset DEV_ENV_API_REACHED; reach_run; reach_line_ok "reach 500" 500
+  setmode hang; unset DEV_ENV_API_REACHED; start=$(date +%s%N); reach_run; took=$(( ($(date +%s%N) - start) / 1000000 ))
+  reach_line_ok "reach with no answer" 000
+  # timeout -k 1 9 bounds it at 10 s; curl's own limit (8 s) ends it first. 500 ms of slack.
+  if [ "$took" -le 10500 ]; then ok "reach is bounded (${took} ms, at most 10 s)"; else bad "reach took ${took} ms"; fi
+  setmode ok
+  ( DEV_ENV_API_REACHED=1; export DEV_ENV_API_REACHED; set -euo pipefail; eval "$fn"; dev_env_api_reach; echo "after" ) > "$OUT" 2> "$ERR"; RC=$?
+  if [ "$RC" -eq 0 ] && [ "$(cat "$OUT")" = "after" ] && [ ! -s "$ERR" ]; then ok "reach runs once per run (a nested script skips it)"; else bad "a nested reach ran again"; fi
+  unset DEV_ENV_API_REACHED
+  ( DEV_ENV_API_CLIENT="$WORK/absent"; set -euo pipefail; eval "$fn"; dev_env_api_reach; echo "after" ) > "$OUT" 2> "$ERR"; RC=$?
+  if [ "$RC" -eq 0 ] && [ "$(cat "$OUT")" = "after" ] && [ ! -s "$ERR" ]; then ok "reach is silent without the client"; else bad "reach was not silent without the client"; fi
+  ( DEV_ENV_API_TOKEN_FILE="$WORK/absent"; set -euo pipefail; eval "$fn"; dev_env_api_reach; echo "after" ) > "$OUT" 2> "$ERR"; RC=$?
+  if [ "$RC" -eq 0 ] && [ "$(cat "$OUT")" = "after" ] && [ ! -s "$ERR" ]; then ok "reach is silent without the token"; else bad "reach was not silent without the token"; fi
+  if grep -qF -- "$TOKEN" "$ALL_OUT"; then bad "the token appears in the reach output"; else ok "the token appears in no reach output"; fi
+fi
 
 echo
 if [ "$fails" -eq 0 ]; then echo "dev-env-api selftest: all passed"; exit 0; fi
