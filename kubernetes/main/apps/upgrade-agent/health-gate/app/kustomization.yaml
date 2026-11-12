@@ -28,6 +28,17 @@ configMapGenerator:
       # escalate.sh's quiet sibling — files rem-* orders that fix silently and
       # only reach a human by promoting themselves to esc-*.
       - resources/remediate.sh
+  # The callers' client for the dev-env v2 operator API (dev-env DESIGN-064 6.5,
+  # OpenProject #739): curl and jq, exit 0/2/3, never prints its token. Its own
+  # ConfigMap, not upgrade-coordination-lib, because dev-env-ops mounts that one
+  # (with Reloader) and must not roll. Mounted read-only by alert-responder,
+  # upgrade-shepherd and triage, and upgrade-health-gate; not by dev-env-ops.
+  # Single-sourced here like the lib above: the shepherd and responder ks
+  # dependsOn this ks, so the ConfigMap exists before their pods mount it.
+  # Selftest: scripts/upgrade-agent/dev-env-api-selftest.sh.
+  - name: dev-env-api-client
+    files:
+      - resources/dev-env-api.sh
 generatorOptions:
   # Stable name so the HelmRelease can mount it by name.
   disableNameSuffixHash: true

@@ -68,6 +68,31 @@
       "lane": "LANE-B-OWNER",
       "class": "v1-restart",
       "reason": "restarts the v1 dev-env pod or dev-env-ops and their sessions; Tom picks the night"
+    },
+    {
+      "id": "shepherd-ramp",
+      "globs": [
+        "kubernetes/main/apps/kube-system/coredns/**",
+        "kubernetes/main/apps/network/traefik/**",
+        "kubernetes/main/apps/network/multus/**",
+        "kubernetes/main/apps/kube-system/intel-device-plugin/**",
+        "kubernetes/main/apps/kube-system/nvidia-device-plugin/**",
+        "kubernetes/main/flux/**",
+        "kubernetes/main/apps/photos/immich/**",
+        "kubernetes/main/apps/storage/rook-ceph/rook-ceph/app/**",
+        "kubernetes/main/apps/storage/rook-ceph/rook-ceph/csi-drivers/**",
+        "kubernetes/main/apps/storage/rook-ceph/rook-ceph/cluster/**",
+        "kubernetes/main/apps/database/cloudnative-pg/**",
+        "kubernetes/main/apps/database/dragonfly/**",
+        "kubernetes/main/apps/kube-system/cilium/**",
+        "kubernetes/main/apps/network/authentik/**",
+        "kubernetes/main/apps/cert-manager/cert-manager/**",
+        "kubernetes/main/apps/media/plex/**"
+      ],
+      "lane": "EXCLUDED",
+      "class": "shepherd-ramp",
+      "reason": "on the shepherd's ramp (UPGRADE_AGENT_RAMP and ramp_globs_for in run-shepherd.sh): the shepherd owns it and the lane never merges it (story 551)",
+      "note": "One owner for a PR that is both lane A and on the ramp (#4780 traefik on 2026-11-10): the shepherd. Its pre-filter summons it for any open Renovate PR touching these prefixes, it vets them with the component playbooks, and choosing it leaves the shepherd's decision path unchanged. lane-classify-selftest.mjs rebuilds this list from the helmrelease's UPGRADE_AGENT_RAMP and run-shepherd.sh's ramp_globs_for and fails when they differ."
     }
   ],
   "check_map": {
@@ -570,6 +595,8 @@
           "kubernetes/main/apps/upgrade-agent/shepherd/app/**",
           "kubernetes/main/apps/upgrade-agent/health-gate/app/resources/coordination-lib.sh",
           "kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh",
+          "kubernetes/main/apps/upgrade-agent/health-gate/app/resources/dev-env-api.sh",
+          "kubernetes/main/apps/upgrade-agent/health-gate/app/resources/gate.sh",
           "scripts/upgrade-agent/**",
           ".github/workflows/**",
           ".renovate/**"
@@ -1105,12 +1132,21 @@
     },
     "change_lock": {
       "configmap": "upgrade-change-lock",
-      "status": "implemented (story 752); other actors honour it from story 551",
+      "status": "implemented (story 752); the shepherd stands aside while it shows a lane change in progress (phase merging, merged-awaiting-verification or merge-unknown; story 551, run-shepherd.sh shepherd_may_merge); a hand run refuses while it is held",
       "lease_seconds": 600,
       "post_merge_lease_seconds": 14400,
       "min_lease_left_seconds": 240,
       "max_gate_age_seconds": 300,
       "note": "ConfigMap upgrade-agent/upgrade-change-lock. Free when absent or data.holder is empty; expired when data.expires_at has passed; otherwise held. Every tick run with --write-state takes it (create, or replace at the resourceVersion it read) before the merge step's reads and releases it before it ends. The lease (600s) is shorter than the 15-minute tick, so a crashed tick costs at most the next one. After a live merge it stays held, phase merged-awaiting-verification, for post_merge_lease_seconds (4h): verification is not built (story 553), so the lane merges at most once a night. The lane does not merge with less than min_lease_left_seconds of lease left. An unreadable lock, or a holder with no readable expires_at, fails closed."
+    },
+    "settle_gate": {
+      "flux_source": {
+        "kind": "GitRepository",
+        "namespace": "flux-system",
+        "name": "haynes-ops"
+      },
+      "max_unapplied_commits": 50,
+      "note": "Story 551 (R6), facts not clocks (Tom's ruling Q-548-04, 2026-11-11). For a lane-A candidate with an immediate cluster effect, target T in its Flux scope (lane-classify.mjs kustomizationsFor + fluxScope: its Kustomizations, their dependsOn chain, their namespaces) and the cluster-wide parts (cluster_wide_targets): F1 no commit between flux_source's revision and main's head changes T's paths, a path of its chain, or a cluster-wide part (directly or through a shared component, R8); more than max_unapplied_commits, a diverged base or an unreadable commit fails closed. F2 each Kustomization of T's chain has applied (not only attempted) the source revision, is Ready at its generation and not reconciling, and the HelmReleases of T's namespaces are settled. F3 no Kustomization or HelmRelease of a cluster-wide part, nor the source, is progressing. An object in Flux's retry loop, Stalled, failed at its current generation and revision, or DependencyNotReady behind a failing dependency is failing, not settling: the baseline gate judges it by scope. F4 at the merge step and after the merging write: no unfinished Job that can merge (night-merge.mjs SHEPHERD_JOBS). Every read fails closed and names what failed."
     },
     "baseline_rule": "Blockers: a NotReady Kustomization that applies the target, is in its dependsOn chain, or targets its namespace; a NotReady HelmRelease in its namespace; a firing critical alert that belongs to the target (alert_scope: in its namespace and resolved to the target or its chain, unresolvable, or naming no workload), and for a cluster-wide target any critical alert with no namespace; Ceph HEALTH_ERR or unknown. Every other NotReady Flux object is reported as a warning, and every alert that did not block is listed with the reason.",
     "pause": "A non-empty data.pause on ConfigMap upgrade-lane-state stops every tick before any GitHub read: no merge and no lock take. The merge step reads it again just before it takes the lock, so a pause set during a tick stops that tick's merge. Verification and reverts already owed for a merge the lane made carry on through a hook (stories 553, 753, 754; not built). suspend: true on the upgrade-night controller stops every tick, owed work included."
@@ -1121,9 +1157,10 @@
       "globs": [
         "kubernetes/main/flux/**",
         "kubernetes/main/bootstrap/**",
-        "kubernetes/main/apps/flux-system/**"
+        "kubernetes/main/apps/flux-system/**",
+        "kubernetes/main/apps/*"
       ],
-      "reason": "Flux itself and its bootstrap: every Kustomization depends on it"
+      "reason": "Flux itself, its bootstrap and the apps root (files directly under kubernetes/main/apps, applied by flux-system/cluster-apps, which kubernetes/main/flux/apps.yaml defines): every Kustomization depends on it"
     },
     {
       "id": "cilium",

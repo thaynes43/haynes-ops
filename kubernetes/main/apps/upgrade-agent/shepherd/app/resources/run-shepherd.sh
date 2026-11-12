@@ -13,6 +13,8 @@
 #     WebFetch/WebSearch, NO kubectl write.
 #   - DRY-RUN by default: makes NO changes. Set UPGRADE_AGENT_MODE=shepherd to enable
 #     edits + PR authorship.
+#   - STAND-ASIDE (story 551): no merge while the night lane's change lock shows a lane
+#     change in progress, or cannot be read (shepherd_may_merge, below).
 #
 # KNOWN 4b.1 GAP (closed by the 4b.2 guardrails): the token has contents:write, so a
 # rogue/injected agent could in principle `git push` straight to main. 4b.1 is
@@ -58,6 +60,31 @@ SPEND_MONTH=""; SPEND_PRIOR="0"
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >&2; }
 epoch_now() { date -u +%s; }
+
+# >>> dev-env-api reach (dev-env DESIGN-064 6.5, OpenProject #739) >>>
+# One best-effort, read-only GET /v1/sessions against the dev-env v2 operator API per
+# run, as the reach proof: one line on stderr with the HTTP status code (000 when no
+# answer came). It never changes this run's exit code or stdout, is bounded at 10
+# seconds, and runs once per run (a nested script skips it). It is skipped without a
+# word when the client or the token is not mounted; when only the CA is missing, the
+# client refuses before sending and the line logs HTTP 000. The same block is in
+# respond.sh, run-shepherd.sh, triage.sh and gate.sh;
+# scripts/upgrade-agent/dev-env-api-selftest.sh extracts and checks each copy.
+dev_env_api_reach() {
+  local client="${DEV_ENV_API_CLIENT:-/opt/dev-env-api/dev-env-api.sh}"
+  local token="${DEV_ENV_API_TOKEN_FILE:-/var/run/secrets/dev-env/token}"
+  local code="" bound=()
+  [ "${DEV_ENV_API_REACHED:-}" = 1 ] && return 0
+  { [ -x "$client" ] && [ -r "$token" ]; } || return 0
+  export DEV_ENV_API_REACHED=1
+  if command -v timeout >/dev/null 2>&1; then bound=(timeout -k 1 9); fi
+  code="$(DEV_ENV_API_CONNECT_TIMEOUT=3 DEV_ENV_API_MAX_TIME=8 ${bound[@]+"${bound[@]}"} "$client" list 2>&1 >/dev/null \
+    | sed -n 's|^dev-env-api: GET /v1/sessions HTTP \([0-9][0-9][0-9]\)$|\1|p' | head -n 1)" || true
+  printf '%s dev-env-api reach: GET /v1/sessions HTTP %s\n' "$(date -u +%FT%TZ)" "${code:-000}" >&2
+  return 0
+}
+dev_env_api_reach || true
+# <<< dev-env-api reach <<<
 # Run start, in GitHub's timestamp format: the auto-merge stall fallback only touches
 # auto-merges this bot enabled after this instant (i.e. during this run).
 RUN_START_ISO="$(date -u +%FT%TZ)"
@@ -236,6 +263,105 @@ shepherd_escalate() {
   bash /opt/coordination/escalate.sh shepherd "job:${HOSTNAME:-unknown} mode=${MODE}" "$1"
 }
 
+# ── STAND ASIDE FOR THE NIGHT LANE (story 551) ── One actor merges cluster changes at a
+# time (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/551),
+# on facts, not clocks (Tom's ruling Q-548-04): no actor reads another's schedule. The
+# night lane (CronJob upgrade-shepherd-upgrade-night) writes ConfigMap
+# upgrade-agent/upgrade-change-lock. Phase `taken` is a tick's bookkeeping (about 25s, even
+# in dry-run); `merging`, `merged-awaiting-verification` and `merge-unknown` mean a lane
+# change is in progress (the merge call, then its 4h verification hold). This script
+# stands aside only for a change in progress, or a lock it cannot read (fail closed):
+#   - before the LLM turn (MODE auto or remediate) the launcher takes `gh pr merge`
+#     (MERGE_TOOLS) off the allowlist and appends a MERGE STAND-ASIDE rule. The LLM keeps
+#     `gh api repos/*` for release-note reads, and that pattern also admits GitHub's REST
+#     merge endpoint: only the rule forbids it (a GET-only wrapper is a follow-up story);
+#   - the stall fallback asks again just before its own `gh pr merge`, and escalates a
+#     merge it then leaves stranded.
+# The other side of the handshake is the lane's F4 (night-merge.mjs): it writes `merging`,
+# then reads the Jobs, and does not merge while this Job (or a triage Job running
+# remediate) is unfinished. This Job exists before it reads the lock, so one side sees the
+# other. Everything else (pre-filter, vet, PR authoring, comments, work orders, reports)
+# runs as before. When shepherd_may_merge returns 0 the allowlist and the prompt are unchanged.
+CHANGE_LOCK_NS="upgrade-agent"
+CHANGE_LOCK_CM="upgrade-change-lock"
+MERGE_STAND_ASIDE_WHY=""
+
+# stdin = {now: epoch s, lock: null (no ConfigMap), "unreadable", or the ConfigMap}.
+# Pure. Prints "merge", "merge <note>" or "stand-aside <why>". Free when absent or
+# data.holder is empty, and expired once data.expires_at has passed, as the lane's
+# lockStatus reads it. A held lock stands aside in a change phase, an unknown or missing
+# phase, or with an expiry this jq cannot parse (it reads only ...Z timestamps; an offset
+# the lane's Date.parse accepts is a stand-aside here, fail closed). Phase taken merges.
+merge_gate_decide() {
+  jq -r '
+    ["merging", "merged-awaiting-verification", "merge-unknown"] as $change
+    | if .lock == null then "merge"
+      elif (.lock | type) != "object" then "stand-aside unreadable: ConfigMap upgrade-agent/upgrade-change-lock"
+      elif ((.lock.data.holder // "") == "") then "merge"
+      else (.lock.data.expires_at // null) as $e
+        | (.lock.data.phase // null) as $p
+        | ($e | if type == "string" then (sub("\\.[0-9]+Z$"; "Z") | try fromdateiso8601 catch null) else null end) as $x
+        | if $x == null then "stand-aside the change lock is held by \(.lock.data.holder) with no expires_at this launcher can read (\($e))"
+          elif $x <= .now then "merge"
+          elif ($change | index($p)) != null then "stand-aside a lane change is in progress: the change lock is held by \(.lock.data.holder) in phase \($p) until \($e)"
+          elif $p == "taken" then "merge (read the change lock: held by \(.lock.data.holder) in phase taken until \($e), a tick'"'"'s bookkeeping, not a change in progress)"
+          else "stand-aside the change lock is held by \(.lock.data.holder) in an unknown phase (\($p)) until \($e)"
+          end
+      end' 2>/dev/null
+}
+
+# Prints the lock ConfigMap as JSON, null when it does not exist, or "unreadable".
+change_lock_read() {
+  local out err="/tmp/change-lock-read.err"
+  if out="$(kubectl -n "$CHANGE_LOCK_NS" get configmap "$CHANGE_LOCK_CM" -o json 2>"$err")" \
+     && printf '%s' "$out" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    printf '%s' "$out"
+  elif grep -q 'NotFound' "$err" 2>/dev/null; then
+    printf 'null'
+  else
+    printf '"unreadable"'
+  fi
+}
+
+# Returns 0 ONLY when this run may merge now. Any other outcome, an error here included,
+# is a stand-aside, with the reason in MERGE_STAND_ASIDE_WHY and a STAND-ASIDE log line.
+shepherd_may_merge() {
+  local now lock input verdict
+  now="$(epoch_now)"
+  lock="$(change_lock_read)"
+  input="$(jq -nc --argjson now "$now" --argjson lock "$lock" '{now: $now, lock: $lock}' 2>/dev/null)" || input=""
+  verdict="$(printf '%s' "$input" | merge_gate_decide)" || verdict=""
+  if [ -n "$input" ]; then
+    case "$verdict" in
+      merge)
+        MERGE_STAND_ASIDE_WHY=""
+        log "stand-aside: not needed: the change lock shows no lane change in progress."
+        return 0 ;;
+      "merge ("?*")")
+        MERGE_STAND_ASIDE_WHY=""
+        log "stand-aside: not needed: ${verdict#merge }."
+        return 0 ;;
+    esac
+  fi
+  case "$verdict" in
+    "stand-aside "?*) MERGE_STAND_ASIDE_WHY="${verdict#stand-aside }" ;;
+    *) MERGE_STAND_ASIDE_WHY="unreadable: the stand-aside decision (${verdict:-no output})" ;;
+  esac
+  log "STAND-ASIDE: this run merges nothing: ${MERGE_STAND_ASIDE_WHY} (story 551)."
+  return 1
+}
+
+# Rewrites ALLOWED without the MERGE_TOOLS entries (exact matches).
+drop_merge_tools() {
+  local t m keep kept=()
+  for t in "${ALLOWED[@]}"; do
+    keep=1
+    for m in "${MERGE_TOOLS[@]}"; do [ "$t" = "$m" ] && keep=0; done
+    [ "$keep" -eq 0 ] || kept+=("$t")
+  done
+  ALLOWED=("${kept[@]}")
+}
+
 # ── AUTO-MERGE STALL FALLBACK (2026-09-30, #3287) ── `gh pr merge --auto` on a PR whose
 # checks finished long ago can leave GitHub with nothing to act on. #3280 (rook v1.20.8
 # operator) had 7/7 checks green since 02:21Z; the 04:07Z run enabled auto-merge while
@@ -310,6 +436,14 @@ automerge_decide() {
 # a PR that is still unmerged. Returns 0 = merged, 1 = not merged.
 automerge_complete() {
   local pr="$1" sha="$2" waited="$3" out merged_at
+  # story 551: the lock is read again right before this merge call. A stand-aside returns 2
+  # and the watch keeps the PR: the next poll asks again (a failed lock read is often
+  # transient), and only a stand-aside that still holds at the watch's deadline escalates
+  # (automerge_strand_escalate; review findings R4 and S3).
+  if ! shepherd_may_merge; then
+    log "automerge-fallback: STAND-ASIDE: #$pr is CLEAN and green but the fallback does not merge it now: ${MERGE_STAND_ASIDE_WHY:-unknown}. Its queued GitHub auto-merge is left as it is; the watch asks again."
+    return 2
+  fi
   log "automerge-fallback: #$pr has been CLEAN with every check green for ${waited}s and GitHub has not merged it — merging it (plain squash, pinned to ${sha:0:10}, no --admin)."
   if out="$(gh pr merge "$pr" -R "$REPO" --squash --delete-branch --match-head-commit "$sha" 2>&1)"; then
     log "automerge-fallback: #$pr merged by the fallback."
@@ -328,10 +462,20 @@ automerge_complete() {
   return 1
 }
 
+# $1 = PR, $2 = head SHA, $3 = why. The fallback stood aside for this PR until the watch
+# ended. Its vet marker stops the next run re-vetting it and no later fallback watches it,
+# so nothing would retry it: escalate on a stable signature (review findings R4 and S3).
+automerge_strand_escalate() {
+  log "automerge-fallback: STAND-ASIDE still held at the end of the watch for #$1 (${3:-unknown}); escalating, as nothing will retry it."
+  ESCALATE_SIG="shepherd-automerge-stood-aside|pr=${1}|sha=${2}" shepherd_escalate \
+    "auto-merge stranded: #${1} is CLEAN with every check green and auto-merge queued, GitHub has not merged it, and the launcher's fallback stood aside for the night lane until its watch ended (${3:-unknown}); its vet marker keeps later runs from retrying it" \
+    || log "escalate.sh could not file the esc-shepherd entry (best-effort; run outcome unchanged)"
+}
+
 # $1 = RUN_START_ISO. Best-effort: gh failures only log, and it always returns 0.
 automerge_fallback() {
-  local since="$1" list prs pr view verdict sha key t t0 deadline still waits
-  local -A ready_since=()
+  local since="$1" list prs pr view verdict sha key t t0 deadline still waits crc
+  local -A ready_since=() stood=()
   list="$(gh pr list -R "$REPO" --state open --limit 200 --json number,autoMergeRequest 2>/dev/null)" || {
     log "automerge-fallback: gh pr list failed — cannot watch for a stalled auto-merge this run."; return 0; }
   prs="$(printf '%s' "$list" | automerge_candidates "$since" | tr '\n' ' ')"
@@ -345,6 +489,7 @@ automerge_fallback() {
     still=""; waits=""
     t="$(epoch_now)"
     for pr in $prs; do
+      unset "stood[$pr]"   # only the latest poll's outcome counts at the deadline (S3)
       view="$(gh pr view "$pr" -R "$REPO" --json state,isDraft,mergedAt,mergeStateStatus,autoMergeRequest,headRefOid,statusCheckRollup 2>/dev/null)" || {
         still="$still $pr"; waits="$waits #$pr(gh-view-failed)"; continue; }
       verdict="$(printf '%s' "$view" | automerge_decide)"
@@ -357,7 +502,11 @@ automerge_fallback() {
           [ -n "${ready_since[$key]:-}" ] || ready_since[$key]="$t"
           t0="${ready_since[$key]}"
           if [ $(( t - t0 )) -ge "$AUTOMERGE_GRACE_S" ]; then
-            automerge_complete "$pr" "$sha" "$(( t - t0 ))" || true
+            automerge_complete "$pr" "$sha" "$(( t - t0 ))" && crc=0 || crc=$?
+            if [ "$crc" -eq 2 ]; then
+              stood[$pr]="${sha}"$'\t'"${MERGE_STAND_ASIDE_WHY:-unknown}"
+              still="$still $pr"; waits="$waits #$pr(stand-aside)"
+            fi
           else
             still="$still $pr"
           fi ;;
@@ -368,6 +517,10 @@ automerge_fallback() {
     [ -n "${prs// /}" ] || break
     if [ "$(epoch_now)" -ge "$deadline" ]; then
       log "automerge-fallback: watch over; still queued:${prs} —${waits:- ready but inside the grace window} — left to GitHub auto-merge (their checks completed after it was enabled, which is the event that fires it)."
+      for pr in $prs; do
+        [ -n "${stood[$pr]:-}" ] || continue
+        automerge_strand_escalate "$pr" "${stood[$pr]%%$'\t'*}" "${stood[$pr]#*$'\t'}"
+      done
       break
     fi
     sleep "$AUTOMERGE_POLL_S"
@@ -695,6 +848,18 @@ SAFETY_PROMPT="${SAFETY_PROMPT} VERDICTS — choose by WHO has to act next. 'DEF
 if [ "$MODE" != "dryrun" ]; then
   SAFETY_PROMPT="${SAFETY_PROMPT} VET MARKER: when you FINISH vetting a Renovate PR — whatever the verdict (auto-merge enabled, declined, held, left-for-Renovate, or you authored a supporting-edit PR for it), EXCEPT a DEFER — record the vet so it is never re-done at this state: get the head SHA with 'gh pr view <N> --json headRefOid', use the Write tool to author /tmp/vet-comment.md whose FIRST line is exactly '<!-- shepherd-vet sha=<HEAD_SHA> -->' followed by 'VERDICT: <one word>' and 2-4 sentences of reasoning, then run 'gh pr comment <N> --body-file /tmp/vet-comment.md'. Never build the comment inline. Conversely, SKIP (do not re-vet) any PR whose CURRENT head SHA already appears in a shepherd-vet comment — treat its recorded verdict as done. A DEFERRED PR gets NO marker: the marker would stop the next run from re-reading it, and that next run is what clears the wait."
 fi
+
+# ── STAND ASIDE (story 551), BEFORE the LLM turn ── The merge decision is the LLM's, so the
+# check sits here, in the launcher: while the change lock shows a lane change in progress,
+# or cannot be read, `gh pr merge` leaves the allowlist (dontAsk denies it) and the rule
+# below says why. Only the modes that carry MERGE_TOOLS are touched.
+case "$MODE" in
+  auto|remediate)
+    if ! shepherd_may_merge; then
+      drop_merge_tools
+      SAFETY_PROMPT="${SAFETY_PROMPT} MERGE STAND-ASIDE (this run only; story 551): ${MERGE_STAND_ASIDE_WHY}. The launcher took gh pr merge off your allowlist for this run; do not merge or enable auto-merge by any route (gh api included). Do everything else as usual: vet, author supporting-edit PRs, comment, hand off work orders. For a PR you would otherwise queue for auto-merge, write 'DEFER: #<N> waits for the night lane to finish its change — <reason above>' and give it NO vet marker, so a later run merges it."
+    fi ;;
+esac
 
 if [ "$AUTH_PATH" = "plan" ]; then
   log "MODE=$MODE auth=$AUTH_PATH model=$MODEL max_turns=unbounded(timeout=$RUN_TIMEOUT; api fallback=$MAX_TURNS) budget=\$$MAX_BUDGET cap=\$$MONTHLY_CAP"

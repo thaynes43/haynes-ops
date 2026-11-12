@@ -125,6 +125,15 @@ rules:
     resources: [configmaps]
     resourceNames: [dev-env-session-allowances]
     verbs: [get, update]
+  # OP758 (dev-env DESIGN-064 5.9): the create ledger of summoning callers, the
+  # exact precreated object only (./summon-creates.yaml); no create/patch/delete.
+  # One uncached get and one update per ledger write (dev-env
+  # internal/apiserver/summon_ledger.go). Unused until a CallerPolicy with
+  # `summon` exists.
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-summon-creates]
+    verbs: [get, update]
   # Exact public inputs for the single approved owned root; no list/watch/write.
   - apiGroups: [""]
     resources: [configmaps]

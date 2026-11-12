@@ -29,6 +29,9 @@ resources:
   - ./operator/ks.yaml
   - ./broker/ks.yaml
   - ./grant-policies/ks.yaml
+  # CallerPolicy objects for the summoning callers in upgrade-agent (DESIGN-064 6.4,
+  # OpenProject #739). Its own Kustomization states the dependsOn. Nothing waits on it.
+  - ./caller-policies/ks.yaml
   - ./keeper/ks.yaml
   - ./native-lifecycle/ks.json
   - ./owned-luna-prep/ks.yaml

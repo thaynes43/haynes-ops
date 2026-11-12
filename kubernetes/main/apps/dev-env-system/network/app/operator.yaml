@@ -6,9 +6,13 @@
 # DESIGN-060: it calls the operator API and nothing else here), and from the v1 pod
 # (dev/dev-env) until cutover: it is
 # a trusted client (--client-service-accounts, D-46) and runs the v2 agent-run (D-50;
-# its own policy carries the egress half, KICKOFF 8.9). The summoning callers in
-# upgrade-agent (3.7) are admitted when plan 10 moves summoning into the operator, and
-# the broker's console traffic has its own policy with the broker. The kubelet's probes
+# its own policy carries the egress half, KICKOFF 8.9), and from the three summoning
+# callers in upgrade-agent (dev-env DESIGN-064 5.5 and 6.5, OpenProject #739): pods
+# labelled alert-responder, upgrade-shepherd (shepherd, triage, upgrade-night) and
+# upgrade-health-gate, nothing wider; not the namespace and not dev-env-ops. Their own
+# policies carry the egress half. Each holds a projected token for its own account,
+# and its CallerPolicy decides what it may do. The curation caller (#746) is not here
+# yet. The broker's console traffic has its own policy with the broker. The kubelet's probes
 # (8081) come from the host, which Cilium admits. Prometheus scrapes 8080 (D-56).
 # Egress: the API server, the keeper (8443) and api.pushover.net (the pages). Egress to
 # tool pods' health ports comes with plan 08, once a tool pod and its port exist.
@@ -32,6 +36,24 @@ spec:
         - matchLabels:
             io.kubernetes.pod.namespace: dev-env-system
             app.kubernetes.io/name: dev-env-frontdoor
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+    # The summoning callers (DESIGN-064 5.5, #739): exactly these three app labels in
+    # upgrade-agent. An upgrade-night pod carries the upgrade-shepherd label and is
+    # admitted, but it mounts no token for the operator's audience, so the API
+    # refuses it (401).
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: upgrade-agent
+            app.kubernetes.io/name: alert-responder
+        - matchLabels:
+            io.kubernetes.pod.namespace: upgrade-agent
+            app.kubernetes.io/name: upgrade-shepherd
+        - matchLabels:
+            io.kubernetes.pod.namespace: upgrade-agent
+            app.kubernetes.io/name: upgrade-health-gate
       toPorts:
         - ports:
             - port: "8443"
