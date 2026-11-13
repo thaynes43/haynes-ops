@@ -636,6 +636,8 @@ const phase = (f, recs, o = {}) => H.historyPhase({ rules, run: f.run, env: {}, 
   const po = plan(withMarker(H.emptyDoc()), { records: [other], openPrs: [9861] });
   ok(po.events[0]?.reason === H.REDACTED && po.notes.redacted.some(x => x.field === 'reason' && x.shape === 'a private network address'), 'L1: the same text as free text, not one of the item\'s versions, is still caught');
   ok(M.secretShape('reached 10.0.0.5', M.versionsOf({ from: '10', to: '11' })) === 'a private network address', 'L1: a short version (10) cannot hide a real address in the same text');
+  const ex1 = M.versionsOf({ packages: [{ name: 'p', from: '==10.3.2.1', to: '==10.3.10.19' }] });
+  ok(M.secretShape('reached 10.3.2.106', ex1) === 'a private network address' && M.secretShape('hold ==10.3.2.1 to ==10.3.10.19', ex1) === null, 'L1 (advisory review of 82b4e18c): an exempt 10.3.2.1 masks only where it stands alone, so a different address that starts with it (10.3.2.106) is still caught');
   const rcd = M.recordConfig(rules);
   const pub = M.projectRecord({ ...pip, reason: pip.reason }, rcd);
   ok(M.publishProblems(pub, M.renderRecord(pub, rcd), rcd, M.versionsOf(pip)).length === 0 && M.publishProblems(pub, M.renderRecord(pub, rcd), rcd, []).some(x => /private network address/.test(x)), 'L1: the PR record\'s publish check exempts the record\'s own versions, and only them');

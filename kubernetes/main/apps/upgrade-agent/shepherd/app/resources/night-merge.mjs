@@ -990,7 +990,11 @@ export function versionsOf(rec) {
 // only a version that is itself shaped like an address is masked, so a short version (10)
 // cannot hide part of a real address in the same text
 const addressShaped = v => SECRET_SHAPES.some(([re, what]) => what === ADDRESS && re.test(v));
-const mask = (t, exempt) => (exempt || []).filter(v => typeof v === 'string' && v && addressShaped(v)).sort((a, b) => b.length - a.length).reduce((x, v) => x.split(v).join(' '), t);
+// and only where it stands alone (no digit or dot on either side), so an exempt 10.3.2.1
+// cannot hide a different address that starts with it (10.3.2.106)
+const escRe = v => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const mask = (t, exempt) => (exempt || []).filter(v => typeof v === 'string' && v && addressShaped(v)).sort((a, b) => b.length - a.length)
+  .reduce((x, v) => x.replace(new RegExp(`(?<![\\d.])${escRe(v)}(?![\\d.])`, 'g'), ' '), t);
 export function secretShape(text, exempt = []) {
   const t = String(text ?? '');
   const masked = mask(t, exempt);
