@@ -6,7 +6,7 @@
   "record": {
     "item": {
       "schema": "haynes.upgrade-item/v1",
-      "id": "own-image:65d1acd0b3646b7b9f03fd41",
+      "id": "own-image:9c271237b1d4e45037946e50",
       "source": "own-image",
       "item": {
         "name": "sentencepiece",
@@ -70,8 +70,8 @@
     "events": [
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:29fdee11c3de0a103821515e",
-        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "id": "ev:283a31b853915c26eb98b335",
+        "item_id": "own-image:9c271237b1d4e45037946e50",
         "type": "merge-attempted",
         "from": "needed",
         "to": "in_progress",
@@ -91,8 +91,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:2c9a776438bbc3e1d5ab6be8",
-        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "id": "ev:f1c8704146f90af169b85b2c",
+        "item_id": "own-image:9c271237b1d4e45037946e50",
         "type": "merge-unknown",
         "from": "in_progress",
         "to": "merge_unknown",
@@ -116,8 +116,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:2982bdcc871e0e819755fb3b",
-        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "id": "ev:5a531c160eebe8d7003ae81b",
+        "item_id": "own-image:9c271237b1d4e45037946e50",
         "type": "merged",
         "from": "merge_unknown",
         "to": "merged_unverified",

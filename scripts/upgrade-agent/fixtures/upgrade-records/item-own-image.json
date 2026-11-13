@@ -5,7 +5,7 @@
   "from_pr": 4662,
   "record": {
     "schema": "haynes.upgrade-item/v1",
-    "id": "own-image:65d1acd0b3646b7b9f03fd41",
+    "id": "own-image:9c271237b1d4e45037946e50",
     "source": "own-image",
     "item": {
       "name": "sentencepiece",

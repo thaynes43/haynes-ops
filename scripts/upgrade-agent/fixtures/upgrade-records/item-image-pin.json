@@ -5,7 +5,7 @@
   "from_pr": 4333,
   "record": {
     "schema": "haynes.upgrade-item/v1",
-    "id": "image-pin:eeaf0380a6cc0bada95184d4",
+    "id": "image-pin:6903293fdf75a7be141a181c",
     "source": "image-pin",
     "item": {
       "name": "docker.io/library/python",
