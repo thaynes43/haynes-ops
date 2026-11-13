@@ -5,7 +5,7 @@
   "from_pr": 4477,
   "record": {
     "schema": "haynes.upgrade-item/v1",
-    "id": "renovate-pr:1d7a362939cd391c85d1adb5",
+    "id": "renovate-pr:dfeb821559bf06b1b353815f",
     "source": "renovate-pr",
     "item": {
       "name": "docker.io/alpine/kubectl",

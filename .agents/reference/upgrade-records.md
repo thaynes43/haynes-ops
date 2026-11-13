@@ -11,8 +11,9 @@ read-only verifier (story 553), the revert and its drill (story 753) and the his
 every attempt (story 593). This page covers the two records, the state machine that
 connects them, and how today's lane record maps onto an item.
 
-**Status.** The format, its validator and fixtures exist. Nothing writes these records
-yet; story 593 writes the first events. The lane's merge step (story 752) exists and runs
+**Status.** The format, its validator and fixtures exist. Story 593 writes the first
+events, to the history ConfigMap `upgrade-agent/upgrade-ledger` (`upgrade-history.mjs`; the
+runbook's section "The history of every attempt (story 593)" says what a tick writes). The lane's merge step (story 752) exists and runs
 in dry-run; [Merge-step verdicts and the change lock](#merge-step-verdicts-and-the-change-lock)
 says which of its verdicts become events. Metrics, counting rules and the dashboard pane
 belong to piece 2 (story 591 and question Q-547-07) and are not defined here. Tracker:
@@ -30,6 +31,7 @@ belong to piece 2 (story 591 and question Q-547-07) and are not defined here. Tr
 | `scripts/upgrade-agent/fixtures/upgrade-records/` | Valid and invalid fixtures, one file per case |
 | `scripts/upgrade-agent/fixtures/lane-tick-records-20261111.json` | Records and merge-step verdicts written by the real `run-night.mjs` in the stub ticks of `lane-night-dryrun-selftest.mjs` (synthetic world, not cluster data). The mapping test converts them. |
 | `scripts/upgrade-agent/record-format-selftest.mjs` | The selftest; CI runs it in `Upgrade Agent Selftests - Night lane` |
+| `kubernetes/main/apps/upgrade-agent/shepherd/app/resources/record-format.mjs` and the four JSON files beside it | The lane's copy (story 593): the night lane runs from the scripts ConfigMap, which is built from that directory only. The copies must be byte-identical; the selftest fails on any drift. Change the format here, then copy the five files. |
 
 ## The item record
 
@@ -40,7 +42,7 @@ Renovate moves the PR to a newer version, that newer version is a new item.
 | Field | Meaning |
 |---|---|
 | `schema` | `haynes.upgrade-item/v1` |
-| `id` | `<source>:` followed by 24 hex digits of a sha256 over the source, `item.repo` and the sorted `[name, to]` pairs of `item.packages`. When there are no packages, the pair is `[item.name, available.version]`. `itemId()` computes it, and the validator refuses any other value. |
+| `id` | `<source>:` followed by 24 hex digits of a sha256 over the source, `item.repo`, the sorted `[name, to]` pairs of `item.packages` (when there are no packages, the pair is `[item.name, available.version]`), and **the place**: the sorted paths the update changes (`carrier.files`). One update in one place. The place is a fact of the pull request alone. It is not the lane's targets, which come through the lane's rules: those keep being tuned, and each tuning would re-key open items and record a "replaced" that never happened. This differs from the reader's suggestion (sorted targets). `item.targets` stays on the item for readers. A file list GitHub cut off (more than 100 files) ends in `<file list truncated>` (`CUT_FILES`), so an id built on it says so. `itemId()` computes it, and the validator refuses any other value. Only the writer derives ids; a reader treats an id as opaque and never recomputes it. |
 | `source` | The kind of update; see the sources table below. |
 | `item` | What gets updated: `name` (package, image, entity, device or credential), `repo`, `packages[]` (`name`, `update`, `from`, `to`), `targets[]` (repository paths of the apps the update lands in), and `own_images[]` when the update changes the source of one of our own images. |
 | `installed`, `available` | `version` (a string or null) and `kind` (`semver`, `digest`, `date`, `other`, `unknown`). `available.update_type` is the lane's update type, such as `patch`, `minor+digest` or `unknown`. |
@@ -50,7 +52,7 @@ Renovate moves the PR to a newer version, that newer version is a new item.
 | `state` | Where the item is in its lifecycle; see [the state machine](#the-state-machine). |
 | `approval` | **Reserved, and always empty in piece 1.** See [Approval](#approval). |
 | `schedule` | `not_before`, and `window` (`first`, `last`, `tz`). Empty today. |
-| `attempts[]` | One entry per attempt, built from the item's events: `n`, `actor`, `started_at`, `at` (the attempt's latest event), `result`, `recovery` (after a revert: `verified`, `failed` or null), `drill`, `evidence_url`. |
+| `attempts[]` | One entry per attempt, built from the item's events: `n`, `actor`, `started_at`, `at` (the attempt's latest event), `result`, `recovery` (after a revert: `verified`, `failed` or null), `drill`, `evidence_url`. The newest 20 are kept; `attempts_dropped` counts the older ones, and the kept ones are numbered after them, so a PR refused on every tick cannot grow an item without limit. |
 | `first_seen`, `observed_at` | The collector's clock, in UTC. |
 | `coverage` | `status` is `read` (the whole item was read), `partial` (some facts failed to read) or `unread` (nothing could be read; the state must then be `unknown`). `detail` says what failed. |
 | `carrier` | The pull request that carries the item, as last seen: `repo`, `pr`, `head`, `title`, `fingerprint`, `fingerprint_basis`, `commit_count`, `change_key`, `files` (its changed files) and `head_committed_at`. Required for PR sources. |
@@ -79,11 +81,29 @@ from the 2026-11-09 queue.
 | `none` | Shown for visibility only. |
 | `unknown` | The lane could not decide. |
 
-**Why the id ignores the carrier.** A rebase keeps the item, so the history stays
-attached to it. A new PR for a version that was reverted maps to the same item, which is
-still in state `reverted`. That is how the lane remembers never to merge that version
-again (story 753). `change_key` is a different value and is kept in `carrier`: it also
-hashes the changed files and the versions the update starts from.
+**Why the id is the update and its place, not the carrier.** A rebase keeps the item:
+Renovate replays the same change on the same files, so the history stays attached to it. A
+new PR for a version that was reverted, in the same files, maps to the same item, which is
+still in state `reverted`. That is how the lane
+remembers never to merge that version again (story 753). The same version in other files
+is another item. `rememberedReverted(items, name, version)` in `record-format.mjs` returns
+every item for that package at that version, whatever its files, that a revert touches or
+touched, each with `why` it matched:
+- `failed`: a revert is owed;
+- `reverting`: a revert is open;
+- `reverted_unverified`: the revert merged and recovery is not verified. Every revert the
+  history records today stays here, because nothing verifies recovery yet;
+- `reverted`: recovery verified;
+- `ever-reverted`: the version was merged again after its revert (`ever_reverted` on a
+  history item, or an attempt with result `reverted`).
+
+A version never reverted returns nothing. The answer is conservative, and stories 753 and
+556 decide what to do with it; nothing decides a merge with it yet. When a PR's files change
+while it is open (Renovate rebased PR 4873 from two traefik apps to one after the other half
+merged as PR 4876), the old item closes as replaced and the new one is observed, as for a
+newer version. A change of the lane's rules that maps a file to other targets changes no
+id. `change_key` is a different value and is kept in `carrier`: it also hashes
+the versions the update starts from.
 
 ### Approval
 
@@ -109,7 +129,7 @@ a step. A tick that reads an item and finds it unchanged writes no event; only t
 | `from`, `to` | The item's state before and after the event. `from` is null on the item's first event. |
 | `at` | When it happened. `recorded_at` is when it was written, if that was later (a backfill). |
 | `recorded_by` | `lane` (written as it happened) or `backfill` (rebuilt later from GitHub, story 593). |
-| `actor` | `kind` (`lane`, `renovate`, `shepherd`, `hand`, `person`) and `login`. |
+| `actor` | `kind` (`lane`, `renovate`, `shepherd`, `hand`, `person`, or `unknown` when who acted could not be established, for example another bot) and `login` (kept whenever GitHub gave one). In dry-run a merge by the `haynes-ops-bot` identity is the shepherd's, because the lane merges nothing. In live mode the lane's own merges are told apart by the change lock's last holder, which story 556 builds. |
 | `attempt` | The attempt number. Every type except `observed` and `closed` requires it. |
 | `drill` | True on every event of a revert drill. |
 | `lane`, `class`, `reason` | For `observed`: the lane's verdict. For `merge-refused`: why the merge step refused. For a failure: the failure mode. |
@@ -118,6 +138,60 @@ a step. A tick that reads an item and finds it unchanged writes no event; only t
 
 In the fixtures, a compact event averages about 440 bytes; the largest, a merge-step
 event with its merge call, is about 760.
+
+## Rules for readers
+
+These rules come from the format review by the dev-env v2 coordinator, who reads these
+records from the portal (PR 4824, 2026-11-12), and were settled in story 593.
+
+1. **What a v1 reader tolerates.** A new optional field or a new enum value (a state, an
+   event, a source, a lane, an actor kind) stays v1. A reader ignores fields it does not
+   know, and shows an enum value it does not know as written. A removal, a rename or a
+   change of meaning is v2. Only the writer derives ids: a reader treats an id as opaque and
+   never recomputes it.
+2. **The order of one item's events.** The stored order is the order. Within one `at`, the
+   event whose `from` equals the previous event's `to` comes next (`merge-attempted` and the
+   `merge-refused` that follows it share a time). There is no sequence number; one can be
+   added later as an optional field under rule 1.
+3. **Bounds.** Every free string and every list in both schemas has a `maxLength` or
+   `maxItems`. The numbers are in one place, the item schema's `$defs`, plus the inline
+   ones. The writer enforces them by cutting with a visible mark (`fit()` in
+   `record-format.mjs`); it never refuses a record for its length.
+
+   | Bound | Applies to |
+   |---|---|
+   | `$defs/name`, 300 characters | names, versions, paths, targets, rule ids, check names, `revert_branch`, `flux_revision` |
+   | `$defs/text`, 1000 characters | `reason`, `coverage.detail`, `findings[]`, `merge_call`, refusal lines, `evidence.checks[]`, `carrier.title` |
+   | `$defs/names` and `$defs/texts`, 100 entries | lists of names and of texts |
+   | `item.packages`, 100; `carrier.files`, 300; `lane_detail.checks.main_newer`, 100 | lists of objects |
+   | `attempts[]`, 20 | the newest kept, `attempts_dropped` counts the rest |
+   | inline | `repo` 200, `class` 100, `actor.login` 100, `update_type` 100, `url` 1000, and fixed-length SHAs, ids and times |
+
+   A cut string ends in `…`; a cut list of strings ends in an entry `… (+N more)`. A
+   patterned field (a class, a timestamp, a repo, a SHA, an id) is never cut: a value that is
+   too long is left as it is, so validation refuses it with the real reason.
+4. **`lane_detail` is not part of the contract**, apart from `lane_detail.checks`. Its other
+   shapes are the lane's own (`lane-classify.mjs`, `run-night.mjs`, `night-merge.mjs`) and
+   may change without a version change. A reader shows it as raw text at most. A field a
+   pane should show belongs outside `lane_detail`.
+5. **Secrets in free text.** The writer of the history (`upgrade-history.mjs`) passes every
+   free-text field of an event, and each item's name, through the same shape check the
+   lane's PR record uses (`secretShape()` in `night-merge.mjs`: GitHub, Slack and AWS
+   tokens, private keys, JWTs, URLs with credentials, bearer values, password assignments,
+   private network addresses and in-cluster names). The fields checked are `reason`,
+   `evidence.merge_call`, `revert_branch`, `flux_revision`, `url`, the lists `checks`,
+   `pr_refusals` and `lane_refusals`, `actor.login`, and the item's name. On a hit the text
+   is replaced by a fixed placeholder (`[redacted: the text was shaped like a credential, a
+   private address or an in-cluster name]`; for `evidence.url`, `https://redacted.invalid/`,
+   so the field keeps its shape). The tick logs an ERROR that names the field, never the
+   text.
+
+   One exemption, for the private-address shapes only: a string that is exactly one of the
+   item's own package versions (from or to, as written or without the pin operator) is not
+   an address. PR 4757 updates `nvidia-curand-cu12` from `==10.3.2.106`, which reads like
+   10.x.x.x. The lane's PR record uses the same check with the same exemption. Only a
+   version that is itself shaped like an address is exempt, so a short version cannot hide
+   part of a real address.
 
 ## The state machine
 
@@ -147,7 +221,7 @@ When an edge applies to the lane, it can also limit which lanes the item may be 
 | `failed` | attempt | Verification failed, or a drill asked for a revert. A revert is owed. |
 | `reverting` | attempt | A revert PR is open. Its merge is owed. |
 | `reverted_unverified` | attempt | The revert merged. A recovery check is owed. |
-| `reverted` | settled | Reverted, and recovery verified. The version is never merged again; the only ways out are `drill-cleared` (after a drill) or `resolved` (by a person). |
+| `reverted` | settled | Reverted, and recovery verified. The lane never merges the version again; the lane leaves it only by `drill-cleared` (after a drill), a person by `resolved`. A merge by anyone but the lane is recorded as it happened (`merged`, to `merged_unverified`), so the history says the version runs again. |
 | `escalated` | attempt | The lane has no moves left. A person owns the item (story 554). |
 | `approved`, `scheduled` | reserved | Reserved for piece 2 and refused in piece 1. |
 
@@ -156,13 +230,14 @@ When an edge applies to the lane, it can also limit which lanes the item may be 
 | Event | From, to | Who may record it | Requires | Story |
 |---|---|---|---|---|
 | `observed` | (new), needed, held, blocked, unknown, closed to needed, held, blocked, unknown | lane | lane, class, reason | 593 |
-| `closed` | needed, held, blocked, unknown to closed | lane, renovate, hand, person | reason | 593 |
+| `closed` | needed, held, blocked, unknown to closed | lane, renovate, shepherd, hand, person, unknown | reason | 593 |
 | `merge-attempted` | needed to in_progress (opens an attempt) | lane, only for lane A-night; hand | attempt, lane, carrier | 752 |
 | `merge-refused` | in_progress to needed or blocked, before any merge call; reverting to reverting (the revert's own merge was refused) | lane, hand | attempt, class, reason | 752, 753 |
 | `merge-failed` | in_progress or merge_unknown to needed or blocked: the call was made and did not merge | lane, hand | attempt, class, reason, merge_call | 752 |
 | `merge-unknown` | in_progress to merge_unknown: the call was made and its outcome could not be read | lane, hand | attempt, class, reason, merge_call | 752, 754 |
 | `merged` | in_progress or merge_unknown to merged_unverified | lane, hand | attempt, carrier, merge_commit | 752 |
-| `merged` | (new), needed, held, blocked, unknown to merged_unverified (opens an attempt) | renovate, shepherd, hand, person | the same | 593 |
+| `merged` | (new), needed, held, blocked, unknown to merged_unverified (opens an attempt) | renovate, shepherd, hand, person, unknown | the same | 593 |
+| `merged` | reverted to merged_unverified (opens an attempt): a version remembered as reverted merged again | renovate, shepherd, hand, person, unknown (never the lane) | the same | 593 |
 | `awaiting-pin` | merged_unverified to awaiting_pin | lane | attempt | 553 |
 | `verified` | merged_unverified, awaiting_pin to done | lane, hand | attempt | 553 |
 | `verification-failed` | merged_unverified, awaiting_pin to failed | lane, hand | attempt, class, reason | 553 |
@@ -197,8 +272,11 @@ leave it out.
   the PR (`merged`, `merge-failed`) or by `escalated`.
 - Every lock phase `night-merge.mjs` writes goes with item states, and a merge in flight is
   never under a released lock.
-- Exactly two edges take an item out of `reverted`: `drill-cleared` (lane or hand, only
-  for a drill) and `resolved` (a person only).
+- Three edges take an item out of `reverted`: `drill-cleared` (lane or hand, only for a
+  drill), `resolved` (a person only), and `merged` by anyone but the lane (it records that
+  the version runs again). The lane leaves `reverted` only by `drill-cleared`, so it never
+  merges a remembered version.
+- An item first seen at its close is not recorded: `closed` has no edge from first sight.
 - `drill-cleared` is refused unless the attempt was a drill, so a real revert stays
   remembered.
 - The lane takes no action on a held item.
@@ -286,6 +364,7 @@ also add a row that says where it goes.
 | `schedule` | `schedule` | copied (empty today) |
 | `last_attempt` | `lane_detail.last_attempt` | copied: the tick's merge-step verdict for the PR it ran on, `{}` on the others. It is not `attempts`: that list is rebuilt from events, and a live verdict becomes events as the table above says. |
 | `retry` | `lane_detail.retry` | copied (story 549): the stalled-check retry for the PR as the tick read it: `state`, `why`, `count_7d`, `limits` and `history` (`head`, `at`, `status`, `outcome`, `next_head`) from the ledger `data.retry_ledger`. A retry is a Renovate rebase, not an attempt on the item, so it writes no event. |
+| `terminal` | `state` | events (story 593): the item's terminal event as the history recorded it (`type` merged or closed, `at`, `state`, `by`, `item`, `event`, `merge_commit`); null on an open PR. Not converted: the state and attempts come from the item's events. |
 
 **Lane and state.**
 
@@ -315,7 +394,7 @@ other `BLOCKED` verdict.
 its PR: the marker `<!-- upgrade-lane v1 -->` and a JSON block holding the fields
 `night.pr_record.fields` in `upgrade-rules.json` names (`schema`, `pr`, `head`,
 `fingerprint`, `lane`, `class`, `reason`, `rules`, `checks`, `backup`, `preapproval`,
-`schedule`, `last_attempt`, `retry`, `updated`). Those fields map by the rows above. The
+`schedule`, `last_attempt`, `retry`, `terminal` (story 593), `updated`). Those fields map by the rows above. The
 runbook's section "PR records and the stalled-check retry" says how the comment is written
 and read.
 
@@ -370,12 +449,38 @@ node scripts/upgrade-agent/record-format-selftest.mjs     # offline; Node 24
 
 ## Open points
 
-- The fixture events average about 440 bytes each, about 760 at most. Story 593 planned
-  on about 3,000 compact events per MiB, about 350 bytes each. It can store them more
-  compactly (for example, without the `schema` key on each line) or rotate sooner.
-- In live mode, a PR the merge step refuses for its own reasons on every tick opens one
-  attempt per tick until it changes. Story 593 may collapse repeated refusals of the same
-  head.
+- **The backfill names items by the lane's route (story 593 review, 2026-11-12).** The
+  backfill fixture `seq-backfill-renovate-automerge.json` first named PR 4817's item from
+  its title (`ghcr.io/stakater/charts/reloader` at `v2.2.20`, no packages). The lane names
+  the same update from the PR's package table (`2.2.20`, one package), so the two routes
+  gave different ids: 29 of 40 recent merged Renovate PRs differed. A reverted version
+  recorded on a backfilled item would then not be the item the lane computes when Renovate
+  reopens it. The fixture now follows the lane's route: the package table, labels and files
+  through `fromLaneRecord()`. With the place (the changed paths) in the id, its item id is
+  now `renovate-pr:396fd61c012d314c5103c24b` and its event id `ev:7f6776e5338a202d3ce67ed9`,
+  and its carrier lists the PR's files. The
+  history names an item from a title only when the PR's body cannot be read, and marks it
+  `basis: "title"` in its item description, which is not part of the item record.
+- **Size (story 593).** The history stores each event without `schema`, without `id` and
+  without a null `actor.login`; `unpack()` in `upgrade-history.mjs` restores them. A merge
+  by someone else carries no URL, lane or class (the actor and the PR say them). A stored
+  line is still about 440 bytes, plus about 130 bytes of item description. The 768 KiB cap
+  therefore holds about 1,400 single-event items, or about 75 days at an estimated 20
+  events a day, not the 3,000 per MiB first planned.
+- **Repeated refusals (story 593).** In live mode, a refusal at the same head for the same
+  reasons as the item's last refusal is recorded once.
+- **Settled in story 593 (the reader's points, 2026-11-13).** The place is in the item id
+  (the sorted changed paths, not the targets the reader suggested, so that the lane's rules
+  cannot re-key an item), so two PRs for the same package and version in different files
+  (PRs 4376 and 4377) are two items. A merge of a version remembered as reverted is an event (`merged`, from
+  `reverted`, by anyone but the lane). The shepherd is an actor on `closed`. An actor that
+  cannot be established is `unknown`, its login kept. An item first seen at its close is
+  not recorded. Every string and list is bounded, and `attempts[]` keeps the newest 20.
+- **Not taken:** a per-item sequence number (the order rule is enough while the store is
+  the only source and is in write order); the five piece-2 points of the review
+  (transport, a feed-level freshness time, delivery of the machine file, a key for one
+  thing across versions, the shape of the approval reference); checking the change lock's
+  last holder (story 556).
 - The sources the lane does not write yet have only the generic item shape. Their adapter
   stories may need more fields.
 - `kind` is inferred from the version text. `semver` means the version starts with dotted

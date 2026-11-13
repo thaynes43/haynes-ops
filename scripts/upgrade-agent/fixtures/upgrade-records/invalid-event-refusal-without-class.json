@@ -6,8 +6,8 @@
   },
   "record": {
     "schema": "haynes.upgrade-event/v1",
-    "id": "ev:44b4d1be636aa7a80759b043",
-    "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+    "id": "ev:4f180343e2f7b33662dd862a",
+    "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
     "type": "merge-refused",
     "from": "in_progress",
     "to": "blocked",

@@ -934,10 +934,12 @@ export function projectRecord(rec, cfg) {
   for (const f of cfg.fields) out[f] = rec?.[f] === undefined ? null : rec[f];
   return out;
 }
-// The content the lane compares: everything but the tick's own time.
+// The content the lane compares: everything but the tick's own time. A null terminal (story
+// 593: an open PR) compares equal to a record written before the field existed.
 export function recordContentKey(pub) {
   const x = structuredClone(pub ?? {});
   delete x.updated;
+  if (x.terminal === null || x.terminal === undefined) delete x.terminal;
   if (x.last_attempt && typeof x.last_attempt === 'object') delete x.last_attempt.at;
   return JSON.stringify(canon(x));
 }
@@ -971,6 +973,34 @@ const SECRET_SHAPES = Object.freeze([
   [/\b(?:f[cd][0-9a-f]{2}|fe80):[0-9a-f]{0,4}:/i, 'a private network address'],
   [/[A-Za-z0-9-]\.svc\b|\.cluster\.local\b/i, 'an in-cluster name'],
 ]);
+// Story 593: the same shapes guard every free-text field the history stores. Returns what
+// the text is shaped like, or null.
+// exempt: the record's own package versions (from and to, as written and bare). Such an
+// exact string is not an address (pip's ==10.3.2.106 reads like 10.x.x.x), so it is masked
+// for the private-address shapes only; every other shape sees the whole text.
+const ADDRESS = 'a private network address';
+export function versionsOf(rec) {
+  const out = new Set();
+  for (const v of [rec?.from, rec?.to, ...(rec?.packages || []).flatMap(p => [p?.from, p?.to])]) {
+    if (typeof v !== 'string' || !v) continue;
+    out.add(v); const bare = L.bareVersion(v); if (bare) out.add(bare);
+  }
+  return [...out];
+}
+// only a version that is itself shaped like an address is masked, so a short version (10)
+// cannot hide part of a real address in the same text
+const addressShaped = v => SECRET_SHAPES.some(([re, what]) => what === ADDRESS && re.test(v));
+// and only where it stands alone (no digit or dot on either side), so an exempt 10.3.2.1
+// cannot hide a different address that starts with it (10.3.2.106)
+const escRe = v => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const mask = (t, exempt) => (exempt || []).filter(v => typeof v === 'string' && v && addressShaped(v)).sort((a, b) => b.length - a.length)
+  .reduce((x, v) => x.replace(new RegExp(`(?<![\\d.])${escRe(v)}(?![\\d.])`, 'g'), ' '), t);
+export function secretShape(text, exempt = []) {
+  const t = String(text ?? '');
+  const masked = mask(t, exempt);
+  for (const [re, what] of SECRET_SHAPES) if (re.test(what === ADDRESS ? masked : t)) return what;
+  return null;
+}
 // F3/F4 (story 549 review): what a failed GitHub write publishes is a fixed vocabulary,
 // never gh's or GitHub's own text (a network error's last line can name the cluster's
 // resolver); the raw line goes to the Job log only. A denial (401, or a 403 that is not a
@@ -988,10 +1018,13 @@ export function writeFailure(w) {
 }
 // The pause, as a public reason: never the pause's own text.
 const pauseWhy = (p, when) => (!p ? `unreadable: data.pause on upgrade-lane-state (${when})` : p.pause ? `paused (data.pause on upgrade-lane-state) ${when}` : null);
-export function publishProblems(pub, body, cfg) {
+export function publishProblems(pub, body, cfg, exempt = []) {
   const out = [];
   const raw = JSON.stringify(pub);
-  for (const [re, what] of SECRET_SHAPES) if (re.test(raw) || re.test(body)) out.push(`the record carries text shaped like ${what}`);
+  for (const [re, what] of SECRET_SHAPES) {
+    const [r, b] = what === ADDRESS ? [mask(raw, exempt), mask(body, exempt)] : [raw, body];
+    if (re.test(r) || re.test(b)) out.push(`the record carries text shaped like ${what}`);
+  }
   if (pub?.preapproval && Object.keys(pub.preapproval).length) out.push('preapproval is not empty (piece 1 reads no approval)');
   if (pub?.schema !== 'haynes.upgrade-lane/v1' || !Number.isInteger(pub?.pr)) out.push('not a haynes.upgrade-lane/v1 record of one PR');
   if (Buffer.byteLength(body) > cfg.max_body_bytes) out.push(`the record is ${Buffer.byteLength(body)} bytes, over ${cfg.max_body_bytes}`);
@@ -1254,31 +1287,36 @@ export function runRetry({ cand, rules, run, env, clock, ledger, persistLedger, 
 }
 
 // ── the record writes (every open Renovate PR) ──
-// items = [{ rec, comments }] (comments = facts.record_comments, null when unread);
-// live = false plans only (a local run). Returns the summary block.
+// items = [{ rec, comments, edit_only }] (comments = facts.record_comments, null when unread;
+// edit_only: story 593's terminal record for a PR that left the open list, which edits the
+// lane's own record and never creates one); live = false plans only (a local run). Returns
+// the summary block.
 // pauseCheck() -> a public reason when paused (or unreadable), else null: read just before
 // each write (F5). The first failed write stops the rest of the tick; a denial also halts.
-export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, stopped = null, pauseCheck = () => null }) {
-  const out = { github_writes: 0, created: [], updated: [], current: [], demoted: [], refused: [], failed: [], not_attempted: [], foreign_ignored: [], would_create: [], would_update: [], halt: null, stopped_by: stopped, raw_details: [] };
+// haltKey: where the halt a denial sets is kept (story 593: the terminal mirrors keep theirs
+// in upgrade-ledger's meta.mirror_halt), named in the halt's text.
+export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, stopped = null, pauseCheck = () => null, haltKey = 'retry_ledger.halt' }) {
+  const out = { github_writes: 0, created: [], updated: [], current: [], demoted: [], refused: [], failed: [], not_attempted: [], foreign_ignored: [], would_create: [], would_update: [], no_record: [], halt: null, stopped_by: stopped, raw_details: [] };
   let stop = stopped;
   const fail = (pr, w) => {
     const f = writeFailure(w);
     out.failed.push({ pr, why: `${w.call}: ${f.reason}`, failure: f.kind });
     out.raw_details.push(`#${pr} ${w.call}: ${w.detail}`);
-    if (f.halts && !out.halt) out.halt = { why: `the record write on #${pr} was ${f.reason}; a denial is a stop: PR writes halt until a person removes retry_ledger.halt` };
+    if (f.halts && !out.halt) out.halt = { why: `the record write on #${pr} was ${f.reason}; a denial is a stop: PR writes halt until a person removes ${haltKey}` };
     stop = `an earlier GitHub write failed this tick (#${pr}, ${f.kind})`; out.stopped_by = stop;
   };
   const paused = (pr, listIt = true) => { const p = pauseCheck(); if (!p) return false; stop = p; out.stopped_by = p; if (listIt) out.not_attempted.push(pr); return true; };
   const stillOwn = c => c && c.user?.login === cfg.author.login && c.user?.type === cfg.author.type && String(c.body || '').startsWith(cfg.marker);
-  for (const { rec, comments } of [...items].sort((a, b) => a.rec.pr - b.rec.pr)) {
+  for (const { rec, comments, edit_only: editOnly } of [...items].sort((a, b) => a.rec.pr - b.rec.pr)) {
     const pr = rec.pr;
     if (stop) { out.not_attempted.push(pr); continue; }
     if (!Array.isArray(comments)) { out.refused.push({ pr, why: 'unreadable: the comments of this PR (its facts were not read this tick)' }); continue; }
     const pub = projectRecord(rec, cfg);
     const body = renderRecord(pub, cfg);
-    const probs = publishProblems(pub, body, cfg);
+    const probs = publishProblems(pub, body, cfg, versionsOf(rec)); // the record's own versions are not addresses
     if (probs.length) { out.refused.push({ pr, why: probs.join('; ') }); continue; }
     let plan = planRecord(pub, comments, cfg);
+    if (editOnly && plan.action === 'create') { out.no_record.push(pr); continue; }
     if (plan.foreign.length) out.foreign_ignored.push({ pr, comments: plan.foreign.map(c => `${c.id} by ${c.author}`) });
     if (!live) { if (plan.action === 'create') out.would_create.push(pr); else if (plan.action === 'update') out.would_update.push(pr); else out.current.push(pr); continue; }
     if (plan.action === 'create') {
@@ -1309,7 +1347,7 @@ export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, st
       if (who.login !== cfg.author.login || who.type !== cfg.author.type) {
         // the token is not the identity the lane reads its records by: every later tick
         // would add another comment. Halt (data.retry_ledger.halt) until a person clears it.
-        out.halt = { why: `the record on #${pr} was written as ${who.login ?? 'unknown'} (${who.type ?? '?'}), not ${cfg.author.login} (${cfg.author.type}); PR writes halt until a person removes retry_ledger.halt`, comment: w.json?.id ?? null };
+        out.halt = { why: `the record on #${pr} was written as ${who.login ?? 'unknown'} (${who.type ?? '?'}), not ${cfg.author.login} (${cfg.author.type}); PR writes halt until a person removes ${haltKey}`, comment: w.json?.id ?? null };
         out.failed.push({ pr, why: out.halt.why });
         stop = 'the record identity check failed this tick'; out.stopped_by = stop;
         continue;

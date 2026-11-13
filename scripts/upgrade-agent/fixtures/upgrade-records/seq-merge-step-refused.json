@@ -6,7 +6,7 @@
   "record": {
     "item": {
       "schema": "haynes.upgrade-item/v1",
-      "id": "own-image:65d1acd0b3646b7b9f03fd41",
+      "id": "own-image:9c271237b1d4e45037946e50",
       "source": "own-image",
       "item": {
         "name": "sentencepiece",
@@ -70,8 +70,8 @@
     "events": [
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:29fdee11c3de0a103821515e",
-        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "id": "ev:283a31b853915c26eb98b335",
+        "item_id": "own-image:9c271237b1d4e45037946e50",
         "type": "merge-attempted",
         "from": "needed",
         "to": "in_progress",
@@ -91,8 +91,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:58183fedb6470df8776d640e",
-        "item_id": "own-image:65d1acd0b3646b7b9f03fd41",
+        "id": "ev:911ea53e29320c8bb9c4998c",
+        "item_id": "own-image:9c271237b1d4e45037946e50",
         "type": "merge-refused",
         "from": "in_progress",
         "to": "needed",
