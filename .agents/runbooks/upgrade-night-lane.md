@@ -1837,10 +1837,22 @@ The gate's 40-minute grace measures the age of `first_seen`.
   - `until` is the lane's bound on its own action: `night.claim.max_work_seconds`, 10800 s,
     from the claim to a verified revert.
   - The lane's states, and the `result` each sets:
-    - `working`: `inprogress`;
+    - `working`: `inprogress` (the lane has taken it);
+    - `reverting`: `inprogress` (story 753: a revert pull request is open). Only in this state
+      do the gate's note and the morning summary say the lane "is reverting"; otherwise they say
+      it "has taken" the regression;
     - `reverted`: `fixed`;
     - `revert-failed`: `failed`.
   - `updateClaim()` moves the claim; story 753 calls it.
+- **No claim without a revert step (`night.claim.write`, git ships `false`).** A claim makes
+  triage stand down and keeps the gate silent until `until`. Before story 753 the lane has no
+  revert to act on it. Enabling a live class would then leave the regression with nobody acting
+  for up to 10,800 s, where on main triage starts remediation within about 30 minutes and the
+  gate pages by 40. So with `write` off, a failed own-regression verdict on the lane's own merge
+  in live mode writes nothing to `upgrade-remediation-state`. It records what it would claim,
+  as practice does (`would-claim`, with `read only: night.claim.write is off until story 753
+  builds the revert`), and triage and the gate act exactly as on main. **Story 753 turns
+  `write` on together with the revert.**
 - **One holder.** Both sides decide and write on one read. The write is a replace at that
   read's resourceVersion, or a create when the ConfigMap is absent. If someone writes in
   between, the API server refuses the second writer with `Conflict` or `AlreadyExists`. That
@@ -1856,13 +1868,13 @@ The gate's 40-minute grace measures the age of `first_seen`.
 
   It records why. Story 753 reads `revert_allowed`.
 - **Triage stops** for a signature whose entry is the lane's. It also stops when a lane claim
-  that is still `working`, and whose `until` has not passed, names one of the current ids (a
+  that is still `working` or `reverting`, and whose `until` has not passed, names one of the current ids (a
   set that changed since the claim). It does not attribute, does not summon and does not write
   that entry. It logs `… is held by the night lane for #<pr> … — not triage's: NOT summoning
   remediation and NOT writing its entry`. `state_upsert` never writes over a lane-held entry.
 - **The gate** reads the lane's fields first (`lane_phase`):
-  - `working` before `until`: `inflight`, no page;
-  - `working` after `until`: `failed`; it pages that the lane did not finish by its own bound;
+  - `working` or `reverting` before `until`: `inflight`, no page;
+  - `working` or `reverting` after `until`: `failed`; it pages that the lane did not finish by its own bound;
   - `revert-failed`: `failed`; it pages that the revert did not verify, at the existing
     critical priority;
   - `reverted`: `fixed`.
@@ -1886,13 +1898,13 @@ The gate's 40-minute grace measures the age of `first_seen`.
 - **A moved signature.** A set can change after the lane claimed part of it, so that the new
   signature has no entry of its own while a working lane claim names some of its ids. Triage
   then stands down for the whole set, and the gate pages it at once (as today). The page says
-  which PR the lane is reverting, the ids it holds, and that the rest of the set has no owner
-  (`lane_overlap_note`).
+  which PR the lane has taken (or is reverting, when its claim says so), the ids it holds, and
+  that the rest of the set has no owner (`lane_overlap_note`).
 - **Dry-run and practice never write.** For every verdict that fails on a tick, the step runs
   read-only. It computes the signature, reads the claims, and records in `summary.claims` the
   signature it would claim and whether triage holds it (`would-claim`, `triage-holds`,
   `not-in-set`). Only a live tick with `--write-state`, for the lane's own merge, with a valid
-  `night.claim`, may write.
+  `night.claim` and `night.claim.write` on, may write.
 
 Log line: `upgrade-night dryrun: claims: #4869 would-claim sig=ae85955b9204 (3 id(s) of its
 target)` (or `no failed verdict this tick`).
@@ -1959,28 +1971,41 @@ The text is ordered by what a reader must not miss, so that cutting from the end
 detail, never a count:
 
 1. **Every count, in the first three lines:**
-   - the night, the lane's mode, its ticks and the time of the last one, with `(the night's
-     last)` when that is the 05:45 New York tick;
+   - the night and the lane's mode; in plain words, whether the lane finished the night (its
+     last run was the 05:45 New York one) or not yet; its runs and the time of the last one;
    - merged since the last summary, by whom (the lane, Renovate, the shepherd, a session
      (`hand`), or a person by login); reverted, and how many recovered, did not, or are not
      checked yet;
    - the health checks after merging (passed, still being checked, failed), marked practice
-     in dry-run; and how many items wait for Tom.
-2. **Then the detail, in this order:**
-   - a revert that did not recover, with the reason;
-   - what waits for Tom, one line per item: the verifier's `NEEDS A PERSON` marks, the items
+     in dry-run (or in live mode when only practice was judged); and how many items wait for
+     Tom.
+2. **Then the detail, each group under its own heading, and a group with nothing in it has
+   no heading:**
+   - `Reverted and NOT recovered:` each with the reason;
+   - `Failed health checks:` each with the PR, what failed, whether this update caused it
+     ("cannot tell which change caused it" otherwise, also when the other changes could not
+     be read), and who has taken it;
+   - `Waiting for you:` one line per item: the verifier's `NEEDS A PERSON` marks, the items
      waiting for their digest pin, the PRs whose record says blocked with the reason (for
      `check-failing-after-retry`, the failing check), the owner's updates (majors, holds) on
      one line, and a history that needs a person. This is story 715's list;
-   - reverts that recovered, and those not checked yet;
-   - the merges, one line per actor, each with the PR, the package and the version;
-   - the checks: each failure, with what failed, whether this update caused it, and who is
-     handling it; then what passed and what is still being checked.
+   - `Reverted:` those that recovered, and those not checked yet;
+   - `Merged:` one line per actor, each with the PR, the package and the version;
+   - `Health checks:` what passed and what is still being checked.
 
 Every line is in plain words for a reader who knows nothing of the lane. The text never says
-"claim" or "signature". A failure is handled by "the night lane is reverting it", by "the
-automatic remediation (triage) is handling it", or "no automatic fix has taken it yet". A
-`lost` claim that nobody holds reads as the last of these.
+"tick", "claim" or "signature". Who has taken a failure is one of:
+
+- "the night lane has taken it" (or "is reverting it", only when the claim says a revert is
+  under way, story 753);
+- "the automatic remediation (triage) has taken it";
+- "no automatic fix has taken it yet" (also a `lost` claim that nobody holds, and a regression
+  the gate does not see: the text makes no claim about what else reports it, because a
+  critical alert also pages).
+
+When the text is cut, the last line says `and N more lines`: it counts lines, not items. A
+heading is never the last line kept, because it would head nothing. The sender's cut follows
+the same rule.
 
 The window runs from the last night's record (`composed_at`). A merge by day therefore
 appears the next morning, and nothing appears twice. The facts behind the text keep every
@@ -2021,35 +2046,48 @@ delivery copy.
 The sender reads the copy at the moment it acts:
 
 - **This night's text:** it sends the text.
-- **A last tick before the night's last one (05:45):** it puts first `The night lane did not
-  finish the night: its last tick ran at HH:MM, not 05:45 (N ticks).` Finished is decided by
-  the last tick, not by a count. The night the clocks go forward has 16 ticks, and the night
+- **A last run before the night's last one (05:45):** it puts first `The night lane did not
+  finish the night: its last run was at HH:MM, not 05:45 (N runs).` Finished is decided by
+  the last run, not by a count. The night the clocks go forward has 16 runs, and the night
   they go back may have more than 20.
 - **A copy that is missing, empty, or for an older night:** it sends its own message, `The
-  night lane wrote no summary for the night of <date>: it did not run, or no tick finished.
+  night lane wrote no summary for the night of <date>: it did not run, or no run finished.
   Its last summary is for <night>.`
 - **A ConfigMap it cannot read:** it says it could not read the summary.
+- **Nights with no delivery recorded:** it puts first `No delivery was recorded for the night
+  of <date>, so its summary may not have arrived.` (or the range of nights). It does this when
+  `morning_sent_night` is older than the night before the one it sends. A value that is not a
+  date gives no line and is logged.
 
-- **A night whose summary a past run could not deliver:** it puts first `The summary for the
-  night of <date> was not delivered.` (or the range of nights). It does this when
-  `morning_sent_night` is older than the night before the one it sends.
+It fits the message to 1000 bytes by whole lines, counted in bytes, ending `and N more
+lines`. When even the first line and that do not fit, it cuts the first line by characters,
+never inside one. It sends through `page.sh` with severity `low` and title `Night upgrades
+<date>`. The text reaches curl as one quoted `--form-string`, never as a command line.
 
-It fits the message to 1000 bytes by whole lines, counted in bytes. When even the first line
-and `and N more` do not fit, it cuts the first line by characters, never inside one. It sends
-through `page.sh` with severity `low` and title `Night upgrades <date>`. The text reaches curl
-as one quoted `--form-string`, never as a command line.
+**Delivery.** `page.sh`'s exit status says what is known about a send. `gate.sh`'s `page()`
+ignores it, as before, and the stderr lines start as before (`paged: …`, `PAGE FAILED: …`):
 
-Delivery is up to `MORNING_ATTEMPTS` (3) sends, `MORNING_RETRY_SECONDS` (20) apart. After a
-delivery, it stamps `morning_sent_night` at the version it read, so a second run the same
-morning sends nothing. When all three fail, it logs one `ERROR morning summary: NOT
-delivered …` line and leaves the night unstamped. The Job still succeeds: a Failed pod of this
-CronJob would enter the coordination set and page at priority 1 for a missed quiet note.
+| Exit | What happened | The sender |
+|---|---|---|
+| 0 | HTTP 2xx | records the delivery |
+| 2 | Certainly not sent: the host could not be resolved or connected to, or Pushover answered HTTP 5xx or 429 | tries again, at most `MORNING_ATTEMPTS` (3) sends, `MORNING_RETRY_SECONDS` (20) apart |
+| 3 | A timeout or a broken answer after connecting: it may have been delivered | does not retry (a second copy) and does not record |
+| 1 | Any other HTTP answer (a 4xx) | does not retry and does not record |
+
+The delivery is recorded in `morning_sent_night` from a fresh read after the send: get, set the
+key, replace at that version, with one retry on a conflict. The gate's own half-hourly run
+writes the same ConfigMap. The send is recorded also after the "could not be read" message,
+once the ConfigMap can be read. The record is what stops a second run the same morning; its
+absence proves nothing. Any failure is one `ERROR morning summary: …` line. The night is left
+unrecorded, and the Job still succeeds: a Failed pod of this CronJob would enter the
+coordination set and page at priority 1 for a missed quiet note.
 
 **Known limits of the summary.**
 
-- A failed send is not retried after the run. The next morning's message starts by naming the
-  night that was not delivered.
-- The lane composes the text, so it is as of the night's last completed tick. The sender adds
+- A failed send is not retried after the run. The next morning's message says that no delivery
+  was recorded for that night, so it may not have arrived. That is all that is known: a timeout
+  after connecting may have delivered it.
+- The lane composes the text, so it is as of the night's last completed run. The sender adds
   only its own first lines.
 
 **Pages may not reach Tom.** The saga's comment 6927 says the login watcher logged a page
@@ -2077,7 +2115,9 @@ class has a lane, blocked, excluded and the owner's lane included. With every op
 classified the count reads 0 and the gate does not page.
 
 A PR has a lane only while the lane is acting. Every aging PR counts, as before, in each of
-these cases:
+these cases (`ORPHAN_LANE_MAX_AGE_HOURS` is a bound on how old the lane's own record may be
+before the shepherd stops relying on it; it only ever makes the count louder, and the daily
+sender already reports a lane that did not run):
 
 - the lane is paused (`data.pause`);
 - its last tick (`data.updated`) is more than `ORPHAN_LANE_MAX_AGE_HOURS` (36) old: the lane

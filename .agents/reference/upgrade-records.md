@@ -496,11 +496,15 @@ signature (12 hex) in ConfigMap `upgrade-agent/upgrade-remediation-state`.
 - **Fields every writer keeps:** `class`, `attempted`, `result`, `note`, `first_seen` and
   `last_paged`. These are what triage and the health gate read, all strings.
 - **Fields the lane adds:** `holder` (`lane`), `schema`, `pr`, `item`, `lane_state`
-  (`working`, `reverted` or `revert-failed`), `claimed_at`, `until` (epoch seconds, the lane's
-  bound on its own action) and `ids` (the coordination ids that belong to the target).
+  (`working`, `reverting` (story 753: a revert pull request is open), `reverted` or
+  `revert-failed`), `claimed_at`, `until` (epoch seconds, the lane's bound on its own action)
+  and `ids` (the coordination ids that belong to the target).
+- **Who writes it:** the lane writes a claim only with `night.claim.write` on. Git ships it
+  `false`, and story 753 turns it on together with the revert. Until then a live failed verdict
+  reads only, and triage and the gate act as on main.
 - **Fields triage adds since this story:** `holder` (`triage`) and `ids`.
-- **`result` follows the lane's state:** `working` sets `inprogress`, `reverted` sets `fixed`,
-  and `revert-failed` sets `failed`.
+- **`result` follows the lane's state:** `working` and `reverting` set `inprogress`, `reverted`
+  sets `fixed`, and `revert-failed` sets `failed`.
 
 The item's own record does not change. A `verification-failed` event followed by
 `revert-opened` (story 753) is what the history says, and the claim is how the lane, triage
@@ -511,7 +515,7 @@ and the gate agree who acts meanwhile. See
 `data.morning`, field manager `upgrade-night-summary`.
 
 - **What it holds:** `night` (New York date), `composed_at`, `window_from`,
-  `ticks_completed`, `finished` (the last tick is the night's last, 05:45), `last_tick_local`,
+  `ticks_completed`, `finished` (the last run is the night's last, 05:45), `last_tick_local`,
   `expected_last_tick_local`, `mode`, `bytes`, `lines_cut`, `text` and `facts`.
 - **The facts:** `merged[]` (from the history's `merged` events in the window, with the
   actor), `verified[]`, `checking[]`, `failed[]`, `reverted[]` (`revert-merged`,

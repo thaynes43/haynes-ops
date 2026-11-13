@@ -47,7 +47,9 @@ import * as M from './night-merge.mjs';
 
 export const STATE = Object.freeze({ namespace: 'upgrade-agent', name: 'upgrade-remediation-state' });
 export const CLAIM_SCHEMA = 'haynes.upgrade-claim/v1';
-export const LANE_RESULT = Object.freeze({ working: 'inprogress', reverted: 'fixed', 'revert-failed': 'failed' });
+export const LANE_RESULT = Object.freeze({ working: 'inprogress', reverting: 'inprogress', reverted: 'fixed', 'revert-failed': 'failed' });
+// the states in which the lane is acting on its claim (it holds the regression)
+export const ACTING = Object.freeze(['working', 'reverting']);
 export const DEFAULT_LIB = '/opt/coordination/coordination-lib.sh';
 const KUBECTL_TIMEOUT_MS = 30e3;
 const SIG_TIMEOUT_MS = 90e3;
@@ -57,11 +59,14 @@ const sec = ms => Math.floor(ms / 1000);
 
 // rules.night.claim, checked. max_work_seconds: the lane's bound on its own action (claim to
 // verified revert); gate.sh refuses an `until` more than LANE_CLAIM_MAX_SECONDS (21600) after
-// claimed_at, so the bound stays under that.
+// claimed_at, so the bound stays under that. write: whether a live tick may write a claim at
+// all. Git ships it false: a claim makes triage stand down and keeps the gate silent, so the
+// lane writes one only once it has a revert step to act on it (story 753 turns it on with the
+// revert). Off, a live failed verdict on the lane's own merge reads only, as practice does.
 export function claimConfig(rules) {
   const c = rules?.night?.claim || {};
-  const ok = Number.isInteger(c.max_work_seconds) && c.max_work_seconds >= 1800 && c.max_work_seconds <= 21600;
-  return { ok, max_work_seconds: ok ? c.max_work_seconds : null, why: ok ? null : 'night.claim.max_work_seconds in upgrade-rules.json must be an integer from 1800 to 21600' };
+  const ok = Number.isInteger(c.max_work_seconds) && c.max_work_seconds >= 1800 && c.max_work_seconds <= 21600 && typeof c.write === 'boolean';
+  return { ok, max_work_seconds: ok ? c.max_work_seconds : null, write: ok && c.write === true, why: ok ? null : 'night.claim in upgrade-rules.json is invalid (max_work_seconds an integer from 1800 to 21600; write true or false)' };
 }
 
 // ── the signature: the library itself ───────────────────────────────────────────────
@@ -154,7 +159,7 @@ export function claimStatus(read, sig, { pr = null, mine = [], now = Date.now() 
     if (k === sig) continue;
     const e = parse(v);
     if (!e || !Array.isArray(e.ids) || !e.ids.some(i => mineSet.has(i))) continue;
-    if (e.holder === 'lane' && String(e.pr) !== String(pr) && e.lane_state === 'working' && Number(e.until) * 1000 > now) return { state: 'lane-other', rv, found: true, entry, other_sig: k, holder: 'lane', why: `the night lane holds ${k} for #${e.pr}, which names ${e.ids.filter(i => mineSet.has(i)).join(', ')}` };
+    if (e.holder === 'lane' && String(e.pr) !== String(pr) && ACTING.includes(e.lane_state) && Number(e.until) * 1000 > now) return { state: 'lane-other', rv, found: true, entry, other_sig: k, holder: 'lane', why: `the night lane holds ${k} for #${e.pr}, which names ${e.ids.filter(i => mineSet.has(i)).join(', ')}` };
     if (e.holder !== 'lane' && String(e.attempted) === '1' && inFlight(e)) return { state: 'triage', rv, found: true, entry, other_sig: k, holder: 'triage', why: `triage holds ${k} (result ${e.result || 'none'}), which names ${e.ids.filter(i => mineSet.has(i)).join(', ')}` };
   }
   return { state: 'free', found: true, rv, entry };
@@ -198,8 +203,8 @@ export function writeState(verb, manifest, env, spawn = spawnSync) {
 //   revert_allowed: true only when the lane holds the claim (or no actor sees the regression).
 // deps: { signature: () => coordinationSignature(...) result, read: () => readNamedConfigMap,
 //         write: (verb, manifest) => writeState result, beforeWrite (tests only) }.
-export function claimStep({ rec, live, now, work, deps }) {
-  const out = { pr: rec.pr, item: rec.item ?? null, practice: !!rec.practice, attribution: rec.attribution ?? null, live: !!live, sig: null, ids: [], mine: [], pods: null, outcome: null, holder: null, revert_allowed: false, wrote: false, why: null };
+export function claimStep({ rec, live, now, work, deps, readOnlyWhy = null }) {
+  const out = { pr: rec.pr, item: rec.item ?? null, practice: !!rec.practice, attribution: rec.attribution ?? null, live: !!live, sig: null, ids: [], mine: [], pods: null, outcome: null, holder: null, lane_state: null, revert_allowed: false, wrote: false, why: null };
   const done = (outcome, why, extra = {}) => Object.assign(out, { outcome, why, ...extra });
   if (rec.verdict !== 'failed') return done('not-own-regression', `verdict ${rec.verdict}: nothing to claim`);
   const s = deps.signature();
@@ -218,10 +223,10 @@ export function claimStep({ rec, live, now, work, deps }) {
   if (st.state === 'unreadable') return done('unreadable', `${st.why}; the lane does not revert`);
   if (st.state === 'triage') return done('triage-holds', `${st.why}: triage owns it${live ? `; the lane stops for #${rec.pr} and does not revert` : ''}`);
   if (st.state === 'lane-other') return done('lane-holds', `${st.why}; the lane does not revert #${rec.pr} as well`);
-  if (st.state === 'lane-ours') return done('claimed', `the lane already holds signature ${s.sig} for #${rec.pr} (${st.entry.lane_state})`, { revert_allowed: live && st.entry.lane_state === 'working' });
+  if (st.state === 'lane-ours') return done('claimed', `the lane already holds signature ${s.sig} for #${rec.pr} (${st.entry.lane_state})`, { lane_state: st.entry.lane_state ?? null, revert_allowed: live && ACTING.includes(st.entry.lane_state) });
   if (!live || rec.attribution !== 'own-regression') {
     return done(rec.attribution === 'own-regression' ? 'would-claim' : 'not-own-regression',
-      `${rec.attribution === 'own-regression' ? `would claim signature ${s.sig}` : `cannot tell which change did it (a person owns it); signature ${s.sig}`}: free, triage does not hold it${live ? '' : ' (read only: practice or dry-run writes nothing)'}`);
+      `${rec.attribution === 'own-regression' ? `would claim signature ${s.sig}` : `cannot tell which change did it (a person owns it); signature ${s.sig}`}: free, triage does not hold it${live ? '' : ` (${readOnlyWhy || 'read only: practice or dry-run writes nothing'})`}`);
   }
   // live, the lane's own merge, its own regression, and nobody holds it: claim
   let status = st;
@@ -232,10 +237,10 @@ export function claimStep({ rec, live, now, work, deps }) {
       note: `night lane: #${rec.pr} ${rec.name ?? ''} ${rec.from ?? '?'} -> ${rec.to ?? '?'} failed its verification (${(rec.failing || []).map(f => `${f.fact} ${f.class}`).join(', ')}); the lane reverts it` }));
     deps.beforeWrite?.();
     const w = deps.write(read?.found ? 'replace' : 'create', manifestOf(read, data));
-    if (w.ok) return done('claimed', `claimed signature ${s.sig} for #${rec.pr} (${read?.found ? 'replace at resourceVersion ' + read.cm.metadata.resourceVersion : 'create'}); bound ${work.max_work_seconds} s`, { wrote: true, holder: 'lane', revert_allowed: true });
+    if (w.ok) return done('claimed', `claimed signature ${s.sig} for #${rec.pr} (${read?.found ? 'replace at resourceVersion ' + read.cm.metadata.resourceVersion : 'create'}); bound ${work.max_work_seconds} s`, { wrote: true, holder: 'lane', lane_state: 'working', revert_allowed: true });
     // the loser reads the winner and stands down; a write that failed for another reason too
     read = deps.read(); status = claimStatus(read, s.sig, { pr: rec.pr, mine: out.mine, now });
-    if (status.state === 'lane-ours') return done('claimed', `the claim of ${s.sig} landed (read back after: ${w.detail})`, { wrote: true, holder: 'lane', revert_allowed: true });
+    if (status.state === 'lane-ours') return done('claimed', `the claim of ${s.sig} landed (read back after: ${w.detail})`, { wrote: true, holder: 'lane', lane_state: status.entry?.lane_state ?? 'working', revert_allowed: true });
     if (status.state !== 'free' || !w.conflict) {
       return done(status.state === 'triage' ? 'lost' : status.state === 'unreadable' ? 'unreadable' : status.state === 'lane-other' ? 'lane-holds' : 'lost',
         `the claim of ${s.sig} was refused (${w.detail}); ${status.why || 'read again: still free'}; the lane stands down and does not revert`, { holder: status.holder ?? null });
@@ -244,8 +249,9 @@ export function claimStep({ rec, live, now, work, deps }) {
   return done('lost', `the claim of ${s.sig} conflicted twice with other writes; the lane does not revert this tick`);
 }
 
-// For story 753: move the lane's own claim to reverted or revert-failed (the result the gate
-// reads follows). Only the lane's claim for this PR, at the resourceVersion read.
+// For story 753: move the lane's own claim to reverting (a revert pull request is open),
+// reverted or revert-failed (the result the gate reads follows). Only the lane's claim for this
+// PR, at the resourceVersion read.
 export function updateClaim({ sig, pr, laneState, note = '', now, deps }) {
   if (!Object.keys(LANE_RESULT).includes(laneState)) return { ok: false, why: `unknown lane_state ${laneState}` };
   const read = deps.read();

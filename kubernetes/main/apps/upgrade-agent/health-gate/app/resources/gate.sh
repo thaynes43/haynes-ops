@@ -85,12 +85,16 @@ gt0() { [ -n "$1" ] && [ "$1" -gt 0 ] 2>/dev/null; }
 #    clocks change has 16 or more than 20). Pushover priority -1 (page.sh severity low): no
 #    sound or vibration, still shown as a notification. The text is data: it reaches curl as
 #    one quoted --form-string argument, never a command line. At most MORNING_MAX_BYTES
-#    (1000), whole lines cut from the end with "and N more".
-#    DELIVERY: up to MORNING_ATTEMPTS (3) sends, MORNING_RETRY_SECONDS (20) apart. All failing
-#    is one ERROR line, the night is left unstamped and the run still exits 0: a Failed pod of
-#    this CronJob would enter the coordination set and page at priority 1 for a missed quiet
-#    note. Nothing retries after the run; the next morning's message starts by naming the
-#    night whose summary was not delivered (morning_sent_night older than the night before).
+#    (1000), whole lines cut from the end with "and N more lines".
+#    DELIVERY: up to MORNING_ATTEMPTS (3) sends, MORNING_RETRY_SECONDS (20) apart, and a retry
+#    only when the message certainly did not go (page.sh exit 2: no connection, or HTTP 5xx or
+#    429). A timeout after connecting (exit 3) may have delivered it: no retry (a second copy),
+#    no stamp. Any failure is one ERROR line, the night is left unstamped and the run still exits
+#    0: a Failed pod of this CronJob would enter the coordination set and page at priority 1 for
+#    a missed quiet note. A delivery is stamped (morning_sent_night) from a fresh read after the
+#    send, with one retry on a conflict. The stamp records a delivery; its absence proves
+#    nothing. The next morning's message starts by saying what is known: no delivery was
+#    recorded for a night, so its summary may not have arrived.
 #    Story: https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/554
 MORNING_TZ="${MORNING_TZ:-America/New_York}"
 MORNING_MAX_BYTES="${MORNING_MAX_BYTES:-1000}"
@@ -106,8 +110,9 @@ cut_bytes() {
         | if .n + $b > $max then .full = true else .out += [$c] | .n += $b end
       end) | .out | implode' 2>/dev/null
 }
-# fit_lines <text> <max bytes> — whole lines, the last one "and N more" when any were cut; when
-# even the first line and "and N more" do not fit, the first line is cut by characters.
+# fit_lines <text> <max bytes> — whole lines, the last one "and N more lines" when any were
+# cut; when even the first line and that do not fit, the first line is cut by characters.
+more_lines() { if [ "$1" -eq 1 ]; then printf 'and 1 more line'; else printf 'and %s more lines' "$1"; fi; }
 fit_lines() {
   local LC_ALL=C text="$1" max="$2" total kept out tail
   local -a lines
@@ -115,14 +120,34 @@ fit_lines() {
   mapfile -t lines <<<"$text"
   total="${#lines[@]}"
   for (( kept = total - 1; kept >= 1; kept-- )); do
-    out="$(printf '%s\n' "${lines[@]:0:kept}")"$'\n'"and $(( total - kept )) more"
+    # a heading ("Merged:") is never the last line kept: it would head nothing
+    case "${lines[kept-1]}" in -*) ;; *:) [ "$kept" -gt 1 ] && continue ;; esac
+    out="$(printf '%s\n' "${lines[@]:0:kept}")"$'\n'"$(more_lines $(( total - kept )))"
     if [ "${#out}" -le "$max" ]; then printf '%s' "$out"; return 0; fi
   done
-  tail=$'\n'"and $(( total - 1 )) more"
+  tail=$'\n'"$(more_lines $(( total - 1 )))"
   printf '%s%s' "$(cut_bytes "${lines[0]}" "$(( max - ${#tail} ))")" "$tail"
 }
+# morning_stamp <ns> <night> — record a delivery: a fresh read after the send, the key set, a
+# replace at that version; one retry on a conflict (the gate's own run writes this ConfigMap too)
+morning_stamp() {
+  local ns="$1" night="$2" try cur
+  for try in 1 2; do
+    cur="$(kubectl -n "$ns" get configmap "$MORNING_CM" -o json 2>/dev/null)" || cur=""
+    if [ -z "$cur" ]; then
+      log "morning summary: sent for the night of $night; could not record it (ConfigMap $MORNING_CM missing or unreadable)"
+      return 0
+    fi
+    if printf '%s' "$cur" | jq --arg n "$night" '.data = (.data // {}) | .data.morning_sent_night = $n' 2>/dev/null \
+         | kubectl -n "$ns" replace -f - >/dev/null 2>&1; then
+      log "morning summary: sent for the night of $night (recorded: morning_sent_night)"
+      return 0
+    fi
+  done
+  log "morning summary: sent for the night of $night; WARN could not record it (a conflict twice, or RBAC)"
+}
 send_morning_summary() {
-  local ns="${UPGRADE_AGENT_NAMESPACE:-upgrade-agent}" night before rep text mnight sent ticks last expected msg rc=1 try missed
+  local ns="${UPGRADE_AGENT_NAMESPACE:-upgrade-agent}" night before rep text mnight sent ticks last expected msg rc=1 try sends=0 missed
   night="$(TZ="$MORNING_TZ" date +%F)"   # the night that just ended: its ticks (01:00-05:45) carry this date
   before="$(date -u -d "$night -1 day" +%F 2>/dev/null)"
   rep="$(kubectl -n "$ns" get configmap "$MORNING_CM" -o json 2>/dev/null)" || rep=""
@@ -133,7 +158,10 @@ send_morning_summary() {
   last="$(printf '%s' "$rep" | jq -r '.data.morning_last_tick // ""' 2>/dev/null)"
   expected="$(printf '%s' "$rep" | jq -r '.data.morning_last_tick_expected // ""' 2>/dev/null)"
   case "$mnight" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) mnight="" ;; esac
-  case "$sent" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) sent="" ;; esac
+  case "$sent" in
+    ''|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+    *) log "morning summary: morning_sent_night is not a date; no line about past deliveries"; sent="" ;;
+  esac
   case "$last" in [0-2][0-9]:[0-5][0-9]) ;; *) last="" ;; esac
   case "$expected" in [0-2][0-9]:[0-5][0-9]) ;; *) expected="" ;; esac
   if [ "$sent" = "$night" ]; then
@@ -143,40 +171,35 @@ send_morning_summary() {
   if [ -z "$rep" ]; then
     msg="The night lane's summary for the night of ${night} could not be read (ConfigMap ${MORNING_CM} missing or unreadable). Check the upgrade-night CronJob in ${ns}."
   elif [ -z "$text" ] || [ "$mnight" != "$night" ]; then
-    msg="The night lane wrote no summary for the night of ${night}: it did not run, or no tick finished. Its last summary is for ${mnight:-no night}. Check the upgrade-night CronJob in ${ns}."
+    msg="The night lane wrote no summary for the night of ${night}: it did not run, or no run finished. Its last summary is for ${mnight:-no night}. Check the upgrade-night CronJob in ${ns}."
   else
     msg="$text"
     # finished = the last completed tick is the night's last one (05:45), whatever the count
     if [ -z "$last" ] || [ -z "$expected" ] || [[ "$last" < "$expected" ]]; then
-      msg="The night lane did not finish the night: its last tick ran at ${last:-an unknown time}, not ${expected:-the last of the night} (${ticks:-?} ticks)."$'\n'"$msg"
+      msg="The night lane did not finish the night: its last run was at ${last:-an unknown time}, not ${expected:-the last of the night} (${ticks:-?} runs)."$'\n'"$msg"
     fi
   fi
-  # a summary a past run could not deliver: said first (nothing retries after a run)
+  # nights with no delivery recorded: said first, as what is known (nothing retries after a run,
+  # and a missing record does not prove the message did not arrive)
   if [ -n "$sent" ] && [ -n "$before" ] && [[ "$sent" < "$before" ]]; then
     missed="$(date -u -d "$sent +1 day" +%F 2>/dev/null)"
-    if [ "$missed" = "$before" ]; then msg="The summary for the night of ${missed} was not delivered."$'\n'"$msg"
-    else msg="The summaries for the nights from ${missed:-?} to ${before} were not delivered."$'\n'"$msg"; fi
+    if [ "$missed" = "$before" ]; then msg="No delivery was recorded for the night of ${missed}, so its summary may not have arrived."$'\n'"$msg"
+    else msg="No delivery was recorded for the nights from ${missed:-?} to ${before}, so their summaries may not have arrived."$'\n'"$msg"; fi
   fi
   msg="$(fit_lines "$msg" "$MORNING_MAX_BYTES")"
   for (( try = 1; try <= MORNING_ATTEMPTS; try++ )); do
     PAGE_TITLE="Night upgrades ${night}" "$GATE_DIR/page.sh" low summary morning "$msg"; rc=$?
-    [ "$rc" -eq 0 ] && break
+    sends="$try"
+    [ "$rc" -eq 2 ] || break   # retry only when it certainly did not go
     [ "$try" -lt "$MORNING_ATTEMPTS" ] && sleep "$MORNING_RETRY_SECONDS"
   done
-  if [ "$rc" -ne 0 ]; then
-    log "ERROR morning summary: NOT delivered for the night of $night after $MORNING_ATTEMPTS attempts; the night stays unstamped and the next morning's message says so (this Job still succeeds: a Failed pod would page at priority 1)."
-    return 0
-  fi
-  # Stamp the night it was sent for, at the version read (a later write wins; this only stops a
-  # second run the same morning from sending it twice, and dates the last delivery).
-  if [ -n "$rep" ]; then
-    printf '%s' "$rep" | jq --arg n "$night" '.data.morning_sent_night = $n' 2>/dev/null \
-      | kubectl -n "$ns" replace -f - >/dev/null 2>&1 \
-      && log "morning summary: sent for the night of $night (attempt $try; stamped morning_sent_night)" \
-      || log "morning summary: sent for the night of $night (attempt $try); WARN could not stamp morning_sent_night (conflict/RBAC)"
-  else
-    log "morning summary: sent the no-summary message for $night (nothing to stamp)"
-  fi
+  case "$rc" in
+    0) morning_stamp "$ns" "$night"; log "morning summary: delivered on attempt $sends" ;;
+    3) log "ERROR morning summary: the send for the night of $night timed out after connecting: it may have been delivered; not retried (a second copy) and not recorded, so the next morning says no delivery was recorded (this Job still succeeds: a Failed pod would page at priority 1)." ;;
+    1) log "ERROR morning summary: Pushover refused the message for the night of $night; not retried and not recorded (this Job still succeeds: a Failed pod would page at priority 1)." ;;
+    *) log "ERROR morning summary: NOT delivered for the night of $night after $sends attempt(s); not recorded, and the next morning says so (this Job still succeeds: a Failed pod would page at priority 1)." ;;
+  esac
+  return 0
 }
 if [ "${1:-}" = "morning-summary" ]; then
   send_morning_summary
@@ -230,8 +253,9 @@ remediation_phase() {
 # Anything else is a claim the gate does not understand: it is read as today, by
 # remediation_phase on its class/result/first_seen, which applies the same tolerance. The bound
 # `until` is the lane's own, on its own action (night.claim.max_work_seconds).
-#   working, understood, NOW < until -> inflight (no page)
-#   working, understood, NOW >= until -> failed (page: the lane did not finish)
+#   working or reverting, understood, NOW < until -> inflight (no page; "reverting" only when
+#                                      the claim says a revert is under way, story 753)
+#   working or reverting, NOW >= until -> failed (page: the lane did not finish)
 #   revert-failed                     -> failed (page: the lane's revert did not verify)
 #   reverted                          -> fixed (Flux still failing pages as today's "fixed")
 LANE_CLAIM_MAX_SECONDS="${LANE_CLAIM_MAX_SECONDS:-21600}"
@@ -247,9 +271,11 @@ lane_phase() {
   [ "$(( until - claimed ))" -le "$LANE_CLAIM_MAX_SECONDS" ] || return 0
   at="$(date -u -d "@$until" +%FT%TZ 2>/dev/null || printf '%s' "$until")"
   case "$st" in
-    working)
-      if [ "$NOW" -lt "$until" ]; then printf 'inflight|the night lane holds it for #%s and is working on it until %s' "$pr" "$at"
-      else printf 'failed|the night lane claimed it for #%s and did not finish by its own bound (%s) — human check needed' "$pr" "$at"; fi ;;
+    working|reverting)
+      if [ "$NOW" -lt "$until" ]; then
+        if [ "$st" = reverting ]; then printf 'inflight|the night lane is reverting #%s, until %s' "$pr" "$at"
+        else printf 'inflight|the night lane has taken it for #%s, until %s' "$pr" "$at"; fi
+      else printf 'failed|the night lane took it for #%s and did not finish by its own bound (%s) — human check needed' "$pr" "$at"; fi ;;
     revert-failed) printf 'failed|the night lane reverted #%s and the revert did NOT verify — human fix needed' "$pr" ;;
     reverted) printf 'fixed|the night lane reverted #%s and verified recovery, but the signal persists — human check needed' "$pr" ;;
     *) return 0 ;;
@@ -265,11 +291,11 @@ lane_overlap_note() {
   kubectl -n "$STATE_NS" get configmap "$STATE_CM" -o json 2>/dev/null | jq -r --arg ids "$1" --argjson now "$NOW" '
     ($ids | split("\n") | map(select(. != ""))) as $set
     | [ (.data // {}) | to_entries[] | .key as $sk | (.value | fromjson? // {}) as $o
-        | select(($o | type) == "object" and ($o.holder // "") == "lane" and ($o.lane_state // "") == "working"
+        | select(($o | type) == "object" and ($o.holder // "") == "lane" and (["working", "reverting"] | index($o.lane_state // "") != null)
                  and ((($o.until // "0") | tostring | tonumber? // 0) > $now))
         | [ ($o.ids // [])[] | select(. as $i | $set | index($i) != null) ] as $hit
         | select(($hit | length) > 0)
-        | "the night lane is reverting #\($o.pr // "?") (claim \($sk), until \($o.until | tonumber? // 0 | todate)) and holds \($hit | join(", ")); the rest of this set (\([ $set[] | select(. as $i | $hit | index($i) == null) ] | join(", ") | if . == "" then "nothing else" else . end)) has no owner: triage stands down while the lane works" ]
+        | "the night lane \(if $o.lane_state == "reverting" then "is reverting" else "has taken" end) #\($o.pr // "?") (claim \($sk), until \($o.until | tonumber? // 0 | todate)) and holds \($hit | join(", ")); the rest of this set (\([ $set[] | select(. as $i | $hit | index($i) == null) ] | join(", ") | if . == "" then "nothing else" else . end)) has no owner: triage stands down while the lane works" ]
     | first // empty' 2>/dev/null
 }
 

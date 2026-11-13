@@ -71,10 +71,18 @@ section('1. a quiet night');
   const m = compose({ records: [{ pr: 4752, lane: 'LANE-A', class: 'no-cluster-effect', title: 't', package: 'p' }] });
   const t = m.morning.text;
   ok(m.ok && bytes(t) <= 1000 && m.morning.lines_cut === 0, 'composed, within 1000 bytes, nothing cut');
-  ok(lines(t)[0] === "Night of 13 Nov (lane dry-run): 20 ticks, the last at 05:45 (the night's last).", 'first line: the night, the mode, the ticks, the last one', lines(t)[0]);
+  ok(lines(t)[0] === 'Night of 13 Nov (lane dry-run): the lane finished the night: 20 runs, the last at 05:45.', 'first line: the night, the mode, in words whether the lane finished, its runs, the last one', lines(t)[0]);
   ok(lines(t)[1] === 'Merged 0 since 05:45 12 Nov. Reverted 0.', 'second line: merged and reverted counts', lines(t)[1]);
   ok(lines(t)[2] === 'Health checks after merging (practice: the lane watched merges it did not make): 0 passed, 0 still being checked, 0 failed. Waiting for you: 0 items.', 'third line: the checks and what waits, counted', lines(t)[2]);
-  ok(lines(t).length === 3, 'and nothing else on a quiet night', t);
+  ok(lines(t).length === 3, 'and nothing else on a quiet night: no heading for an empty group (no "Waiting for you:" under 0 items)', t);
+  ok(!/\btick|claim|signature/.test(t), 'no word that needs knowledge of the lane (tick, claim, signature)');
+  // the practice label: dry-run says it; live with nothing judged does not (second review)
+  const live0 = compose({ mode: 'live' }).morning.text;
+  ok(lines(live0)[2] === 'Health checks after merging: 0 passed, 0 still being checked, 0 failed. Waiting for you: 0 items.', 'live, nothing judged: no practice label', lines(live0)[2]);
+  const livePractice = compose({ mode: 'live', verify: { a: vrec(4869, 'seerr') } }).morning.text;
+  ok(/^Health checks after merging \(practice: the lane watched merges it did not make\): 1 passed/.test(lines(livePractice)[2]), 'live, only practice judged: the label');
+  const liveOwn = compose({ mode: 'live', verify: { a: vrec(4869, 'seerr', { practice: false }) } }).morning.text;
+  ok(/^Health checks after merging: 1 passed/.test(lines(liveOwn)[2]), 'live, the lane\'s own merge judged: no label');
 }
 
 // ── 2. merges by several actors, practice verdicts ───────────────────────────────────────
@@ -87,10 +95,10 @@ section('2. merges by several actors and practice verdicts (2026-11-13)');
   const t = compose({ doc, verify }).morning.text;
   ok(lines(t)[1] === 'Merged 7 since 05:45 12 Nov (Renovate 4, the shepherd 1, the lane 1, a session 1). Reverted 0.', 'merged, by whom, in the counts', lines(t)[1]);
   ok(/: 4 passed, 1 still being checked, 0 failed\./.test(lines(t)[2]), 'checks counted', lines(t)[2]);
-  ok(/\n- merged by Renovate: #4869 ghcr\.io\/seerr-team\/seerr v3\.5\.2, #4870 rhasspy\/wyoming-piper 2\.5\.3, #4871 anthropics\/claude-code-action v1\.0\.275, #4874 mirror\.gcr\.io\/cloudflare\/cloudflared 2026\.11\.0\n/.test(t), 'Renovate\'s four, by PR, package and version', t);
-  ok(/\n- merged by the shepherd: #4873 ghcr\.io\/traefik\/helm\/traefik 42\.4\.0\n/.test(t) && /\n- merged by the lane: #4900 /.test(t) && /\n- merged by a session: #4901 /.test(t), 'the shepherd\'s, the lane\'s and a session\'s, each under its actor');
-  ok(/\n- passed: #4869, #4870, #4871, #4873\n- still being checked: #4874 \(stable: recorded 322 s ago/.test(t), 'what passed and what is still being checked, with what it waits for');
-  ok(t.indexOf('- merged by') < t.indexOf('- passed:'), 'the merges come before the checks');
+  ok(/\nMerged:\n- by Renovate: #4869 ghcr\.io\/seerr-team\/seerr v3\.5\.2, #4870 rhasspy\/wyoming-piper 2\.5\.3, #4871 anthropics\/claude-code-action v1\.0\.275, #4874 mirror\.gcr\.io\/cloudflare\/cloudflared 2026\.11\.0\n/.test(t), 'under its heading "Merged:", Renovate\'s four, by PR, package and version', t);
+  ok(/\n- by the shepherd: #4873 ghcr\.io\/traefik\/helm\/traefik 42\.4\.0\n/.test(t) && /\n- by the lane: #4900 /.test(t) && /\n- by a session: #4901 /.test(t), 'the shepherd\'s, the lane\'s and a session\'s, each under its actor');
+  ok(/\nHealth checks:\n- passed: #4869, #4870, #4871, #4873\n- still being checked: #4874 \(stable: recorded 322 s ago/.test(t), 'under its heading "Health checks:", what passed and what is still being checked, with what it waits for');
+  ok(t.indexOf('\nMerged:') < t.indexOf('\nHealth checks:') && !t.includes('Waiting for you:\n'), 'the merges before the checks; nothing waits, so no "Waiting for you:" heading above them');
 }
 
 // ── 3. what waits for Tom, failed verdicts ───────────────────────────────────────────
@@ -117,15 +125,18 @@ section('3. items that wait for Tom, counted in items; failed verdicts in plain 
     { pr: 5, outcome: 'not-own-regression', holder: null }, { pr: 6, outcome: 'would-claim', holder: null }, { pr: 7, outcome: 'not-in-set', holder: null }];
   const ft = compose({ verify: verify2, claims }).morning.text;
   // one failure at a time, so no line is cut
-  const line = pr => lines(compose({ verify: { x: Object.values(verify2).find(v => v.pr === pr) }, claims }).morning.text).find(l => l.startsWith(`- FAILED its health check: #${pr} `)) || '';
-  ok(/caused by this update \(no other change reached the app\); the night lane is reverting it$/.test(line(1)), 'claimed: the night lane is reverting it', line(1));
-  ok(/; the automatic remediation \(triage\) is handling it$/.test(line(2)) && /; the automatic remediation \(triage\) is handling it$/.test(line(4)), 'triage holds it (also a lost claim that triage won): triage is handling it');
-  ok(/; no automatic fix has taken it yet$/.test(line(3)) && !/lane is reverting|triage/.test(line(3)), 'a lost claim nobody holds is not worded as the lane or triage holding it', line(3));
-  ok(/another change reached the same app, so it cannot tell which one caused it; no automatic fix has taken it yet$/.test(line(5)), 'cannot tell which change, in words');
-  ok(/; no automatic fix has taken it yet$/.test(line(6)) && /; only this note reports it \(the health gate does not watch this kind of failure\)$/.test(line(7)), 'practice and not seen by the gate, in words');
+  const line = pr => lines(compose({ verify: { x: Object.values(verify2).find(v => v.pr === pr) }, claims }).morning.text).find(l => l.startsWith(`- #${pr} `)) || '';
+  ok(/caused by this update \(no other change reached the app\); the night lane has taken it$/.test(line(1)), 'claimed (working): the night lane has taken it (no revert is said before one is under way)', line(1));
+  ok(/; the automatic remediation \(triage\) has taken it$/.test(line(2)) && /; the automatic remediation \(triage\) has taken it$/.test(line(4)), 'triage holds it (also a lost claim that triage won): triage has taken it');
+  ok(/; no automatic fix has taken it yet$/.test(line(3)) && !/lane|triage/.test(line(3)), 'a lost claim nobody holds is not worded as the lane or triage holding it', line(3));
+  ok(/: helmreleases not-applied; cannot tell which change caused it; no automatic fix has taken it yet$/.test(line(5)), 'cannot tell which change (also when the other changes could not be read), in words', line(5));
+  ok(/; no automatic fix has taken it yet$/.test(line(6)) && /; no automatic fix has taken it yet$/.test(line(7)) && !/only this note|does not watch/.test(line(7)), 'practice, and not seen by the gate: no claim about what else reports it (a critical alert also pages)', line(7));
+  ok(S.claimWords({ outcome: 'claimed', lane_state: 'reverting' }) === 'the night lane is reverting it', '"reverting" only when the claim says a revert is under way (story 753)');
   ok(!/triage does not hold|claim|signature|lane holds/.test(ft), 'no line needs knowledge of claims or signatures');
+  ok(/\nFailed health checks:\n- #1 pkg-1 \(practice\): /.test(ft), 'the failures sit under their own heading "Failed health checks:"', ft);
   ok(/: 0 passed, 0 still being checked, 7 failed\./.test(lines(ft)[2]), 'the failures are counted');
-  ok(S.claimWords({ outcome: 'unreadable' }) === 'who is handling it could not be read' && S.claimWords({ outcome: 'lane-holds' }) === 'the night lane is already reverting it with another update' && S.claimWords(null) === '', 'the rest of the words');
+  ok(S.claimWords({ outcome: 'unreadable' }) === 'who has taken it could not be read' && S.claimWords({ outcome: 'lane-holds' }) === 'the night lane has already taken it with another update' && S.claimWords({ outcome: 'not-in-set' }) === 'no automatic fix has taken it yet' && S.claimWords(null) === '', 'the rest of the words');
+  ok(/\nWaiting for you:\n- #4810 /.test(t) && lines(t).filter(l => l === 'Waiting for you:').length === 1, 'the waiting items under one "Waiting for you:" heading', t);
 }
 
 // ── 4. reverts ──────────────────────────────────────────────────────────────────────
@@ -138,8 +149,8 @@ section('4. what was reverted, and whether it recovered');
   const m = compose({ doc });
   const t = m.morning.text;
   ok(lines(t)[1] === 'Merged 0 since 05:45 12 Nov. Reverted 3 (1 did NOT recover, 1 recovered, 1 not checked yet).', 'the counts: three reverts, one did not recover', lines(t)[1]);
-  ok(lines(t)[3] === '- NOT RECOVERED after its revert: #4951 traefik 42.5.0: traefik still crash-looping after the revert', 'the unrecovered revert is the first detail line, with its reason', lines(t)[3]);
-  ok(/\n- reverted and recovered: #4950 seerr v3\.5\.2\n/.test(t) && /\n- reverted, recovery not checked yet: #4952 piper 2\.5\.3/.test(t), 'the recovered one and the one not checked yet');
+  ok(lines(t)[3] === 'Reverted and NOT recovered:' && lines(t)[4] === '- #4951 traefik 42.5.0: traefik still crash-looping after the revert', 'the unrecovered revert is the first detail, under its own heading, with its reason', lines(t).slice(3, 5).join(' | '));
+  ok(/\nReverted:\n- recovered: #4950 seerr v3\.5\.2\n- recovery not checked yet: #4952 piper 2\.5\.3/.test(t), 'the recovered one and the one not checked yet, under "Reverted:"', t);
   ok(m.morning.facts.reverted.length === 3 && m.morning.facts.reverted.find(r => r.pr === 4951).recovered === false, 'one fact per revert, with whether it recovered');
 }
 
@@ -147,17 +158,17 @@ section('4. what was reverted, and whether it recovered');
 section('5. ticks of the night: finished is the 05:45 tick, not a count');
 {
   const first = compose({ prevText: JSON.stringify(PREV), now: at('2026-11-13T06:00:00Z') });
-  ok(first.morning.ticks_completed === 1 && first.morning.night === '2026-11-13' && !first.morning.finished && lines(first.morning.text)[0] === 'Night of 13 Nov (lane dry-run): 1 tick so far, the last at 01:00.', 'the first tick of a night (01:00): 1 so far, not finished', lines(first.morning.text)[0]);
+  ok(first.morning.ticks_completed === 1 && first.morning.night === '2026-11-13' && !first.morning.finished && lines(first.morning.text)[0] === 'Night of 13 Nov (lane dry-run): the lane has not finished the night yet: 1 run, the last at 01:00.', 'the first run of a night (01:00): not finished yet, in words', lines(first.morning.text)[0]);
   const later = compose({ prevText: JSON.stringify(first.morning), now: at('2026-11-13T07:30:00Z') });
   ok(later.morning.ticks_completed === 2 && later.morning.window_from === first.morning.window_from && later.delivery.morning_last_tick === '02:30' && later.delivery.morning_last_tick_expected === '05:45', 'the next tick of the same night: 2, the same window; the copy carries the last tick and the night\'s last');
   const fin = compose();
   ok(fin.morning.finished && fin.delivery.morning_ticks === '20' && fin.delivery.morning_last_tick === '05:45', 'the 05:45 tick: finished');
   // 2026-03-08 New York: 02:00 does not exist; */15 1-5 gives 16 ticks, the last at 05:45 EDT (09:45Z)
   const spring = compose({ now: at('2026-03-08T09:45:04Z'), prevText: JSON.stringify({ ...SAME, night: '2026-03-08', ticks_completed: 15 }) });
-  ok(spring.morning.finished && spring.morning.ticks_completed === 16 && lines(spring.morning.text)[0] === "Night of 8 Mar (lane dry-run): 16 ticks, the last at 05:45 (the night's last).", 'spring forward (2026-03-08): 16 ticks and finished', lines(spring.morning.text)[0]);
+  ok(spring.morning.finished && spring.morning.ticks_completed === 16 && lines(spring.morning.text)[0] === 'Night of 8 Mar (lane dry-run): the lane finished the night: 16 runs, the last at 05:45.', 'spring forward (2026-03-08): 16 runs and finished', lines(spring.morning.text)[0]);
   // 2026-11-01 New York: 01:00 to 01:45 twice; the last tick 05:45 EST (10:45Z) after 24
   const fall = compose({ now: at('2026-11-01T10:45:04Z'), prevText: JSON.stringify({ ...SAME, night: '2026-11-01', ticks_completed: 23 }) });
-  ok(fall.morning.finished && fall.morning.ticks_completed === 24 && /: 24 ticks, the last at 05:45 \(the night's last\)\./.test(lines(fall.morning.text)[0]), 'fall back (2026-11-01): 24 ticks and finished');
+  ok(fall.morning.finished && fall.morning.ticks_completed === 24 && /: the lane finished the night: 24 runs, the last at 05:45\./.test(lines(fall.morning.text)[0]), 'fall back (2026-11-01): 24 runs and finished');
   ok(compose({ prevText: '{garbage' }).morning.ticks_completed === 1 && compose({ prevText: null }).ok, 'an unreadable or missing last record starts the count again');
 }
 
@@ -169,18 +180,18 @@ section('6. too long for the limit: every count and the unrecovered revert survi
   const doc = { events: [ev('merged', '2026-11-13T07:00:00Z', 'a', 4900, { actor: { kind: 'lane' } }), ev('revert-merged', '2026-11-13T08:00:00Z', 'a', 4901, { reason: 'its own regression' }), ev('recovery-failed', '2026-11-13T09:00:00Z', 'a', 4901, { reason: 'still failing' })], items: { a: { name: 'traefik', to: '42.5.0' } } };
   const m = S.composeMorning({ now: at('2026-11-13T10:45:00Z'), mode: 'live', rules, prevText: null, records, verify: {}, doc, historyNote: { needs_person: false }, claims: [] });
   const t = m.morning.text;
-  ok(bytes(t) <= 1000 && m.morning.lines_cut > 0 && /\nand \d+ more$/.test(t), `at most 1000 bytes (${bytes(t)}), whole lines cut, "and ${m.morning.lines_cut} more"`);
+  ok(bytes(t) <= 1000 && m.morning.lines_cut > 0 && new RegExp(`\\nand ${m.morning.lines_cut} more lines$`).test(t), `at most 1000 bytes (${bytes(t)}), whole lines cut, "and ${m.morning.lines_cut} more lines" (lines, not items)`);
   ok(/^Merged 1 since .* \(the lane 1\)\. Reverted 1 \(1 did NOT recover\)\.$/.test(lines(t)[1]) && /Waiting for you: 12 items\.$/.test(lines(t)[2]), 'every count survives', lines(t).slice(0, 3).join(' | '));
-  ok(lines(t)[3] === '- NOT RECOVERED after its revert: #4901 traefik 42.5.0: still failing', 'the unrecovered revert survives, right after the counts');
-  ok(lines(t).slice(4, -1).every(l => l === 'Waiting for you:' || records.some(r => l.startsWith(`- #${r.pr} `))), 'no line is cut in the middle');
+  ok(lines(t)[3] === 'Reverted and NOT recovered:' && lines(t)[4] === '- #4901 traefik 42.5.0: still failing', 'the unrecovered revert survives, right after the counts');
+  ok(lines(t).slice(5, -1).every(l => l === 'Waiting for you:' || records.some(r => l.startsWith(`- #${r.pr} `))), 'no line is cut in the middle');
   ok(m.morning.facts.waits.blocked.length === 12, 'the facts keep all 12');
   const big = Array.from({ length: 40 }, (_, i) => ({ pr: 5000 + i, lane: 'BLOCKED', class: 'check-failing-after-retry', package: `ghcr.io/example/package-with-a-long-name-${i}`, reason: `failed again on abcdef12 after one retry on 12345678 at 2026-11-13T06:00:00Z: Some Long Workflow Name / some-very-long-check-name-${i} (FAILURE)` }));
   const m2 = compose({ records: big, doc: doc13, verify: verified13 });
   ok(bytes(m2.morning.text) <= 1000 && /Merged 5 /.test(m2.morning.text) && /Waiting for you: 40 items/.test(m2.morning.text), 'forty blocked PRs: the merge count and the 40 survive the cut');
   const fx = S.fit(['x'.repeat(1200), 'y'], 1000);
-  ok(bytes(fx.text) <= 1000 && /and 1 more$/.test(fx.text), 'a first line too long on its own is cut by characters, still within the limit');
+  ok(bytes(fx.text) <= 1000 && /\nand 1 more line$/.test(fx.text), 'a first line too long on its own is cut by characters, still within the limit ("and 1 more line")');
   const u = S.fit(['é'.repeat(600), 'z'], 1000);
-  ok(bytes(u.text) <= 1000 && !u.text.includes('�') && /and 1 more$/.test(u.text), 'the limit is in bytes, and no character is split');
+  ok(bytes(u.text) <= 1000 && !u.text.includes('\ufffd') && /and 1 more line$/.test(u.text), 'the limit is in bytes, and no character is split');
 }
 
 // ── 7. hostile text ─────────────────────────────────────────────────────────────────
@@ -252,7 +263,13 @@ section('10. the samples: the night of 2026-11-13 (read-only), and a made-up bus
       items: { t: { name: 'ghcr.io/traefik/helm/traefik', to: '42.5.0' }, s: { name: 'ghcr.io/seerr-team/seerr', to: 'v3.6.0' }, p: { name: 'rhasspy/wyoming-piper', to: '2.6.0' } } },
     historyNote: { needs_person: false }, claims: [{ pr: 4890, outcome: 'claimed', holder: 'lane' }] });
   const bt = busy.morning.text;
-  ok(bytes(bt) <= 1000 && lines(bt)[3].startsWith('- NOT RECOVERED after its revert: #4890') && /Reverted 1 \(1 did NOT recover\)/.test(bt), 'the busy night keeps the counts and the unrecovered revert first');
+  ok(bytes(bt) <= 1000 && lines(bt)[3] === 'Reverted and NOT recovered:' && lines(bt)[4].startsWith('- #4890 ') && /Reverted 1 \(1 did NOT recover\)/.test(bt), 'the busy night keeps the counts and the unrecovered revert first');
+  ok(lines(bt)[5] === 'Failed health checks:' && /^- #4890 ghcr\.io\/traefik\/helm\/traefik: pods crash-loop; caused by this update \(no other change reached the app\); the night lane has taken it$/.test(lines(bt)[6]), 'and the failed check right after it, with its PR and who has taken it (the review: only "1 failed" survived)', lines(bt).slice(5, 7).join(' | '));
+  ok(lines(bt).indexOf('Waiting for you:') > 6 && /\nand \d+ more lines$/.test(bt), 'then what waits; the cut counts lines');
+  const beforeCut = t => { const l = lines(t); return l[l.length - 2] || ''; };
+  ok(!/:$/.test(beforeCut(text)) && !/:$/.test(beforeCut(bt)), 'a cut never leaves a heading as the last line kept (it would head nothing)', `${beforeCut(text)} | ${beforeCut(bt)}`);
+  const hd = S.fit(['a.', 'Heading:', '- x'.padEnd(990, 'x'), 'Other:', '- y'], 1000);
+  ok(!/\nHeading:\nand/.test(hd.text) && lines(hd.text).at(-2) !== 'Heading:' && /and 4 more lines$/.test(hd.text), 'fit: the heading goes with its cut item', hd.text.slice(0, 80));
   if (SAMPLE) console.log(`\n----- sample, a made-up busy night (${bytes(bt)} bytes) -----\n${bt}\n-----`);
 }
 

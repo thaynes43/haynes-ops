@@ -125,27 +125,31 @@ export function composeFacts({ now, mode, rules, prev = null, records = [], veri
     else if (r.lane === 'LANE-B-OWNER') facts.waits.owner.push({ pr: r.pr, name: clean(r.package || r.title, N), class: clean(r.class, 40) });
   }
   if (historyNote?.needs_person) facts.waits.history = clean(historyNote.line, R * 2);
-  facts.claims = (claims || []).map(c => ({ pr: c.pr, outcome: c.outcome, holder: c.holder ?? null, sig: c.sig, practice: c.practice }));
+  facts.claims = (claims || []).map(c => ({ pr: c.pr, outcome: c.outcome, holder: c.holder ?? null, lane_state: c.lane_state ?? null, sig: c.sig, practice: c.practice }));
   return facts;
 }
 
 // ── the text ────────────────────────────────────────────────────────────────────────
-// Ordered by what a reader must not miss (review M4). The first lines carry every count, so
-// cutting from the end never loses one: the night (the lane's mode and its ticks); merged, by
-// whom; reverted and whether each recovered; verified, still checking, failed; how many items
-// wait. Then the detail: a revert that did not recover; what waits; reverts that recovered; the
-// merges; the checks. Every line is in plain words for a reader who knows nothing of the lane.
+// Ordered by what a reader must not miss (review M4). The first three lines carry every count,
+// so cutting from the end never loses one: the night (the lane's mode, whether it finished, its
+// runs); merged, by whom; reverted and whether each recovered; the health checks (passed, still
+// being checked, failed); how many items wait for him. Then the detail, each group under its
+// own heading and a group with nothing in it left out (second review A): a revert that did not
+// recover; a failed health check, with the PR and who has taken it; what waits for him; reverts
+// that recovered; merges; passed and still being checked. Every line is in plain words for a
+// reader who knows nothing of the lane: no "tick", "claim" or "signature".
 const list = (items, f, max) => `${items.slice(0, max).map(f).join(', ')}${items.length > max ? `, +${items.length - max} more` : ''}`;
 const prName = x => `#${x.pr}${x.name ? ` ${x.name}` : ''}`;
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-// who is handling a failed update, from the claims step (summary.claims)
+// who has taken a failed update, from the claims step (summary.claims). "Reverting" only when
+// the claim's own state says a revert is under way (lane_state reverting, story 753); a claim
+// alone says the lane has taken it. No words about what does not watch it (second review E).
 export function claimWords(c) {
   if (!c) return '';
-  if (c.outcome === 'claimed') return 'the night lane is reverting it';
-  if (c.outcome === 'triage-holds' || (c.outcome === 'lost' && c.holder === 'triage')) return 'the automatic remediation (triage) is handling it';
-  if (c.outcome === 'lane-holds') return 'the night lane is already reverting it with another update';
-  if (c.outcome === 'not-in-set') return 'only this note reports it (the health gate does not watch this kind of failure)';
-  if (c.outcome === 'unreadable') return 'who is handling it could not be read';
+  if (c.outcome === 'claimed') return c.lane_state === 'reverting' ? 'the night lane is reverting it' : 'the night lane has taken it';
+  if (c.outcome === 'triage-holds' || (c.outcome === 'lost' && c.holder === 'triage')) return 'the automatic remediation (triage) has taken it';
+  if (c.outcome === 'lane-holds') return 'the night lane has already taken it with another update';
+  if (c.outcome === 'unreadable') return 'who has taken it could not be read';
   return 'no automatic fix has taken it yet';
 }
 
@@ -162,47 +166,55 @@ export function composeText(facts, { now, cfg, tz, ticks, finished }) {
   const since = `since ${hhmm(Date.parse(facts.window_from), tz)} ${dayLabel(Date.parse(facts.window_from), tz)}`;
   const notRecovered = facts.reverted.filter(x => x.recovered === false), recovered = facts.reverted.filter(x => x.recovered === true), unchecked = facts.reverted.filter(x => x.recovered === null);
   const lines = [];
+  const group = (heading, items) => { if (items.length) lines.push(heading, ...items); };
   // 1. every count
-  lines.push(`Night of ${dayLabel(now, tz)} (lane ${facts.mode === 'live' ? 'live' : 'dry-run'}): ${plural(ticks, 'tick')}${finished ? '' : ' so far'}, the last at ${hhmm(now, tz)}${finished ? ' (the night\'s last)' : ''}.`);
+  const runs = `${plural(ticks, 'run')}, the last at ${hhmm(now, tz)}`;
+  lines.push(`Night of ${dayLabel(now, tz)} (lane ${facts.mode === 'live' ? 'live' : 'dry-run'}): ${finished ? `the lane finished the night: ${runs}` : `the lane has not finished the night yet: ${runs}`}.`);
   lines.push(!historyKnown ? 'Merged and reverted: not known (the update history could not be read).'
     : `Merged ${facts.merged.length} ${since}${facts.merged.length ? ` (${[...by].map(([who, ms]) => `${who} ${ms.length}`).join(', ')})` : ''}. Reverted ${facts.reverted.length}${facts.reverted.length ? ` (${[notRecovered.length && `${notRecovered.length} did NOT recover`, recovered.length && `${recovered.length} recovered`, unchecked.length && `${unchecked.length} not checked yet`].filter(Boolean).join(', ')})` : ''}.`);
   lines.push(`${checksKnown ? `Health checks after merging${practice ? ' (practice: the lane watched merges it did not make)' : ''}: ${facts.verified.length} passed, ${facts.checking.length} still being checked, ${facts.failed.length} failed.` : 'Health checks after merging: not known (their records could not be read).'} Waiting for you: ${plural(waitCount, 'item')}.`);
-  // 2. detail
-  for (const x of notRecovered) lines.push(`- NOT RECOVERED after its revert: ${prName(x)}${x.to ? ` ${x.to}` : ''}${x.reason ? `: ${x.reason}` : ''}`);
-  if (waitCount) lines.push('Waiting for you:');
-  for (const x of w.needs_person) lines.push(`- ${prName(x)}: needs a person: its check has stayed open ${plural(x.nights, 'night')}${x.given_up ? ' and was given up' : ''}: ${x.why}`);
-  for (const x of w.awaiting_pin) lines.push(`- ${prName(x)}: waiting for the update that pins its new image: ${x.why}`);
-  for (const x of w.blocked) lines.push(`- ${prName(x)}: blocked, ${BLOCKED_WORDS[x.class] || x.class}: ${x.why}`);
-  if (w.owner.length) lines.push(`- your decision on ${plural(w.owner.length, 'update')} the lane may not make (${list([...new Set(w.owner.map(x => x.class))], x => x, 3)}): ${list(w.owner, x => `#${x.pr} ${x.name}`, max)}`);
-  if (w.history) lines.push(`- the update history needs a person: ${w.history}`);
-  if (recovered.length) lines.push(`- reverted and recovered: ${list(recovered, x => `${prName(x)}${x.to ? ` ${x.to}` : ''}`, max)}`);
-  if (unchecked.length) lines.push(`- reverted, recovery not checked yet: ${list(unchecked, x => `${prName(x)}${x.to ? ` ${x.to}` : ''}`, max)}`);
-  for (const [who, ms] of by) lines.push(`- merged by ${who}: ${list(ms, m => `${prName(m)}${m.to ? ` ${m.to}` : ''}`, max)}`);
-  if (checksKnown) {
-    for (const x of facts.failed) {
-      const c = facts.claims.find(k => k.pr === x.pr);
-      const who = claimWords(c);
-      lines.push(`- FAILED its health check: ${prName(x)}${x.practice ? ' (practice)' : ''}: ${x.why}; ${x.attribution === 'own-regression' ? 'caused by this update (no other change reached the app)' : 'another change reached the same app, so it cannot tell which one caused it'}${who ? `; ${who}` : ''}`);
-    }
-    if (facts.verified.length) lines.push(`- passed: ${list(facts.verified, x => `#${x.pr}`, max * 2)}`);
-    if (facts.checking.length) lines.push(`- still being checked: ${list(facts.checking, x => `#${x.pr} (${x.why || x.verdict})`, max)}`);
-  }
+  // 2. detail, each group under its own heading
+  group('Reverted and NOT recovered:', notRecovered.map(x => `- ${prName(x)}${x.to ? ` ${x.to}` : ''}${x.reason ? `: ${x.reason}` : ''}`));
+  group('Failed health checks:', !checksKnown ? [] : facts.failed.map(x => {
+    const who = claimWords(facts.claims.find(k => k.pr === x.pr));
+    return `- ${prName(x)}${x.practice ? ' (practice)' : ''}: ${x.why}; ${x.attribution === 'own-regression' ? 'caused by this update (no other change reached the app)' : 'cannot tell which change caused it'}${who ? `; ${who}` : ''}`;
+  }));
+  group('Waiting for you:', [
+    ...w.needs_person.map(x => `- ${prName(x)}: needs a person: its check has stayed open ${plural(x.nights, 'night')}${x.given_up ? ' and was given up' : ''}: ${x.why}`),
+    ...w.awaiting_pin.map(x => `- ${prName(x)}: waiting for the update that pins its new image: ${x.why}`),
+    ...w.blocked.map(x => `- ${prName(x)}: blocked, ${BLOCKED_WORDS[x.class] || x.class}: ${x.why}`),
+    ...(w.owner.length ? [`- your decision on ${plural(w.owner.length, 'update')} the lane may not make (${list([...new Set(w.owner.map(x => x.class))], x => x, 3)}): ${list(w.owner, x => `#${x.pr} ${x.name}`, max)}`] : []),
+    ...(w.history ? [`- the update history needs a person: ${w.history}`] : []),
+  ]);
+  group('Reverted:', [
+    ...(recovered.length ? [`- recovered: ${list(recovered, x => `${prName(x)}${x.to ? ` ${x.to}` : ''}`, max)}`] : []),
+    ...(unchecked.length ? [`- recovery not checked yet: ${list(unchecked, x => `${prName(x)}${x.to ? ` ${x.to}` : ''}`, max)}`] : []),
+  ]);
+  group('Merged:', [...by].map(([who, ms]) => `- by ${who}: ${list(ms, m => `${prName(m)}${m.to ? ` ${m.to}` : ''}`, max)}`));
+  group('Health checks:', !checksKnown ? [] : [
+    ...(facts.verified.length ? [`- passed: ${list(facts.verified, x => `#${x.pr}`, max * 2)}`] : []),
+    ...(facts.checking.length ? [`- still being checked: ${list(facts.checking, x => `#${x.pr} (${x.why || x.verdict})`, max)}`] : []),
+  ]);
   return fit(lines, cfg.max_bytes || 1000);
 }
 
-// Whole lines, at most maxBytes; the last line says how many were cut.
+// Whole lines, at most maxBytes; the last line says how many lines were cut ("and N more lines").
 export function fit(lines, maxBytes) {
   const all = lines.map(l => String(l));
   const join = a => a.join('\n');
+  const more = n => `and ${n} more line${n === 1 ? '' : 's'}`;
   if (bytes(join(all)) <= maxBytes) return { text: join(all), cut: 0 };
+  // a heading ("Merged:") is never the last line kept: it would head nothing
+  const heading = l => /:$/.test(l) && !l.startsWith('- ');
   for (let keep = all.length - 1; keep >= 1; keep--) {
-    const t = join([...all.slice(0, keep), `and ${all.length - keep} more`]);
+    if (keep > 1 && heading(all[keep - 1])) continue;
+    const t = join([...all.slice(0, keep), more(all.length - keep)]);
     if (bytes(t) <= maxBytes) return { text: t, cut: all.length - keep };
   }
   // even the first line alone is too long: cut it by characters
   let first = all[0];
-  while (first && bytes(`${first}\nand ${all.length - 1} more`) > maxBytes) first = [...first].slice(0, -1).join('');
-  return { text: `${first}\nand ${all.length - 1} more`, cut: all.length - 1 };
+  while (first && bytes(`${first}\n${more(all.length - 1)}`) > maxBytes) first = [...first].slice(0, -1).join('');
+  return { text: `${first}\n${more(all.length - 1)}`, cut: all.length - 1 };
 }
 
 // ── the record, and the delivery copy ───────────────────────────────────────────────
