@@ -22,6 +22,7 @@ rules:
       - upgrade-agent.alert-responder
       - upgrade-agent.upgrade-shepherd
       - upgrade-agent.upgrade-health-gate
+      - upgrade-agent.cigar-curation
     verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

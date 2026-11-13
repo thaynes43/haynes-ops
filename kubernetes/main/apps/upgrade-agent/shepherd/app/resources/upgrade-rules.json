@@ -597,6 +597,7 @@
           "kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh",
           "kubernetes/main/apps/upgrade-agent/health-gate/app/resources/dev-env-api.sh",
           "kubernetes/main/apps/upgrade-agent/health-gate/app/resources/gate.sh",
+          "kubernetes/main/apps/upgrade-agent/cigar-curation/app/**",
           "scripts/upgrade-agent/**",
           ".github/workflows/**",
           ".renovate/**"
@@ -1381,6 +1382,7 @@
           "kubernetes/main/apps/photos/immich/server",
           "kubernetes/main/apps/storage/storage-util",
           "kubernetes/main/apps/upgrade-agent/alert-responder/app",
+          "kubernetes/main/apps/upgrade-agent/cigar-curation/app",
           "kubernetes/main/apps/upgrade-agent/dev-env-ops/app",
           "kubernetes/main/apps/upgrade-agent/health-gate/app",
           "kubernetes/main/apps/upgrade-agent/shepherd/app"

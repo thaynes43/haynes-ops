@@ -9,3 +9,4 @@ resources:
   - ./upgrade-agent.alert-responder.yaml
   - ./upgrade-agent.upgrade-shepherd.yaml
   - ./upgrade-agent.upgrade-health-gate.yaml
+  - ./upgrade-agent.cigar-curation.yaml
