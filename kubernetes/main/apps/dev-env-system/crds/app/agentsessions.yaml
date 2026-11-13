@@ -4,19 +4,25 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main e6f36eb8792defa56e75f678ddbdf6e501831705 (merge of PR #1104),
-# verified byte for byte (SHA-256 6b218e9caedd8fe9a2a51cd46c9f3fd5979d7536c110dc48d9691ed8eb5ab870
-# below this header). One change since the copy from 59169f1f:
-# - dev-env e6f36eb8792d, PR #1104, DESIGN-065 slice 1, OpenProject #785: spec.title (an
-#   optional role text for a session: 1 to 48 characters and at most 96 bytes, the first
-#   character a letter or a digit, set at create and immutable afterwards), one more
-#   clause for it in the spec-wide presence rule, and status.remoteControl.title (the
-#   display title agentd passed to the provider at launch, at most 128 bytes).
-#   It must be here before the operator pin that accepts a title: against an older schema
-#   that operator refuses a create that carries a title (it asks for strict validation),
-#   and a reported status title would be dropped. No install precondition: no stored
-#   object has either field, and the new presence clause holds for every stored session.
-# Earlier changes in this file, still in force: status.summon.pages and the rule that a
+# Source: dev-env main ff0c9e8e74da14ef5ed901b89da1caff6ca65a06 (merge of PR #1100),
+# verified byte for byte (SHA-256 2260800b56c16aa4c45d70ad81cc1a225a1461aae6ab9ededfd798f1054edb5a
+# below this header). One change since the copy from e6f36eb8:
+# - dev-env ff0c9e8e74da, PR #1100, DESIGN-064 5.9, OpenProject #780 (slice d of #741):
+#   status.summon.executor, a summoned remote session's executor latch ({attempted,
+#   intent, podUID, notCreated}; the operator records its one pod attempt before the Pod
+#   create and the pod's UID once it appears), with its rules (an attempt is never
+#   reversed, the intent and the recorded pod UID never change, a pod is recorded only for
+#   an attempt, only an attempt with no recorded pod can be marked not created), one rule
+#   on status.summon (the executor latch cannot be removed), and two reworded
+#   descriptions under status.summon.pages. Status only; nothing in spec changed.
+#   It must be here before the operator pin that writes the latch: with an older schema
+#   the API server would drop it, and a recreated pod of a summoned remote session would
+#   not be refused. Install precondition: no AgentSession has status.summon yet (read in
+#   the cluster before this copy merged; the PR records it), so no stored object meets
+#   the new rules.
+# Earlier changes in this file, still in force: spec.title, its clause in the spec-wide
+# presence rule and status.remoteControl.title (dev-env e6f36eb8792d, PR #1104,
+# OpenProject #785); status.summon.pages and the rule that a
 # page entry is never removed or changed (dev-env 59169f1ff968, PR #1095, OpenProject
 # #779); status.summon.admittedAt,
 # status.summon.closed.released and the rules that keep the summon record (dev-env
@@ -3425,12 +3431,65 @@ spec:
                     - name
                     - state
                     type: object
+                  executor:
+                    description: |-
+                      Executor is a summoned remote session's executor latch (DESIGN-064 5.9,
+                      F3, OP780): the operator records its one pod attempt before the Pod
+                      create and the pod's UID once it appears, so no path builds a second
+                      pod. A summoned task uses status.privateHistory instead. It is never
+                      removed.
+                    properties:
+                      attempted:
+                        description: |-
+                          Attempted is written, and confirmed, before the one Pod create. It is
+                          never reversed: a create whose result is unknown stays an attempt.
+                        type: boolean
+                      intent:
+                        description: Intent names that one create; the pod carries
+                          it in an annotation.
+                        maxLength: 128
+                        type: string
+                      notCreated:
+                        description: |-
+                          NotCreated is DESIGN-019's known non-attempt: the operator returned
+                          before calling Create for Intent because an observation failed. Only
+                          then may the same intent re-arm, once per mark.
+                        type: boolean
+                      podUID:
+                        description: |-
+                          PodUID is the pod that create made, recorded once an uncached read
+                          finds it with the intent. It never changes.
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    required:
+                    - attempted
+                    - intent
+                    type: object
+                    x-kubernetes-validations:
+                    - message: an executor attempt is never reversed
+                      rule: '!oldSelf.attempted || self.attempted'
+                    - message: the executor intent never changes
+                      rule: size(oldSelf.intent) == 0 || self.intent == oldSelf.intent
+                    - message: the recorded executor pod UID never changes or goes
+                      rule: '!has(oldSelf.podUID) || (has(self.podUID) && self.podUID
+                        == oldSelf.podUID)'
+                    - message: an executor attempt has one intent
+                      rule: '!self.attempted || size(self.intent) > 0'
+                    - message: an executor pod is recorded only for an attempt
+                      rule: '!has(self.podUID) || self.attempted'
+                    - message: only an attempt with no recorded pod can be marked
+                        not created
+                      rule: '!has(self.notCreated) || !self.notCreated || (self.attempted
+                        && !has(self.podUID))'
                   pages:
                     description: |-
-                      Pages are the session's page events, each recorded once by the operator
-                      leader (DESIGN-064 6.8, ruling D9 on item 741, OP779). The keeper sends
-                      them (story 742); nothing sends them yet. Story 742 adds the terminal
-                      events. An entry is never removed or changed.
+                      Pages are the session's lifecycle page events, each recorded once by
+                      the operator leader (DESIGN-064 6.8, ruling D9 on item 741, OP779). The
+                      keeper sends them (story 742); nothing sends them yet. No terminal event
+                      is stored here or anywhere: the keeper derives a session's terminal page
+                      from its close record (ruling Q1 on item 742, built in PR 1102). An
+                      entry is never removed or changed.
                     items:
                       description: |-
                         SummonPage is one page event: what happened and when the operator
@@ -3441,9 +3500,11 @@ spec:
                           type: string
                         event:
                           description: |-
-                            SummonPageEvent is a page event of DESIGN-064 6.8 recorded on a session.
-                            This slice writes the two lifecycle events it decides; story 742 adds the
-                            terminal events and the rest of 6.8's lifecycle events.
+                            SummonPageEvent is a lifecycle page event of DESIGN-064 6.8 recorded on a
+                            session. This slice writes the two lifecycle events it decides; story 742
+                            adds the rest of 6.8's lifecycle events. A terminal event is never a page
+                            event here: the keeper derives it from the close record (ruling Q1 on item
+                            742, built in PR 1102).
                           enum:
                           - escalation-held
                           - escalation-reminder
@@ -3466,6 +3527,8 @@ spec:
                 - message: a page event is never removed or changed
                   rule: '!has(oldSelf.pages) || (has(self.pages) && oldSelf.pages.all(p,
                     p in self.pages))'
+                - message: the executor latch cannot be removed
+                  rule: '!has(oldSelf.executor) || has(self.executor)'
               suspendedAt:
                 description: |-
                   SuspendedAt is when the operator first saw the session suspended with
