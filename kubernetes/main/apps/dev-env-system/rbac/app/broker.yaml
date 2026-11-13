@@ -78,9 +78,10 @@ rules:
     resources: [serviceaccounts/token]
     verbs: [create]
   # Installing a grant: `agentd ctl grant-install` by exec in the session's pod (D-08).
+  # Patch is narrowed to the UID identity label by dev-env-broker-pod-uid-guard.
   - apiGroups: [""]
     resources: [pods]
-    verbs: [get, list, watch]
+    verbs: [get, list, watch, patch]
   - apiGroups: [""]
     resources: [pods/exec]
     verbs: [create]
