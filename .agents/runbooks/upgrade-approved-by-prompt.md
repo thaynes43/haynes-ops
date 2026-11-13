@@ -516,6 +516,11 @@ gh pr view "$PR" -R "$REPO" --json mergedAt,mergeCommit --jq '"\(.mergedAt) \(.m
 - The preflight refuses unless the PR is open, not a draft, at `$HEAD`, made only of
   Renovate's commits, with no failing or running check, and with both required checks
   green.
+- The preflight lets a pending commit status through (`PENDING` or `EXPECTED`, for
+  example `renovate/stability-days`). This is "gap 1" in
+  [upgrade-night-lane.md](upgrade-night-lane.md). The check-only step in 5.4 refuses a
+  pending status, so run it right before this step, and do not deliver on an older
+  reading.
 - `deliver_reviewed_pr.py` then checks the required checks itself, squash-merges pinned to
   `$HEAD` (`--match-head-commit`), deletes the branch, reads the PR back as merged, and
   only then reconciles the named Kustomization.

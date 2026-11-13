@@ -116,6 +116,21 @@ class HandRunPreflightTest(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
                 self.assertIn("preflight OK", proc.stdout)
 
+    def test_pending_commit_status_is_not_refused_known_gap(self) -> None:
+        """Pins a known gap of the preflight (behaviour moved unchanged from the handoff).
+
+        A commit status in state PENDING or EXPECTED is read as completed. This is gap 1
+        of upgrade-night-lane.md; the runbook's night-merge.mjs --check-only refuses it
+        right before delivery. If the preflight is fixed, change this test to expect 1.
+        """
+        for state in ("PENDING", "EXPECTED"):
+            with self.subTest(state=state):
+                view = good_view()
+                view["statusCheckRollup"].append(
+                    {"__typename": "StatusContext", "context": "renovate/stability-days", "state": state})
+                proc = self.run_cli(view)
+                self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
     def test_expected_check_present_passes(self) -> None:
         proc = self.run_cli(good_view(), REPO, PR, HEAD, "--expect", "Flux Local - Filter")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)

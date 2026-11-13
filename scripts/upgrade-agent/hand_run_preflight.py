@@ -11,6 +11,10 @@ running; the two required aggregates and every --expect check concluded SUCCESS.
 # (sha256 4c54ac09..., used on the hand-run nights of 2026-11-10 and 2026-11-11), so that
 # .agents/runbooks/upgrade-approved-by-prompt.md does not depend on a file in ~/.shared
 # (story 712). Tests: scripts/upgrade-agent/test_hand_run_preflight.py.
+# Known gap, kept on purpose (behaviour unchanged): a commit status (StatusContext) in
+# state PENDING or EXPECTED is read as completed and is not refused. This is "gap 1" of
+# upgrade-night-lane.md. The runbook runs night-merge.mjs --check-only right before
+# delivery, and that check refuses a pending status.
 import json
 import subprocess
 import sys
