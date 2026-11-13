@@ -115,10 +115,17 @@ state_upsert() {  # <sig> <class> <attempted> <result> [note] ; RETURNS the writ
   # Empty note preserves any existing one.
   local sig="$1" class="$2" att="$3" res="${4:-none}" note="${5:-}"
   [ -n "$res" ] || res=none
-  local ttl rc
+  local ttl rc cur
   ttl="$(( STATE_TTL_HOURS * 3600 ))"
   if kubectl -n "$STATE_NS" get configmap "$STATE_CM" >/dev/null 2>&1; then
-    kubectl -n "$STATE_NS" get configmap "$STATE_CM" -o json 2>/dev/null \
+    cur="$(kubectl -n "$STATE_NS" get configmap "$STATE_CM" -o json 2>/dev/null)"
+    # Story 554: never write over the night lane's claim. The lane owns its entry
+    # (holder=lane); triage's class/attempted/result would change what the gate reads.
+    if [ "$(printf '%s' "$cur" | jq -r --arg k "$sig" '(.data[$k] // "{}") | (fromjson? // {}) | .holder // ""' 2>/dev/null)" = "lane" ]; then
+      log "state: sig=$sig is held by the night lane — NOT writing over its claim (story 554)."
+      return 1
+    fi
+    printf '%s' "$cur" \
       | jq --arg k "$sig" --arg class "$class" --arg att "$att" --arg res "$res" --arg note "$note" \
            --argjson now "$NOW" --argjson ttl "$ttl" '
           .data = (.data // {})
@@ -148,6 +155,95 @@ state_upsert() {  # <sig> <class> <attempted> <result> [note] ; RETURNS the writ
     log "state: WARN upsert sig=$sig failed rc=$rc (RBAC/conflict?) — a CLAIM caller fails CLOSED; the gate then FAILS SAFE to paging"
   fi
   return "${rc:-1}"
+}
+
+# ── THE NIGHT LANE'S CLAIM (story 554) ── The night lane (shepherd/app/resources/night-claim.mjs)
+# claims a regression it will revert in this same ConfigMap, under the same signature (it runs
+# coordination-lib.sh itself to compute it), in the claim format triage and the gate read
+# (class=upgrade attempted=1 result=inprogress) plus holder=lane, pr, lane_state, claimed_at,
+# until and ids (the ids of the coordination set that belong to its target). A signature the
+# lane holds is not triage's: triage does not summon remediation for it, does not write its
+# entry, and says so in its log. Story: https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/554
+#
+# lane_hold <state-json> <sig> <reg-ids> — rc0 (and one line on stdout) when the lane holds
+# this regression: the entry for <sig> has holder=lane, or another lane claim still working
+# (lane_state working, until not passed) names one of <reg-ids>. The second covers a set that
+# changed since the lane claimed it (an unrelated failure joined, a pod left): the signature
+# moved, the regression did not.
+lane_hold() {
+  printf '%s' "$1" | jq -er --arg k "$2" --arg ids "$3" --argjson now "$NOW" '
+    (.data // {}) as $d
+    | ($ids | split("\n") | map(select(. != ""))) as $mine
+    | (($d[$k] // "") | if . == "" then {} else (fromjson? // {}) end) as $e
+    | if ($e | type) == "object" and ($e.holder // "") == "lane" then
+        "sig=\($k) is held by the night lane for #\($e.pr // "?") (lane_state \($e.lane_state // "?"), result \($e.result // "?"))"
+      else
+        ([ $d | to_entries[] | select(.key != $k)
+           | .key as $sk | (.value | fromjson? // {}) as $o
+           | select(($o | type) == "object" and ($o.holder // "") == "lane" and ($o.lane_state // "") == "working"
+                    and ((($o.until // "0") | tostring | tonumber? // 0) > $now))
+           | [ ($o.ids // [])[] | select(. as $i | $mine | index($i) != null) ] as $hit
+           | select(($hit | length) > 0)
+           | "the night lane holds \($sk) for #\($o.pr // "?") (working until \($o.until)), which names \($hit | join(", "))" ]
+         | first) // empty
+      end' 2>/dev/null
+}
+
+# state_claim <sig> <reg-ids> — triage's claim of the attempt, one holder (story 554). It decides
+# and writes on the SAME read: a replace at that read's resourceVersion, or a create when the
+# ConfigMap is absent. A write by anyone in between (the lane's claim, the gate's last_paged)
+# makes the API server refuse it (Conflict, AlreadyExists); triage then reads again: an entry
+# now held (attempted=1, or the lane's) belongs to the winner and triage stands down; one still
+# free is tried once more. RETURNS 0 = claimed; 1 = not claimed (held, unreadable, refused):
+# the caller FAILS CLOSED (no summon; the gate pages).
+state_claim() {
+  local sig="$1" ids="$2" try out rc held ttl
+  ttl="$(( STATE_TTL_HOURS * 3600 ))"
+  for try in 1 2; do
+    state_read
+    if [ "$STATE_READ_STATUS" = "error" ]; then
+      log "sig=$sig: claim: the state CM is unreadable — FAIL CLOSED."
+      return 1
+    fi
+    if [ "$STATE_READ_STATUS" = "ok" ]; then
+      if held="$(lane_hold "$STATE_JSON" "$sig" "$ids")"; then
+        log "sig=$sig: claim: $held — standing down: not triage's."
+        return 1
+      fi
+      if [ "$(jget "$(entry_of "$STATE_JSON" "$sig")" attempted)" = "1" ]; then
+        log "sig=$sig: claim: another run holds it (attempted=1) — standing down."
+        return 1
+      fi
+      out="$(printf '%s' "$STATE_JSON" | jq --arg k "$sig" --arg ids "$ids" --argjson now "$NOW" --argjson ttl "$ttl" '
+          .data = (.data // {})
+          | ((.data[$k] // "{}") | (fromjson? // {})) as $e
+          | .data[$k] = (($e + {class:"upgrade", attempted:"1", result:"none", note:($e.note // ""), holder:"triage",
+                ids:($ids | split("\n") | map(select(. != ""))),
+                first_seen:($e.first_seen // ($now|tostring)), last_paged:($e.last_paged // "0")}) | tojson)
+          | .data |= with_entries(
+                select(.key == $k
+                       or ((((.value | (fromjson? // {}) | (.first_seen // "0") | tonumber?) // 0)) > ($now - $ttl))))
+        ' 2>/dev/null)"
+      [ -n "$out" ] || { log "sig=$sig: claim: could not build the entry — FAIL CLOSED."; return 1; }
+      printf '%s' "$out" | kubectl -n "$STATE_NS" replace -f - >/dev/null 2>&1
+      rc=$?
+    else
+      kubectl -n "$STATE_NS" create configmap "$STATE_CM" --dry-run=client -o json 2>/dev/null \
+        | jq --arg k "$sig" --arg ids "$ids" --argjson now "$NOW" '
+            .data = { ($k): (({class:"upgrade", attempted:"1", result:"none", note:"", holder:"triage",
+                  ids:($ids | split("\n") | map(select(. != ""))),
+                  first_seen:($now|tostring), last_paged:"0"}) | tojson) }' 2>/dev/null \
+        | kubectl -n "$STATE_NS" create -f - >/dev/null 2>&1
+      rc=${PIPESTATUS[2]:-1}
+    fi
+    if [ "${rc:-1}" -eq 0 ]; then
+      log "state: claim sig=$sig class=upgrade attempted=1 holder=triage (written at the version read)"
+      return 0
+    fi
+    log "sig=$sig: claim refused (rc=$rc: Conflict or AlreadyExists, or RBAC) — reading again."
+  done
+  log "sig=$sig: could not claim at a stable version — FAIL CLOSED, NOT summoning."
+  return 1
 }
 
 # state_prune — drop entries older than the TTL (approximates "regression no longer present"
@@ -358,6 +454,13 @@ entry=""
 [ "$STATE_READ_STATUS" = "ok" ] && entry="$(entry_of "$STATE_JSON" "$SIG")"
 prev_attempted="$(jget "$entry" attempted)"
 
+# Story 554: a regression the night lane holds is not triage's. No attribution, no summon, no
+# write (any write here would change what the gate reads of the lane's claim).
+if [ "$STATE_READ_STATUS" = "ok" ] && LANE_HELD="$(lane_hold "$STATE_JSON" "$SIG" "$REG_IDS")"; then
+  log "$LANE_HELD — not triage's: NOT summoning remediation and NOT writing its entry. The gate pages if the lane's claim passes its own bound unfinished or its revert does not verify."
+  exit 0
+fi
+
 recent="$(curl -sf -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
   "https://api.github.com/repos/${REPO}/commits?sha=main&since=${SINCE}&per_page=10" 2>/dev/null | jq 'length' 2>/dev/null)"
 if [ "${recent:-0}" -gt 0 ] 2>/dev/null; then
@@ -389,7 +492,9 @@ if [ "$CLASS" = "upgrade" ]; then
   # COST FAIL-CLOSED: if the claim write does NOT land (RBAC glitch, or a resourceVersion
   # race with the gate's last_paged write), we cannot guarantee at-most-once — so do NOT
   # summon (protect spend). The gate fails safe and pages, so a human still handles it.
-  if ! state_upsert "$SIG" upgrade 1 none; then
+  # Story 554: the claim decides and writes on one read (state_claim), so triage and the night
+  # lane cannot both hold this regression.
+  if ! state_claim "$SIG" "$REG_IDS"; then
     log "sig=$SIG: could NOT durably claim the attempt — FAIL CLOSED, NOT summoning (protect spend). The gate pages."
     exit 0
   fi

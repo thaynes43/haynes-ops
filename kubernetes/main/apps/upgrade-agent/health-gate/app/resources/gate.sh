@@ -73,6 +73,82 @@ prom_val()   { curl -sf --max-time 15 "$PROM/api/v1/query" --data-urlencode "que
 prom_names() { curl -sf --max-time 15 "$PROM/api/v1/query" --data-urlencode "query=$1" 2>/dev/null | jq -r "[.data.result[].metric.$2] | unique | join(\",\")" 2>/dev/null; }
 gt0() { [ -n "$1" ] && [ "$1" -gt 0 ] 2>/dev/null; }
 
+# ── THE MORNING SUMMARY (story 554) ── `gate.sh morning-summary`, run by this release's 06:30
+#    America/New_York CronJob. The night lane composes the summary every tick
+#    (shepherd/app/resources/night-summary.mjs) and copies it into the morning_* keys of
+#    ConfigMap upgrade-orphan-report, the report this ServiceAccount already reads and stamps
+#    (name-scoped get and update; it cannot read upgrade-lane-state). The sender reads it now,
+#    at the moment it acts: a copy that is missing or for an older night becomes a short "the
+#    lane wrote no summary" message composed here, and fewer ticks than the night has say the
+#    lane did not finish. Pushover priority -1 (page.sh severity low): no sound or vibration,
+#    still shown as a notification. The text is data: it reaches curl as one quoted
+#    --form-string argument, never a command line. At most MORNING_MAX_BYTES (1000), whole lines
+#    cut from the end with "and N more". Story: https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/554
+MORNING_TZ="${MORNING_TZ:-America/New_York}"
+MORNING_MAX_BYTES="${MORNING_MAX_BYTES:-1000}"
+MORNING_CM="${MORNING_CM:-upgrade-orphan-report}"
+# fit_lines <text> <max bytes> — whole lines, the last one "and N more" when any were cut.
+fit_lines() {
+  local LC_ALL=C text="$1" max="$2" total kept out
+  local -a lines
+  if [ "${#text}" -le "$max" ]; then printf '%s' "$text"; return 0; fi
+  mapfile -t lines <<<"$text"
+  total="${#lines[@]}"
+  for (( kept = total - 1; kept >= 1; kept-- )); do
+    out="$(printf '%s\n' "${lines[@]:0:kept}")"$'\n'"and $(( total - kept )) more"
+    if [ "${#out}" -le "$max" ]; then printf '%s' "$out"; return 0; fi
+  done
+  printf '%s' "${text:0:$max}"
+}
+send_morning_summary() {
+  local ns="${UPGRADE_AGENT_NAMESPACE:-upgrade-agent}" night rep text mnight sent ticks expected last msg rc
+  night="$(TZ="$MORNING_TZ" date +%F)"   # the night that just ended: its ticks (01:00-05:45) carry this date
+  rep="$(kubectl -n "$ns" get configmap "$MORNING_CM" -o json 2>/dev/null)" || rep=""
+  text="$(printf '%s' "$rep" | jq -r '.data.morning_text // ""' 2>/dev/null)"
+  mnight="$(printf '%s' "$rep" | jq -r '.data.morning_night // ""' 2>/dev/null)"
+  sent="$(printf '%s' "$rep" | jq -r '.data.morning_sent_night // ""' 2>/dev/null)"
+  ticks="$(printf '%s' "$rep" | jq -r '.data.morning_ticks // ""' 2>/dev/null)"
+  expected="$(printf '%s' "$rep" | jq -r '.data.morning_ticks_expected // ""' 2>/dev/null)"
+  last="$(printf '%s' "$rep" | jq -r '.data.morning_last_tick // ""' 2>/dev/null | tr -cd '0-9:' | cut -c1-5)"
+  case "$mnight" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) mnight="" ;; esac
+  if [ "$sent" = "$night" ]; then
+    log "morning summary: already sent for the night of $night — not sending again."
+    return 0
+  fi
+  if [ -z "$rep" ]; then
+    msg="The night lane's summary for the night of ${night} could not be read (ConfigMap ${MORNING_CM} missing or unreadable). Check the upgrade-night CronJob in ${ns}."
+  elif [ -z "$text" ] || [ "$mnight" != "$night" ]; then
+    msg="The night lane wrote no summary for the night of ${night}: it did not run, or no tick finished. Its last summary is for ${mnight:-no night}. Check the upgrade-night CronJob in ${ns}."
+  else
+    msg="$text"
+    case "$ticks$expected" in *[!0-9]*|'') ;; *)
+      if [ "$ticks" -lt "$expected" ]; then
+        msg="The night lane did not finish the night: ${ticks} of ${expected} ticks completed, the last at ${last:-?}."$'\n'"$msg"
+      fi ;;
+    esac
+  fi
+  msg="$(fit_lines "$msg" "$MORNING_MAX_BYTES")"
+  PAGE_TITLE="Night upgrades ${night}" "$GATE_DIR/page.sh" low summary morning "$msg"; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    log "morning summary: NOT delivered (page.sh rc=$rc); not stamping, so a re-run sends it."
+    return 0
+  fi
+  # Stamp the night it was sent for, at the version read (a later write wins; this only stops a
+  # second run the same morning from sending it twice).
+  if [ -n "$rep" ]; then
+    printf '%s' "$rep" | jq --arg n "$night" '.data.morning_sent_night = $n' 2>/dev/null \
+      | kubectl -n "$ns" replace -f - >/dev/null 2>&1 \
+      && log "morning summary: sent for the night of $night (stamped morning_sent_night)" \
+      || log "morning summary: sent for the night of $night; WARN could not stamp morning_sent_night (conflict/RBAC)"
+  else
+    log "morning summary: sent the no-summary message for $night (nothing to stamp)"
+  fi
+}
+if [ "${1:-}" = "morning-summary" ]; then
+  send_morning_summary
+  exit 0
+fi
+
 # ── SHARED coordination logic — single-sourced from the upgrade-coordination-lib
 #    ConfigMap (see coordination-lib.sh; replaces the old byte-identical duplicated
 #    block). If the lib is missing the gate must NOT run half-configured — page blind. ──
@@ -102,6 +178,36 @@ remediation_phase() {
     esac
   fi
   printf 'none'
+}
+
+# lane_phase <entry> — the night lane's claim (story 554), read from its own fields; prints
+# "<phase>|<page note>" or NOTHING when the entry is not the lane's or is not understood (an
+# unknown lane_state, a pr, claimed_at or until that is not a number, or an until more than
+# LANE_CLAIM_MAX_SECONDS after claimed_at): such an entry is read as today, by
+# remediation_phase on its class/result/first_seen, so a claim the gate cannot understand
+# never silences more than today's grace window. The bound `until` is the lane's own, on its
+# own action (night.claim.max_work_seconds): the gate reads it as a fact in the claim.
+#   working, until not passed -> inflight (no page)
+#   working, until passed     -> failed (page: the lane did not finish)
+#   revert-failed             -> failed (page: the lane's revert did not verify)
+#   reverted                  -> fixed (Flux still failing pages as today's "fixed")
+LANE_CLAIM_MAX_SECONDS="${LANE_CLAIM_MAX_SECONDS:-21600}"
+lane_phase() {
+  local e="$1" st pr claimed until at
+  [ "$(jget "$e" holder)" = "lane" ] || return 0
+  st="$(jget "$e" lane_state)"; pr="$(jget "$e" pr)"; claimed="$(jget "$e" claimed_at)"; until="$(jget "$e" until)"
+  case "$pr$claimed$until" in *[!0-9]*) return 0 ;; esac
+  { [ -n "$pr" ] && [ -n "$claimed" ] && [ -n "$until" ]; } || return 0
+  { [ "$until" -ge "$claimed" ] && [ "$(( until - claimed ))" -le "$LANE_CLAIM_MAX_SECONDS" ]; } 2>/dev/null || return 0
+  at="$(date -u -d "@$until" +%FT%TZ 2>/dev/null || printf '%s' "$until")"
+  case "$st" in
+    working)
+      if [ "$NOW" -lt "$until" ]; then printf 'inflight|the night lane holds it for #%s and is working on it until %s' "$pr" "$at"
+      else printf 'failed|the night lane claimed it for #%s and did not finish by its own bound (%s) — human check needed' "$pr" "$at"; fi ;;
+    revert-failed) printf 'failed|the night lane reverted #%s and the revert did NOT verify — human fix needed' "$pr" ;;
+    reverted) printf 'fixed|the night lane reverted #%s and verified recovery, but the signal persists — human check needed' "$pr" ;;
+    *) return 0 ;;
+  esac
 }
 
 # state_set_last_paged — stamp last_paged on this signature's entry (page de-dupe memory).
@@ -167,7 +273,8 @@ if [ -n "$REG_IDS" ]; then
   fseen="$(jget "$entry" first_seen)"
   lpaged="$(jget "$entry" last_paged)"
   snote="$(jget "$entry" note)"        # shepherd's final summary line (triage records it)
-  phase="$(remediation_phase "$cls" "$res" "$fseen")"
+  lphase="$(lane_phase "$entry")"     # story 554: the night lane's claim, when it holds this one
+  if [ -n "$lphase" ]; then phase="${lphase%%|*}"; else phase="$(remediation_phase "$cls" "$res" "$fseen")"; fi
 
   # Human-readable remediation context for the page body.
   case "$phase" in
@@ -179,6 +286,7 @@ if [ -n "$REG_IDS" ]; then
   # BREAK-GLASS/HOLD line or final report), put the WHY in the page instead of making
   # the human dig Job logs. Trimmed — Pushover bodies cap at 1024 chars.
   [ -n "$snote" ] && rnote="${rnote} | shepherd: ${snote:0:220}"
+  [ -n "$lphase" ] && rnote="${lphase#*|}"
 
   want_flux=0; want_pod=0
   # Flux = sole catcher: page unless a fix is actively in flight.
@@ -249,7 +357,9 @@ if [ "$API_OK" -eq 0 ]; then
       paged_mm=1
     fi
     if [ "$o_count" -gt 0 ] 2>/dev/null && [ "$(( NOW - o_lp ))" -ge 604800 ]; then
-      page warning renovate orphans "${o_count} Renovate PR(s) open >7d with no automation owner: ${o_sum:0:600}"
+      # story 554: the count is of PRs with no lane (not on the night lane's last record);
+      # every open PR classified reads 0 and does not page. count_basis says how it was made.
+      page warning renovate orphans "${o_count} Renovate PR(s) open >7d with no lane ($(echo "$orph" | jq -r '.data.count_basis // "basis not recorded"' | cut -c1-160)): ${o_sum:0:600}"
       paged_orph=1
     fi
     if [ -n "$paged_mm$paged_orph" ]; then

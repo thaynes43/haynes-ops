@@ -80,6 +80,17 @@
 // own merge becomes history events only with night.verify.write_history_events (git ships
 // false). Loaded inside a guarded step like the history; it changes no verdict, no lock and
 // no other write.
+//
+// STORY 554 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/554):
+// for each failed verdict of this tick, night-claim.mjs computes the regression signature with
+// the coordination library itself (the one triage and the gate source) and reads the claims in
+// ConfigMap upgrade-agent/upgrade-remediation-state; only a live tick, for a merge the lane
+// made, claims the signature (create, or replace at the resourceVersion read), and the lane
+// stops when triage holds it. Dry-run and practice verdicts read only (summary.claims). At the
+// end of each tick night-summary.mjs composes the morning summary from what the tick holds (no
+// read of its own) and the tick writes it to data.morning (field manager upgrade-night-summary)
+// and a delivery copy, morning_* keys only, to ConfigMap upgrade-orphan-report, which the health
+// gate's 06:30 CronJob sends at Pushover priority -1.
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -564,6 +575,23 @@ async function tick() {
   summary.verify = ver.summary;
   log(`${ver.summary.error ? 'ERROR ' : ''}upgrade-night ${MODE}: verifier: ${V && !ver.summary.error ? V.verifyLine(ver.summary) : `FAILED: ${ver.summary.error}`}`);
 
+  // WHO HANDLES A REGRESSION (story 554): each verdict this tick that failed. Only a live tick,
+  // for the lane's own merge, may claim (write); dry-run and practice read only. A claim that is
+  // not the lane's, or cannot be read, means the lane does not revert (story 753 reads
+  // revert_allowed). Its failure is logged and recorded; it changes no verdict and no other write.
+  let C = null;
+  summary.claims = [];
+  try {
+    const failed = Object.values(ver.records || {}).filter(r => r?.verdict === 'failed' && r.verdict_at === summary.at);
+    if (failed.length) {
+      C = await import('./night-claim.mjs');
+      const work = C.claimConfig(rules);
+      const deps = C.liveDeps({ run, env: childEnv, now, prom: PROM });
+      for (const r of failed) summary.claims.push(C.claimStep({ rec: r, live: MODE === 'live' && WRITE_STATE && !r.practice && work.ok, now, work, deps }));
+    }
+  } catch (e) { summary.claims_error = `${C ? '' : 'night-claim.mjs did not load: '}${String(e.message).slice(0, 300)}`; }
+  log(`${summary.claims_error ? 'ERROR ' : ''}upgrade-night ${MODE}: claims: ${summary.claims_error ? `FAILED: ${summary.claims_error}` : C ? C.claimLine(summary.claims) : 'no failed verdict this tick'}`);
+
   // THE HISTORY (story 593): after the merge step, whose lock is released by now. Its
   // failure is logged and recorded; it changes no verdict and stops no other write.
   let H = null, hist;
@@ -671,6 +699,17 @@ async function tick() {
     eligible: retryEligible.map(r => r.pr), tried: attempts.map(a => a.pr), attempts, github_writes: retryWrites, max_preflights_per_tick: rcfg.max_preflights_per_tick ?? null,
     by_state: Object.fromEntries([...new Set(records.map(r => r.retry?.state))].map(s => [s, records.filter(r => r.retry?.state === s).map(r => r.pr)])) };
 
+  // THE MORNING SUMMARY (story 554): composed from what this tick holds; no read of its own
+  let S = null, morning = null;
+  try {
+    S = await import('./night-summary.mjs');
+    const verifyItems = ver.records ?? (() => { try { return JSON.parse(stateCm?.data?.verify || 'null')?.items ?? null; } catch { return null; } })();
+    morning = S.composeMorning({ now, mode: MODE, rules, prevText: stateCm?.data?.morning ?? null, records, verify: verifyItems, doc: hist.ctx?.doc ?? null,
+      historyNote: { needs_person: H ? H.historyError(summary.history) : true, line: hLine }, claims: summary.claims });
+  } catch (e) { morning = { ok: false, why: `${S ? '' : 'night-summary.mjs did not load: '}${String(e.message).slice(0, 300)}` }; }
+  summary.morning = morning.ok ? { night: morning.morning.night, ticks_completed: morning.morning.ticks_completed, bytes: morning.morning.bytes, lines_cut: morning.morning.lines_cut } : { error: morning.why };
+  log(`${morning.ok ? '' : 'ERROR '}upgrade-night ${MODE}: morning summary: ${morning.ok ? `night ${morning.morning.night}, tick ${morning.morning.ticks_completed} of ${morning.morning.ticks_expected}, ${morning.morning.bytes} bytes${morning.morning.lines_cut ? `, ${morning.morning.lines_cut} line(s) cut` : ''}` : `NOT COMPOSED: ${morning.why}`}`);
+
   const table = L.formatTable(records);
   log(`upgrade-night ${MODE}: ${records.length} open Renovate PRs; ${JSON.stringify(counts)}`);
   const sLine = settleFacts ? `Flux at ${String(M.revisionSha(settleFacts.source?.status?.artifact?.revision) || 'unreadable').slice(0, 8)}, ${settleFacts.range?.complete ? `${settleFacts.range.commits.length} commit(s) on main not fetched yet` : `unapplied commits unreadable (${settleFacts.range?.why || 'no source revision'})`}; ${lanes.filter(r => r.cluster_effect === 'immediate').map(r => `#${r.pr} ${r.gates.settle.settled ? 'settled' : `NOT settled (${r.gates.settle.blockers.join(' | ')})`}`).join('; ')}` : 'not read (no lane-A candidate with an immediate cluster effect)';
@@ -708,6 +747,16 @@ async function tick() {
   // the ledger first (its own field manager), then the tick's state
   if (ledger && JSON.stringify(ledger) !== ledgerBefore) summary.retry.ledger_written = persistLedger(ledger);
   const ok = writeLaneState(stateManifest({ mode: MODE, updated: summary.at, summary: JSON.stringify(summary), table, records: JSON.stringify(records) })).ok;
+  // story 554: the morning summary under its own field manager, then the delivery copy the
+  // health gate's 06:30 CronJob reads (it cannot read upgrade-lane-state). Only after a state
+  // write that landed: a tick whose state was refused did not complete. Guarded like the
+  // verifier's below; the verifier's memory stays the last write.
+  if (ok && morning?.ok) {
+    try { writeLaneState(morningManifest(morning.morning), SUMMARY_MANAGER); }
+    catch (e) { log(`ERROR upgrade-night ${MODE}: the morning summary was not written: ${String(e.message).slice(0, 300)}`); }
+    try { writeLaneState(deliveryManifest(morning.delivery), SUMMARY_MANAGER); }
+    catch (e) { log(`ERROR upgrade-night ${MODE}: the morning summary's delivery copy was not written: ${String(e.message).slice(0, 300)}`); }
+  }
   // story 553 (L3 of the review of PR 4880): the verifier's memory and morning view, under
   // their own field manager, last: after the PR-write phase (the retry ledger's version check
   // sees no write before it) and after the tick's own keys. The tick's apply and its error
@@ -729,6 +778,9 @@ const LEDGER_MANAGER = 'upgrade-night-ledger';
 // story 553: data.verify and data.verify_table under their own field manager, like the ledger
 const VERIFY_MANAGER = 'upgrade-night-verify';
 const VERIFY_KEYS = Object.freeze(['verify', 'verify,verify_table']);
+// story 554: data.morning (the morning summary and its facts) under its own field manager
+const SUMMARY_MANAGER = 'upgrade-night-summary';
+const morningManifest = m => ({ apiVersion: 'v1', kind: 'ConfigMap', metadata: { ...STATE }, data: { morning: JSON.stringify(m) } });
 const verifyManifest = (memory, table) => ({ apiVersion: 'v1', kind: 'ConfigMap', metadata: { ...STATE }, data: { verify: memory, ...(table ? { verify_table: table } : {}) } });
 // rv = the resourceVersion of the last read or write of the ConfigMap: a precondition, so a
 // writer that overlapped since makes this write fail (F8).
@@ -741,20 +793,35 @@ const ledgerManifest = (l, rv) => ({ apiVersion: 'v1', kind: 'ConfigMap', metada
 // upgrade-night-verify for data.verify and data.verify_table only (story 553).
 function writeLaneState(manifest, manager = 'upgrade-night') {
   const m = manifest.metadata || {};
-  if (manifest.kind !== 'ConfigMap' || m.name !== STATE.name || m.namespace !== STATE.namespace || Object.keys(manifest).some(k => !['apiVersion', 'kind', 'metadata', 'data'].includes(k))
-    || !['upgrade-night', LEDGER_MANAGER, VERIFY_MANAGER].includes(manager) || ((manager === LEDGER_MANAGER) !== (Object.keys(manifest.data || {}).join() === 'retry_ledger'))
-    || ((manager === VERIFY_MANAGER) !== VERIFY_KEYS.includes(Object.keys(manifest.data || {}).sort().join())) || (manager !== VERIFY_MANAGER && Object.keys(manifest.data || {}).some(k => /^verify/.test(k)))) {
-    throw new Error('writeLaneState: refused (only ConfigMap upgrade-agent/upgrade-lane-state may be written, and data.retry_ledger and data.verify only by their own field managers)');
+  // story 554: the one write outside upgrade-lane-state, the morning summary's delivery copy:
+  // ConfigMap upgrade-orphan-report, field manager upgrade-night-summary, morning_* keys only
+  const delivery = manager === SUMMARY_MANAGER && m.name === DELIVERY.name && m.namespace === DELIVERY.namespace
+    && Object.keys(manifest.data || {}).length > 0 && Object.entries(manifest.data || {}).every(([k, v]) => DELIVERY_KEYS.includes(k) && typeof v === 'string');
+  if (manifest.kind !== 'ConfigMap' || (!delivery && (m.name !== STATE.name || m.namespace !== STATE.namespace)) || Object.keys(manifest).some(k => !['apiVersion', 'kind', 'metadata', 'data'].includes(k))
+    || !['upgrade-night', LEDGER_MANAGER, VERIFY_MANAGER, SUMMARY_MANAGER].includes(manager) || ((manager === LEDGER_MANAGER) !== (Object.keys(manifest.data || {}).join() === 'retry_ledger'))
+    || ((manager === VERIFY_MANAGER) !== VERIFY_KEYS.includes(Object.keys(manifest.data || {}).sort().join())) || (manager !== VERIFY_MANAGER && Object.keys(manifest.data || {}).some(k => /^verify/.test(k)))
+    || ((manager === SUMMARY_MANAGER) !== (delivery || Object.keys(manifest.data || {}).join() === 'morning'))) {
+    throw new Error('writeLaneState: refused (only ConfigMap upgrade-agent/upgrade-lane-state may be written, and data.retry_ledger, data.verify and data.morning only by their own field managers; and the morning_* keys of upgrade-orphan-report by the summary\'s)');
   }
   const body = JSON.stringify(manifest);
   if (Buffer.byteLength(body) > MAX_STATE_BYTES) throw new Error(`state is ${Buffer.byteLength(body)} bytes, over the ${MAX_STATE_BYTES}-byte budget for one ConfigMap`);
   const r = spawnSync('kubectl', ['apply', '--server-side', `--field-manager=${manager}`, '--force-conflicts', '-o', 'json', '-f', '-'], { input: body, encoding: 'utf8', env: childEnv, maxBuffer: 64 * 1024 * 1024 });
-  if (r.status !== 0) { log(`ERROR upgrade-night: STATE WRITE FAILED for ${STATE.namespace}/${STATE.name}${manager === LEDGER_MANAGER ? ' (data.retry_ledger)' : manager === VERIFY_MANAGER ? ' (data.verify)' : ''} (kubectl exit ${r.status}): ${String(r.stderr).slice(0, 300)}`); return { ok: false, rv: null }; }
+  const what = `${m.namespace}/${m.name}${manager === LEDGER_MANAGER ? ' (data.retry_ledger)' : manager === VERIFY_MANAGER ? ' (data.verify)' : manager === SUMMARY_MANAGER ? (delivery ? ' (the morning summary\'s delivery copy)' : ' (data.morning)') : ''}`;
+  if (r.status !== 0) { log(`ERROR upgrade-night: STATE WRITE FAILED for ${what} (kubectl exit ${r.status}): ${String(r.stderr).slice(0, 300)}`); return { ok: false, rv: null }; }
   let rv = null;
   try { rv = JSON.parse(r.stdout)?.metadata?.resourceVersion ?? null; } catch { rv = null; }
-  log(`wrote ConfigMap ${STATE.namespace}/${STATE.name}${manager === LEDGER_MANAGER ? ' (data.retry_ledger)' : manager === VERIFY_MANAGER ? ' (data.verify)' : ''}`);
+  log(`wrote ConfigMap ${what}`);
   return { ok: true, rv };
 }
+
+// story 554: the morning summary's delivery copy. ConfigMap upgrade-agent/upgrade-orphan-report
+// is the report the health gate already reads (and may update: its Role is name-scoped get and
+// update); it cannot read upgrade-lane-state. Server-side apply of the morning_* keys only,
+// under field manager upgrade-night-summary (writeLaneState checks both): the shepherd's orphan
+// keys (its client-side apply keeps keys it never set) and the gate's stamps are not touched.
+const DELIVERY = { name: 'upgrade-orphan-report', namespace: 'upgrade-agent' };
+const DELIVERY_KEYS = Object.freeze(['morning_text', 'morning_night', 'morning_composed_at', 'morning_ticks', 'morning_ticks_expected', 'morning_last_tick', 'morning_mode']);
+const deliveryManifest = data => ({ apiVersion: 'v1', kind: 'ConfigMap', metadata: { ...DELIVERY }, data });
 
 // Exit codes: 0 = tick done (or paused); 2 = the state write failed, the one failure
 // the ConfigMap cannot record; 1 = the tick failed and its error record could not be
