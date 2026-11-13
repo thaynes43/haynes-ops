@@ -141,7 +141,7 @@ const placePods = (w, ns, prefix, node = 'talosw01') => { for (const p of podsIn
   ok((night.match(/V\.verifyPhase\(/g) || []).length === 1 && night.indexOf('V.verifyPhase(') > night.indexOf('M.laneMergeStep(') && night.indexOf('V.verifyPhase(') < night.indexOf('H.historyPhase('), 'run-night.mjs: one verify phase, after the merge step and before the history');
   ok(/verifyEvents: ver\.events \|\| \[\]/.test(night) && !/ver\.records/.test(night), 'run-night.mjs: hands the history only the phase\'s events (never practice records)');
   ok(/await import\('\.\/night-verify\.mjs'\)/.test(night) && /catch \(e\) \{ ver = \{ summary: \{ error:/.test(night), 'run-night.mjs: loads the verifier inside a guarded step; a failure is recorded, not thrown');
-  ok(/if \(ver\.memory && !ver\.summary\.error\) writeLaneState\(verifyManifest/.test(night) && !/stateManifest\(\{[^)]*verify/.test(night), 'run-night.mjs (L3): the memory is written only under its own manager, never in the tick\'s apply or its error record');
+  ok(/if \(ver\.memory && !ver\.summary\.error\) \{\s*try \{ writeLaneState\(verifyManifest\([^;]*VERIFY_MANAGER\); \}\s*catch \(e\) \{ log\(/.test(night) && !/stateManifest\(\{[^)]*verify/.test(night), 'run-night.mjs (L3): the memory is written only under its own manager, never in the tick\'s apply or its error record');
   const hist = strip(readFileSync(join(RES, 'upgrade-history.mjs'), 'utf8'));
   ok(/s\.item\.attempts\.at\(-1\)\?\.actor\?\.kind !== 'lane'/.test(hist), 'upgrade-history.mjs: refuses a verifier event unless the lane made the item\'s current attempt');
 }

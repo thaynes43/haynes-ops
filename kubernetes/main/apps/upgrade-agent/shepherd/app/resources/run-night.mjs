@@ -712,7 +712,12 @@ async function tick() {
   // their own field manager, last: after the PR-write phase (the retry ledger's version check
   // sees no write before it) and after the tick's own keys. The tick's apply and its error
   // record never touch them; a verifier that failed, or kept its memory, writes nothing.
-  if (ver.memory && !ver.summary.error) writeLaneState(verifyManifest(ver.memory, ver.table), VERIFY_MANAGER);
+  // guarded: writeLaneState throws on a refused shape or a manifest over its budget, and a
+  // throw here would reach the tick's error path, which replaces the state just written
+  if (ver.memory && !ver.summary.error) {
+    try { writeLaneState(verifyManifest(ver.memory, ver.table), VERIFY_MANAGER); }
+    catch (e) { log(`ERROR upgrade-night ${MODE}: the verifier's memory was not written: ${String(e.message).slice(0, 300)}`); }
+  }
   return ok ? 0 : 2;
 }
 
