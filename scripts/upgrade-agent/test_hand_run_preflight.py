@@ -115,21 +115,12 @@ class HandRunPreflightTest(unittest.TestCase):
                 proc = self.run_cli(view)
                 self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
                 self.assertIn("preflight OK", proc.stdout)
-
-    def test_pending_commit_status_is_not_refused_known_gap(self) -> None:
-        """Pins a known gap of the preflight (behaviour moved unchanged from the handoff).
-
-        A commit status in state PENDING or EXPECTED is read as completed. This is gap 1
-        of upgrade-night-lane.md; the runbook's night-merge.mjs --check-only refuses it
-        right before delivery. If the preflight is fixed, change this test to expect 1.
-        """
-        for state in ("PENDING", "EXPECTED"):
-            with self.subTest(state=state):
-                view = good_view()
-                view["statusCheckRollup"].append(
-                    {"__typename": "StatusContext", "context": "renovate/stability-days", "state": state})
-                proc = self.run_cli(view)
-                self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        with self.subTest(form="commit status, PENDING"):
+            view = good_view()
+            view["statusCheckRollup"][-1] = {
+                "__typename": "StatusContext", "context": "Claude Review (advisory)", "state": "PENDING"}
+            proc = self.run_cli(view)
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
     def test_expected_check_present_passes(self) -> None:
         proc = self.run_cli(good_view(), REPO, PR, HEAD, "--expect", "Flux Local - Filter")
@@ -175,6 +166,20 @@ class HandRunPreflightTest(unittest.TestCase):
         view = good_view()
         view["statusCheckRollup"].append(check("validate", "", "IN_PROGRESS"))
         self.assert_refused(view, "check still running: validate (IN_PROGRESS)")
+
+    def test_pending_commit_status_is_refused(self) -> None:
+        # A commit status has a state and no status. PENDING is not finished: fail closed,
+        # as night-merge.mjs --check-only does. The hand-run nights' copy let it through.
+        view = good_view()
+        view["statusCheckRollup"].append(
+            {"__typename": "StatusContext", "context": "renovate/stability-days", "state": "PENDING"})
+        self.assert_refused(view, "check still running: renovate/stability-days (PENDING)")
+
+    def test_expected_commit_status_is_refused(self) -> None:
+        view = good_view()
+        view["statusCheckRollup"].append(
+            {"__typename": "StatusContext", "context": "renovate/stability-days", "state": "EXPECTED"})
+        self.assert_refused(view, "check still running: renovate/stability-days (EXPECTED)")
 
     def test_required_check_absent_is_refused(self) -> None:
         for name in ("Flux Local - Success", "Diff Scope - Success"):
