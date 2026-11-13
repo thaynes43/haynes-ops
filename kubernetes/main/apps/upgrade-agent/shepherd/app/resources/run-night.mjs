@@ -707,8 +707,8 @@ async function tick() {
     morning = S.composeMorning({ now, mode: MODE, rules, prevText: stateCm?.data?.morning ?? null, records, verify: verifyItems, doc: hist.ctx?.doc ?? null,
       historyNote: { needs_person: H ? H.historyError(summary.history) : true, line: hLine }, claims: summary.claims });
   } catch (e) { morning = { ok: false, why: `${S ? '' : 'night-summary.mjs did not load: '}${String(e.message).slice(0, 300)}` }; }
-  summary.morning = morning.ok ? { night: morning.morning.night, ticks_completed: morning.morning.ticks_completed, bytes: morning.morning.bytes, lines_cut: morning.morning.lines_cut } : { error: morning.why };
-  log(`${morning.ok ? '' : 'ERROR '}upgrade-night ${MODE}: morning summary: ${morning.ok ? `night ${morning.morning.night}, tick ${morning.morning.ticks_completed} of ${morning.morning.ticks_expected}, ${morning.morning.bytes} bytes${morning.morning.lines_cut ? `, ${morning.morning.lines_cut} line(s) cut` : ''}` : `NOT COMPOSED: ${morning.why}`}`);
+  summary.morning = morning.ok ? { night: morning.morning.night, ticks_completed: morning.morning.ticks_completed, finished: morning.morning.finished, bytes: morning.morning.bytes, lines_cut: morning.morning.lines_cut } : { error: morning.why };
+  log(`${morning.ok ? '' : 'ERROR '}upgrade-night ${MODE}: morning summary: ${morning.ok ? `night ${morning.morning.night}, tick ${morning.morning.ticks_completed} at ${morning.morning.last_tick_local}${morning.morning.finished ? ' (the night\'s last)' : ''}, ${morning.morning.bytes} bytes${morning.morning.lines_cut ? `, ${morning.morning.lines_cut} line(s) cut` : ''}` : `NOT COMPOSED: ${morning.why}`}`);
 
   const table = L.formatTable(records);
   log(`upgrade-night ${MODE}: ${records.length} open Renovate PRs; ${JSON.stringify(counts)}`);
@@ -820,7 +820,7 @@ function writeLaneState(manifest, manager = 'upgrade-night') {
 // under field manager upgrade-night-summary (writeLaneState checks both): the shepherd's orphan
 // keys (its client-side apply keeps keys it never set) and the gate's stamps are not touched.
 const DELIVERY = { name: 'upgrade-orphan-report', namespace: 'upgrade-agent' };
-const DELIVERY_KEYS = Object.freeze(['morning_text', 'morning_night', 'morning_composed_at', 'morning_ticks', 'morning_ticks_expected', 'morning_last_tick', 'morning_mode']);
+const DELIVERY_KEYS = Object.freeze(['morning_text', 'morning_night', 'morning_composed_at', 'morning_ticks', 'morning_last_tick', 'morning_last_tick_expected', 'morning_mode']);
 const deliveryManifest = data => ({ apiVersion: 'v1', kind: 'ConfigMap', metadata: { ...DELIVERY }, data });
 
 // Exit codes: 0 = tick done (or paused); 2 = the state write failed, the one failure

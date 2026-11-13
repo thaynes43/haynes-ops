@@ -179,39 +179,64 @@ ramp_prompt_token() {  # the substring that must appear in the LLM prompt for th
 # STORY 554: an orphan is a PR with NO LANE. A PR the night lane classified on its last
 # tick, into any class (blocked, excluded and the owner's lane included), has a lane and
 # is on the lane's record (upgrade-lane-state data.records, the morning summary's list).
-# Only the PRs missing from that record count. The record is read as it is now; when it
-# cannot be read the report counts every aging PR, as before, and says so (count_basis).
+# Only the PRs missing from that record count, and only while the lane is acting: when
+# the lane is paused (data.pause), when its last tick (data.updated) is more than
+# ORPHAN_LANE_MAX_AGE_HOURS (36: it ticks every night) old, or when the record cannot be
+# read, every aging PR counts, as before, and count_basis says why. The record is read as
+# it is now, and reaches jq through a file descriptor, never an argument (Linux refuses an
+# argument over 128 KiB: the record passed it near 53 open PRs; story 508 counted 63).
 # Comment 6154 on story 508: the old count read 63. Pure counting: orphan_count (tested
 # by scripts/upgrade-agent/orphan-count-selftest.sh).
 # $1 = ramp-mismatch detail ("" when consistent). Best-effort: failures only log.
-# orphan_count <prs-json> <lane-records-json or ""> <cutoff> -> "<count>\t<basis>\t<summary>"
+ORPHAN_LANE_MAX_AGE_HOURS="${ORPHAN_LANE_MAX_AGE_HOURS:-36}"
+# orphan_count <prs-json> <upgrade-lane-state as JSON, or ""> <cutoff ISO> <now epoch>
+#   -> "<count>\t<basis>\t<summary>"; the count is a number whenever the PR list parses
 orphan_count() {
-  local prs="$1" recs="$2" cutoff="$3" basis lane_ok=1
-  # an empty read gives jq no input, and jq -e then exits 0: test for it first
-  if [ -z "$recs" ] || ! printf '%s' "$recs" | jq -e 'type == "array"' >/dev/null 2>&1; then lane_ok=0; fi
-  if [ "$lane_ok" = 1 ]; then
-    basis="PRs with no lane: missing from the night lane's last record ($(printf '%s' "$recs" | jq -r '[.[] | select(.lane != null and .lane != "")] | length' 2>/dev/null) classified)"
+  local prs="$1" lane="$2" cutoff="$3" now="$4" why="" pause updated n out
+  if [ -z "$lane" ]; then
+    why="the night lane's record (upgrade-lane-state) could not be read"
   else
-    basis="every aging Renovate PR: the night lane's record (upgrade-lane-state data.records) could not be read"
-    recs='[]'
+    pause="$(printf '%s' "$lane" | jq -r '.data.pause // ""' 2>/dev/null)"
+    # TZ=UTC for jq: jq 1.6 parses fromdateiso8601 in local time (see coordination-lib.sh)
+    updated="$(printf '%s' "$lane" | TZ=UTC jq -r '(.data.updated // "") | sub("\\.[0-9]+"; "") | (fromdateiso8601? // 0)' 2>/dev/null)"
+    n="$(printf '%s' "$lane" | jq -r '(.data.records // "") | (fromjson? // null) | if type == "array" then length else "none" end' 2>/dev/null)"
+    if [ -n "$pause" ]; then
+      why="the night lane is paused (data.pause), so no PR has a lane"
+    elif ! [ "${updated:-0}" -gt 0 ] 2>/dev/null; then
+      why="the night lane's record has no readable time (data.updated)"
+    elif [ "$(( now - updated ))" -gt "$(( ORPHAN_LANE_MAX_AGE_HOURS * 3600 ))" ]; then
+      why="the night lane's last tick is $(( (now - updated) / 3600 ))h old (over ${ORPHAN_LANE_MAX_AGE_HOURS}h: suspended or not running), so no PR has a lane"
+    elif ! [ "${n:-x}" -ge 0 ] 2>/dev/null; then
+      why="the night lane's record (upgrade-lane-state data.records) could not be read"
+    fi
   fi
-  printf '%s' "$prs" | jq -r --arg c "$cutoff" --argjson recs "$recs" --arg ok "$lane_ok" --arg basis "$basis" '
-    ([ $recs[] | select(.lane != null and .lane != "") | .pr ]) as $laned
-    | [ .[] | select((.author.login | test("renovate")) and (.createdAt < $c))
-            | select($ok != "1" or (.number as $n | ($laned | index($n)) == null)) ] as $o
-    | "\($o | length)\t\($basis)\t\($o | sort_by(.number) | .[:6] | map("#\(.number) \((.title // "")[:55] | gsub("[[:cntrl:]]"; " "))") | join(" | "))"' 2>/dev/null
+  if [ -z "$why" ]; then
+    out="$(printf '%s' "$prs" | jq -r --arg c "$cutoff" --slurpfile lane <(printf '%s' "$lane") '
+      ([ ($lane[0].data.records | fromjson)[] | select(.lane != null and .lane != "") | .pr ]) as $laned
+      | [ .[] | select((.author.login | test("renovate")) and (.createdAt < $c))
+              | select(.number as $n | ($laned | index($n)) == null) ] as $o
+      | "\($o | length)\tPRs with no lane: missing from the night lane'"'"'s last record (\($laned | length) classified)\t\($o | sort_by(.number) | .[:6] | map("#\(.number) \((.title // "")[:55] | gsub("[[:cntrl:]]"; " "))") | join(" | "))"' 2>/dev/null)"
+    case "${out%%$'\t'*}" in ''|*[!0-9]*) why="the PRs could not be counted against the night lane's record"; out="" ;; esac
+  fi
+  if [ -n "$why" ]; then
+    out="$(printf '%s' "$prs" | jq -r --arg c "$cutoff" --arg why "$why" '
+      [ .[] | select((.author.login | test("renovate")) and (.createdAt < $c)) ] as $o
+      | "\($o | length)\tevery aging Renovate PR: \($why)\t\($o | sort_by(.number) | .[:6] | map("#\(.number) \((.title // "")[:55] | gsub("[[:cntrl:]]"; " "))") | join(" | "))"' 2>/dev/null)"
+  fi
+  printf '%s' "$out"
 }
 write_orphan_report() {
-  local mm="$1" days="${ORPHAN_AGE_DAYS:-7}" cutoff prs count=0 summary="" basis="" recs out
+  local mm="$1" days="${ORPHAN_AGE_DAYS:-7}" cutoff prs count=0 summary="" basis="" lane out
   cutoff="$(date -u -d "-${days} days" +%FT%TZ 2>/dev/null)" || cutoff=""
   if [ -n "$cutoff" ]; then
     prs="$(gh pr list -R "$REPO" --state open --limit 200 --json number,title,author,createdAt 2>/dev/null)" || prs=""
     if [ -n "$prs" ]; then
-      recs="$(kubectl -n "$SPEND_NS" get configmap upgrade-lane-state -o json 2>/dev/null | jq -r '.data.records // ""' 2>/dev/null)" || recs=""
-      out="$(orphan_count "$prs" "$recs" "$cutoff")"
-      if [ -n "$out" ]; then
-        count="${out%%$'\t'*}"; out="${out#*$'\t'}"; basis="${out%%$'\t'*}"; summary="${out#*$'\t'}"
-      fi
+      lane="$(kubectl -n "$SPEND_NS" get configmap upgrade-lane-state -o json 2>/dev/null)" || lane=""
+      out="$(orphan_count "$prs" "$lane" "$cutoff" "$(date -u +%s)")"
+      case "${out%%$'\t'*}" in
+        ''|*[!0-9]*) basis="not counted: the open PR list could not be parsed" ;;
+        *) count="${out%%$'\t'*}"; out="${out#*$'\t'}"; basis="${out%%$'\t'*}"; summary="${out#*$'\t'}" ;;
+      esac
     fi
   fi
   local existing lp lmp

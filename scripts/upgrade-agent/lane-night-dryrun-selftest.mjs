@@ -580,7 +580,7 @@ process.exit(0);
       ok(sm[1].m.metadata.name === 'upgrade-orphan-report' && sm[1].m.metadata.namespace === 'upgrade-agent' && Object.keys(sm[1].m.data).every(k => k.startsWith('morning_')) && sm[1].m.data.morning_text === JSON.parse(sm[0].m.data.morning).text,
         'story 554: the delivery copy: morning_* keys of upgrade-orphan-report only, the same text');
       ok(!r.writes.some(w => (w.stdin || '').includes('upgrade-remediation-state')), 'story 554: dry-run writes nothing to upgrade-remediation-state');
-      ok(Array.isArray(r.summary.claims) && r.summary.morning?.ticks_completed === 1 && /upgrade-night dryrun: claims: no failed verdict this tick/.test(r.stderr) && /upgrade-night dryrun: morning summary: night \d{4}-\d\d-\d\d, tick 1 of 20/.test(r.stderr),
+      ok(Array.isArray(r.summary.claims) && r.summary.morning?.ticks_completed === 1 && /upgrade-night dryrun: claims: no failed verdict this tick/.test(r.stderr) && /upgrade-night dryrun: morning summary: night \d{4}-\d\d-\d\d, tick 1 at \d\d:\d\d/.test(r.stderr),
         'story 554: summary.claims and summary.morning, and their log lines', JSON.stringify(r.summary.morning));
     }
     const mw = JSON.parse(r.writes[4].stdin);

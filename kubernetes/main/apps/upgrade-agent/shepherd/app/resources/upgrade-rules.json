@@ -1208,12 +1208,11 @@
     },
     "summary": {
       "max_bytes": 1000,
-      "ticks_per_night": 20,
       "last_tick_local": "05:45",
       "max_items_per_line": 6,
       "max_name_chars": 40,
       "max_reason_chars": 90,
-      "note": "Story 554: the morning summary (night-summary.mjs), composed by every tick from what it holds, written to upgrade-lane-state data.morning and, as morning_* keys, to upgrade-orphan-report, which the health gate's 06:30 America/New_York CronJob sends at Pushover priority -1. max_bytes stays under Pushover's 1,024-character cap and page.sh's 1,000 clamp; whole lines are cut from the end and the last says 'and N more'. ticks_per_night and last_tick_local follow the upgrade-night schedule (*/15 1-5, 01:00 to 05:45) and only describe it: the sender says the lane did not finish when fewer ticks completed."
+      "note": "Story 554: the morning summary (night-summary.mjs), composed by every tick from what it holds, written to upgrade-lane-state data.morning and, as morning_* keys, to upgrade-orphan-report, which the health gate's 06:30 America/New_York CronJob sends at Pushover priority -1. max_bytes stays under Pushover's 1,024-character cap and page.sh's 1,000 clamp; whole lines are cut from the end and the last says 'and N more'. last_tick_local is the last tick of the upgrade-night schedule (*/15 1-5, 01:00 to 05:45 New York): a night is finished when its last completed tick ran at or after it, whatever the number of ticks (the night the clocks go forward has 16, the night they go back may have more than 20); the sender says the lane did not finish otherwise. The text puts every count in its first lines, then the detail by what a reader must not miss: a revert that did not recover, what waits for Tom, reverts that recovered, the merges, the checks."
     }
   },
   "cluster_wide_targets": [

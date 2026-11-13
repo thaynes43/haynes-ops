@@ -12,10 +12,11 @@
 // unset for it: another actor writing "at the same moment". FAKE_KUBE_UNREADABLE=1 fails every
 // ConfigMap read with a connection error.
 //
-// curl: a Prometheus query (--data-urlencode query=...) answers from FAKE_PROM (JSON: { pods:
+// curl: every URL is appended to FAKE_CURL_URLS; GitHub answers one commit; a Prometheus
+// query (--data-urlencode query=...) answers from FAKE_PROM (JSON: { pods:
 // <query response>, default: <response> }); `vector(1)` answers one series; Pushover posts are
 // appended to FAKE_CURL_LOG (one JSON array of the arguments per line) and answer status 1, or
-// fail when FAKE_PUSHOVER_FAIL=1.
+// fail when FAKE_PUSHOVER_FAIL=1 (every post) or for the first FAKE_PUSHOVER_FAIL_TIMES posts.
 import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
@@ -28,9 +29,17 @@ const stdin = () => { try { return readFileSync(0, 'utf8'); } catch { return '';
 
 if (tool === 'curl') {
   const url = args.find(a => /^https?:\/\//.test(a)) || '';
+  if (env.FAKE_CURL_URLS) appendFileSync(env.FAKE_CURL_URLS, `${url}\n`);
+  if (/api\.github\.com/.test(url)) { out('[{"sha":"x"}]'); process.exit(0); }
   if (/pushover/.test(url)) {
     if (env.FAKE_CURL_LOG) appendFileSync(env.FAKE_CURL_LOG, `${JSON.stringify(args)}\n`);
     if (env.FAKE_PUSHOVER_FAIL === '1') fail('curl: (22) The requested URL returned error: 500', 22);
+    // FAKE_PUSHOVER_FAIL_TIMES=N: the first N posts fail (counted beside the log)
+    if (env.FAKE_PUSHOVER_FAIL_TIMES && env.FAKE_CURL_LOG) {
+      const cf = `${env.FAKE_CURL_LOG}.n`, n = Number(existsSync(cf) ? readFileSync(cf, 'utf8') : 0) + 1;
+      writeFileSync(cf, String(n));
+      if (n <= Number(env.FAKE_PUSHOVER_FAIL_TIMES)) fail('curl: (28) Operation timed out after 10001 milliseconds', 28);
+    }
     out('{"status":1}');
     process.exit(0);
   }

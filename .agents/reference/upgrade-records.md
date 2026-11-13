@@ -511,11 +511,12 @@ and the gate agree who acts meanwhile. See
 `data.morning`, field manager `upgrade-night-summary`.
 
 - **What it holds:** `night` (New York date), `composed_at`, `window_from`,
-  `ticks_completed`, `ticks_expected`, `last_tick_local`, `expected_last_tick_local`,
-  `mode`, `bytes`, `lines_cut`, `text` and `facts`.
+  `ticks_completed`, `finished` (the last tick is the night's last, 05:45), `last_tick_local`,
+  `expected_last_tick_local`, `mode`, `bytes`, `lines_cut`, `text` and `facts`.
 - **The facts:** `merged[]` (from the history's `merged` events in the window, with the
   actor), `verified[]`, `checking[]`, `failed[]`, `reverted[]` (`revert-merged`,
-  `recovery-verified`, `recovery-failed`), `waits` (`needs_person`, `awaiting_pin`,
+  `recovery-verified`, `recovery-failed`; one entry per item, with `recovered` true, false or
+  null), `waits` (`needs_person`, `awaiting_pin`,
   `blocked`, `owner`, `history`), `claims[]` and `unreadable[]`.
 - **The delivery copy:** the `morning_*` keys of `upgrade-orphan-report`.
 
