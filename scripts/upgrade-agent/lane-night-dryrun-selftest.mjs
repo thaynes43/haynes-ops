@@ -77,9 +77,11 @@ for (const [name, src] of [['run-night.mjs', night], ['lane-classify.mjs', class
   ok(!/['"](git|flux|curl|helm)['"]/.test(src), `${name}: never runs git, flux, curl or helm`);
 }
 ok(/runReadOnly[\s\S]*?if \(!isReadOnlyCommand\(cmd, argv\)\) throw[\s\S]*?spawnSync\(cmd, argv/.test(classify), 'lane-classify.mjs: the spawn sits behind isReadOnlyCommand');
-ok(/function writeLaneState\(manifest, manager = 'upgrade-night'\)[\s\S]*?m\.name !== STATE\.name[\s\S]*?!\['upgrade-night', LEDGER_MANAGER\]\.includes\(manager\)[\s\S]*?throw new Error[\s\S]*?spawnSync\('kubectl', \['apply', '--server-side', `--field-manager=\$\{manager\}`, '--force-conflicts', '-o', 'json', '-f', '-'\]/.test(night), "run-night.mjs: the spawn is writeLaneState's server-side apply, after the name and field-manager checks");
+ok(/function writeLaneState\(manifest, manager = 'upgrade-night'\)[\s\S]*?m\.name !== STATE\.name[\s\S]*?!\['upgrade-night', LEDGER_MANAGER, VERIFY_MANAGER\]\.includes\(manager\)[\s\S]*?throw new Error[\s\S]*?spawnSync\('kubectl', \['apply', '--server-side', `--field-manager=\$\{manager\}`, '--force-conflicts', '-o', 'json', '-f', '-'\]/.test(night), "run-night.mjs: the spawn is writeLaneState's server-side apply, after the name and field-manager checks");
 ok(/const LEDGER_MANAGER = 'upgrade-night-ledger';/.test(night) && /\(manager === LEDGER_MANAGER\) !== \(Object\.keys\(manifest\.data \|\| \{\}\)\.join\(\) === 'retry_ledger'\)/.test(night), 'run-night.mjs (story 549): the ledger field manager writes data.retry_ledger and nothing else, and the tick\'s manager never writes it');
 ok(/const STATE = \{ name: 'upgrade-lane-state', namespace: 'upgrade-agent' \}/.test(night), 'run-night.mjs: the state object name is a constant');
+ok(/\(manager === VERIFY_MANAGER\) !== VERIFY_KEYS\.includes\(Object\.keys\(manifest\.data \|\| \{\}\)\.sort\(\)\.join\(\)\)/.test(night) && /manager !== VERIFY_MANAGER && Object\.keys\(manifest\.data \|\| \{\}\)\.some\(k => \/\^verify\/\.test\(k\)\)/.test(night)
+  && /if \(ver\.memory && !ver\.summary\.error\) writeLaneState\(verifyManifest\(ver\.memory, ver\.table\), VERIFY_MANAGER\);/.test(night) && night.indexOf('writeLaneState(verifyManifest(') > night.indexOf('const ok = writeLaneState(stateManifest('), 'run-night.mjs (story 553, L3): data.verify only under upgrade-night-verify, never under another manager, written last and only when the verifier gave a memory');
 ok(count(night, /\bfetch\s*\(/g) === 1 && /fetch\(url, \{ method: 'GET'/.test(night), 'run-night.mjs: one fetch, GET only');
 ok(count(classify, /\bfetch\s*\(/g) === 0, 'lane-classify.mjs: no fetch');
 // 'patch' is left out: it is also a Renovate update type in lane-classify.mjs; kubectl
@@ -624,15 +626,24 @@ process.exit(0);
     const histBefore = readFileSync(historyFile, 'utf8');
     const w2 = { ...w, mainNewest: { 'kubernetes/main/apps/upgrade-agent/shepherd/app/resources/night-verify.mjs': [{ sha: '6'.repeat(40), at: '2026-11-02T05:00:00Z' }] }, commitFiles: { [MC]: { sha: MC, files: [{ filename: 'kubernetes/main/apps/x/app4001/app/helmrelease.yaml' }] } } };
     const r = await tick(w2, {}, ['--write-state'], { keepGh: true });
-    const v = JSON.parse(r.m.data?.verify || '{}');
-    ok(r.status === 0 && r.summary.verify?.evaluated?.join() === '4001' && r.summary.verify.since === '2026-11-02T05:00:00.000Z' && v.schema === 'haynes.upgrade-verify/v1' && v.items?.[ITEM]?.pr === 4001 && v.items[ITEM].practice === true && /^#4001 /.test(r.m.data?.verify_table || ''),
-      'story 553: the tick judges the practice item and writes its verdict to data.verify and data.verify_table on upgrade-lane-state', `${JSON.stringify(r.summary.verify).slice(0, 400)}`);
+    const vw = r.writes.find(x => x.cmd === 'kubectl' && x.argv.includes('--field-manager=upgrade-night-verify'));
+    const vm = (() => { try { return JSON.parse(vw?.stdin || '{}'); } catch { return {}; } })();
+    const v = JSON.parse(vm.data?.verify || '{}');
+    ok(r.status === 0 && r.summary.verify?.evaluated?.join() === '4001' && r.summary.verify.since === '2026-11-02T05:00:00.000Z' && v.schema === 'haynes.upgrade-verify/v1' && v.items?.[ITEM]?.pr === 4001 && v.items[ITEM].practice === true && /^#4001 /.test(vm.data?.verify_table || '')
+      && vm.metadata?.name === 'upgrade-lane-state' && vm.metadata?.namespace === 'upgrade-agent' && Object.keys(vm.data).sort().join() === 'verify,verify_table' && !Object.keys(r.m.data || {}).some(k => /^verify/.test(k)),
+      'story 553 (L3): the verdict goes to data.verify and data.verify_table on upgrade-lane-state under their own field manager; the tick\'s own apply carries neither', `${JSON.stringify(r.summary.verify).slice(0, 400)}`);
     ok(v.items?.[ITEM]?.verdict === 'not-yet' && r.summary.verify.verdicts['not-yet'].join() === '4001' && /does not contain 77777777 yet/.test(v.items[ITEM].facts.find(f => f.fact === 'source')?.detail), 'story 553: a merge Flux\'s source does not contain (GitHub\'s compare reads behind) is not yet, never a pass', v.items?.[ITEM]?.why);
-    ok(JSON.stringify(r.writes.map(x => `${x.cmd} ${x.argv[0]}`)) === JSON.stringify(['kubectl create', 'kubectl replace', 'kubectl apply']) && isSsa(r.writes[2]) && readFileSync(historyFile, 'utf8') === histBefore && r.ghWrites.length === 0 && r.merges.length === 0,
-      'story 553: the practice verdict writes nothing but the state: the lock taken and released, one server-side apply of upgrade-lane-state; the history unchanged; no GitHub write', JSON.stringify(r.writes.map(x => [x.cmd, ...x.argv.slice(0, 3)])));
+    ok(JSON.stringify(r.writes.map(x => `${x.cmd} ${x.argv[0]} ${x.argv[2] || ''}`)) === JSON.stringify(['kubectl create -', 'kubectl replace -', 'kubectl apply --field-manager=upgrade-night', 'kubectl apply --field-manager=upgrade-night-verify']) && isSsa(r.writes[2]) && readFileSync(historyFile, 'utf8') === histBefore && r.ghWrites.length === 0 && r.merges.length === 0,
+      'story 553: the practice verdict writes nothing but the state: the lock taken and released, the tick\'s apply, then the verifier\'s memory last (after the PR-write phase); the history unchanged; no GitHub write', JSON.stringify(r.writes.map(x => [x.cmd, ...x.argv.slice(0, 3)])));
     ok(r.summary.merge_step?.verdict === first.summary.merge_step?.verdict && r.summary.merge_step?.pr === first.summary.merge_step?.pr && JSON.stringify(r.recs.map(x => [x.pr, x.lane, x.class])) === JSON.stringify(first.recs.map(x => [x.pr, x.lane, x.class])), 'story 553: the merge verdict and the records are the same as without the practice item');
-    const again = await tick({ ...w2, k8s: { ...w2.k8s, 'configmaps@upgrade-agent': { items: [...(w2.k8s['configmaps@upgrade-agent'] ?? w2.k8s.configmaps).items.filter(c => c.metadata.name !== 'upgrade-lane-state'), { metadata: { name: 'upgrade-lane-state', resourceVersion: '8' }, data: { verify: r.m.data.verify } }] } } }, {}, ['--write-state'], { keepGh: true });
+    const again = await tick({ ...w2, k8s: { ...w2.k8s, 'configmaps@upgrade-agent': { items: [...(w2.k8s['configmaps@upgrade-agent'] ?? w2.k8s.configmaps).items.filter(c => c.metadata.name !== 'upgrade-lane-state'), { metadata: { name: 'upgrade-lane-state', resourceVersion: '8' }, data: { verify: vm.data?.verify } }] } } }, {}, ['--write-state'], { keepGh: true });
     ok(again.summary.verify?.since === '2026-11-02T05:00:00.000Z' && !again.calls.some(c => c.argv.some(a => /night-verify\.mjs/.test(decodeURIComponent(a)))), 'story 553: the next tick keeps the install time from data.verify (no second read)', JSON.stringify(again.summary.verify).slice(0, 300));
+    // L3: a verifier that yields no memory (here an invalid night.verify) writes nothing, so the last memory stays
+    const badRules = join(tmp, 'rules-bad-verify.json');
+    writeFileSync(badRules, JSON.stringify({ ...rules, night: { ...rules.night, verify: { ...rules.night.verify, max_items_per_tick: 0 } } }));
+    const kept = await tick(w2, { UPGRADE_RULES: badRules }, ['--write-state'], { keepGh: true });
+    ok(kept.status === 0 && /night\.verify in upgrade-rules\.json is invalid/.test(kept.summary.verify?.why_not || '') && !kept.writes.some(x => x.argv.includes('--field-manager=upgrade-night-verify')) && isSsa(kept.writes.at(-1)) && !Object.keys(kept.m.data || {}).some(k => /^verify/.test(k)),
+      'story 553 (L3): a verifier that keeps its memory makes no verify write, and the tick\'s apply never carries data.verify (so the error record cannot delete it either)', JSON.stringify(kept.writes.map(x => x.argv.slice(0, 3))));
   }
   // story 593: the history through the real tick. A failed or conflicting history write is
   // logged and recorded, changes no verdict, leaves the lock released and the state written;

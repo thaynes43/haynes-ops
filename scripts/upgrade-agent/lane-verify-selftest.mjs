@@ -4,29 +4,29 @@
 // WHY THIS EXISTS
 // ---------------
 // After a merge the lane must prove the rollout healthy from facts it reads on its own ticks,
-// never pass on a fact it could not read, never charge a failure to its update while another
-// change reached the same target, and, while it only practises, never write the history.
-// This test pins, against fakes (no cluster, no network), on the real facts of the five
-// Renovate merges of 2026-11-13 (fixtures/verify-20261113.json, captured read-only):
+// never pass on a fact it could not read, never charge a failure to its update without
+// positive evidence that the update did it (the principle of the review of PR 4880), and,
+// while it only practises, never write the history. This test pins, against fakes (no
+// cluster, no network), on the real facts of the five Renovate merges of 2026-11-13
+// (fixtures/verify-20261113.json, captured read-only):
 //   1. statically: no process API, one GET fetch, every read through the runner it is given;
 //      git ships practice on and history events off; the scripts ConfigMap carries the file;
 //      run-night.mjs runs it once, before the history, and hands only its events on;
-//   2. the real night: two ticks verify #4869, #4870, #4873 and #4874; #4871 has no cluster
-//      effect; one tick is not yet (stability needs a second tick);
+//   2. the real night: two ticks at least min_stable_seconds apart verify #4869, #4870, #4873
+//      and #4874; #4871 has no cluster effect; one tick is not yet;
 //   3. each failure mode as a failed verdict and, on the lane's own merge, a revert decision
-//      (verification-failed): not applied, not Ready, wrong image, restart growth, a new
-//      critical alert, plus a crash loop and an image-pull failure;
-//   4. not yet, cannot tell (an unreadable fact never passes), the story-755 read named;
-//   5. other changes: #4874 fails with #4873 on its chain (cannot tell which change did it,
-//      escalated); #4869 fails with only unrelated changes (its own regression); a synthetic
-//      later commit on the same app;
-//   6. an own image awaiting its digest pin: awaiting-pin, the build failure, the pin timeout
-//      on facts (pushes after the build), and verified through the pin;
-//   7. practice never reaches the history; the lane's own events only with the setting on,
-//      and the history refuses a verifier event on a merge the lane did not make;
-//   8. the practice bound (installed at the first commit of night-verify.mjs on main), the
-//      memory (done items, the cap, the byte budget), the per-tick cap and the fair order;
-//   9. the image and version readers.
+//      (verification-failed), each on positive evidence;
+//   4. not yet and cannot tell (an unreadable fact never passes), the story-755 read named;
+//   5. other changes after the merge and before it (L4);
+//   6. own images and their pin (H2): identified by what it pins, never failed on absence;
+//   7. practice never reaches the history; the lane's own events only with the setting on;
+//   8. the practice bound, the memory (L3), the per-tick cap, the fair order, the time budget
+//      before every shared read (L1), needs a person after the lane's nights;
+//   9. the review of PR 4880: H1 (digests of digits), M1 (CronJobs exercised), M2 (600 s),
+//      M3 (attribution by container, nodes, Prometheus restarts), M4 (start errors, Pending,
+//      failing sources and HelmReleases on two reads, churn), L5 (init containers and native
+//      sidecars), and a test for each mutation the review found surviving;
+//  10. the image and version readers.
 //
 // Usage: node scripts/upgrade-agent/lane-verify-selftest.mjs
 // Requires: node 24. No network, no cluster access.
@@ -48,6 +48,7 @@ let fails = 0, passes = 0;
 const ok = (cond, name, detail = '') => { if (cond) passes++; else { fails++; console.log(`FAIL ${name}${detail ? `\n     ${detail}` : ''}`); } };
 const iso = t => new Date(t).toISOString();
 const T1 = Date.parse('2026-11-13T13:00:00Z'), T2 = T1 + 15 * 60e3, T3 = T2 + 15 * 60e3;
+const DAY = 864e5;
 const PRS = [4869, 4870, 4871, 4873, 4874];
 const sha = n => fx.prs.find(p => p.number === n).mergeCommit.oid;
 
@@ -61,9 +62,10 @@ function serve(w, cmd, argv) {
     if (/helmreleases/.test(a)) return w.fail?.hr ? null : w.hr;
     if (/gitrepositories/.test(a)) return { items: [w.source] };
     if (/ocirepositories|helmcharts/.test(a)) return { items: w.charts || [] };
+    if (/ get nodes /.test(` ${a} `)) return w.nodes ?? null;
     if (/ get pods /.test(` ${a} `)) return w.fail?.pods ? null : (w.pods[ns]?.pods || { items: [] });
     if (/ get cronjobs /.test(` ${a} `)) return w.pods[ns]?.cronjobs || { items: [] };
-    if (/ get jobs /.test(` ${a} `)) return { items: [] };
+    if (/ get jobs /.test(` ${a} `)) return w.fail?.jobs ? null : (w.pods[ns]?.jobs || { items: [] });
     if (/configmaps/.test(a)) return { items: w.ledger ? [w.ledger] : [] };
     return null;
   }
@@ -80,6 +82,7 @@ function serve(w, cmd, argv) {
   if ((m = /repos\/[^/]+\/[^/]+\/commits\/([0-9a-f]{40})$/.exec(argv.at(-1)))) { const c = list.find(x => x.sha === m[1]); return c ? { sha: c.sha, files: c.files.map(filename => ({ filename })) } : null; }
   if (/commits\?sha=main&path=/.test(a)) return w.installed === undefined ? null : [w.installed.map(x => ({ sha: x.sha, commit: { committer: { date: x.at } } }))];
   if ((m = /actions\/runs\?head_sha=([0-9a-f]{40})/.exec(a))) return w.runs?.[m[1]] === undefined ? null : { workflow_runs: w.runs[m[1]] };
+  if (argv[0] === 'pr' && argv[1] === 'view' && argv.includes('commits')) { const d = w.prHead?.[argv[2]]; return d ? { commits: [{ committedDate: '2026-01-01T00:00:00Z' }, { committedDate: d }] } : null; }
   return null;
 }
 function fake(w) {
@@ -93,31 +96,34 @@ function fake(w) {
   };
   return { run, calls };
 }
-const world = () => ({ ks: structuredClone(fx.ks), hr: structuredClone(fx.hr), source: structuredClone(fx.source), pods: structuredClone(fx.pods), alerts: structuredClone(fx.alerts) });
+const READY_NODE = n => ({ metadata: { name: n }, status: { conditions: [{ type: 'Ready', status: 'True' }] } });
+const world = () => ({ ks: structuredClone(fx.ks), hr: structuredClone(fx.hr), source: structuredClone(fx.source), pods: structuredClone(fx.pods), alerts: structuredClone(fx.alerts), promStart: '2026-11-01T00:00:00Z', nodes: { items: [READY_NODE('talosw01'), READY_NODE('talosw02')] } });
 const views = list => list.map(n => fx.prs.find(p => p.number === n));
 const vrules = over => ({ ...rules, night: { ...rules.night, verify: { ...rules.night.verify, ...over } } });
-async function tick(w, { prs = PRS, now = T1, prev = null, own = false, cfg = {}, doc = null, onlyPrs = prs, deps = {} } = {}) {
-  const d = doc || V.docOf(views(prs), { repo: REPO, rules, at: iso(now), actor: own ? { kind: 'lane', login: null } : null });
+const gjOf = w => async url => (/runtimeinfo$/.test(url) ? (w.promStart ? { data: { startTime: w.promStart } } : null) : (w.alertsUnreadable ? null : w.alerts));
+async function tick(w, { prs = PRS, now = T1, prev = null, own = false, cfg = {}, doc = null, onlyPrs = prs, deps = {}, startedAt = now, views: vs = null } = {}) {
+  const d = doc || V.docOf(vs || views(prs), { repo: REPO, rules, at: iso(now), actor: own ? { kind: 'lane', login: null } : null });
   const f = fake(w);
-  const r = await V.verifyPhase({ rules: vrules(cfg), run: f.run, repo: REPO, now, startedAt: now, clock: () => now, prevText: prev, onlyPrs,
-    deps: { doc: d, alertSubject: N.alertSubject, getJson: async () => (w.alertsUnreadable ? null : w.alerts), ...deps } });
+  const r = await V.verifyPhase({ rules: vrules(cfg), run: f.run, repo: REPO, now, startedAt, clock: () => now, prevText: prev, onlyPrs,
+    deps: { doc: d, alertSubject: N.alertSubject, getJson: gjOf(w), ...deps } });
   return { ...r, calls: f.calls, doc: d, rec: n => Object.values(r.records || {}).find(x => x.pr === n) };
 }
 const factOf = (rec, name) => (rec?.facts || []).find(f => f.fact === name) || {};
-const twice = async (w, o = {}, w2 = w) => { const a = await tick(w, o); const b = await tick(w2, { ...o, now: T2, prev: a.memory }); return { a, b }; };
+const twice = async (w, o = {}, w2 = w) => { const a = await tick(w, o); const b = await tick(w2, { ...o, now: T2, prev: a.memory, doc: a.doc }); return { a, b }; };
 const ksOf = (w, id) => w.ks.items.find(k => L.ksId(k) === id);
 const hrOf = (w, id) => w.hr.items.find(h => `${h.metadata.namespace}/${h.metadata.name}` === id);
 const podsIn = (w, ns, prefix) => w.pods[ns].pods.items.filter(p => p.metadata.name.startsWith(prefix));
 const planWith = (doc, verifyEvents, at) => H.planHistory({ doc: { ...doc, meta: { ...doc.meta, backfill: { at, window: { since: at, until: at }, query: 'q', events: 0, compare: null } } }, records: [], openPrs: [], verdict: null, at, repo: REPO, cfg: H.historyConfig(rules), rules,
   scan: { ok: true, list: [], reverts: [], github_count: 0, window: { since: at, until: at }, query: 'q', repo: REPO }, backfilling: false, renovateAuthors: rules.renovate_pr_authors, verifyEvents });
 const stateOf = (doc, id) => H.replay(doc).items.get(id)?.item.state ?? null;
+const placePods = (w, ns, prefix, node = 'talosw01') => { for (const p of podsIn(w, ns, prefix)) p.spec.nodeName = node; };
 
 // ── 1. static ───────────────────────────────────────────────────────────────
 {
   const strip = s => s.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
   const src = strip(readFileSync(join(RES, 'night-verify.mjs'), 'utf8'));
   ok(!/child_process/.test(src) && !/(?<![.\w])(spawn|spawnSync|exec|execSync|execFile|execFileSync|fork)\s*\(/.test(src), 'static: night-verify.mjs starts no process (every read goes through the runner it is handed)');
-  ok((src.match(/\bfetch\s*\(/g) || []).length === 1 && /fetch\(url, \{ method: 'GET'/.test(src), 'static: one fetch, GET only (Prometheus /api/v1/alerts)');
+  ok((src.match(/\bfetch\s*\(/g) || []).length === 1 && /fetch\(url, \{ method: 'GET'/.test(src), 'static: one fetch site, GET only (Prometheus)');
   ok((src.match(/\bwriteFileSync\s*\(/g) || []).length === 1 && src.indexOf('writeFileSync(o.state') > src.indexOf('async function main('), 'static: the one file write is the CLI\'s --state, a local file');
   ok(!/applyHistory|writeLaneState|ghWrite|callMerge|takeLock|releaseLock|writePrRecords|runRetry/.test(src), 'static: it calls no writer of the lane (history, state, PR records, lock, merge)');
   // 'rollout' is left out: it is the name of a fact here, and no process can run it
@@ -126,13 +132,16 @@ const stateOf = (doc, id) => H.replay(doc).items.get(id)?.item.state ?? null;
   const cfg = V.verifyConfig(rules);
   ok(cfg.ok, 'config: night.verify in upgrade-rules.json is valid', cfg.why);
   ok(cfg.practice === true && cfg.write_history_events === false, 'config: git ships practice on and the lane\'s history events off');
+  ok(cfg.min_stable_seconds === 600 && cfg.needs_person_after_nights >= 1 && cfg.max_replacements >= 2 && cfg.prometheus_restart_slack_seconds > 0 && cfg.pin_wait_pushes === undefined, 'config: a 600 s soak, a bound in the lane\'s nights, a churn count, a Prometheus restart slack; no push count for the pin (H2)');
   ok(cfg.time_budget_seconds < 600 && cfg.max_items_per_tick <= 50 && cfg.max_range_commits <= 250, 'config: per tick the items, the commit range and the time are bounded, under the Job\'s 600s');
+  ok(!V.verifyConfig(vrules({ min_stable_seconds: 1 })).ok && !V.verifyConfig(vrules({ needs_person_after_nights: 0 })).ok, 'config: a soak under 60 s or no night bound is refused');
   const kz = readFileSync(join(ROOT, 'kubernetes/main/apps/upgrade-agent/shepherd/app/kustomization.yaml'), 'utf8');
   ok(/\n\s+- resources\/night-verify\.mjs\n/.test(kz), 'the scripts ConfigMap (upgrade-shepherd-scripts) carries night-verify.mjs');
   const night = strip(readFileSync(join(RES, 'run-night.mjs'), 'utf8'));
   ok((night.match(/V\.verifyPhase\(/g) || []).length === 1 && night.indexOf('V.verifyPhase(') > night.indexOf('M.laneMergeStep(') && night.indexOf('V.verifyPhase(') < night.indexOf('H.historyPhase('), 'run-night.mjs: one verify phase, after the merge step and before the history');
   ok(/verifyEvents: ver\.events \|\| \[\]/.test(night) && !/ver\.records/.test(night), 'run-night.mjs: hands the history only the phase\'s events (never practice records)');
   ok(/await import\('\.\/night-verify\.mjs'\)/.test(night) && /catch \(e\) \{ ver = \{ summary: \{ error:/.test(night), 'run-night.mjs: loads the verifier inside a guarded step; a failure is recorded, not thrown');
+  ok(/if \(ver\.memory && !ver\.summary\.error\) writeLaneState\(verifyManifest/.test(night) && !/stateManifest\(\{[^)]*verify/.test(night), 'run-night.mjs (L3): the memory is written only under its own manager, never in the tick\'s apply or its error record');
   const hist = strip(readFileSync(join(RES, 'upgrade-history.mjs'), 'utf8'));
   ok(/s\.item\.attempts\.at\(-1\)\?\.actor\?\.kind !== 'lane'/.test(hist), 'upgrade-history.mjs: refuses a verifier event unless the lane made the item\'s current attempt');
 }
@@ -143,25 +152,26 @@ const real = await twice(world());
   const { a, b } = real;
   for (const n of [4869, 4870, 4873, 4874]) {
     ok(a.rec(n)?.verdict === 'not-yet' && factOf(a.rec(n), 'stable').result === 'waiting', `real #${n}: the first tick is not yet (the rollout recorded; stability needs a later tick)`, JSON.stringify(a.rec(n)?.why));
-    ok(b.rec(n)?.verdict === 'verified', `real #${n}: verified on the second tick`, b.rec(n)?.why);
+    ok(b.rec(n)?.verdict === 'verified', `real #${n}: verified on the second tick, 900 s later`, b.rec(n)?.why);
     ok(['source', 'applied', 'helmreleases', 'pods', 'alerts', 'image', 'rollout', 'stable'].every(x => ['pass', 'not-applicable'].includes(factOf(b.rec(n), x).result)), `real #${n}: every fact has its own passing result`);
     ok(b.rec(n)?.practice === true && (b.rec(n).would_write || []).map(e => `${e.type}:${e.legal}`).join() === 'verified:true', `real #${n}: practice; would write verified (legal on someone else's merge), not written`);
   }
   ok(b.rec(4871)?.verdict === 'verified' && factOf(b.rec(4871), 'source').result === 'not-applicable' && a.rec(4871)?.verdict === 'verified', 'real #4871 (a GitHub Action): no cluster effect, nothing to verify');
   ok(/HelmRelease network\/traefik-external runs chart traefik 42\.4\.0/.test(factOf(b.rec(4873), 'image').detail), 'real #4873: the chart update is read from the HelmRelease\'s last release (traefik 42.4.0)');
   ok(/4 container\(s\).*cloudflared 2026\.11\.0/.test(factOf(b.rec(4874), 'image').detail), 'real #4874: four containers run cloudflared 2026.11.0');
-  ok(/rhasspy\/wyoming-piper 2\.5\.3/.test(factOf(b.rec(4870), 'image').detail), 'real #4870: piper runs 2.5.3 (a tag pinned with a digest)');
+  ok(/rhasspy\/wyoming-piper 2\.5\.3/.test(factOf(b.rec(4870), 'image').detail) && b.rec(4870).updated.some(x => /Deployment\/ai\/piper\/app/.test(x)), 'real #4870: piper runs 2.5.3; the update\'s container is piper/app');
   const oc = b.rec(4874).other_changes;
   ok(oc.complete && oc.changes.length === 1 && oc.changes[0].pr === 4873 && /chain network\/traefik-external/.test(oc.changes[0].parts.join()), 'real #4874: one other change, #4873 on its chain (traefik-external); the pass stands', JSON.stringify(oc));
   ok(b.rec(4869).other_changes.complete && b.rec(4869).other_changes.changes.length === 0, 'real #4869: no other change reached seerr, its chain or a cluster-wide part');
   ok(b.summary.events_for_history === 0 && b.events.length === 0 && b.summary.practice_events_not_written === 5, 'real: no event for the history; five practice events not written');
   ok(a.calls.every(c => /^(gh (api|pr view)|kubectl get) /.test(c)), 'real: every command was a read (gh api GET, kubectl get)');
-  ok(b.summary.reads.commands <= 30, `real: ${b.summary.reads.commands} reads for five merges`);
+  ok(b.summary.reads.commands <= 30 && b.summary.reads.github <= 12, `real: ${b.summary.reads.commands} reads (${b.summary.reads.github} GitHub) for five merges`);
   ok(/#4874 .* VERIFIED/.test(b.table) && /other changes: [0-9a-f]{8} #4873/.test(b.table) && /would write \(not written: practice\): verified merged_unverified->done/.test(b.table), 'real: the morning view names each verdict, fact and other change');
+  ok(/open: not-yet since .*judged on 1 tick\(s\) over 1 night\(s\).*pods recorded at/.test(a.table), 'real: the morning view says what an open verdict waits for, since when and over how many nights');
 }
 
 // ── 3. the failure modes (practice: failed; the lane's own merge: a revert decision) ───────
-async function failure(name, n, mutate, cls, { secondTick = false, mutateSecond = null } = {}) {
+async function failure(name, n, mutate, cls, { secondTick = false, mutateSecond = () => {} } = {}) {
   const w = world(); mutate?.(w);
   let r;
   if (secondTick) { const w2 = structuredClone(w); mutateSecond(w2); r = (await twice(w, { prs: [n] }, w2)).b; }
@@ -181,27 +191,43 @@ async function failure(name, n, mutate, cls, { secondTick = false, mutateSecond 
 }
 const piperKs = w => ksOf(w, 'ai/piper');
 await failure('not applied', 4870, w => { const k = piperKs(w); k.status.lastAppliedRevision = `main@sha1:${sha(4869)}`; k.status.lastAttemptedRevision = w.source.status.artifact.revision; k.status.conditions = [{ type: 'Ready', status: 'False', reason: 'BuildFailed' }]; }, 'not-applied');
-await failure('not Ready (HelmRelease)', 4870, w => { hrOf(w, 'ai/piper').status.conditions = [{ type: 'Ready', status: 'False', reason: 'UpgradeFailed' }, { type: 'Stalled', status: 'True', reason: 'RetriesExceeded' }]; }, 'not-ready');
+await failure('a HelmRelease failing on two reads 900 s apart (M4)', 4870, w => { hrOf(w, 'ai/piper').status.conditions = [{ type: 'Ready', status: 'False', reason: 'UpgradeFailed' }, { type: 'Stalled', status: 'True', reason: 'RetriesExceeded' }]; }, 'not-applied', { secondTick: true });
 await failure('not Ready (Kustomization health)', 4869, w => { ksOf(w, 'media/seerr').status.conditions = [{ type: 'Ready', status: 'False', reason: 'HealthCheckFailed' }]; }, 'not-ready');
 await failure('wrong image', 4869, w => { for (const p of podsIn(w, 'media', 'seerr-')) p.spec.containers[0].image = 'ghcr.io/seerr-team/seerr:v3.5.1'; }, 'wrong-image');
-await failure('restart growth', 4870, null, 'restart-growth', { secondTick: true, mutateSecond: w => { podsIn(w, 'ai', 'piper-')[0].status.containerStatuses[0].restartCount += 1; } });
-await failure('not Ready on the later tick', 4870, null, 'not-ready', { secondTick: true, mutateSecond: w => { podsIn(w, 'ai', 'piper-')[0].status.conditions = [{ type: 'Ready', status: 'False' }]; } });
+await failure('restart growth of the update\'s container', 4870, null, 'restart-growth', { secondTick: true, mutateSecond: w => { podsIn(w, 'ai', 'piper-')[0].status.containerStatuses[0].restartCount += 1; } });
+await failure('the update\'s container not Ready on the later tick, its node Ready', 4870, w => placePods(w, 'ai', 'piper-'), 'not-ready', { secondTick: true, mutateSecond: w => { const p = podsIn(w, 'ai', 'piper-')[0]; p.status.conditions = [{ type: 'Ready', status: 'False' }]; p.status.containerStatuses[0].ready = false; } });
 const seerrPod = fx.pods.media.pods.items[0].metadata.name;
 await failure('a new critical alert', 4869, w => { w.alerts.data.alerts.push({ labels: { alertname: 'SeerrDown', severity: 'critical', namespace: 'media', pod: seerrPod }, state: 'firing', activeAt: '2026-11-13T04:00:00Z' }); }, 'critical-alert');
-await failure('a crash loop', 4870, w => { const c = podsIn(w, 'ai', 'piper-')[0].status.containerStatuses[0]; c.state = { waiting: { reason: 'CrashLoopBackOff' } }; c.restartCount = 4; }, 'crash-loop');
-await failure('an image-pull failure', 4869, w => { podsIn(w, 'media', 'seerr-')[0].status.containerStatuses[0].state = { waiting: { reason: 'ImagePullBackOff' } }; }, 'image-pull');
+await failure('a new critical alert that starts exactly at the merge', 4869, w => { w.alerts.data.alerts.push({ labels: { alertname: 'SeerrDown', severity: 'critical', namespace: 'media', pod: seerrPod }, state: 'firing', activeAt: fx.prs.find(p => p.number === 4869).mergedAt }); }, 'critical-alert');
+await failure('a crash loop of the update\'s container', 4870, w => { const c = podsIn(w, 'ai', 'piper-')[0].status.containerStatuses[0]; c.state = { waiting: { reason: 'CrashLoopBackOff' } }; c.restartCount = 4; }, 'crash-loop');
+await failure('an image-pull failure of the update\'s container', 4869, w => { podsIn(w, 'media', 'seerr-')[0].status.containerStatuses[0].state = { waiting: { reason: 'ImagePullBackOff' } }; }, 'image-pull');
+await failure('a container that cannot start, on two reads 900 s apart (M4)', 4869, w => { podsIn(w, 'media', 'seerr-')[0].status.containerStatuses[0].state = { waiting: { reason: 'CreateContainerConfigError', message: 'secret "seerr" not found' } }; }, 'not-ready', { secondTick: true });
+await failure('a chart settled on the old version with its source settled too (no wrong verified)', 4873, w => { const h = hrOf(w, 'network/traefik-external'); h.status.history[0].chartVersion = '42.3.2+89dc66bab32a';
+  w.charts = [{ metadata: { name: 'traefik-external-oci', namespace: 'network', generation: 1 }, status: { observedGeneration: 1, conditions: [{ type: 'Ready', status: 'True' }], artifact: { revision: '42.3.2@sha256:' + 'a'.repeat(64) } } }]; }, 'wrong-image');
+await failure('a chart source failing on two reads 900 s apart (M4)', 4873, w => { const h = hrOf(w, 'network/traefik-external'); h.status.history[0].chartVersion = '42.3.2+89dc66bab32a';
+  w.charts = [{ metadata: { name: 'traefik-external-oci', namespace: 'network', generation: 2 }, status: { observedGeneration: 2, conditions: [{ type: 'Ready', status: 'False', reason: 'OCIArtifactPullFailed' }, { type: 'Stalled', status: 'True' }] } }]; }, 'not-applied', { secondTick: true });
 {
-  // an alert that fired before the merge is not new; one in another app's namespace is not the target's
+  // the churn count: pods replaced on three reads fail; the count shows in the morning view
+  const w = world(); const r1 = await tick(w, { prs: [4869] });
+  let prev = r1.memory, doc = r1.doc, last;
+  for (let i = 1; i <= 3; i++) { const wi = world(); const p = podsIn(wi, 'media', 'seerr-')[0]; p.metadata.uid += `-${i}`; p.metadata.name += `-${i}`; last = await tick(wi, { prs: [4869], now: T1 + i * 900e3, prev, doc }); prev = last.memory; }
+  ok(last.rec(4869).verdict === 'failed' && last.rec(4869).failing[0].class === 'churn' && /replaced 3 times/.test(factOf(last.rec(4869), 'stable').detail), 'churn (M4): a workload whose recorded pods are replaced max_replacements (3) times fails', last.rec(4869).why);
+  ok(/pods replaced: Deployment\/media\/seerr 2x/.test((await (async () => { const w0 = world(); const a0 = await tick(w0, { prs: [4869] }); let pv = a0.memory, t; for (let i = 1; i <= 2; i++) { const wi = world(); const pp = podsIn(wi, 'media', 'seerr-')[0]; pp.metadata.uid += `-${i}`; pp.metadata.name += `-${i}`; t = await tick(wi, { prs: [4869], now: T1 + i * 900e3, prev: pv, doc: a0.doc }); pv = t.memory; } return t; })()).table), 'churn: the morning view counts the replacements of an open verdict');
+}
+{
+  // an alert that fired before the merge is not new; another app's in the target's namespace is not the target's
   const w = world();
   w.alerts.data.alerts.push({ labels: { alertname: 'SeerrDown', severity: 'critical', namespace: 'media', pod: seerrPod }, state: 'firing', activeAt: '2026-11-13T02:00:00Z' });
   w.alerts.data.alerts.push({ labels: { alertname: 'PiperDown', severity: 'critical', namespace: 'ai', pod: fx.pods.ai.pods.items[0].metadata.name }, state: 'firing', activeAt: '2026-11-13T04:00:00Z' });
+  const radarr = hrOf(w, 'media/radarr') ? 'radarr' : null;
+  if (radarr) w.pods.media.pods.items.push({ metadata: { name: 'radarr-6f7d9c8b5-abcde', namespace: 'media', uid: 'u-radarr', creationTimestamp: '2026-11-13T04:00:00Z', labels: { 'app.kubernetes.io/instance': 'radarr', 'pod-template-hash': '6f7d9c8b5' }, ownerReferences: [{ kind: 'ReplicaSet', name: 'radarr-6f7d9c8b5' }] }, spec: { containers: [{ name: 'app', image: 'ghcr.io/home-operations/radarr:6' }] }, status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'True' }], containerStatuses: [{ name: 'app', ready: true, restartCount: 0, state: { running: {} } }] } });
+  if (radarr) w.alerts.data.alerts.push({ labels: { alertname: 'RadarrDown', severity: 'critical', namespace: 'media', pod: 'radarr-6f7d9c8b5-abcde' }, state: 'firing', activeAt: '2026-11-13T04:00:00Z' });
   const r = (await twice(w, { prs: [4869] })).b;
-  ok(r.rec(4869).verdict === 'verified' && /firing since before the merge: SeerrDown/.test(factOf(r.rec(4869), 'alerts').detail), 'alerts: one that fired before the merge is listed, not a failure; another app\'s is not the target\'s', r.rec(4869).why);
+  ok(!!radarr && r.rec(4869).verdict === 'verified' && /firing since before the merge: SeerrDown/.test(factOf(r.rec(4869), 'alerts').detail), 'alerts: one that fired before the merge is listed; another app\'s in the target\'s namespace (radarr in media) is not the target\'s', r.rec(4869).why);
   const w2 = world();
   w2.alerts.data.alerts.push({ labels: { alertname: 'BlackboxProbeFailed', severity: 'critical', namespace: 'media' }, state: 'firing', activeAt: '2026-11-13T04:00:00Z' });
   const r2 = await tick(w2, { prs: [4869] });
   ok(r2.rec(4869).verdict === 'cannot-tell' && factOf(r2.rec(4869), 'alerts').result === 'unreadable', 'alerts: a new alert in the target namespace that names no workload: cannot tell (never a pass)', r2.rec(4869).why);
-  // a crash loop in a pod made before the merge is not the update's
   const w3 = world();
   podsIn(w3, 'ai', 'kokoro-')[0].status.containerStatuses[0].state = { waiting: { reason: 'CrashLoopBackOff' } };
   podsIn(w3, 'ai', 'kokoro-')[0].metadata.creationTimestamp = '2026-11-01T00:00:00Z';
@@ -220,8 +246,17 @@ await failure('an image-pull failure', 4869, w => { podsIn(w, 'media', 'seerr-')
   const wt = world(); { const p = structuredClone(podsIn(wt, 'media', 'seerr-')[0]); p.metadata.uid += '-t'; p.metadata.name += '-t'; p.metadata.deletionTimestamp = '2026-11-13T12:59:00Z'; wt.pods.media.pods.items.push(p); }
   const rt = await tick(wt, { prs: [4869] });
   ok(rt.rec(4869).verdict === 'not-yet' && /1 pod\(s\) terminating/.test(factOf(rt.rec(4869), 'rollout').detail), 'not yet: a pod still terminating', rt.rec(4869).why);
+  const wn = world(); podsIn(wn, 'media', 'seerr-')[0].status.conditions = [{ type: 'Ready', status: 'False' }];
+  const rn = await tick(wn, { prs: [4869] });
+  ok(rn.rec(4869).verdict === 'not-yet' && /1 of 1 pod\(s\) not Ready/.test(factOf(rn.rec(4869), 'rollout').detail) && factOf(rn.rec(4869), 'stable').result === 'waiting', 'not yet: a pod not Ready on the first tick is still rolling (the rollout does not ignore readiness)', rn.rec(4869).why);
+  const wp = world(); ksOf(wp, 'media/seerr').status.conditions = [{ type: 'Ready', status: 'True' }, { type: 'Reconciling', status: 'True', reason: 'Progressing' }];
+  const rp = (await twice(wp, { prs: [4869] })).b;
+  ok(rp.rec(4869).verdict === 'not-yet' && factOf(rp.rec(4869), 'applied').result === 'waiting' && /Reconciling/.test(factOf(rp.rec(4869), 'applied').detail), 'not yet: a Kustomization still progressing does not pass, on any tick', rp.rec(4869).why);
   const w3 = world(); hrOf(w3, 'media/seerr').status.conditions = [{ type: 'Ready', status: 'Unknown', reason: 'Progressing' }];
   ok((await tick(w3, { prs: [4869] })).rec(4869).verdict === 'not-yet', 'not yet: a HelmRelease still progressing');
+  const wd = world(); hrOf(wd, 'media/seerr').status.history[0].status = 'pending-upgrade';
+  const rd = (await twice(wd, { prs: [4869] })).b;
+  ok(rd.rec(4869).verdict === 'not-yet' && /its last release is pending-upgrade/.test(factOf(rd.rec(4869), 'helmreleases').detail), 'not yet: a HelmRelease whose last release is not deployed does not pass', rd.rec(4869).why);
   const w4 = world(); w4.alertsUnreadable = true;
   const r4 = (await twice(w4, { prs: [4874] })).b;
   ok(r4.rec(4874).verdict === 'cannot-tell' && factOf(r4.rec(4874), 'alerts').result === 'unreadable' && factOf(r4.rec(4874), 'stable').result === 'pass', 'cannot tell: Prometheus unreadable; every other fact passes, and still no pass', r4.rec(4874).why);
@@ -242,10 +277,16 @@ await failure('an image-pull failure', 4869, w => { podsIn(w, 'media', 'seerr-')
   dep.status.conditions = [{ type: 'Ready', status: 'False', reason: 'HealthCheckFailed' }, { type: 'Stalled', status: 'True', reason: 'x' }];
   const r10 = await tick(w10, { prs: [4869] });
   ok(r10.rec(4869).verdict === 'cannot-tell' && /which is failing/.test(factOf(r10.rec(4869), 'applied').detail), 'cannot tell: waiting on a failing dependency that is not the update\'s (never charged to it)', r10.rec(4869).why);
+  const wc = world(); const chainId = `${ksOf(wc, 'media/seerr').spec.dependsOn[1].namespace}/${ksOf(wc, 'media/seerr').spec.dependsOn[1].name}`;
+  ksOf(wc, chainId).status.conditions = [{ type: 'Ready', status: 'False', reason: 'HealthCheckFailed' }, { type: 'Stalled', status: 'True' }];
+  const rc = await tick(wc, { prs: [4869] });
+  ok(rc.rec(4869).verdict === 'cannot-tell' && new RegExp(`${chainId}.*in the dependsOn chain.*is failing`).test(factOf(rc.rec(4869), 'applied').detail), 'cannot tell: a failing Kustomization in the chain is not ignored', factOf(rc.rec(4869), 'applied').detail);
+  const wa = world(); ksOf(wa, 'flux-system/cluster-apps').status.conditions = [{ type: 'Ready', status: 'False', reason: 'BuildFailed' }, { type: 'Stalled', status: 'True' }];
+  const ra = await tick(wa, { prs: [4869] });
+  ok(ra.rec(4869).verdict === 'cannot-tell' && /cluster-apps \(applies the target\) is failing/.test(factOf(ra.rec(4869), 'applied').detail), 'cannot tell: a failing Kustomization that applies the target is not ignored', factOf(ra.rec(4869), 'applied').detail);
   const w11 = world(); w11.fail = { range: true };
   const r11 = (await twice(w11, { prs: [4874] })).b;
   ok(r11.rec(4874).verdict === 'verified' && r11.rec(4874).other_changes.complete === false, 'a pass stands with the other changes unreadable (they are listed as unreadable)');
-  // a pass needs every fact: a verdict with one unreadable and the rest pass is never verified
   ok(V.verdictOf([{ fact: 'a', result: 'pass' }, { fact: 'b', result: 'unreadable', detail: 'x' }], { complete: true, changes: [] }).verdict === 'cannot-tell'
     && V.verdictOf([{ fact: 'a', result: 'pass' }, { fact: 'b', result: 'bogus' }], { complete: true, changes: [] }).verdict === 'cannot-tell'
     && V.verdictOf([{ fact: 'a', result: 'waiting' }, { fact: 'b', result: 'unreadable' }], {}).verdict === 'cannot-tell'
@@ -271,14 +312,29 @@ await failure('an image-pull failure', 4869, w => { podsIn(w, 'media', 'seerr-')
   ok(r4.rec(4869).attribution === 'cannot-tell-which-change' && r4.rec(4869).other_changes.changes[0]?.parts.includes('target kubernetes/main/apps/media/seerr') && r4.rec(4869).other_changes.changes[0].fetched_by_flux === false, 'a later change to the same app (not fetched by Flux yet): cannot tell which change did it', JSON.stringify(r4.rec(4869).other_changes));
   const w5 = world(); for (const p of podsIn(w5, 'media', 'seerr-')) p.spec.containers[0].image = 'ghcr.io/seerr-team/seerr:v3.5.1'; w5.fail = { range: true };
   ok((await tick(w5, { prs: [4869] })).rec(4869).attribution === 'cannot-tell-which-change', 'a failure with the other changes unreadable: cannot tell which change did it (never charged to the update)');
+  // L4: an earlier merge to the same scope whose own verdict is not final counts as another change
+  const w6 = world(); for (const p of podsIn(w6, 'media', 'seerr-')) p.spec.containers[0].image = 'ghcr.io/seerr-team/seerr:v3.5.1';
+  const E = 'e9'.repeat(20);
+  const earlier = { ...fx.prs.find(p => p.number === 4869), number: 9050, title: 'fix(container): update image ghcr.io/example/seerr-sidecar to v1.0.1', mergedAt: '2026-11-13T03:10:56Z', mergeCommit: { oid: E }, body: '| Package | Update | Change |\n|---|---|---|\n| ghcr.io/example/seerr-sidecar | patch | `1.0.0` → `1.0.1` |\n' };
+  const d6 = V.docOf([earlier, fx.prs.find(p => p.number === 4869)], { repo: REPO, rules, at: iso(T1) });
+  const id9050 = d6.events.find(e => e.carrier.pr === 9050).item_id;
+  const mem9050 = JSON.stringify({ schema: 'haynes.upgrade-verify/v1', since: null, items: { [id9050]: { pr: 9050, merged_at: earlier.mergedAt, verdict: 'not-yet', final: false, files: ['kubernetes/main/apps/media/seerr/app/helmrelease.yaml'] } }, done: {} });
+  const r6 = await tick(w6, { prs: [9050, 4869], onlyPrs: [9050, 4869], doc: d6, prev: mem9050 });
+  ok(r6.rec(4869).attribution === 'cannot-tell-which-change' && r6.rec(4869).other_changes.complete && r6.rec(4869).other_changes.changes.some(c => c.pr === 9050 && c.before === true) && /#9050 \(merged before, not verified yet\)/.test(r6.rec(4869).why),
+    'L4: an earlier merge to the same app whose own verdict is not final counts as another change', r6.rec(4869).why);
+  const r6b = await tick(w6, { prs: [9050, 4869], onlyPrs: [9050, 4869], doc: d6 });
+  ok(r6b.rec(4869).attribution === 'cannot-tell-which-change' && /an earlier merge not verified yet whose files were not read \(#9050\)/.test(r6b.rec(4869).other_changes.why), 'L4: an earlier unverified merge whose files are unknown makes the list incomplete (cannot tell which change did it)', JSON.stringify(r6b.rec(4869).other_changes));
+  const r6c = await tick(w6, { prs: [9050, 4869], onlyPrs: [9050, 4869], doc: d6, prev: JSON.stringify({ ...JSON.parse(mem9050), done: { [id9050]: 'verified 2026-11-13T04:00:00.000Z' } }) });
+  ok(r6c.rec(4869).attribution === 'own-regression', 'L4: an earlier merge whose own verdict is final does not count', r6c.rec(4869).why);
 }
 
-// ── 6. an own image awaiting its digest pin ───────────────────────────────────────────
+// ── 6. own images and their pin (H2) ─────────────────────────────────────────────────
 {
   const img = rules.own_images.find(o => o.id === 'audio-authoring');
-  const S = 'a1'.repeat(20), P = 'b2'.repeat(20), D = 'd4'.repeat(32);
-  const src = { number: 9101, state: 'MERGED', title: 'fix(container): update python docker tag to v3.14.1', author: { login: 'app/renovate' }, mergedAt: '2026-11-13T05:00:00Z', mergedBy: { login: 'app/renovate' }, mergeCommit: { oid: S }, labels: [], body: '| Package | Update | Change |\n|---|---|---|\n| python | patch | `3.14.0` → `3.14.1` |\n', files: [{ path: 'scripts/audio-authoring/Dockerfile' }], changedFiles: 1 };
-  const pin = { number: 9102, state: 'MERGED', title: 'chore(container): update ghcr.io/thaynes43/audio-authoring docker digest', author: { login: 'app/renovate' }, mergedAt: '2026-11-13T05:20:00Z', mergedBy: { login: 'app/renovate' }, mergeCommit: { oid: P }, labels: [], body: `| Package | Update | Change |\n|---|---|---|\n| ghcr.io/thaynes43/audio-authoring | digest | \`aaaaaaa\` → \`${D.slice(0, 7)}\` |\n`, files: [{ path: img.pins[0] }], changedFiles: 1 };
+  const S = 'a1'.repeat(20), P = 'b2'.repeat(20), X = 'c3'.repeat(20), D = 'd4'.repeat(32);
+  const src = { number: 9101, state: 'MERGED', title: 'fix(container): update python docker tag to v3.14.1', author: { login: 'app/renovate' }, mergedAt: '2026-11-13T05:00:00Z', mergedBy: { login: 'app/renovate' }, mergeCommit: { oid: S }, labels: [{ name: 'type/patch' }], body: '| Package | Update | Change |\n|---|---|---|\n| python | patch | `3.14.0` → `3.14.1` |\n', files: [{ path: 'scripts/audio-authoring/Dockerfile' }], changedFiles: 1 };
+  const pinOf = (n, sha_, at, digest, name = 'ghcr.io/thaynes43/audio-authoring') => ({ number: n, state: 'MERGED', title: `chore(container): update ${name} docker digest`, author: { login: 'app/renovate' }, mergedAt: at, mergedBy: { login: 'app/renovate' }, mergeCommit: { oid: sha_ }, labels: [{ name: 'type/digest' }], body: `| Package | Update | Change |\n|---|---|---|\n| ${name} | digest | \`aaaaaaa\` → \`${digest.slice(0, 7)}\` |\n`, files: [{ path: img.pins[0] }], changedFiles: 1 });
+  const pin = pinOf(9102, P, '2026-11-13T05:20:00Z', D);
   const base = () => {
     const w = world();
     w.ks = { items: [...w.ks.items, { metadata: { name: 'audio-authoring', namespace: 'dev', generation: 1, labels: { 'kustomize.toolkit.fluxcd.io/name': 'cluster-apps', 'kustomize.toolkit.fluxcd.io/namespace': 'flux-system' } }, spec: { path: './kubernetes/main/apps/dev/audio-authoring/app', sourceRef: { kind: 'GitRepository', name: 'haynes-ops', namespace: 'flux-system' } },
@@ -286,36 +342,58 @@ await failure('an image-pull failure', 4869, w => { podsIn(w, 'media', 'seerr-')
     w.hr = { items: [...w.hr.items, { metadata: { name: 'audio-authoring', namespace: 'dev', generation: 3, labels: { 'kustomize.toolkit.fluxcd.io/name': 'audio-authoring', 'kustomize.toolkit.fluxcd.io/namespace': 'dev' } }, spec: {},
       status: { observedGeneration: 3, conditions: [{ type: 'Ready', status: 'True', reason: 'UpgradeSucceeded' }], history: [{ chartName: 'app-template', chartVersion: '5.3.0', status: 'deployed', lastDeployed: '2026-11-13T05:22:00Z' }], inventory: { entries: [{ id: 'dev_audio-authoring_apps_Deployment', v: 'v1' }] } } }] };
     w.pods.dev = { pods: { items: [{ metadata: { name: 'audio-authoring-7f9c8d6b5-x1', namespace: 'dev', uid: 'u-audio-1', creationTimestamp: '2026-11-13T05:23:00Z', labels: { 'pod-template-hash': '7f9c8d6b5' }, ownerReferences: [{ kind: 'ReplicaSet', name: 'audio-authoring-7f9c8d6b5' }] },
-      spec: { containers: [{ name: 'app', image: `ghcr.io/thaynes43/audio-authoring:0.2.0@sha256:${D}` }] }, status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'True' }], containerStatuses: [{ name: 'app', imageID: `ghcr.io/thaynes43/audio-authoring@sha256:${D}`, ready: true, restartCount: 0, state: { running: {} } }] } }] }, cronjobs: { items: [] } };
+      spec: { containers: [{ name: 'app', image: `ghcr.io/thaynes43/audio-authoring:0.2.0@sha256:${D}` }] }, status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'True' }], containerStatuses: [{ name: 'app', imageID: `ghcr.io/thaynes43/audio-authoring@sha256:${D}`, ready: true, restartCount: 0, state: { running: {} } }] } }] }, cronjobs: { items: [] }, jobs: { items: [] } };
     w.extraCommits = [{ sha: S, at: src.mergedAt, subject: src.title, pr: 9101, author: 'renovate[bot]', files: ['scripts/audio-authoring/Dockerfile'] }];
     w.runs = { [S]: [{ path: img.build, status: 'completed', conclusion: 'success', created_at: '2026-11-13T05:00:10Z', updated_at: '2026-11-13T05:06:00Z' }] };
+    w.prHead = { 9102: '2026-11-13T05:12:00Z' };
     return w;
   };
-  const run2 = async (w, prs, o = {}) => { const d = V.docOf(prs.map(n => n === 9101 ? src : pin), { repo: REPO, rules, at: iso(T1), actor: o.own ? { kind: 'lane', login: null } : null }); return tick(w, { prs: [9101], doc: d, ...o }); };
-  const w = base();
-  w.extraCommits.push({ sha: 'e1'.repeat(20), at: '2026-11-13T05:10:00Z', subject: 'docs: a push', pr: 9103, author: 'haynes-dev-bot[bot]', files: ['docs/x.md'] });
-  const r = await run2(w, [9101]);
-  ok(r.rec(9101).verdict === 'not-yet' && /awaiting the digest pin of audio-authoring.*1 of 3 pushes/.test(factOf(r.rec(9101), 'pin').detail), 'own image: not yet, awaiting the digest pin (1 of 3 pushes since the build)', r.rec(9101).why);
+  const run2 = (w, views_, o = {}) => tick(w, { prs: views_.map(v => v.number), onlyPrs: [9101], views: views_, ...o });
+  // 1 push, no pin: awaiting, with since when; would write awaiting-pin
+  const w = base(); w.extraCommits.push({ sha: 'e1'.repeat(20), at: '2026-11-13T05:10:00Z', subject: 'docs: a push', pr: 9103, author: 'haynes-dev-bot[bot]', files: ['docs/x.md'] });
+  const r = await run2(w, [src]);
+  ok(r.rec(9101).verdict === 'not-yet' && /awaiting the digest pin of audio-authoring since the build finished at 2026-11-13T05:06:00Z; no pin PR is open/.test(factOf(r.rec(9101), 'pin').detail), 'own image: not yet, awaiting the digest pin, since the build finished', r.rec(9101).why);
   ok(r.rec(9101).would_write.map(e => `${e.type}:${e.from}>${e.to}:${e.legal}`).join() === 'awaiting-pin:merged_unverified>awaiting_pin:true', 'own image: would write awaiting-pin (legal)');
-  const o = await run2(base(), [9101], { own: true, cfg: { write_history_events: true } });
+  const o = await run2(base(), [src], { own: true, cfg: { write_history_events: true } });
   const p = planWith(o.doc, o.events, iso(T1));
   ok(o.events[0]?.type === 'awaiting-pin' && stateOf(p.doc, o.events[0].item_id) === 'awaiting_pin', 'own image, the lane\'s merge: awaiting-pin recorded, the item awaiting_pin');
-  const w2 = base(); for (let i = 0; i < 3; i++) w2.extraCommits.push({ sha: `e${i}`.repeat(20), at: `2026-11-13T05:1${i}:00Z`, subject: 'a push', pr: 9200 + i, author: 'haynes-dev-bot[bot]', files: ['docs/x.md'] });
-  const r2 = await run2(w2, [9101]);
-  ok(r2.rec(9101).verdict === 'failed' && r2.rec(9101).failing[0].class === 'pin-timeout' && /3 push\(es\) after the image build finished/.test(factOf(r2.rec(9101), 'pin').detail), 'own image: the pin timeout is a fact (3 pushes to main after the build, none the pin), not a clock', r2.rec(9101).why);
-  const w3 = base(); w3.runs[S][0].conclusion = 'failure';
-  ok((await run2(w3, [9101])).rec(9101).failing?.[0]?.class === 'not-applied', 'own image: a failed build fails (the image was not published)');
-  const w4 = base(); w4.runs[S][0].status = 'in_progress';
-  ok((await run2(w4, [9101])).rec(9101).verdict === 'not-yet', 'own image: a build still running is not yet');
-  const w5 = base(); w5.runs = {};
-  ok((await run2(w5, [9101])).rec(9101).verdict === 'cannot-tell', 'own image: the build unreadable is cannot tell');
+  // H2 b: many pushes and no pin is still only awaiting; after the bound in the lane's nights it needs a person, never failed
+  const w2 = base(); for (let i = 0; i < 6; i++) w2.extraCommits.push({ sha: `e${i}`.repeat(20), at: `2026-11-13T05:1${i}:00Z`, subject: 'a push', pr: 9200 + i, author: 'haynes-dev-bot[bot]', files: ['docs/x.md'] });
+  const n1 = await run2(w2, [src]);
+  const n2 = await run2(w2, [src], { now: T1 + DAY, prev: n1.memory, doc: n1.doc });
+  ok(n1.rec(9101).verdict === 'not-yet' && !n1.rec(9101).needs_person && n2.rec(9101).verdict === 'not-yet' && n2.rec(9101).needs_person === true && /^NEEDS A PERSON: open on 2 of the lane's nights/.test(n2.rec(9101).why) && /NEEDS A PERSON/.test(n2.table) && n2.summary.needs_person.join() === '9101',
+    'own image (H2 b): six pushes and no pin is still awaiting, never failed; on the second of the lane\'s nights it needs a person', n2.rec(9101).why);
+  // H2 a: commits to the pins file that are not the pin
+  const w3 = base();
+  w3.extraCommits.push({ sha: X, at: '2026-11-13T05:15:00Z', subject: 'fix(audio-authoring): a values change by the shepherd', pr: 9104, author: 'haynes-ops-bot[bot]', files: [img.pins[0]] });
+  const other = pinOf(9105, 'f5'.repeat(20), '2026-11-13T05:16:00Z', 'e'.repeat(64), 'ghcr.io/thaynes43/blender-authoring');
+  w3.extraCommits.push({ sha: other.mergeCommit.oid, at: other.mergedAt, subject: other.title, pr: 9105, author: 'renovate[bot]', files: [img.pins[0]] });
+  const early = pinOf(9106, 'a7'.repeat(20), '2026-11-13T05:17:00Z', 'b'.repeat(64));
+  w3.extraCommits.push({ sha: early.mergeCommit.oid, at: early.mergedAt, subject: early.title, pr: 9106, author: 'renovate[bot]', files: [img.pins[0]] });
+  w3.prHead = { 9106: '2026-11-13T05:01:00Z' }; // made before this build finished: another build's digest
+  const r3 = await run2(w3, [src, other, early]);
+  ok(r3.rec(9101).verdict === 'not-yet' && /not the pin: c3c3c3c3 #9104 \(not an update of audio-authoring\), f5f5f5f5 #9105 \(not an update of audio-authoring\), #9106 \(made 2026-11-13T05:01:00Z, before this build finished/.test(factOf(r3.rec(9101), 'pin').detail),
+    'own image (H2 a): a shepherd edit of the pins file, a pin of another image and a pin made before this build are not the pin', factOf(r3.rec(9101), 'pin').detail);
+  // the pin, made after the build: verified through it (and its digest is all digits-safe)
   const w6 = base(); w6.extraCommits.push({ sha: P, at: pin.mergedAt, subject: pin.title, pr: 9102, author: 'renovate[bot]', files: [img.pins[0]] });
   w6.source.status.artifact.revision = `main@sha1:${P}`; // Flux fetched the pin, and the target applied it
   for (const k of w6.ks.items) { k.status.lastAppliedRevision = w6.source.status.artifact.revision; k.status.lastAttemptedRevision = w6.source.status.artifact.revision; }
-  const d6 = V.docOf([src, pin], { repo: REPO, rules, at: iso(T1) });
-  const a6 = await tick(w6, { prs: [9101, 9102], onlyPrs: [9101], doc: d6 });
-  const b6 = await tick(w6, { prs: [9101, 9102], onlyPrs: [9101], doc: d6, now: T2, prev: a6.memory });
-  ok(a6.rec(9101).verdict === 'not-yet' && b6.rec(9101).verdict === 'verified' && /pinned by #9102/.test(factOf(b6.rec(9101), 'pin').detail) && /1 container\(s\) in dev\/audio-authoring run ghcr\.io\/thaynes43\/audio-authoring d4d4d4d/.test(factOf(b6.rec(9101), 'image').detail), 'own image: verified through its pin #9102 (the new digest runs and is stable)', b6.rec(9101).why);
+  const a6 = await run2(w6, [src, pin]);
+  const b6 = await run2(w6, [src, pin], { now: T2, prev: a6.memory, doc: a6.doc });
+  ok(a6.rec(9101).verdict === 'not-yet' && b6.rec(9101).verdict === 'verified' && /pinned by #9102 .* made after the build finished/.test(factOf(b6.rec(9101), 'pin').detail) && /1 container\(s\) in dev\/audio-authoring run ghcr\.io\/thaynes43\/audio-authoring d4d4d4d/.test(factOf(b6.rec(9101), 'image').detail), 'own image: verified through its pin #9102 (the new digest runs and is stable)', b6.rec(9101).why);
+  // facts that do fail: a cancelled build, an open pin PR whose checks fail
+  const w7 = base(); w7.runs[S][0].conclusion = 'cancelled';
+  ok((await run2(w7, [src])).rec(9101).failing?.[0]?.class === 'not-applied', 'own image: a cancelled build fails (the image was not published)');
+  const w8 = base();
+  const openPin = { pr: 9110, lane: 'BLOCKED', class: 'check-failing', reason: 'failing: Flux Local - Test (main)', packages: [{ name: 'ghcr.io/thaynes43/audio-authoring', to: 'abc1234' }], files: [img.pins[0]] };
+  const r8 = await run2(w8, [src], { deps: { records: [openPin] } });
+  ok(r8.rec(9101).verdict === 'failed' && /the pin PR #9110 for audio-authoring is open and its checks fail: failing: Flux Local/.test(factOf(r8.rec(9101), 'pin').detail), 'own image: an open pin PR whose checks fail fails, with the reason', r8.rec(9101).why);
+  const r8b = await run2(base(), [src], { deps: { records: [{ ...openPin, lane: 'LANE-B-AGENT', class: 'rule-agent' }] } });
+  ok(r8b.rec(9101).verdict === 'not-yet' && /pin PR #9110 is open \(LANE-B-AGENT\/rule-agent\)/.test(factOf(r8b.rec(9101), 'pin').detail), 'own image: an open pin PR that is not failing: still awaiting, named');
+  const w4 = base(); w4.runs[S][0].status = 'in_progress';
+  ok((await run2(w4, [src])).rec(9101).verdict === 'not-yet', 'own image: a build still running is not yet');
+  const w5 = base(); w5.runs = {};
+  ok((await run2(w5, [src])).rec(9101).verdict === 'cannot-tell', 'own image: the build unreadable is cannot tell');
 }
 
 // ── 7. practice never reaches the history ─────────────────────────────────────────────
@@ -336,21 +414,25 @@ await failure('an image-pull failure', 4869, w => { podsIn(w, 'media', 'seerr-')
   ok(notYet.rec(4874).verdict === 'not-yet' && notYet.events.length === 0, 'not yet writes no event');
 }
 
-// ── 8. the practice bound, the memory, the cap and the fair order ─────────────────────────
+// ── 8. the practice bound, the memory, the cap, the fair order, the time budget ───────────
 {
-  // installed at the first commit of night-verify.mjs on main: earlier merges are the backfill's
   const w = world(); w.installed = [{ sha: 'f'.repeat(40), at: '2026-11-13T09:30:00Z' }, { sha: '9'.repeat(40), at: '2026-11-13T03:12:30Z' }];
   const r = await tick(w, { onlyPrs: null });
-  const t0mem = r.memory;
   ok(r.summary.since === '2026-11-13T03:12:30.000Z' && /first commit on main that added night-verify\.mjs: 99999999/.test(r.summary.since_basis), 'bound: since is the oldest commit of night-verify.mjs on main (a fact in git)', JSON.stringify([r.summary.since, r.summary.since_basis]));
   ok(r.summary.evaluated.sort().join() === '4870,4873,4874', 'bound: only merges at or after it are practised (#4869 and #4871 merged before)', r.summary.evaluated.join());
-  const w2 = world();
-  const r2 = await tick(w2, { onlyPrs: null });
-  ok(r2.summary.evaluated.length === 0 && /unreadable: when the verifier was installed/.test(r2.summary.why_not), 'bound: an unreadable install time practises nothing (never the backfill)');
-  const off = await tick(world(), { onlyPrs: null, prev: JSON.stringify({ ...JSON.parse(t0mem), done: { x: 'verified 2026-11-13T00:00:00.000Z' } }), cfg: { practice: false } });
-  ok(JSON.parse(off.memory).done.x, 'memory: a tick with practice off keeps done (review of PR 4880)');
+  const r2 = await tick(world(), { onlyPrs: null });
+  ok(r2.summary.evaluated.length === 0 && /unreadable: when the verifier was installed/.test(r2.summary.why_not) && r2.memory === null, 'bound: an unreadable install time practises nothing (never the backfill) and writes no memory');
   const r3 = await tick(world(), { onlyPrs: null, prev: r.memory });
   ok(r3.summary.since === r.summary.since && !r3.calls.some(c => /night-verify\.mjs/.test(decodeURIComponent(c))), 'bound: kept in the memory, not read again');
+  // L3: a tick that cannot list the practice candidates keeps the open records and done
+  const keep = await tick(world(), { onlyPrs: null, prev: JSON.stringify({ ...JSON.parse(r.memory), since: null, done: { x: 'verified 2026-11-13T00:00:00.000Z' } }) });
+  const km0 = JSON.parse(keep.memory || '{"items":{},"done":{}}');
+  ok(Object.values(km0.items).filter(x => !x.final).length === Object.values(JSON.parse(r.memory).items).filter(x => !x.final).length && km0.done.x && Object.values(km0.items).every(x => x.baseline !== undefined), 'L3: a tick that could not list the practice candidates (no install time) drops no open record and keeps done');
+  const off = await tick(world(), { onlyPrs: null, prev: JSON.stringify({ ...JSON.parse(r.memory), done: { x: 'verified 2026-11-13T00:00:00.000Z' } }), cfg: { practice: false } });
+  ok(JSON.parse(off.memory).done.x, 'L3: a tick with practice off keeps done');
+  ok((await tick(world(), { onlyPrs: null, prev: r.memory, deps: {} })).memory !== null, 'memory: kept and written again on the next tick');
+  const unread = await V.verifyPhase({ rules, run: fake(world()).run, repo: REPO, now: T1, clock: () => T1, prevText: r.memory, prevUnreadable: true, deps: { alertSubject: N.alertSubject, getJson: gjOf(world()) } });
+  ok(unread.memory === null && /memory is unknown; nothing judged, the memory is kept/.test(unread.summary.why_not), 'L3: upgrade-lane-state unreadable: nothing judged, no memory written (the last one stays)');
   // own merges are verified whatever the bound
   const r4 = await tick(world(), { onlyPrs: null, own: true });
   ok(r4.summary.evaluated.length === 5, 'the lane\'s own merges are verified whatever the practice bound');
@@ -362,42 +444,129 @@ await failure('an image-pull failure', 4869, w => { podsIn(w, 'media', 'seerr-')
   const c1 = await tick(world(), { cfg: { max_items_per_tick: 2 } });
   const c2 = await tick(world(), { cfg: { max_items_per_tick: 2 }, now: T2, prev: c1.memory });
   ok(c1.summary.evaluated.length === 2 && c1.summary.deferred.length === 3 && c2.summary.evaluated.every(n => !c1.summary.evaluated.includes(n)), 'cap: two per tick, and the next tick takes the least recently judged', JSON.stringify([c1.summary.evaluated, c2.summary.evaluated]));
-  // the byte budget and the kept cap
-  // review of PR 4880: an open record (with the pods recorded for stability) goes last
+  // the byte budget: an open record (with the pods recorded for stability) goes last
   const k = await tick(world(), { cfg: { max_state_bytes: 9000 } });
-  const km = JSON.parse(k.memory), openKept = Object.values(km.items).filter(r => !r.final);
-  ok(Buffer.byteLength(k.memory) <= 9000 && k.summary.trimmed === 1 && !km.items[Object.keys(km.items).find(id => km.items[id].pr === 4871)] && k.summary.compacted > 0 && openKept.length === 4 && openKept.every(r => r.baseline?.pods) && openKept.some(r => r.compacted),
+  const km = JSON.parse(k.memory), openKept = Object.values(km.items).filter(x => !x.final);
+  ok(Buffer.byteLength(k.memory) <= 9000 && k.summary.trimmed === 1 && k.summary.compacted > 0 && openKept.length === 4 && openKept.every(x => x.baseline?.pods) && openKept.some(x => x.compacted),
     'memory over max_state_bytes: the final record goes first, then the open ones lose their details and keep their recorded pods', `${Buffer.byteLength(k.memory)} bytes ${JSON.stringify(k.summary)}`.slice(0, 400));
   ok(/\(facts and other changes cut to keep data\.verify within max_state_bytes/.test(k.table), 'memory: the morning view says when a record\'s details were cut');
   const k2 = await tick(world(), { cfg: { max_state_bytes: 9000 }, now: T2, prev: k.memory });
   ok([4869, 4870, 4873, 4874].every(n => k2.summary.verdicts.verified.includes(n)) && Buffer.byteLength(k2.memory) <= 9000, 'memory over budget: the next tick still verifies the open items against the kept pods', JSON.stringify(k2.summary.verdicts));
   const kc = await tick(world(), { cfg: { max_items_kept: 2 } });
   const kcm = JSON.parse(kc.memory);
-  ok(Object.keys(kcm.items).length === 4 && Object.values(kcm.items).every(r => !r.final) && kc.summary.trimmed === 1, 'memory: max_items_kept drops final records only, never an open one', JSON.stringify(kc.summary));
-  const big = { schema: 'haynes.upgrade-verify/v1', since: null, items: { open1: { pr: 1, merged_at: '2026-11-13T00:00:00Z', verdict: 'not-yet', why: 'x', facts: [{ fact: 'image', result: 'pass', detail: 'y'.repeat(800) }], baseline: { at: '2026-11-13T01:00:00Z', pods: { u1: { name: 'p', restarts: 0 } } }, final: false } },
+  ok(Object.keys(kcm.items).length === 4 && Object.values(kcm.items).every(x => !x.final) && kc.summary.trimmed === 1, 'memory: max_items_kept drops final records only, never an open one', JSON.stringify(kc.summary));
+  const big = { schema: 'haynes.upgrade-verify/v1', since: null, items: { open1: { pr: 1, merged_at: '2026-11-13T00:00:00Z', verdict: 'not-yet', why: 'x', facts: [{ fact: 'image', result: 'pass', detail: 'y'.repeat(800) }], baseline: { at: '2026-11-13T01:00:00Z', pods: { u1: { name: 'p', restarts: { app: 0 } } } }, final: false } },
     done: Object.fromEntries(Array.from({ length: 2000 }, (_, i) => [`renovate-pr:${i.toString(16).padStart(24, '0')}`, 'verified 2026-11-13T00:00:00.000Z'])) };
   const fm = V.fitMemory(big, { max_items_kept: 60, max_state_bytes: 9000 }, id => id === 'open1', id => (id === 'open1' ? '2026-11-13' : `2026-11-01-${id}`));
   ok(Buffer.byteLength(fm.text) <= 9000 && JSON.parse(fm.text).items.open1?.baseline?.pods?.u1 && fm.counts.done_trimmed > 0 && !fm.counts.trimmed_open, 'memory: done over the budget is trimmed, oldest first, before an open record is touched', JSON.stringify(fm.counts));
   ok(V.parseMemory('not json').ok === false && V.parseMemory(null).absent === true, 'memory: an unparseable data.verify starts a new one; none is absent');
-  // the time budget: no new item once the tick has run time_budget_seconds
-  const f = fake(world());
-  const late = await V.verifyPhase({ rules, run: f.run, repo: REPO, now: T1, startedAt: T1 - 200e3, clock: () => T1, onlyPrs: PRS, deps: { doc: V.docOf(views(PRS), { repo: REPO, rules, at: iso(T1) }), alertSubject: N.alertSubject, getJson: async () => fx.alerts } });
-  ok(late.summary.evaluated.length === 0 && late.summary.deferred.length === 5, 'budget: a phase that starts after time_budget_seconds judges nothing and defers all');
-  // the history unreadable: nothing judged, said why
+  // L1: the time budget before each shared read
+  const late = await tick(world(), { startedAt: T1 - 200e3 });
+  ok(late.summary.evaluated.length === 0 && /time budget \(150 s of the tick\) was used before reading the Flux objects; nothing more this tick, the memory is kept/.test(late.summary.why_not) && late.memory === null && !late.calls.some(c => /kubectl get kustomizations|compare/.test(c)), 'L1: a phase that starts after time_budget_seconds reads nothing shared, judges nothing, keeps the memory', late.summary.why_not);
+  const lateP = await tick(world(), { onlyPrs: null, startedAt: T1 - 200e3 });
+  ok(/used before reading the install time/.test(lateP.summary.why_not) && lateP.calls.length === 0, 'L1: in practice it stops before the install-time read too');
   const f2 = fake({ ...world(), ledger: { metadata: { name: 'upgrade-ledger', resourceVersion: '5' }, data: { meta: 'not json', items: '{}', events: '' } } });
-  const nh = await V.verifyPhase({ rules, run: f2.run, repo: REPO, now: T1, startedAt: T1, clock: () => T1, deps: { alertSubject: N.alertSubject, getJson: async () => fx.alerts } });
-  ok(nh.summary.evaluated.length === 0 && /the history could not be read/.test(nh.summary.why_not), 'a history it cannot read: nothing judged, and it says why');
-  ok(V.verifyLine(t2.summary).includes('verified #') && V.verifyLine({ error: 'x' }) === 'FAILED: x', 'the log line');
+  const nh = await V.verifyPhase({ rules, run: f2.run, repo: REPO, now: T1, startedAt: T1, clock: () => T1, deps: { alertSubject: N.alertSubject, getJson: gjOf(world()) } });
+  ok(nh.summary.evaluated.length === 0 && /the history could not be read/.test(nh.summary.why_not) && nh.memory === null, 'a history it cannot read: nothing judged, it says why, the memory is kept');
+  ok(V.verifyLine(t2.summary).includes('verified #') && /\(\d+ GitHub\)/.test(V.verifyLine(t2.summary)) && V.verifyLine({ error: 'x' }) === 'FAILED: x', 'the log line, with the GitHub read count');
+  // needs a person: a cannot-tell that stays open on the lane's nights
+  const wp = world(); wp.alertsUnreadable = true;
+  const p1 = await tick(wp, { prs: [4869] }), p2 = await tick(wp, { prs: [4869], now: T2, prev: p1.memory, doc: p1.doc }), p3 = await tick(wp, { prs: [4869], now: T1 + DAY, prev: p2.memory, doc: p1.doc });
+  ok(!p2.rec(4869).needs_person && p3.rec(4869).needs_person === true && p3.rec(4869).nights.length === 2 && /open: cannot-tell since .* over 2 night\(s\)/.test(p3.table), 'needs a person: a cannot-tell open on two of the lane\'s nights (two ticks of one night count once)', JSON.stringify(p3.rec(4869).nights));
 }
 
-// ── 9. the image and version readers ──────────────────────────────────────────────────
+// ── 9. the review of PR 4880 ─────────────────────────────────────────────────────────
+{
+  // H1: a short digest of digits only is still a digest (decided by the recorded update type)
+  const D = '9014532' + 'a'.repeat(57);
+  const v = { ...fx.prs.find(p => p.number === 4869), labels: [{ name: 'renovate/container' }, { name: 'type/digest' }], body: '| Package | Update | Change |\n|---|---|---|\n| ghcr.io/seerr-team/seerr | digest | `abcd123` → `9014532` |\n' };
+  const w = world(); for (const p of podsIn(w, 'media', 'seerr-')) { p.spec.containers[0].image = `ghcr.io/seerr-team/seerr:v3.5.2@sha256:${D}`; p.status.containerStatuses[0].imageID = `ghcr.io/seerr-team/seerr@sha256:${D}`; }
+  const h1 = (await twice(w, { prs: [4869], views: [v] })).b;
+  ok(h1.rec(4869).type === 'digest' && h1.rec(4869).verdict === 'verified' && /run ghcr\.io\/seerr-team\/seerr 9014532/.test(factOf(h1.rec(4869), 'image').detail), 'H1: a digest update to 9014532 (digits only) is read as a digest and verified, not a wrong image', h1.rec(4869).why);
+  const w2 = world(); for (const p of podsIn(w2, 'media', 'seerr-')) { p.spec.containers[0].image = `ghcr.io/seerr-team/seerr:v3.5.2@sha256:${'1'.repeat(64)}`; p.status.containerStatuses[0].imageID = `ghcr.io/seerr-team/seerr@sha256:${'1'.repeat(64)}`; }
+  ok((await tick(w2, { prs: [4869], views: [v] })).rec(4869).failing?.[0]?.class === 'wrong-image', 'H1: another digest is a wrong image');
+  ok(V.versionKindOf('digest') === 'digest' && V.versionKindOf('pinDigest') === 'digest' && V.versionKindOf('minor') === 'tag' && V.versionKindOf('minor+digest') === 'either' && V.versionKindOf(null) === 'either', 'H1: the version kind comes from the update type');
+  // M1: a target of CronJobs only is exercised by a Job from the new template
+  const cjWorld = (jobs, image = 'ghcr.io/example/backup-tool:1.1.0') => {
+    const w = world();
+    w.ks = { items: [...w.ks.items, { metadata: { name: 'backup-tool', namespace: 'media', generation: 1, labels: { 'kustomize.toolkit.fluxcd.io/name': 'cluster-apps', 'kustomize.toolkit.fluxcd.io/namespace': 'flux-system' } }, spec: { path: './kubernetes/main/apps/media/backup-tool/app', sourceRef: { kind: 'GitRepository', name: 'haynes-ops', namespace: 'flux-system' } },
+      status: { observedGeneration: 1, lastAppliedRevision: w.source.status.artifact.revision, lastAttemptedRevision: w.source.status.artifact.revision, conditions: [{ type: 'Ready', status: 'True' }], inventory: { entries: [{ id: 'media_backup-tool_batch_CronJob', v: 'v1' }] } } }] };
+    w.pods.media.cronjobs = { items: [{ metadata: { name: 'backup-tool', namespace: 'media' }, spec: { schedule: '0 3 * * *', timeZone: 'America/New_York', jobTemplate: { spec: { template: { spec: { containers: [{ name: 'tool', image }] } } } } }, status: { lastScheduleTime: '2026-11-12T08:00:00Z' } }] };
+    w.pods.media.jobs = { items: jobs };
+    w.extraCommits = [{ sha: 'b9'.repeat(20), at: '2026-11-13T06:00:00Z', subject: 'fix(container): update image ghcr.io/example/backup-tool to v1.1.0', pr: 9300, author: 'renovate[bot]', files: ['kubernetes/main/apps/media/backup-tool/app/cronjob.yaml'] }];
+    w.source.status.artifact.revision = `main@sha1:${'b9'.repeat(20)}`; // Flux fetched it, and the targets applied it
+    for (const k of w.ks.items) { k.status.lastAppliedRevision = w.source.status.artifact.revision; k.status.lastAttemptedRevision = w.source.status.artifact.revision; }
+    return w;
+  };
+  const cjView = { number: 9300, state: 'MERGED', title: 'fix(container): update image ghcr.io/example/backup-tool to v1.1.0', author: { login: 'app/renovate' }, mergedAt: '2026-11-13T06:00:00Z', mergedBy: { login: 'app/renovate' }, mergeCommit: { oid: 'b9'.repeat(20) }, labels: [{ name: 'type/minor' }], body: '| Package | Update | Change |\n|---|---|---|\n| ghcr.io/example/backup-tool | minor | `1.0.0` → `1.1.0` |\n', files: [{ path: 'kubernetes/main/apps/media/backup-tool/app/cronjob.yaml' }], changedFiles: 1 };
+  const job = (name, made, cond, image = 'ghcr.io/example/backup-tool:1.1.0') => ({ metadata: { name, namespace: 'media', creationTimestamp: made, ownerReferences: [{ kind: 'CronJob', name: 'backup-tool' }] }, spec: { template: { spec: { containers: [{ name: 'tool', image }] } } }, status: { conditions: cond ? [{ type: cond, status: 'True', reason: cond === 'Failed' ? 'BackoffLimitExceeded' : undefined }] : [] } });
+  const m1a = await tick(cjWorld([job('backup-tool-old', '2026-11-12T08:00:00Z', 'Complete', 'ghcr.io/example/backup-tool:1.0.0')]), { prs: [9300], views: [cjView] });
+  ok(m1a.rec(9300).verdict === 'not-yet' && /no Job from the new template since the merge; waiting for its first run \(schedule 0 3 \* \* \* America\/New_York, last scheduled 2026-11-12T08:00:00Z, next 2026-11-14T08:00:00\.000Z\)/.test(factOf(m1a.rec(9300), 'exercised').detail), 'M1: a CronJob not run since the merge is not yet, with its next run', factOf(m1a.rec(9300), 'exercised').detail);
+  const m1b = await tick(cjWorld([job('backup-tool-new', '2026-11-13T08:00:00Z', 'Complete')]), { prs: [9300], views: [cjView] });
+  ok(m1b.rec(9300).verdict === 'verified' && factOf(m1b.rec(9300), 'exercised').result === 'pass', 'M1: a Job from the new template completed: verified', m1b.rec(9300).why);
+  const m1c = await tick(cjWorld([job('backup-tool-new', '2026-11-13T08:00:00Z', 'Failed')]), { prs: [9300], views: [cjView] });
+  ok(m1c.rec(9300).verdict === 'failed' && m1c.rec(9300).failing[0].class === 'job-failed', 'M1: a Job from the new template failed: failed', m1c.rec(9300).why);
+  const m1d = await tick(cjWorld([], 'ghcr.io/example/backup-tool:1.0.0'), { prs: [9300], views: [cjView] });
+  ok(m1d.rec(9300).verdict === 'failed' && m1d.rec(9300).failing[0].class === 'wrong-image', 'M5: a CronJob template naming another version does not pass', m1d.rec(9300).why);
+  const wj = cjWorld([]); wj.fail = { jobs: true };
+  ok((await tick(wj, { prs: [9300], views: [cjView] })).rec(9300).verdict === 'cannot-tell', 'M1: Jobs unreadable is cannot tell');
+  // M2: two reads must be at least min_stable_seconds apart
+  const a = await tick(world(), { prs: [4869] }), b = await tick(world(), { prs: [4869], now: T1 + 1000, prev: a.memory, doc: a.doc });
+  ok(b.rec(4869).verdict === 'not-yet' && /recorded at .*, 1 s ago; they are read again at least 600 s after that/.test(factOf(b.rec(4869), 'stable').detail), 'M2: two reads a second apart are not yet, saying how long ago the pods were recorded', factOf(b.rec(4869), 'stable').detail);
+  const same = await tick(world(), { prs: [4869], now: T1, prev: a.memory, doc: a.doc });
+  ok(same.rec(4869).verdict === 'not-yet' && factOf(same.rec(4869), 'stable').result === 'waiting', 'M5: no stability within the same tick');
+  // M3: attribution by container, nodes, Prometheus restarts
+  const side = w => { for (const p of podsIn(w, 'ai', 'piper-')) { p.spec.containers.push({ name: 'exporter', image: 'ghcr.io/example/exporter:1' }); p.status.containerStatuses.push({ name: 'exporter', ready: true, restartCount: 0, state: { running: {} } }); } };
+  const wc = world(); side(wc); podsIn(wc, 'ai', 'piper-')[0].status.containerStatuses[1].state = { waiting: { reason: 'CrashLoopBackOff' } };
+  const rc = await tick(wc, { prs: [4870] });
+  ok(rc.rec(4870).verdict === 'cannot-tell' && /container exporter is CrashLoopBackOff.*not one of the update's containers/.test(factOf(rc.rec(4870), 'pods').detail), 'M3: a crash loop of another container in the pod is cannot tell, named', rc.rec(4870).why);
+  const wr = world(); side(wr); const wr2 = structuredClone(wr); podsIn(wr2, 'ai', 'piper-')[0].status.containerStatuses[1].restartCount = 2;
+  const rr = (await twice(wr, { prs: [4870] }, wr2)).b;
+  ok(rr.rec(4870).verdict === 'cannot-tell' && /container exporter restarted: 0 at .*, 2 now \(not one of the update's containers/.test(factOf(rr.rec(4870), 'stable').detail), 'M3: a restart of another container is cannot tell, named', rr.rec(4870).why);
+  const wk = world(); placePods(wk, 'ai', 'piper-', 'talosw09'); wk.nodes = { items: [{ metadata: { name: 'talosw09' }, status: { conditions: [{ type: 'Ready', status: 'Unknown' }] } }] };
+  const wk2 = structuredClone(wk); { const p = podsIn(wk2, 'ai', 'piper-')[0]; p.status.conditions = [{ type: 'Ready', status: 'False' }]; p.status.containerStatuses[0].ready = false; }
+  const rk = (await twice(wk, { prs: [4870] }, wk2)).b;
+  ok(rk.rec(4870).verdict === 'cannot-tell' && /its node talosw09 is not Ready: cannot tell/.test(factOf(rk.rec(4870), 'stable').detail), 'M3: a recorded pod not Ready on a node that is not Ready is cannot tell', rk.rec(4870).why);
+  const restartAlert = w => w.alerts.data.alerts.push({ labels: { alertname: 'OOMKilled', severity: 'critical', namespace: 'media', pod: seerrPod }, state: 'firing', activeAt: '2026-11-13T10:00:30Z' });
+  const wpr = world(); wpr.promStart = '2026-11-13T10:00:00Z'; restartAlert(wpr);
+  const rpr = await tick(wpr, { prs: [4869] });
+  ok(rpr.rec(4869).verdict === 'cannot-tell' && /within 300 s of Prometheus's start at 2026-11-13T10:00:00\.000Z, after the merge: cannot tell it from the restart/.test(factOf(rpr.rec(4869), 'alerts').detail), 'M3: an alert that starts 30 s after a Prometheus restart is cannot tell, not new', factOf(rpr.rec(4869), 'alerts').detail);
+  const wps = world(); wps.promStart = null; restartAlert(wps);
+  ok((await tick(wps, { prs: [4869] })).rec(4869).verdict === 'cannot-tell', 'M3: with Prometheus\'s start unreadable a new alert is cannot tell');
+  // M4: a Pending pod is cannot tell with the scheduler's reason
+  const wpe = world(); { const p = podsIn(wpe, 'media', 'seerr-')[0]; p.status.phase = 'Pending'; p.status.conditions = [{ type: 'PodScheduled', status: 'False', reason: 'Unschedulable', message: '0/9 nodes are available: insufficient memory' }]; }
+  const rpe = await tick(wpe, { prs: [4869] });
+  ok(rpe.rec(4869).verdict === 'cannot-tell' && /Pending: Unschedulable: 0\/9 nodes are available/.test(factOf(rpe.rec(4869), 'pods').detail), 'M4: a Pending pod is cannot tell with the scheduler\'s reason', rpe.rec(4869).why);
+  const wcc = world(); podsIn(wcc, 'media', 'seerr-')[0].status.containerStatuses[0].state = { waiting: { reason: 'CreateContainerConfigError' } };
+  const rcc = await tick(wcc, { prs: [4869] });
+  ok(rcc.rec(4869).verdict === 'not-yet' && /CreateContainerConfigError.*since .*fails if it still holds 600 s after that/.test(factOf(rcc.rec(4869), 'pods').detail), 'M4: a start error on the first read is not yet, saying since when', rcc.rec(4869).why);
+  // M5: crash loops in init containers are read
+  const wi = world(); { const p = podsIn(wi, 'ai', 'piper-')[0]; p.spec.initContainers = [{ name: 'fetch-voices', image: 'ghcr.io/example/fetch:1' }]; p.status.initContainerStatuses = [{ name: 'fetch-voices', ready: false, restartCount: 3, state: { waiting: { reason: 'CrashLoopBackOff' } } }]; }
+  const ri = await tick(wi, { prs: [4870] });
+  ok(ri.rec(4870).verdict === 'cannot-tell' && /init container fetch-voices is CrashLoopBackOff/.test(factOf(ri.rec(4870), 'pods').detail), 'M5: a crash loop in an init container is read (another container: cannot tell)', ri.rec(4870).why);
+  // M5: stability is not read when the image fails
+  const wf = world(); const wf2 = structuredClone(wf); for (const p of podsIn(wf2, 'media', 'seerr-')) p.spec.containers[0].image = 'ghcr.io/seerr-team/seerr:v3.5.1';
+  const rf = (await twice(wf, { prs: [4869] }, wf2)).b;
+  ok(rf.rec(4869).verdict === 'failed' && factOf(rf.rec(4869), 'stable').result === 'waiting' && /read once the image, the rollout and the pods pass/.test(factOf(rf.rec(4869), 'stable').detail), 'M5: stability is not read when the image fails', factOf(rf.rec(4869), 'stable').detail);
+  // L5: an image used only in an init container is found; a native sidecar's restarts count
+  const wl5 = world(); { const p = podsIn(wl5, 'ai', 'piper-')[0]; p.spec.initContainers = [{ name: 'piper-init', image: 'rhasspy/wyoming-piper:2.5.3', restartPolicy: 'Always' }]; p.status.initContainerStatuses = [{ name: 'piper-init', ready: true, restartCount: 0, imageID: 'x', state: { running: {} } }]; p.spec.containers[0].image = 'ghcr.io/example/other:1'; }
+  const wl52 = structuredClone(wl5); podsIn(wl52, 'ai', 'piper-')[0].status.initContainerStatuses[0].restartCount = 1;
+  const l5a = (await twice(wl5, { prs: [4870] })).b;
+  ok(l5a.rec(4870).verdict === 'verified' && /1 container\(s\) in ai\/piper run rhasspy\/wyoming-piper 2\.5\.3/.test(factOf(l5a.rec(4870), 'image').detail), 'L5: an image used only in an init container (a native sidecar) is found', factOf(l5a.rec(4870), 'image').detail);
+  const l5b = (await twice(wl5, { prs: [4870] }, wl52)).b;
+  ok(l5b.rec(4870).failing?.[0]?.class === 'restart-growth' && /container piper-init restarted/.test(factOf(l5b.rec(4870), 'stable').detail), 'L5: a native sidecar of the update that restarts fails as restart growth', l5b.rec(4870).why);
+  ok(V.nextCron('*/15 1-5 * * *', 'America/New_York', Date.parse('2026-11-13T10:50:00Z')) === '2026-11-14T06:00:00.000Z' && V.nextCron('bad', 'UTC', 0) === null, 'nextCron: the lane\'s own schedule; an expression it cannot read is null');
+}
+
+// ── 10. the image and version readers ──────────────────────────────────────────────────
 {
   const p = V.parseImage('docker.io/library/traefik:v3.7.18@sha256:' + 'a'.repeat(64));
   ok(p.repo === 'traefik' && p.tag === 'v3.7.18' && p.digest === `sha256:${'a'.repeat(64)}`, 'parseImage: docker.io/library dropped, tag and digest read');
   ok(V.parseImage('registry.example:5000/x/y').tag === null && V.parseImage('registry.example:5000/x/y').repo === 'registry.example:5000/x/y', 'parseImage: a registry port is not a tag');
   ok(V.normRepo('rhasspy/wyoming-piper') === V.parseImage('docker.io/rhasspy/wyoming-piper:2.5.3').repo, 'normRepo: a Docker Hub short name matches its docker.io form');
-  ok(V.versionMatches({ tag: 'v3.5.2' }, 'v3.5.2') === true && V.versionMatches({ tag: '3.5.2' }, 'v3.5.2') === true && V.versionMatches({ tag: '3.5.1' }, '3.5.2') === false, 'versionMatches: tags, a leading v ignored');
-  ok(V.versionMatches({ tag: '0.2.0', digest: `sha256:${'d4'.repeat(32)}` }, 'd4d4d4d') === true && V.versionMatches({ tag: '0.2.0', image_id: `x@sha256:${'e5'.repeat(32)}` }, 'd4d4d4d') === false && V.versionMatches({ tag: '0.2.0' }, 'd4d4d4d') === null, 'versionMatches: a digest update compares the digest; none to read is cannot tell');
+  ok(V.versionMatches({ tag: 'v3.5.2' }, 'v3.5.2', 'tag') === true && V.versionMatches({ tag: '3.5.2' }, 'v3.5.2', 'tag') === true && V.versionMatches({ tag: '3.5.1' }, '3.5.2', 'tag') === false, 'versionMatches: tags, a leading v ignored');
+  ok(V.versionMatches({ tag: '0.2.0', digest: `sha256:${'d4'.repeat(32)}` }, 'd4d4d4d', 'digest') === true && V.versionMatches({ tag: '0.2.0', image_id: `x@sha256:${'e5'.repeat(32)}` }, 'd4d4d4d', 'digest') === false && V.versionMatches({ tag: '0.2.0' }, 'd4d4d4d', 'digest') === null, 'versionMatches: a digest update compares the digest; none to read is cannot tell');
+  ok(V.versionMatches({ tag: '9014532', digest: null }, '9014532', 'digest') === null && V.versionMatches({ tag: '1.0.0' }, '9014532', 'either') === null && V.versionMatches({ tag: '1.0.0' }, 'v1.0.0', 'either') === true, 'versionMatches: a digest update never matches by tag; an unknown type matches by either reading');
   ok(V.versionMatches({ tag: null }, '1.0.0') === null && V.versionMatches({ tag: '1.0.0' }, null) === null, 'versionMatches: no tag or no version is cannot tell');
   ok(V.inventoryOf({ status: {} }) === null && V.inventoryOf({ status: { inventory: { entries: [{ id: 'media_seerr_apps_Deployment' }, { id: '_x_rbac.authorization.k8s.io_ClusterRole' }] } } }).map(e => `${e.ns}/${e.name}/${e.group}/${e.kind}`).join() === 'media/seerr/apps/Deployment,/x/rbac.authorization.k8s.io/ClusterRole', 'inventoryOf: Flux ids, cluster-scoped ones too');
   ok(V.buildOf(null, 'x') === null && V.buildOf([], 'x').state === 'none' && V.buildOf([{ path: 'x', status: 'completed', conclusion: 'success', created_at: '1', updated_at: '2026-01-01T00:00:00Z' }], 'x').state === 'success', 'buildOf: the build run for a commit');

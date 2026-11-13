@@ -1536,6 +1536,12 @@ builds the read-only verifier: acceptance lines 1 to 3. The revert, the drill an
 this version again" are story 753; the app health check through Gatus is story 755. The code
 is `night-verify.mjs`, and the settings are `night.verify` in `upgrade-rules.json`.
 
+**The principle** (the review of PR 4880): "failed, the update's own regression" needs
+positive evidence that the update did it. Where the evidence is only absence, or points
+elsewhere, the verdict is `not-yet` or `cannot-tell`. It is shown every morning with what it
+waits for and since when, and it is never silently open for ever: once it stays open on
+`needs_person_after_nights` (2) of the lane's nights it reads `NEEDS A PERSON`.
+
 **When it runs.** Once per tick, after the merge step and before the history, inside a
 guarded step: a verifier that fails or does not load is an ERROR line and
 `summary.verify.error`, and the rest of the tick runs. Under pause the tick stops before it.
@@ -1550,34 +1556,44 @@ or `awaiting_pin`:
   `data.verify.since`; a lost memory reads it again. The 30-day backfill is older, so it is
   never practised on. If the install time cannot be read, nothing is practised that tick.
 
+**The update's containers.** A crash, a restart or a container error is charged to the update
+only in the update's containers: those whose image is a package of the update (init
+containers and native sidecars included), or, for a chart update, every container of the
+workloads its HelmRelease renders. The same in another container is `cannot-tell`, and the
+container is named.
+
 ### The facts
 
 Each fact has its own result: `pass`, `fail`, `waiting`, `unreadable` or `not-applicable`.
+"Two reads" means the same condition on two reads at least `min_stable_seconds` (600) apart
+on the tick's own clock; on the first read the fact waits and says since when.
 
 | Fact | What is read | Fails when | Unreadable when |
 |---|---|---|---|
 | `source` | GitRepository `flux-system/haynes-ops` `status.artifact.revision` contains the merge commit (position on main from the tick's one commit-range read, else a GitHub compare) | (waits) | the revision or the compare cannot be read |
-| `applied` | the target's own Kustomizations (`settleScope`: the Kustomizations whose `spec.path` is the target or below) have a `lastAppliedRevision` that contains the merge and are settled; the `dependsOn` chain and the Kustomizations that apply the target are settled (`fluxStates`, story 551) | `not-applied`: attempted the merge and failing; `not-ready`: applied it and failing | no Kustomization applies the target; one is suspended; it waits on a failing dependency; a chain Kustomization or an applier is failing (that cannot be charged to the update) |
-| `helmreleases` | the HelmReleases in those Kustomizations' inventories (and with their Flux labels) are settled and their last release is `deployed` | `not-ready`: failing, or the last release failed | a HelmRelease is missing or suspended |
-| `pods` | the containers of the target's workloads' pods made at or after the merge | `crash-loop` (CrashLoopBackOff) or `image-pull` (ErrImagePull, ImagePullBackOff, InvalidImageName) | pods unreadable |
-| `alerts` | Prometheus `/api/v1/alerts`, critical and firing, traced by R5's `alertSubject`; new means `activeAt` at or after the merge | `critical-alert`: a new alert whose subject belongs to the target or its chain | Prometheus unreadable; a new alert in a target namespace that cannot be traced, or names no workload; for a cluster-wide target, a new alert with no namespace |
-| `image` | each package of the update: the containers whose image is the package run the new tag (or digest: the spec digest or the `imageID`); else a CronJob template names it; else a HelmRelease whose last release is that chart (`status.history[0].chartName`, `chartVersion`) | `wrong-image`: the old version, with nothing rolling; a HelmRelease settled on another chart while its chart source is settled too | no container, CronJob or chart of the target is the package; a version cannot be read |
-| `rollout` | each Deployment, StatefulSet and DaemonSet in the Kustomization and HelmRelease inventories: its pods (by owner: the ReplicaSet `<name>-<pod-template-hash>`, or the StatefulSet or DaemonSet) are of one template, none terminating, all Ready | (waits) | a workload has no running pod |
-| `stable` | two ticks (below) | `restart-growth`; `not-ready` (a recorded pod is not Ready now) | pods unreadable |
-| `pin` | own images only (below) | `not-applied` (the build failed); `pin-timeout` | the build run, or the pin's item, cannot be read |
+| `applied` | the target's own Kustomizations (`settleScope`: those whose `spec.path` is the target or below) have a `lastAppliedRevision` that contains the merge and are settled; the `dependsOn` chain and the Kustomizations that apply the target are settled (`fluxStates`, story 551) | `not-applied`: attempted the merge and failing; `not-ready`: applied it and failing | no Kustomization applies the target; one is suspended; it waits on a failing dependency; a chain Kustomization or an applier is failing (not charged to the update) |
+| `helmreleases` | the HelmReleases in those inventories (and with their Flux labels) are settled and their last release is `deployed` | `not-applied`: failing, or its last release failed, on two reads | a HelmRelease is missing or suspended |
+| `pods` | in pods made at or after the merge, the update's containers (init containers included) | `crash-loop`; `image-pull`; `not-ready`: CreateContainerConfigError, CreateContainerError or RunContainerError on two reads | pods unreadable; the same in another container; a Pending pod (with the scheduler's reason) |
+| `alerts` | Prometheus `/api/v1/alerts`, critical and firing, traced by R5's `alertSubject`; new means `activeAt` at or after the merge; Prometheus's start from `/api/v1/status/runtimeinfo` | `critical-alert`: a new alert whose subject belongs to the target or its chain | Prometheus or its start unreadable; a new alert within `prometheus_restart_slack_seconds` (300) of a Prometheus restart after the merge (a rule with no `for:` restarts its clock); a new alert in a target namespace that cannot be traced, or names no workload; for a cluster-wide target, a new alert with no namespace |
+| `image` | each package: the update's containers run the new version (digest or tag decided by the update type the history recorded, never by the characters); else a CronJob template names it; else the HelmRelease whose last release is that chart | `wrong-image`: the old version with nothing rolling; a CronJob template naming another version; a HelmRelease settled on another chart while its chart source is settled; `not-applied`: the chart source failing on two reads | no container, CronJob or chart of the target is the package; a version cannot be read |
+| `exercised` | a CronJob whose template names the update: the newest Job from the new template made since the merge | `job-failed`: that Job failed | Jobs unreadable; none yet waits for the CronJob's first run, with its schedule, last run and next run |
+| `rollout` | each Deployment, StatefulSet and DaemonSet in the inventories: its pods (by owner) are of one template, none terminating, all Ready | (waits) | a workload has no running pod |
+| `stable` | two reads (below) | `restart-growth` or `not-ready` of an update's container; `churn` | pods or nodes unreadable; the same in another container; a pod on a node that is not Ready |
+| `pin` | own images only (below) | `not-applied`: the build failed or was cancelled, or an open pin PR's checks fail | the build run, or when the pin was made, cannot be read |
 
 `workloads` appears as an extra unreadable fact when an inventory cannot be read. Facts
-are read in order: until `source` passes, the rest wait; `image`, `rollout` and `stable` wait
-until `applied` passes and the HelmReleases are settled.
+are read in order: until `source` passes, the rest wait; `image`, `exercised`, `rollout` and
+`stable` wait until `applied` passes and the HelmReleases are settled.
 
-**Stability without a timer.** On the first tick on which the image, the rollout and the pods
-pass, the verifier records the pods of the target's workloads (uid, name, restarts) in its
-memory, and `stable` waits. On any later tick it reads them again: the same pods still there,
-still Ready, with no higher restart count, is a pass. A higher count fails `restart-growth`; a
-recorded pod not Ready now fails `not-ready`, even while something else rolls. A recorded pod
-that was replaced starts the record again once the rollout is complete. The earliest pass is
-therefore the tick after the rollout was seen complete, 15 minutes later in the window, and
-no wait or clock decides it. The story's "10-minute soak" is this second read.
+**Stability: two reads at least 600 seconds apart.** On the first tick on which the image,
+the rollout and the pods pass, the verifier records the target's pods (uid, node, restarts per
+container) in its memory, and `stable` waits. A later tick reads them again once at least
+`min_stable_seconds` have passed on its own clock: the same pods still there and Ready, with no
+more restarts of the update's containers, is a pass. Earlier, the verdict is not yet and says
+how long ago the pods were recorded. This minimum is the lane's own measurement of the target
+(the story's 10-minute soak), not a wait on another actor. A recorded pod that was replaced
+starts the record again once the rollout is complete, and the replacements are counted per
+workload: at `max_replacements` (3) the update's workload fails as `churn`.
 
 **The verdict.** `failed` when any fact fails; else `cannot-tell` when any is unreadable;
 else `not-yet` (with what it waits for); else `verified`. An unreadable fact never yields a
@@ -1586,31 +1602,44 @@ nothing in the cluster to verify: its facts are `not-applicable` and it is verif
 
 **Other changes** (Tom's ruling Q-548-04). Every verdict lists the other commits on main after
 the merge that reach the target, its chain or a cluster-wide part (`otherChanges`, story 551),
-with the parts each reaches and whether Flux has fetched it, or says there were none. A
-passing verdict stands whatever else merged. A failing verdict with such a change, or with
-the list unreadable, is `cannot-tell-which-change`; with none it is `own-regression`. The
-tick reads the commits once, from the oldest merge it judges to main (at most
-`max_range_commits`, 60; an older merge then lists its other changes as unreadable).
+with the parts each reaches and whether Flux has fetched it. It also lists the earlier merges
+to the same scope whose own verdict is not final yet: of two merges to one app a minute apart,
+the later one's failure is not charged to it alone. An earlier one whose files are unknown
+makes the list incomplete. A passing verdict stands whatever else merged. A failing verdict
+with such a change, or with the list incomplete, is `cannot-tell-which-change`; with none it is
+`own-regression`. The tick reads the commits once, from the oldest merge it judges to main (at
+most `max_range_commits`, 60).
 
 **Own images.** A source merge of an image whose digest pin Renovate auto-merges
-(`own_image_pin_wait`) is verified through its pin: the first later commit on main that
-changes one of the image's `pins` files, verified on its own target with the digest from the
-pin's item in the history. Until then it is not yet, awaiting the pin, and the wait ends on
-facts, not on a clock: the image build for the merge (`gh api …/actions/runs?head_sha=`)
-failed (`not-applied`), or main had `pin_wait_pushes` (3) pushes after the build finished and
-none was the pin (`pin-timeout`). Renovate's runs follow pushes to main, so three pushes with
-no pin means the pin did not come.
+(`own_image_pin_wait`) is verified through its pin. The pin is identified by what it pins: a
+merged history item whose package is this image, made after this source's build finished (the
+last commit of its PR), whose commit on main changes one of the image's `pins` files. Another
+PR that edits those files (the shepherd's own changes), a pin of another image, or a pin made
+before this build is not the pin, and the morning view names it. The pin is then verified on
+its own target with its digest. The absence of a pin is never a failure:
+
+- the image build for the merge (`gh api …/actions/runs?head_sha=`) failed or was cancelled:
+  failed (`not-applied`);
+- an open pin PR for the image whose checks fail (from the tick's own records): failed, with
+  the reason;
+- otherwise not yet, "awaiting the digest pin since the build finished at …", every morning,
+  and `NEEDS A PERSON` on the second of the lane's nights.
 
 ### What it writes
 
-- **Practice verdicts** go to `upgrade-lane-state` only, in the tick's one server-side apply:
-  `data.verify` (its memory: `since`, the records, the `done` list) and `data.verify_table`
-  (the morning view), and `summary.verify` (the counts and the verdicts by PR). A practice
-  verdict never writes the history, never opens a pull request, never reverts, and changes no
-  merge verdict, no lock, no PR record and nothing else in the state write. Each record shows
-  the events it would write (`would_write`), checked against the item with the format's
-  `applyEvent`. A practice verdict that is verified or failed is final: kept, and not judged
-  again.
+- **Practice verdicts** go to `upgrade-lane-state` only: `data.verify` (its memory: `since`,
+  the records, the `done` list) and `data.verify_table` (the morning view), under their own
+  field manager `upgrade-night-verify`, written at the end of the tick, after the PR-write
+  phase and the tick's own apply. So the tick's apply and its error record never delete them,
+  and the retry ledger's version check sees no write before the PR writes. `summary.verify`
+  has the counts and the verdicts by PR. A practice verdict never writes the history, never
+  opens a pull request, never reverts, and changes no merge verdict, no lock, no PR record and
+  none of the tick's own keys. Each record shows the events it would write (`would_write`),
+  checked against the item with the format's `applyEvent`. A practice verdict that is verified
+  or failed is final: kept, and not judged again.
+- **The memory is kept** when the verifier fails, when it cannot read `upgrade-lane-state` or
+  the history, and when its time budget runs out: then it writes nothing. A tick that cannot
+  list the practice candidates (no install time) drops no open record.
 - **The lane's own merges** get history events only with
   `night.verify.write_history_events: true` (git ships `false`): `verified`;
   `verification-failed` with the failing fact's class (its own regression: `failed`, a revert
@@ -1619,40 +1648,62 @@ no pin means the pin did not come.
   verifier event on an item whose current attempt the lane did not make.
 
 **Budget.** Per tick at most `max_items_per_tick` (12) updates, the least recently judged
-first; no new update once the tick has run `time_budget_seconds` (150; the Job's deadline is
-600). `data.verify` keeps at most `max_items_kept` (60) records within `max_state_bytes`
-(128 KiB). Final records go first; an open record keeps its recorded pods (only its details
-are cut), then the oldest `done` entries go, and an open record is dropped only last
-(`summary.verify.trimmed_open`). Measured on 2026-11-13 from a session pod: five merges, 22 reads, 5.8 s (16 s on a
-cold first run). With no history yet, 2 reads in 0.4 s.
+first. No read starts once the tick has run `time_budget_seconds` (150; the Job's deadline is
+600): the check runs before each shared read (the install time, the history, the Flux
+objects, each try of the commit-range read, the alerts) and before each update; when it is
+used, the verifier does nothing more that tick, says so in `summary.verify.why_not` or
+`stopped`, keeps its memory, and the tick goes on. `data.verify` keeps at most
+`max_items_kept` (60) records within `max_state_bytes` (128 KiB): final records go first; an
+open record keeps its recorded pods (only its details are cut), then the oldest `done` entries
+go, and an open record is dropped only last (`summary.verify.trimmed_open`).
+
+**Reads of a steady-state tick** (practice items present, install time kept):
+- kubectl: the history (1), and, when no lane-A candidate already read them, Kustomizations,
+  HelmReleases and the GitRepository (3); per target namespace pods, CronJobs and Jobs (3,
+  shared with the tick's cache); nodes only when a recorded pod is not Ready; a chart source
+  only when a HelmRelease is settled on another chart;
+- GitHub: one compare plus one read per commit on main since the oldest open merge (at most
+  60), one read of the oldest merge's files, and per own-image source one build-run read and
+  one read per pin candidate;
+- Prometheus: `/api/v1/alerts` and `/api/v1/status/runtimeinfo`.
+
+  Measured on 2026-11-13 from a session pod, last night's five merges: 24 reads (12 GitHub, 12
+  kubectl), 15.6 s on the first run and 6.8 s and 14.4 s on the next two (GitHub's latency
+  varies). Not measured inside the cluster.
 
 ### Reading it
 
 ```bash
 kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.verify_table}'; echo
 kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.summary}' | jq .verify
-kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.verify}' | jq '.items[] | {pr, verdict, attribution, why, facts: [.facts[] | "\(.fact): \(.result)"], other: .other_changes.changes}'
+kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.verify}' | jq '.items[] | {pr, verdict, attribution, needs_person, verdict_since, nights, why, facts: [.facts[]? | "\(.fact): \(.result)"], other: .other_changes.changes}'
 ```
 
+Each open verdict in `data.verify_table` has an `open:` line: since when, on how many ticks
+and nights, the pods' replacements and when the pods were recorded.
+
 Log line of each tick: `upgrade-night dryrun: verifier: 5 judged (verified #…; not-yet #…);
-since …; history read at resourceVersion …; 0 event(s) for the history, 5 practice event(s)
-not written; 22 reads; 5841 ms`.
+NEEDS A PERSON #…; since …; history read at resourceVersion …; 0 event(s) for the history, 5
+practice event(s) not written; 24 reads (12 GitHub); … ms`.
 
 **By hand, read-only, for named merged PRs** (it builds each item as the history would and
 keeps its two-tick memory in a local file; a session pod cannot reach Prometheus, so pass the
-critical alerts read through Grafana in the shape of `/api/v1/alerts`):
+critical alerts read through Grafana in the shape of `/api/v1/alerts`, with
+`prometheus_start`):
 
 ```bash
 node kubernetes/main/apps/upgrade-agent/shepherd/app/resources/night-verify.mjs \
   --pr 4869 --pr 4874 --state /tmp/verify-state.json --alerts-file /tmp/alerts.json
 ```
 
-On 2026-11-13 at 13:01Z the first run judged #4871 (a GitHub Action, no cluster effect)
-verified and recorded the pods of #4869 (seerr), #4870 (piper), #4873 (traefik-external,
-chart 42.4.0, merged by the shepherd) and #4874 (cloudflared); the second run 54 seconds
-later verified all four. #4874 listed one other change, #4873 on its chain
-(`network/traefik-external`); the others listed none. The selftest's fixture is that night,
-captured read-only (`scripts/upgrade-agent/fixtures/verify-20261113.json`).
+On 2026-11-13 three runs judged last night's merges. At 14:20:52Z #4871 (a GitHub Action, no
+cluster effect) was verified and the pods of #4869 (seerr), #4870 (piper), #4873
+(traefik-external, chart 42.4.0, merged by the shepherd) and #4874 (cloudflared) were
+recorded. At 14:26:13Z all four were still not yet: "recorded 322 s ago; read again at least
+600 s after that". At 14:31:04Z, 612 s after the record, all four were verified. #4874 listed
+one other change, #4873 on its chain (`network/traefik-external`); the others listed none. The
+selftest's fixture is that night, captured read-only
+(`scripts/upgrade-agent/fixtures/verify-20261113.json`).
 
 ### What pods alone cannot tell (story 755)
 
@@ -1673,14 +1724,16 @@ The missing rule: `apiGroups: ["apps"]`, `resources: ["deployments", "statefulse
 
 - The scope is the lane's: the target is the app directory (`kubernetes/main/apps/<ns>/<app>`),
   so #4873's target holds both traefik Kustomizations, and #4870's every wyoming app.
+- A merge more than `max_range_commits` (60) commits back loses its other changes and its pin
+  lookup: both read `unreadable`, and the record says why (L2 of the review, not changed).
+- Without get and list on deployments, statefulsets, daemonsets and replicasets, a controller
+  that has not yet created all its replicas looks finished (story 755).
 - A package the target names only outside a container image, a CronJob template or a chart
   (a CRD URL, a kustomize remote resource) is `cannot-tell`.
 - An update that changes no pod (a chart bump that renders the same pods) passes on the pods
   it finds: pods alone cannot show that a template did not need to change.
-- A practice verdict that never ends (a target that stays unreadable) is judged on every tick
-  while the history holds the item in `merged_unverified`, within the per-tick cap.
-- A tick whose state write fails writes the error record, which leaves out `data.verify`: the
-  next tick reads the install time again from git and judges the open items again.
+- `NEEDS A PERSON` is a mark in `upgrade-lane-state`, not a history event and not a page;
+  story 554 decides how it reaches a person.
 - Pause stops the tick before the verifier, and the verifier does not release the
   post-merge hold of the change lock (stories 753 and 556).
 

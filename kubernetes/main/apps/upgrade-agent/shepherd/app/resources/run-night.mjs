@@ -40,7 +40,8 @@
 // callMerge() throws unless its mode is live, and laneMergeStep() calls it only in live
 // mode. Every read goes through runReadOnly() (gh pr list/view, gh api GET, kubectl get).
 // The cluster writes are writeLaneState() here (server-side apply of ConfigMap
-// upgrade-agent/upgrade-lane-state; data.retry_ledger under its own field manager) and,
+// upgrade-agent/upgrade-lane-state; data.retry_ledger and, story 553, data.verify under their
+// own field managers) and,
 // in night-merge.mjs, the take and release of ConfigMap upgrade-agent/upgrade-change-lock
 // (create, or replace at a resourceVersion). Since story 549 the GitHub writes, in both
 // modes, are the lane's own record comment on each open Renovate PR and Renovate's retry
@@ -558,7 +559,7 @@ async function tick() {
   try {
     V = await import('./night-verify.mjs');
     ver = await V.verifyPhase({ rules, run, repo: REPO, now, clock, startedAt: now, prevText: stateCm?.data?.verify ?? null, prevUnreadable: !cms,
-      deps: { alertSubject, nsFacts, prom: PROM, ...(cf.ks ? { ks: cf.ks } : {}), ...(cf.hr ? { hr: cf.hr } : {}), ...(settleFacts && settleFacts.source !== undefined ? { source: settleFacts.source } : {}) } });
+      deps: { alertSubject, nsFacts, prom: PROM, records, ...(cf.ks ? { ks: cf.ks } : {}), ...(cf.hr ? { hr: cf.hr } : {}), ...(settleFacts && settleFacts.source !== undefined ? { source: settleFacts.source } : {}) } });
   } catch (e) { ver = { summary: { error: `${V ? '' : 'night-verify.mjs did not load: '}${String(e.message).slice(0, 300)}` }, memory: null, table: null, events: [] }; }
   summary.verify = ver.summary;
   log(`${ver.summary.error ? 'ERROR ' : ''}upgrade-night ${MODE}: verifier: ${V && !ver.summary.error ? V.verifyLine(ver.summary) : `FAILED: ${ver.summary.error}`}`);
@@ -706,9 +707,12 @@ async function tick() {
   if (!WRITE_STATE) { log('state not written (no --write-state); this was a local run'); return 0; }
   // the ledger first (its own field manager), then the tick's state
   if (ledger && JSON.stringify(ledger) !== ledgerBefore) summary.retry.ledger_written = persistLedger(ledger);
-  // story 553: the verifier's memory and its morning view; the last ones kept when it failed
-  const verify = ver.memory ?? stateCm?.data?.verify, verifyTable = ver.memory ? ver.table : stateCm?.data?.verify_table;
-  const ok = writeLaneState(stateManifest({ mode: MODE, updated: summary.at, summary: JSON.stringify(summary), table, records: JSON.stringify(records), ...(verify ? { verify } : {}), ...(verifyTable ? { verify_table: verifyTable } : {}) })).ok;
+  const ok = writeLaneState(stateManifest({ mode: MODE, updated: summary.at, summary: JSON.stringify(summary), table, records: JSON.stringify(records) })).ok;
+  // story 553 (L3 of the review of PR 4880): the verifier's memory and morning view, under
+  // their own field manager, last: after the PR-write phase (the retry ledger's version check
+  // sees no write before it) and after the tick's own keys. The tick's apply and its error
+  // record never touch them; a verifier that failed, or kept its memory, writes nothing.
+  if (ver.memory && !ver.summary.error) writeLaneState(verifyManifest(ver.memory, ver.table), VERIFY_MANAGER);
   return ok ? 0 : 2;
 }
 
@@ -717,6 +721,10 @@ const stateManifest = data => ({ apiVersion: 'v1', kind: 'ConfigMap', metadata: 
 // tick's apply (which owns every other key it writes, and drops what it leaves out, as the
 // error record does) never removes it.
 const LEDGER_MANAGER = 'upgrade-night-ledger';
+// story 553: data.verify and data.verify_table under their own field manager, like the ledger
+const VERIFY_MANAGER = 'upgrade-night-verify';
+const VERIFY_KEYS = Object.freeze(['verify', 'verify,verify_table']);
+const verifyManifest = (memory, table) => ({ apiVersion: 'v1', kind: 'ConfigMap', metadata: { ...STATE }, data: { verify: memory, ...(table ? { verify_table: table } : {}) } });
 // rv = the resourceVersion of the last read or write of the ConfigMap: a precondition, so a
 // writer that overlapped since makes this write fail (F8).
 const ledgerManifest = (l, rv) => ({ apiVersion: 'v1', kind: 'ConfigMap', metadata: { ...STATE, ...(rv ? { resourceVersion: String(rv) } : {}) }, data: { retry_ledger: JSON.stringify(l) } });
@@ -724,20 +732,22 @@ const ledgerManifest = (l, rv) => ({ apiVersion: 'v1', kind: 'ConfigMap', metada
 // THE ONLY CLUSTER WRITE: one ConfigMap, fixed name and namespace, runtime state like
 // upgrade-orphan-report (not Flux-managed). Server-side apply: no last-applied
 // annotation (256 KiB cap), and keys other managers set (data.pause) are kept. Field
-// manager upgrade-night for the tick's keys; upgrade-night-ledger for data.retry_ledger only.
+// manager upgrade-night for the tick's keys; upgrade-night-ledger for data.retry_ledger only;
+// upgrade-night-verify for data.verify and data.verify_table only (story 553).
 function writeLaneState(manifest, manager = 'upgrade-night') {
   const m = manifest.metadata || {};
   if (manifest.kind !== 'ConfigMap' || m.name !== STATE.name || m.namespace !== STATE.namespace || Object.keys(manifest).some(k => !['apiVersion', 'kind', 'metadata', 'data'].includes(k))
-    || !['upgrade-night', LEDGER_MANAGER].includes(manager) || ((manager === LEDGER_MANAGER) !== (Object.keys(manifest.data || {}).join() === 'retry_ledger'))) {
-    throw new Error('writeLaneState: refused (only ConfigMap upgrade-agent/upgrade-lane-state may be written, and data.retry_ledger only by its own field manager)');
+    || !['upgrade-night', LEDGER_MANAGER, VERIFY_MANAGER].includes(manager) || ((manager === LEDGER_MANAGER) !== (Object.keys(manifest.data || {}).join() === 'retry_ledger'))
+    || ((manager === VERIFY_MANAGER) !== VERIFY_KEYS.includes(Object.keys(manifest.data || {}).sort().join())) || (manager !== VERIFY_MANAGER && Object.keys(manifest.data || {}).some(k => /^verify/.test(k)))) {
+    throw new Error('writeLaneState: refused (only ConfigMap upgrade-agent/upgrade-lane-state may be written, and data.retry_ledger and data.verify only by their own field managers)');
   }
   const body = JSON.stringify(manifest);
   if (Buffer.byteLength(body) > MAX_STATE_BYTES) throw new Error(`state is ${Buffer.byteLength(body)} bytes, over the ${MAX_STATE_BYTES}-byte budget for one ConfigMap`);
   const r = spawnSync('kubectl', ['apply', '--server-side', `--field-manager=${manager}`, '--force-conflicts', '-o', 'json', '-f', '-'], { input: body, encoding: 'utf8', env: childEnv, maxBuffer: 64 * 1024 * 1024 });
-  if (r.status !== 0) { log(`ERROR upgrade-night: STATE WRITE FAILED for ${STATE.namespace}/${STATE.name}${manager === LEDGER_MANAGER ? ' (data.retry_ledger)' : ''} (kubectl exit ${r.status}): ${String(r.stderr).slice(0, 300)}`); return { ok: false, rv: null }; }
+  if (r.status !== 0) { log(`ERROR upgrade-night: STATE WRITE FAILED for ${STATE.namespace}/${STATE.name}${manager === LEDGER_MANAGER ? ' (data.retry_ledger)' : manager === VERIFY_MANAGER ? ' (data.verify)' : ''} (kubectl exit ${r.status}): ${String(r.stderr).slice(0, 300)}`); return { ok: false, rv: null }; }
   let rv = null;
   try { rv = JSON.parse(r.stdout)?.metadata?.resourceVersion ?? null; } catch { rv = null; }
-  log(`wrote ConfigMap ${STATE.namespace}/${STATE.name}${manager === LEDGER_MANAGER ? ' (data.retry_ledger)' : ''}`);
+  log(`wrote ConfigMap ${STATE.namespace}/${STATE.name}${manager === LEDGER_MANAGER ? ' (data.retry_ledger)' : manager === VERIFY_MANAGER ? ' (data.verify)' : ''}`);
   return { ok: true, rv };
 }
 

@@ -483,6 +483,8 @@ node scripts/upgrade-agent/record-format-selftest.mjs     # offline; Node 24
   last holder (story 556).
 - The sources the lane does not write yet have only the generic item shape. Their adapter
   stories may need more fields.
+- `kind` is inferred from the version text. `semver` means the version starts with dotted
+  numbers. Nothing infers `date` yet.
 
 ### Open points for the format (story 553, the verifier)
 
@@ -515,13 +517,16 @@ an item whose current attempt the lane did not make.
    state for "failed, cause not attributed".
 4. **The other changes.** The event has no field for them; the verifier puts them in
    `evidence.checks` as one line (`other changes: <sha8> #<pr>, …` or `no other change`).
-5. **Failure classes.** `verification-failed`'s meaning names six classes; the story also
-   names crash loops and image-pull failures, which the verifier records as `crash-loop` and
-   `image-pull` (the schema's class pattern allows them; the meaning text does not list them).
+5. **Failure classes.** `verification-failed`'s meaning names six classes; the verifier also
+   records `crash-loop`, `image-pull`, `job-failed` (a CronJob's first Job from the new
+   template failed) and `churn` (a workload's pods replaced again and again). The schema's
+   class pattern allows them; the meaning text does not list them. `pin-timeout` is never
+   written: the absence of a pin is not a failure (review of PR 4880).
 6. **Time boxes.** `awaiting_pin` and `pin-timeout` are described as time-boxed, and
    `escalated` covers "verification cannot be read". Under Q-548-04 (facts, not clocks) the
-   verifier ends the pin wait on facts (a failed build, or three pushes to main after the build
-   with no pin) and writes nothing for `cannot-tell`. When a lasting `cannot-tell` should
-   become `escalated` has no fact yet.
-- `kind` is inferred from the version text. `semver` means the version starts with dotted
-  numbers. Nothing infers `date` yet.
+   verifier fails a pin wait only on facts (a failed or cancelled build, an open pin PR whose
+   checks fail), and otherwise keeps it open and marks it "needs a person" in
+   `upgrade-lane-state` once it has stayed open on `night.verify.needs_person_after_nights` of
+   the lane's nights; the same holds for a lasting not-yet or cannot-tell. That mark is not an
+   event: the format has no edge for "open, a person should look" short of `escalated`, which
+   the verifier does not write for it.
