@@ -139,7 +139,11 @@ const placePods = (w, ns, prefix, node = 'talosw01') => { for (const p of podsIn
   ok(/\n\s+- resources\/night-verify\.mjs\n/.test(kz), 'the scripts ConfigMap (upgrade-shepherd-scripts) carries night-verify.mjs');
   const night = strip(readFileSync(join(RES, 'run-night.mjs'), 'utf8'));
   ok((night.match(/V\.verifyPhase\(/g) || []).length === 1 && night.indexOf('V.verifyPhase(') > night.indexOf('M.laneMergeStep(') && night.indexOf('V.verifyPhase(') < night.indexOf('H.historyPhase('), 'run-night.mjs: one verify phase, after the merge step and before the history');
-  ok(/verifyEvents: ver\.events \|\| \[\]/.test(night) && !/ver\.records/.test(night), 'run-night.mjs: hands the history only the phase\'s events (never practice records)');
+  // story 554: the verifier's records reach the claims step and the morning summary (both read
+  // only in practice), never the history
+  const recUses = night.split('\n').filter(l => /ver\.records/.test(l));
+  ok(/verifyEvents: ver\.events \|\| \[\]/.test(night) && recUses.length === 2 && /Object\.values\(ver\.records \|\| \{\}\)\.filter\(r => r\?\.verdict === 'failed'/.test(recUses[0]) && /const verifyItems = ver\.records \?\?/.test(recUses[1])
+    && !/historyPhase\(\{[^}]*ver\.records/.test(night), 'run-night.mjs: hands the history only the phase\'s events (never practice records); the records go only to the claims step and the morning summary (story 554)', recUses.join(' | ').slice(0, 300));
   ok(/await import\('\.\/night-verify\.mjs'\)/.test(night) && /catch \(e\) \{ ver = \{ summary: \{ error:/.test(night), 'run-night.mjs: loads the verifier inside a guarded step; a failure is recorded, not thrown');
   ok(/if \(ver\.memory && !ver\.summary\.error\) \{\s*try \{ writeLaneState\(verifyManifest\([^;]*VERIFY_MANAGER\); \}\s*catch \(e\) \{ log\(/.test(night) && !/stateManifest\(\{[^)]*verify/.test(night), 'run-night.mjs (L3): the memory is written only under its own manager, never in the tick\'s apply or its error record');
   const hist = strip(readFileSync(join(RES, 'upgrade-history.mjs'), 'utf8'));

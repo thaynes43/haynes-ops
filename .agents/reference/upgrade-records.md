@@ -486,6 +486,39 @@ node scripts/upgrade-agent/record-format-selftest.mjs     # offline; Node 24
 - `kind` is inferred from the version text. `semver` means the version starts with dotted
   numbers. Nothing infers `date` yet.
 
+### Records outside the history (story 554)
+
+Two records sit beside the history, not in it. Neither is an item or an event.
+
+**The claim on a regression** (`haynes.upgrade-claim/v1`): one JSON value under a regression
+signature (12 hex) in ConfigMap `upgrade-agent/upgrade-remediation-state`.
+
+- **Fields every writer keeps:** `class`, `attempted`, `result`, `note`, `first_seen` and
+  `last_paged`. These are what triage and the health gate read, all strings.
+- **Fields the lane adds:** `holder` (`lane`), `schema`, `pr`, `item`, `lane_state`
+  (`working`, `reverted` or `revert-failed`), `claimed_at`, `until` (epoch seconds, the lane's
+  bound on its own action) and `ids` (the coordination ids that belong to the target).
+- **Fields triage adds since this story:** `holder` (`triage`) and `ids`.
+- **`result` follows the lane's state:** `working` sets `inprogress`, `reverted` sets `fixed`,
+  and `revert-failed` sets `failed`.
+
+The item's own record does not change. A `verification-failed` event followed by
+`revert-opened` (story 753) is what the history says, and the claim is how the lane, triage
+and the gate agree who acts meanwhile. See
+`.agents/runbooks/upgrade-night-lane.md`, "Who handles a regression (story 554)".
+
+**The morning summary** (`haynes.upgrade-morning/v1`): ConfigMap `upgrade-lane-state`
+`data.morning`, field manager `upgrade-night-summary`.
+
+- **What it holds:** `night` (New York date), `composed_at`, `window_from`,
+  `ticks_completed`, `ticks_expected`, `last_tick_local`, `expected_last_tick_local`,
+  `mode`, `bytes`, `lines_cut`, `text` and `facts`.
+- **The facts:** `merged[]` (from the history's `merged` events in the window, with the
+  actor), `verified[]`, `checking[]`, `failed[]`, `reverted[]` (`revert-merged`,
+  `recovery-verified`, `recovery-failed`), `waits` (`needs_person`, `awaiting_pin`,
+  `blocked`, `owner`, `history`), `claims[]` and `unreadable[]`.
+- **The delivery copy:** the `morning_*` keys of `upgrade-orphan-report`.
+
 ### Open points for the format (story 553, the verifier)
 
 The verifier (`night-verify.mjs`) writes `verified`, `verification-failed`, `escalated` and

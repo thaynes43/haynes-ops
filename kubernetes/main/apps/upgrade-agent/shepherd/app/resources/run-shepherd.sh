@@ -175,17 +175,43 @@ ramp_prompt_token() {  # the substring that must appear in the LLM prompt for th
 # check, missed allowlist, dashboard-approval nobody ticked). Written to the
 # upgrade-orphan-report ConfigMap; the GATE (the Pushover owner) pages a weekly digest
 # and stamps last_paged/last_mismatch_paged back — preserve those fields here.
+#
+# STORY 554: an orphan is a PR with NO LANE. A PR the night lane classified on its last
+# tick, into any class (blocked, excluded and the owner's lane included), has a lane and
+# is on the lane's record (upgrade-lane-state data.records, the morning summary's list).
+# Only the PRs missing from that record count. The record is read as it is now; when it
+# cannot be read the report counts every aging PR, as before, and says so (count_basis).
+# Comment 6154 on story 508: the old count read 63. Pure counting: orphan_count (tested
+# by scripts/upgrade-agent/orphan-count-selftest.sh).
 # $1 = ramp-mismatch detail ("" when consistent). Best-effort: failures only log.
+# orphan_count <prs-json> <lane-records-json or ""> <cutoff> -> "<count>\t<basis>\t<summary>"
+orphan_count() {
+  local prs="$1" recs="$2" cutoff="$3" basis lane_ok=1
+  # an empty read gives jq no input, and jq -e then exits 0: test for it first
+  if [ -z "$recs" ] || ! printf '%s' "$recs" | jq -e 'type == "array"' >/dev/null 2>&1; then lane_ok=0; fi
+  if [ "$lane_ok" = 1 ]; then
+    basis="PRs with no lane: missing from the night lane's last record ($(printf '%s' "$recs" | jq -r '[.[] | select(.lane != null and .lane != "")] | length' 2>/dev/null) classified)"
+  else
+    basis="every aging Renovate PR: the night lane's record (upgrade-lane-state data.records) could not be read"
+    recs='[]'
+  fi
+  printf '%s' "$prs" | jq -r --arg c "$cutoff" --argjson recs "$recs" --arg ok "$lane_ok" --arg basis "$basis" '
+    ([ $recs[] | select(.lane != null and .lane != "") | .pr ]) as $laned
+    | [ .[] | select((.author.login | test("renovate")) and (.createdAt < $c))
+            | select($ok != "1" or (.number as $n | ($laned | index($n)) == null)) ] as $o
+    | "\($o | length)\t\($basis)\t\($o | sort_by(.number) | .[:6] | map("#\(.number) \((.title // "")[:55] | gsub("[[:cntrl:]]"; " "))") | join(" | "))"' 2>/dev/null
+}
 write_orphan_report() {
-  local mm="$1" days="${ORPHAN_AGE_DAYS:-7}" cutoff prs count=0 summary=""
+  local mm="$1" days="${ORPHAN_AGE_DAYS:-7}" cutoff prs count=0 summary="" basis="" recs out
   cutoff="$(date -u -d "-${days} days" +%FT%TZ 2>/dev/null)" || cutoff=""
   if [ -n "$cutoff" ]; then
     prs="$(gh pr list -R "$REPO" --state open --limit 200 --json number,title,author,createdAt 2>/dev/null)" || prs=""
     if [ -n "$prs" ]; then
-      count="$(printf '%s' "$prs" | jq --arg c "$cutoff" \
-        '[.[] | select((.author.login|test("renovate")) and (.createdAt < $c))] | length' 2>/dev/null)" || count=0
-      summary="$(printf '%s' "$prs" | jq -r --arg c "$cutoff" \
-        '[.[] | select((.author.login|test("renovate")) and (.createdAt < $c))] | sort_by(.number) | .[:6] | map("#\(.number) \(.title[:55])") | join(" | ")' 2>/dev/null)" || summary=""
+      recs="$(kubectl -n "$SPEND_NS" get configmap upgrade-lane-state -o json 2>/dev/null | jq -r '.data.records // ""' 2>/dev/null)" || recs=""
+      out="$(orphan_count "$prs" "$recs" "$cutoff")"
+      if [ -n "$out" ]; then
+        count="${out%%$'\t'*}"; out="${out#*$'\t'}"; basis="${out%%$'\t'*}"; summary="${out#*$'\t'}"
+      fi
     fi
   fi
   local existing lp lmp
@@ -193,11 +219,11 @@ write_orphan_report() {
   lp="$(printf '%s' "$existing" | jq -r '.data.last_paged // "0"' 2>/dev/null)"; [ -n "$lp" ] || lp="0"
   lmp="$(printf '%s' "$existing" | jq -r '.data.last_mismatch_paged // "0"' 2>/dev/null)"; [ -n "$lmp" ] || lmp="0"
   if kubectl -n "$SPEND_NS" create configmap upgrade-orphan-report \
-       --from-literal=count="${count:-0}" --from-literal=summary="$summary" \
+       --from-literal=count="${count:-0}" --from-literal=summary="$summary" --from-literal=count_basis="$basis" \
        --from-literal=ramp_mismatch="$mm" --from-literal=updated="$(date -u +%s)" \
        --from-literal=last_paged="$lp" --from-literal=last_mismatch_paged="$lmp" \
        --dry-run=client -o yaml | kubectl -n "$SPEND_NS" apply -f - >/dev/null 2>&1; then
-    log "orphan-report: aging(>${days}d)=${count:-0} ramp_mismatch='${mm}'"
+    log "orphan-report: no lane and aging(>${days}d)=${count:-0} (${basis:-not counted}) ramp_mismatch='${mm}'"
   else
     log "orphan-report: WARN could not write the ConfigMap (RBAC?)."
   fi

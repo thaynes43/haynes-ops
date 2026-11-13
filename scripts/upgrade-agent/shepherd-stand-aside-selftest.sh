@@ -229,7 +229,8 @@ ac="$(extract "$RUN" automerge_complete)"
 g="$(printf '%s\n' "$ac" | grep -n 'if ! shepherd_may_merge; then' | head -1 | cut -d: -f1)"; mm="$(printf '%s\n' "$ac" | grep -n 'gh pr merge "\$pr"' | head -1 | cut -d: -f1)"
 if [ -n "$g" ] && [ -n "$mm" ] && [ "$g" -lt "$mm" ]; then ok "automerge_complete asks shepherd_may_merge before its gh pr merge"; else bad "automerge_complete asks shepherd_may_merge before its gh pr merge" "check ${g:-none}, merge ${mm:-none}"; fi
 expect "only one direct gh pr merge call in the launcher (the fallback's)" "$(grep -cE '^\s+if out="\$\(gh pr merge ' "$RUN")" "1"
-cl="$(line 'state_upsert "$SIG" upgrade 1 none' "$TRIAGE")"; rs="$(line '/bin/bash /opt/shepherd/run-shepherd.sh' "$TRIAGE")"
+# story 554: the claim is state_claim (attempted 1, result none, at the version read), which the lane's F4 reads the same way
+cl="$(line 'if ! state_claim "$SIG" "$REG_IDS"; then' "$TRIAGE")"; rs="$(line '/bin/bash /opt/shepherd/run-shepherd.sh' "$TRIAGE")"
 if [ -n "$cl" ] && [ -n "$rs" ] && [ "$cl" -lt "$rs" ]; then ok "triage claims the remediation (the lane's F4 reads it) before it starts run-shepherd.sh"; else bad "triage claims the remediation before it starts run-shepherd.sh" "claim ${cl:-none}, run ${rs:-none}"; fi
 if grep -qE 'merge_window_local|lane_local_time|Intl\.DateTimeFormat|LANE_RULES|upgrade-rules\.json' "$RUN"; then bad "no clock rule is left in the launcher (ruling Q-548-04)" "$(grep -nE 'merge_window_local|lane_local_time|Intl\.DateTimeFormat|LANE_RULES|upgrade-rules\.json' "$RUN" | head -3)"; else ok "no clock rule is left in the launcher (ruling Q-548-04)"; fi
 if grep -q 'MERGE_STOOD_ASIDE' "$RUN"; then bad "MERGE_STOOD_ASIDE is gone (set and never read)" "still present"; else ok "MERGE_STOOD_ASIDE is gone (set and never read)"; fi

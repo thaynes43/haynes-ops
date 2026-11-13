@@ -34,6 +34,11 @@ configMapGenerator:
       # upgrade-night (story 553): the read-only verifier of each merge (practice verdicts in
       # upgrade-lane-state; the lane's own merges become history events only when enabled).
       - resources/night-verify.mjs
+      # upgrade-night (story 554): the lane's claim on a regression signature in
+      # upgrade-remediation-state (read-only in dry-run and practice), and the morning
+      # summary the health gate's 06:30 CronJob sends.
+      - resources/night-claim.mjs
+      - resources/night-summary.mjs
 generatorOptions:
   disableNameSuffixHash: true
   labels:

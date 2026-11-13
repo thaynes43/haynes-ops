@@ -47,6 +47,48 @@ spec:
               readOnlyRootFilesystem: true
               capabilities:
                 drop: ["ALL"]
+      # The night lane's morning summary (story 554, OP512 design comment 6193): once a day
+      # at 06:30 New York, at Pushover priority -1 (no sound, still a notification). The lane
+      # composes it every tick and copies it into ConfigMap upgrade-orphan-report (morning_*
+      # keys), which this ServiceAccount already reads and stamps; it sends what it reads at
+      # that moment, or its own "the lane wrote no summary" line. Same image, ServiceAccount,
+      # secret and egress policy as the gate (its pods carry the release's name label), and
+      # the same script in another mode: gate.sh morning-summary. No new access.
+      # Runbook: .agents/runbooks/upgrade-night-lane.md, "The morning summary (story 554)".
+      morning-summary:
+        type: cronjob
+        pod:
+          restartPolicy: Never
+        cronjob:
+          schedule: "30 6 * * *"
+          timeZone: America/New_York
+          concurrencyPolicy: Forbid
+          startingDeadlineSeconds: 1800
+          backoffLimit: 0
+          successfulJobsHistory: 3
+          failedJobsHistory: 3
+        containers:
+          app:
+            image:
+              repository: ghcr.io/thaynes43/upgrade-agent
+              tag: 0.1.0@sha256:300bc6124d28dbee9819b4ce38dd42e5116e65154ae6b64c4f680e618c77c875
+            command: ["/bin/bash", "/opt/gate/gate.sh", "morning-summary"]
+            env:
+              MORNING_TZ: America/New_York
+            envFrom:
+              - secretRef:
+                  name: upgrade-health-gate-secret
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 128Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
     defaultPodOptions:
       # app-template v5 defaults automountServiceAccountToken to false; the gate's
       # Flux CR reads (kubectl via the SA token) require it.

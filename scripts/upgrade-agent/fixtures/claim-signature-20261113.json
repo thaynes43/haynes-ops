@@ -1,0 +1,695 @@
+{
+ "captured_at": "2026-11-13T12:49:01.280Z",
+ "note": "Story 554: one regression run through both sides (coordination-lib.sh as triage and the gate source it, and night-claim.mjs coordinationSignature, which runs the same library). Real objects from verify-20261113.json (media/seerr Kustomization and HelmRelease, network/traefik-external HelmRelease, the pods seerr-bb94554fd-qd4fm and ai/kokoro-6dcbb966bf-c8z88) and the live dev-env-system/dev-env-h7-metadata-audit Kustomization (held by the library, so dropped); the failure is made up: seerr 3.5.2 (#4869) failing its Helm upgrade at 09:05:12Z and its pod crash-looping, with an unrelated crash-looping kokoro pod. now is 25 minutes later.",
+ "now": "2026-11-13T09:30:00Z",
+ "record": {
+  "pr": 4869,
+  "item": "pkg:000000000000000000000000",
+  "name": "ghcr.io/seerr-team/seerr",
+  "from": "v3.5.1",
+  "to": "v3.5.2",
+  "verdict": "failed",
+  "attribution": "own-regression",
+  "practice": false,
+  "scope": {
+   "own": [
+    "media/seerr"
+   ],
+   "chain": [],
+   "namespaces": [
+    "media"
+   ],
+   "hr": [
+    "media/seerr"
+   ]
+  },
+  "workloads": [
+   "Deployment media/seerr"
+  ],
+  "failing": [
+   {
+    "fact": "helmreleases",
+    "class": "not-applied"
+   }
+  ]
+ },
+ "flux": {
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+   {
+    "metadata": {
+     "name": "seerr",
+     "namespace": "media",
+     "generation": 1,
+     "labels": {
+      "kustomize.toolkit.fluxcd.io/name": "cluster-apps",
+      "kustomize.toolkit.fluxcd.io/namespace": "flux-system"
+     }
+    },
+    "spec": {
+     "path": "./kubernetes/main/apps/media/seerr/app",
+     "dependsOn": [
+      {
+       "name": "rook-ceph-cluster",
+       "namespace": "rook-ceph"
+      },
+      {
+       "name": "volsync",
+       "namespace": "volsync-system"
+      }
+     ],
+     "targetNamespace": "media",
+     "sourceRef": {
+      "kind": "GitRepository",
+      "name": "haynes-ops",
+      "namespace": "flux-system"
+     }
+    },
+    "status": {
+     "observedGeneration": 1,
+     "lastAppliedRevision": "main@sha1:d72b510370469b0bbdd3e552834f1ebf6d21cfcd",
+     "lastAttemptedRevision": "main@sha1:d72b510370469b0bbdd3e552834f1ebf6d21cfcd",
+     "conditions": [
+      {
+       "type": "Ready",
+       "status": "False",
+       "reason": "HealthCheckFailed",
+       "message": "health check failed after 5m0s: timeout waiting for: [HelmRelease/media/seerr status: InProgress]",
+       "lastTransitionTime": "2026-11-13T09:05:12Z"
+      },
+      {
+       "type": "Healthy",
+       "status": "False",
+       "reason": "HealthCheckFailed",
+       "lastTransitionTime": "2026-11-13T09:05:12Z"
+      }
+     ],
+     "inventory": {
+      "entries": [
+       {
+        "id": "media_seerr-gatus-ep__ConfigMap",
+        "v": "v1"
+       },
+       {
+        "id": "media_seerr-volsync-unlock_batch_CronJob",
+        "v": "v1"
+       },
+       {
+        "id": "media_seerr__PersistentVolumeClaim",
+        "v": "v1"
+       },
+       {
+        "id": "media_seerr-volsync-aws_external-secrets.io_ExternalSecret",
+        "v": "v1"
+       },
+       {
+        "id": "media_seerr_helm.toolkit.fluxcd.io_HelmRelease",
+        "v": "v2"
+       },
+       {
+        "id": "media_seerr-dst_volsync.backube_ReplicationDestination",
+        "v": "v1alpha1"
+       },
+       {
+        "id": "media_seerr-aws_volsync.backube_ReplicationSource",
+        "v": "v1alpha1"
+       }
+      ]
+     }
+    },
+    "kind": "Kustomization"
+   },
+   {
+    "metadata": {
+     "name": "seerr",
+     "namespace": "media",
+     "generation": 10,
+     "labels": {
+      "kustomize.toolkit.fluxcd.io/name": "seerr",
+      "kustomize.toolkit.fluxcd.io/namespace": "media"
+     }
+    },
+    "spec": {
+     "chartRef": {
+      "kind": "OCIRepository",
+      "name": "app-template"
+     }
+    },
+    "status": {
+     "observedGeneration": 10,
+     "conditions": [
+      {
+       "type": "Ready",
+       "status": "False",
+       "reason": "UpgradeFailed",
+       "message": "Helm upgrade failed for release media/seerr with chart app-template@5.3.0: context deadline exceeded",
+       "lastTransitionTime": "2026-11-13T09:05:12Z"
+      },
+      {
+       "type": "Released",
+       "status": "False",
+       "reason": "UpgradeFailed",
+       "lastTransitionTime": "2026-11-13T09:05:12Z"
+      }
+     ],
+     "history": [
+      {
+       "chartName": "app-template",
+       "chartVersion": "5.3.0+0e13b1456564",
+       "status": "deployed",
+       "lastDeployed": "2026-11-13T03:38:14Z"
+      }
+     ],
+     "inventory": {
+      "entries": [
+       {
+        "id": "media_seerr__ServiceAccount",
+        "v": "v1"
+       },
+       {
+        "id": "media_seerr__Service",
+        "v": "v1"
+       },
+       {
+        "id": "media_seerr_apps_Deployment",
+        "v": "v1"
+       },
+       {
+        "id": "media_seerr_networking.k8s.io_Ingress",
+        "v": "v1"
+       }
+      ]
+     }
+    },
+    "kind": "HelmRelease"
+   },
+   {
+    "metadata": {
+     "name": "traefik-external",
+     "namespace": "network",
+     "generation": 30,
+     "labels": {
+      "kustomize.toolkit.fluxcd.io/name": "traefik-external",
+      "kustomize.toolkit.fluxcd.io/namespace": "network"
+     }
+    },
+    "spec": {
+     "chartRef": {
+      "kind": "OCIRepository",
+      "name": "traefik-external-oci"
+     }
+    },
+    "status": {
+     "observedGeneration": 30,
+     "conditions": [
+      {
+       "type": "Ready",
+       "status": "True",
+       "reason": "UpgradeSucceeded"
+      },
+      {
+       "type": "Released",
+       "status": "True",
+       "reason": "UpgradeSucceeded"
+      }
+     ],
+     "history": [
+      {
+       "chartName": "traefik",
+       "chartVersion": "42.4.0+bd20184b7da8",
+       "status": "deployed",
+       "lastDeployed": "2026-11-13T09:08:17Z"
+      }
+     ],
+     "inventory": {
+      "entries": [
+       {
+        "id": "network_traefik-external_policy_PodDisruptionBudget",
+        "v": "v1"
+       },
+       {
+        "id": "network_traefik-external__ServiceAccount",
+        "v": "v1"
+       },
+       {
+        "id": "_traefik-external-network_rbac.authorization.k8s.io_ClusterRole",
+        "v": "v1"
+       },
+       {
+        "id": "_traefik-external-network_rbac.authorization.k8s.io_ClusterRoleBinding",
+        "v": "v1"
+       },
+       {
+        "id": "network_traefik-external__Service",
+        "v": "v1"
+       },
+       {
+        "id": "network_traefik-external_apps_Deployment",
+        "v": "v1"
+       },
+       {
+        "id": "_traefik-external_networking.k8s.io_IngressClass",
+        "v": "v1"
+       },
+       {
+        "id": "_accesscontrolpolicies.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_aiservices.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apiauths.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apibundles.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apicatalogitems.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apiplans.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apiportalauths.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apiportals.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apiratelimits.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apis.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apiversions.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_contentitems.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_managedapplications.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_managedsubscriptions.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_uplinks.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_ingressroutes.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_ingressroutetcps.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_ingressrouteudps.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_middlewares.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_middlewaretcps.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_serverstransports.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_serverstransporttcps.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_tlsoptions.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_tlsstores.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_traefikservices.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       }
+      ]
+     }
+    },
+    "kind": "HelmRelease"
+   },
+   {
+    "apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+    "kind": "Kustomization",
+    "metadata": {
+     "name": "dev-env-h7-metadata-audit",
+     "namespace": "dev-env-system"
+    },
+    "status": {
+     "conditions": [
+      {
+       "type": "Ready",
+       "status": "False",
+       "reason": "HealthCheckFailed",
+       "lastTransitionTime": "2026-11-13T08:14:23Z"
+      },
+      {
+       "type": "Healthy",
+       "status": "False",
+       "reason": "HealthCheckFailed",
+       "lastTransitionTime": "2026-11-13T08:14:23Z"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "flux_healthy": {
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+   {
+    "metadata": {
+     "name": "traefik-external",
+     "namespace": "network",
+     "generation": 30,
+     "labels": {
+      "kustomize.toolkit.fluxcd.io/name": "traefik-external",
+      "kustomize.toolkit.fluxcd.io/namespace": "network"
+     }
+    },
+    "spec": {
+     "chartRef": {
+      "kind": "OCIRepository",
+      "name": "traefik-external-oci"
+     }
+    },
+    "status": {
+     "observedGeneration": 30,
+     "conditions": [
+      {
+       "type": "Ready",
+       "status": "True",
+       "reason": "UpgradeSucceeded"
+      },
+      {
+       "type": "Released",
+       "status": "True",
+       "reason": "UpgradeSucceeded"
+      }
+     ],
+     "history": [
+      {
+       "chartName": "traefik",
+       "chartVersion": "42.4.0+bd20184b7da8",
+       "status": "deployed",
+       "lastDeployed": "2026-11-13T09:08:17Z"
+      }
+     ],
+     "inventory": {
+      "entries": [
+       {
+        "id": "network_traefik-external_policy_PodDisruptionBudget",
+        "v": "v1"
+       },
+       {
+        "id": "network_traefik-external__ServiceAccount",
+        "v": "v1"
+       },
+       {
+        "id": "_traefik-external-network_rbac.authorization.k8s.io_ClusterRole",
+        "v": "v1"
+       },
+       {
+        "id": "_traefik-external-network_rbac.authorization.k8s.io_ClusterRoleBinding",
+        "v": "v1"
+       },
+       {
+        "id": "network_traefik-external__Service",
+        "v": "v1"
+       },
+       {
+        "id": "network_traefik-external_apps_Deployment",
+        "v": "v1"
+       },
+       {
+        "id": "_traefik-external_networking.k8s.io_IngressClass",
+        "v": "v1"
+       },
+       {
+        "id": "_accesscontrolpolicies.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_aiservices.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apiauths.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apibundles.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apicatalogitems.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apiplans.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apiportalauths.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apiportals.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apiratelimits.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apis.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_apiversions.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_contentitems.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_managedapplications.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_managedsubscriptions.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_uplinks.hub.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_ingressroutes.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_ingressroutetcps.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_ingressrouteudps.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_middlewares.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_middlewaretcps.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_serverstransports.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_serverstransporttcps.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_tlsoptions.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_tlsstores.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       },
+       {
+        "id": "_traefikservices.traefik.io_apiextensions.k8s.io_CustomResourceDefinition",
+        "v": "v1"
+       }
+      ]
+     }
+    },
+    "kind": "HelmRelease"
+   }
+  ]
+ },
+ "pods": {
+  "media/seerr-bb94554fd-qd4fm": {
+   "metadata": {
+    "name": "seerr-bb94554fd-qd4fm",
+    "namespace": "media",
+    "uid": "395e05c1-b039-48c9-bc9f-d9ba8c4ab2f0",
+    "creationTimestamp": "2026-11-13T03:38:15Z",
+    "ownerReferences": [
+     {
+      "kind": "ReplicaSet",
+      "name": "seerr-bb94554fd"
+     }
+    ],
+    "labels": {
+     "app.kubernetes.io/instance": "seerr",
+     "app.kubernetes.io/name": "seerr",
+     "pod-template-hash": "bb94554fd"
+    }
+   },
+   "spec": {
+    "containers": [
+     {
+      "name": "app",
+      "image": "ghcr.io/seerr-team/seerr:v3.5.2"
+     }
+    ]
+   },
+   "status": {
+    "phase": "Running",
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ],
+    "containerStatuses": [
+     {
+      "name": "app",
+      "imageID": "ghcr.io/seerr-team/seerr@sha256:aadee014b40e28cf9aa4928bc9d1183a6eb08f8c44d543cddc9efdcb16549be2",
+      "ready": false,
+      "restartCount": 0,
+      "state": {
+       "waiting": {
+        "reason": "CrashLoopBackOff"
+       }
+      }
+     }
+    ]
+   }
+  },
+  "ai/kokoro-6dcbb966bf-c8z88": {
+   "metadata": {
+    "name": "kokoro-6dcbb966bf-c8z88",
+    "namespace": "ai",
+    "uid": "882eca1b-2e4b-4975-887c-325513a11cb7",
+    "creationTimestamp": "2026-10-04T01:38:00Z",
+    "ownerReferences": [
+     {
+      "kind": "ReplicaSet",
+      "name": "kokoro-6dcbb966bf"
+     }
+    ],
+    "labels": {
+     "app.kubernetes.io/instance": "kokoro",
+     "app.kubernetes.io/name": "kokoro",
+     "pod-template-hash": "6dcbb966bf"
+    }
+   },
+   "spec": {
+    "containers": [
+     {
+      "name": "app",
+      "image": "ghcr.io/flight777/kokoro-wyoming-ml:latest@sha256:46418df6e485de71f7177a61bab931fa8ad9d67c901fc13ba2534b5c19017e6c"
+     }
+    ]
+   },
+   "status": {
+    "phase": "Running",
+    "conditions": [
+     {
+      "type": "Ready",
+      "status": "True"
+     }
+    ],
+    "containerStatuses": [
+     {
+      "name": "app",
+      "imageID": "ghcr.io/flight777/kokoro-wyoming-ml@sha256:46418df6e485de71f7177a61bab931fa8ad9d67c901fc13ba2534b5c19017e6c",
+      "ready": false,
+      "restartCount": 1,
+      "state": {
+       "waiting": {
+        "reason": "CrashLoopBackOff"
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ "prom": {
+  "pods": {
+   "status": "success",
+   "data": {
+    "resultType": "vector",
+    "result": [
+     {
+      "metric": {
+       "namespace": "media",
+       "pod": "seerr-bb94554fd-qd4fm"
+      },
+      "value": [
+       1794562200,
+       "1"
+      ]
+     },
+     {
+      "metric": {
+       "namespace": "ai",
+       "pod": "kokoro-6dcbb966bf-c8z88"
+      },
+      "value": [
+       1794562200,
+       "1"
+      ]
+     }
+    ]
+   }
+  }
+ }
+}

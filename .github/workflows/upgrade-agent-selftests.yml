@@ -31,6 +31,7 @@ on:
       - kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/dev-env-api.sh
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/gate.sh
+      - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/page.sh
       - scripts/upgrade-agent/**
       - .github/workflows/**
       - .renovate/**
@@ -42,6 +43,7 @@ on:
       - kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/dev-env-api.sh
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/gate.sh
+      - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/page.sh
       - scripts/upgrade-agent/**
       - .github/workflows/**
       - .renovate/**
@@ -74,6 +76,8 @@ jobs:
           node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/upgrade-history.mjs
           node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/record-format.mjs
           node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/night-verify.mjs
+          node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/night-claim.mjs
+          node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/night-summary.mjs
           jq -e . kubernetes/main/apps/upgrade-agent/shepherd/app/resources/upgrade-rules.json > /dev/null
       - name: Classifier, rules and check-map drift
         run: nice -n 19 node scripts/upgrade-agent/lane-classify-selftest.mjs
@@ -89,6 +93,10 @@ jobs:
         run: nice -n 19 node scripts/upgrade-agent/lane-history-selftest.mjs
       - name: The read-only verifier of each merge (story 553)
         run: nice -n 19 node scripts/upgrade-agent/lane-verify-selftest.mjs
+      - name: Who handles a regression, the lane's claim, triage and the gate (story 554)
+        run: nice -n 19 node scripts/upgrade-agent/lane-claim-selftest.mjs
+      - name: The morning summary (story 554)
+        run: nice -n 19 node scripts/upgrade-agent/lane-summary-selftest.mjs
 
   shell:
     name: Upgrade Agent Selftests - Shell
@@ -101,7 +109,7 @@ jobs:
       - name: Shell selftests, one at a time
         run: |
           set -euo pipefail
-          for t in coordination-sig held-audit shepherd-verdict shepherd-stand-aside shepherd-prefilter stale-corpse triage-claim; do
+          for t in coordination-sig held-audit shepherd-verdict shepherd-stand-aside shepherd-prefilter stale-corpse triage-claim gate-morning orphan-count; do
             echo "::group::${t}-selftest.sh"
             nice -n 19 bash "scripts/upgrade-agent/${t}-selftest.sh"
             echo "::endgroup::"

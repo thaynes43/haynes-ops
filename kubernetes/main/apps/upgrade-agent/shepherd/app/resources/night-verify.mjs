@@ -821,6 +821,8 @@ function judgeTarget(rec, cand, change, sc, clusterWide, upd, ctx) {
   rec.facts.push(ap);
   const w = workloadsOf(sc, ctx.ks, ctx.hr);
   rec.workloads = w.workloads.map(x => `${x.kind} ${x.ns}/${x.name}`).slice(0, 20);
+  // story 554: the target's HelmReleases, to tell which ids of the coordination set are its own
+  if (rec.scope) rec.scope.hr = w.helmreleases.slice(0, 40);
   const hrf = factHelmReleases(w.helmreleases, ctx.hr, ctx, seen.failing, rec.mem.failing);
   rec.facts.push(hrf);
   const wl = w.workloads;

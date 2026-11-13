@@ -54,6 +54,14 @@ the merge. While the lane merges nothing it practises on Renovate's and the shep
 merges and writes those verdicts to `upgrade-lane-state` only. See
 [The verifier](#the-verifier-story-553).
 
+**Story 554 added who handles a regression and the morning summary**
+(<https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/554>). The lane, triage
+and the gate share one claim per regression signature in `upgrade-remediation-state`. Only a
+live tick claims, for the lane's own merge; dry-run and practice read only. Tom gets one quiet
+message at 06:30 New York. The weekly orphan page counts only PRs with no lane. See
+[Who handles a regression](#who-handles-a-regression-story-554) and
+[The morning summary](#the-morning-summary-story-554).
+
 **Story 550 added four gate rules**, still dry-run only. See
 [Gate rules from story 550](#gate-rules-from-story-550-r5-r7-r8-r10)
 (<https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/550>):
@@ -92,6 +100,8 @@ The code is in the same `resources/` directory as the shepherd and is mounted fr
 | `run-night.mjs` | One tick: classify the PRs, check the gates, choose one PR, run the merge step under the change lock and write the state. |
 | `night-merge.mjs` | The merge step, the change lock and the hand-run CLI (story 752). |
 | `night-verify.mjs` | The read-only verifier of each merge, and a read-only CLI for named merged PRs (story 553). |
+| `night-claim.mjs` | The lane's claim on a regression signature in `upgrade-remediation-state` (story 554). |
+| `night-summary.mjs` | The morning summary, composed every tick (story 554). |
 
 ## Lanes
 
@@ -1751,8 +1761,8 @@ The missing rule: `apiGroups: ["apps"]`, `resources: ["deployments", "statefulse
   (a CRD URL, a kustomize remote resource) is `cannot-tell`.
 - An update that changes no pod (a chart bump that renders the same pods) passes on the pods
   it finds: pods alone cannot show that a template did not need to change.
-- `NEEDS A PERSON` is a mark in `upgrade-lane-state`, not a history event and not a page;
-  story 554 decides how it reaches a person.
+- `NEEDS A PERSON` is a mark in `upgrade-lane-state`, not a history event and not a page.
+  It reaches a person through the morning summary (story 554).
 - An earlier merge that is still open and whose files are unknown makes every later merge's
   list of other changes incomplete, in any scope; stored files are cut at 100. Both err towards
   `cannot-tell` (L-f of the review, not changed).
@@ -1762,6 +1772,266 @@ The missing rule: `apiGroups: ["apps"]`, `resources: ["deployments", "statefulse
   that has not run yet) still reads its pods, alerts and image on every tick.
 - Pause stops the tick before the verifier, and the verifier does not release the
   post-merge hold of the change lock (stories 753 and 556).
+
+## Who handles a regression (story 554)
+
+Story 554 (<https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/554>),
+OP512 rollout step 4. Exactly one of the lane and triage acts on a regression. The code is
+`night-claim.mjs`, triage's `lane_hold` and `state_claim` in `triage.sh`, and `lane_phase` in
+`gate.sh`. The three files in ConfigMap `upgrade-coordination-lib` are not changed.
+
+**The key is the library's signature.** Triage and the gate key a regression by what
+`coordination-lib.sh` computes. `collect_regressions` takes the Flux Kustomizations and
+HelmReleases that have been NotReady for more than 600 seconds, and the pods that have stayed
+unhealthy, after the library's corpse filters. The key is then
+`sig_of(sig_key_of(REG_IDS))`: the Flux lines only when there are any (#3182), otherwise each
+pod reduced to its workload. The lane does not re-implement this.
+`coordinationSignature()` runs the library itself: `bash -c` with a fixed script that sources
+`/opt/coordination/coordination-lib.sh`. That is the same file triage sources, mounted in the
+lane's pod by the shepherd release's `globalMounts`. So both sides compute the same signature
+for the same regression set by construction. `lane-claim-selftest.mjs` section 1 runs one
+fixture through both. A set that changes between two reads gets a new signature, as it does
+for triage between its own cycles. Section 4 covers that case.
+
+**Which ids are the update's.** `targetIds()` keeps the ids of the set that belong to the
+verifier's record:
+
+- the target's own Kustomizations (`scope.own`);
+- its HelmReleases (`scope.hr`, recorded since this story);
+- pods whose names its workloads' controllers make.
+
+If the set names nothing of the target, triage and the gate do not see this regression.
+There is nothing to claim (`not-in-set`).
+
+**How a claim is written and read today (before this story).** Triage (`triage.sh`) owns
+`class`, `attempted`, `result` and `note` on the signature's entry in ConfigMap
+`upgrade-agent/upgrade-remediation-state`. The gate only stamps `last_paged` (and `first_seen`
+when absent). Triage's claim of a remediation attempt is `attempted=1`, written before it
+summons remediate (rule 1, at most once). The write was a fresh `get | jq | replace`, so the
+resourceVersion came from a second read, not from the read the decision was made on. A write
+by anyone between the two reads went unseen. The gate reads `class`, `result` and `first_seen`
+(`remediation_phase`):
+
+- `upgrade` with `pending`, `none` or `inprogress` younger than 40 minutes is `inflight`: no
+  Flux page;
+- `failed`, or older than 40 minutes, pages;
+- `fixed`: a Flux object that still fails pages.
+
+**What ends a claim.** Nothing has a lease:
+
+- triage's result (`fixed`, `pending` or `failed`), which only changes what the gate does;
+  `attempted=1` stays;
+- the 24-hour age-out. Triage's `state_prune` and every upsert drop entries whose
+  `first_seen` is older than `STATE_TTL_HOURS`. A healthy cycle runs `state_prune` too;
+- a person editing the entry.
+
+The gate's 40-minute grace measures the age of `first_seen`.
+
+**What this story adds.**
+
+- **The lane's claim** uses the same format: `class=upgrade`, `attempted=1`,
+  `result=inprogress`, `note`, `first_seen` (the claim time) and `last_paged` (kept). It adds
+  `holder=lane`, `schema=haynes.upgrade-claim/v1`, `pr`, `item`, `lane_state`, `claimed_at`,
+  `until` and `ids` (the target's ids).
+  - `attempted=1` alone already stops a triage that predates this story.
+  - `until` is the lane's bound on its own action: `night.claim.max_work_seconds`, 10800 s,
+    from the claim to a verified revert.
+  - The lane's states, and the `result` each sets:
+    - `working`: `inprogress`;
+    - `reverted`: `fixed`;
+    - `revert-failed`: `failed`.
+  - `updateClaim()` moves the claim; story 753 calls it.
+- **One holder.** Both sides decide and write on one read. The write is a replace at that
+  read's resourceVersion, or a create when the ConfigMap is absent. If someone writes in
+  between, the API server refuses the second writer with `Conflict` or `AlreadyExists`. That
+  writer reads again: if the entry is now held, it stands down; if it is still free, it tries
+  once more. Triage's claim is `state_claim`. It also records `holder=triage` and `ids`.
+- **The lane stops** (`triage-holds`, `lost`, `lane-holds`, `unreadable`, with
+  `revert_allowed: false`) in four cases:
+  - the entry has `attempted=1` and is not the lane's;
+  - triage is still working on an entry under another signature (`attempted=1`, result
+    `none` or `pending`) that names one of the target's ids;
+  - another lane claim holds it;
+  - the ConfigMap, the entry or the signature cannot be read or understood.
+
+  It records why. Story 753 reads `revert_allowed`.
+- **Triage stops** for a signature whose entry is the lane's. It also stops when a lane claim
+  that is still `working`, and whose `until` has not passed, names one of the current ids (a
+  set that changed since the claim). It does not attribute, does not summon and does not write
+  that entry. It logs `… is held by the night lane for #<pr> … — not triage's: NOT summoning
+  remediation and NOT writing its entry`. `state_upsert` never writes over a lane-held entry.
+- **The gate** reads the lane's fields first (`lane_phase`):
+  - `working` before `until`: `inflight`, no page;
+  - `working` after `until`: `failed`; it pages that the lane did not finish by its own bound;
+  - `revert-failed`: `failed`; it pages that the revert did not verify, at the existing
+    critical priority;
+  - `reverted`: `fixed`.
+
+  An entry it cannot understand is read as today, by `remediation_phase`. That covers an
+  unknown state, an `until` or `claimed_at` that is not a number, and an `until` more than
+  `LANE_CLAIM_MAX_SECONDS` (21600) after `claimed_at`. An unreadable ConfigMap pages as
+  today. No claim silences anyone for ever: the lane's bound ends its silence, and the 24-hour
+  age-out ends the entry.
+- **Dry-run and practice never write.** For every verdict that fails on a tick, the step runs
+  read-only. It computes the signature, reads the claims, and records in `summary.claims` the
+  signature it would claim and whether triage holds it (`would-claim`, `triage-holds`,
+  `not-in-set`). Only a live tick with `--write-state`, for the lane's own merge, with a valid
+  `night.claim`, may write.
+
+Log line: `upgrade-night dryrun: claims: #4869 would-claim sig=ae85955b9204 (3 id(s) of its
+target)` (or `no failed verdict this tick`).
+
+**Known limits.**
+
+- A regression only the verifier sees has no shared signature: a critical alert, a wrong
+  image, a failed Job or restart growth with nothing NotReady. Nothing is claimed for it.
+  Triage and the gate do not act on it either.
+- A claim of the whole set also covers an unrelated failure that is in the set at the time. It
+  silences the gate for that failure until `until`. Triage's at-most-once rule already treats
+  the set as one regression.
+- After `until` passes, triage still does not summon for the lane's own signature. The
+  attempt was made. The gate pages, and its repeat page escalates after 6 hours.
+
+### The alert responder (`rem-*` lane): finding, not changed
+
+The responder can act on the same regression. It neither reads nor writes
+`upgrade-remediation-state`.
+
+- `alert-responder/app/resources/respond.sh` keeps its own state in ConfigMaps
+  `alert-responder-state` and `alert-responder-spend` (lines 100 and 101). Nothing in it names
+  `upgrade-remediation-state`.
+- It diagnoses firing critical alerts. On `ACTION: urgent` and still firing, it files a
+  `rem-*` order through `/opt/coordination/remediate.sh` instead of paging (lines 514 to 534).
+- `health-gate/app/resources/remediate.sh` writes only ConfigMap `upgrade-work-orders`
+  (line 50; reads and writes at lines 97 to 120).
+- A regression from a merge fires `FluxReconciliationFailure`, which is `severity: critical`
+  after 15 minutes (`flux-system/addons/app/monitoring/prometheusrule.yaml`, lines 27 to 38).
+- The `rem-*` session may then fix it with runtime verbs or a git PR as the ops bot
+  (`dev-env-ops/app/resources/ops-claude.md`, contract step 4, lines 120 to 123). That could
+  be a second revert.
+- Separately, `respond.sh` passes `ESCALATE_SIG`, but `remediate.sh` reads `REMEDIATE_SIG`
+  (respond.sh line 528, remediate.sh line 77). So the `rem-*` key hashes the reason text
+  rather than `alertname@namespace`.
+
+To honour a claim, the responder would read `upgrade-remediation-state` before it files a
+`rem-*` order: its Role already allows a namespaced configmaps get. When an entry held by the
+lane or by triage (`attempted=1`, `ids`) names the alert's Flux object or pod, it would not
+file. It would log that the lane or triage owns the regression, and the gate pages as above.
+That change is under `alert-responder/` and was not made (the work order holds it).
+
+## The morning summary (story 554)
+
+Tom gets one short message a day at 06:30 America/New_York, at Pushover priority **-1**: no
+sound or vibration, still shown as a notification. The design is OP512 comment 6193.
+
+**Composed by the lane.** `night-summary.mjs` composes it on every tick, after the history
+and the PR records. It uses only what the tick already holds and makes no read of its own and
+no GitHub read:
+
+- the open-PR records;
+- the verifier's records (`data.verify` items);
+- the history document as the history phase left it;
+- the history's own verdict;
+- `summary.claims`.
+
+The text has these parts, in plain words:
+
+1. The first line: the night, the mode, how many of the night's ticks have completed (`7 of
+   20`), the time of the last one, and whether the lane merged anything.
+2. **Waits for you:**
+   - the verifier's `NEEDS A PERSON` marks;
+   - the items awaiting a digest pin, with the reason;
+   - the PRs whose record says blocked, with the reason (for `check-failing-after-retry`,
+     the failing check);
+   - the owner's lane (majors, holds), one line;
+   - a history that needs a person.
+
+   This is story 715's list.
+3. `FAILED` verdicts, each with who holds the regression.
+4. **Merged** since the last summary, grouped by who merged: the lane, Renovate, the shepherd,
+   a session (`hand`), or a person by login. Each entry gives the PR, the package and the
+   version.
+5. **Checks:** what was verified and what is still being checked, marked practice in dry-run.
+6. **Reverted.**
+
+The window runs from the last night's record (`composed_at`). A merge by day therefore
+appears the next morning, and nothing appears twice. The facts behind the text keep every
+list.
+
+**Limits.** Outside text is data. PR titles, package names, versions, check names and reasons
+lose control and format characters. Their whitespace is folded, token shapes are redacted,
+and each is capped (`max_name_chars` 40, `max_reason_chars` 90). The text is at most
+`night.summary.max_bytes` (1000), under Pushover's 1,024-character cap and `page.sh`'s 1,000
+clamp. When it does not fit, whole lines go from the end and the last line says
+`and N more`.
+
+**Where it is written.**
+
+- `upgrade-lane-state` `data.morning` (`haynes.upgrade-morning/v1`) holds `night`,
+  `composed_at`, `window_from`, `ticks_completed`, `ticks_expected`, `last_tick_local`,
+  `text`, `bytes`, `lines_cut` and `facts`. Field manager `upgrade-night-summary`, written
+  after the tick's own state has landed.
+- A delivery copy goes to ConfigMap `upgrade-orphan-report`, keys `morning_text`,
+  `morning_night`, `morning_composed_at`, `morning_ticks`, `morning_ticks_expected`,
+  `morning_last_tick` and `morning_mode`. It is a server-side apply of those keys only, under
+  the same field manager. The shepherd's orphan keys (its client-side apply keeps keys it
+  never set) and the gate's stamps are untouched.
+
+**Delivered by the gate.** CronJob `upgrade-health-gate-morning-summary`, in the health gate's
+release: `30 6 * * *`, `timeZone: America/New_York`, running `gate.sh morning-summary`. It
+uses the gate's image, ServiceAccount, secret and egress policy, and needs no new access:
+
+| Access the delivery uses | Where it comes from today |
+|---|---|
+| The lane writes `upgrade-orphan-report` | Role `upgrade-shepherd-spend`: configmaps get, list, create, update, patch in `upgrade-agent` (shepherd `rbac.yaml`) |
+| The sender reads it and stamps `morning_sent_night` | Role `upgrade-remediation-state-pager`: get and update on `upgrade-orphan-report` by name (health-gate `rbac.yaml`) |
+| Pushover | `upgrade-health-gate-secret` (ExternalSecret, 1Password item `upgrade-gate`), CiliumNetworkPolicy `upgrade-health-gate` (`api.pushover.net:443`), which selects the release's pods by `app.kubernetes.io/name` |
+
+The gate cannot read `upgrade-lane-state`: its Role names three ConfigMaps. Hence the
+delivery copy.
+
+The sender reads the copy at the moment it acts:
+
+- **This night's text:** it sends the text.
+- **Fewer ticks than the night has:** it puts first `The night lane did not finish the night:
+  N of 20 ticks completed, the last at HH:MM.`
+- **A copy that is missing, empty, or for an older night:** it sends its own message, `The
+  night lane wrote no summary for the night of <date>: it did not run, or no tick finished.
+  Its last summary is for <night>.`
+- **A ConfigMap it cannot read:** it says it could not read the summary.
+
+It fits the message to 1000 bytes by whole lines. It sends through `page.sh` with severity
+`low` and title `Night upgrades <date>`. The text reaches curl as one quoted `--form-string`,
+never as a command line. After a delivery, it stamps `morning_sent_night` at the version it
+read, so a second run the same morning sends nothing. A failed delivery is not stamped.
+
+**Pages may not reach Tom.** The saga's comment 6927 says the login watcher logged a page
+every night from 2026-11-03 to 2026-11-09 and Tom saw none. That watcher is
+`dev-env-ops/app/resources/work-order-watch.sh`: `page()` at lines 90 to 98, priority 0,
+title `[dev-env-ops] …`. Its expiry pages are at lines 517 and 523. It uses the Pushover
+application token from 1Password item `upgrade-gate` (dev-env-ops `externalsecret.yaml`,
+lines 17 to 20), the same application and user key as the gate and this summary. Finding the
+cause is piece 2's work. Until Tom confirms he received one summary, delivery is unproven.
+
+```bash
+kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.morning}' | jq -r .text
+kubectl -n upgrade-agent get cm upgrade-orphan-report -o json | jq -r '.data | with_entries(select(.key | startswith("morning_")))'
+kubectl -n upgrade-agent logs job/<latest upgrade-health-gate-morning-summary job>
+```
+
+## The weekly orphan page counts PRs with no lane (story 554)
+
+The count is made in `run-shepherd.sh`, `write_orphan_report` and `orphan_count`. The
+shepherd's scheduled run (every 4 hours) writes it to `upgrade-orphan-report`, and the gate
+pages it weekly when it is above 0. It used to count every Renovate PR open for more than
+7 days: 63 on 2026-11-09 (comment 6154 on story 508). Now it counts only those missing from
+the lane's last record, `upgrade-lane-state` `data.records`. A PR the lane classified into any
+class has a lane, blocked, excluded and the owner's lane included. With every open PR
+classified the count reads 0 and the gate does not page. When the record cannot be read, it
+counts every aging PR, as before. `count_basis` in the report, and the page, say which.
+
+On 2026-11-13 the lane's record held all 17 open Renovate PRs, so the count reads 0. The
+report then read 5 (#4349, #4376, #4377, #4378, #4521), all of them classified.
 
 ## Lane verdicts in the labeler
 
@@ -1981,7 +2251,16 @@ node scripts/upgrade-agent/lane-pr-records-selftest.mjs      # story 549: the re
 bash scripts/upgrade-agent/shepherd-prefilter-selftest.sh    # story 549: vet markers count only from our bot (64 real markers, forged copies)
 node scripts/upgrade-agent/lane-history-selftest.mjs         # story 593: the history: events, backfill, comparison, rotation, conflicts, terminal records
 node scripts/upgrade-agent/lane-verify-selftest.mjs          # story 553: the verifier on 2026-11-13's merges: each failure mode, not yet, cannot tell, other changes, the pin, practice never in the history
+node scripts/upgrade-agent/lane-claim-selftest.mjs           # story 554: one signature on both sides, who claims first, both at once, unreadable claims, the gate's reading, dry-run writes nothing
+node scripts/upgrade-agent/lane-summary-selftest.mjs         # story 554: the morning summary: quiet night, several actors, needs a person, unfinished night, too long, hostile text (--sample prints 2026-11-13)
+bash scripts/upgrade-agent/gate-morning-selftest.sh          # story 554: the 06:30 sender: priority -1, no summary, not finished, the limit, hostile text runs nothing
+bash scripts/upgrade-agent/orphan-count-selftest.sh          # story 554: the weekly orphan count is PRs with no lane
 ```
+
+The story 554 suites run the shipped `gate.sh`, `page.sh` and `triage.sh` functions against
+`scripts/upgrade-agent/test-fake-cluster.mjs`, a fake `kubectl` and `curl` with the API
+server's preconditions (Conflict, AlreadyExists). `test-triage-harness.sh` runs one extracted
+triage function. `test-lane-claim-hook.mjs` is the lane's side of a race.
 
 `lane-night-dryrun-selftest.mjs` section 6 runs story 549 through the real tick against a
 stubbed GitHub: the steady state (a second identical tick writes nothing), the per-tick cap,
@@ -2005,8 +2284,8 @@ the two shared shell sources the selftests execute (`coordination-lib.sh`,
 - the lane selftests above (classifier, dry-run tick, merge step, record format), plus `node --check` and `jq .` on the shipped files;
 - the PR-record suite (story 549), after the record-format suite;
 - the shell selftests: `coordination-sig`, `held-audit`, `shepherd-verdict`,
-  `shepherd-stand-aside`, `shepherd-prefilter` (story 549), `stale-corpse` and `triage-claim`
-  (`scripts/upgrade-agent/*-selftest.sh`);
+  `shepherd-stand-aside`, `shepherd-prefilter` (story 549), `stale-corpse`, `triage-claim`,
+  `gate-morning` and `orphan-count` (story 554) (`scripts/upgrade-agent/*-selftest.sh`);
 - the delivery helper's offline suite:
   `python3 -I -B scripts/upgrade-agent/test_deliver_reviewed_pr.py -v`.
 
@@ -2025,8 +2304,9 @@ node scripts/pr-disposition-test.cjs                        # the labeler truth 
 3. Built (story 549), in dry-run: the per-PR record as one bot comment, the
    comment-author check in the shepherd pre-filter, and the one-retry rule for stalled
    checks.
-4. Coordination with triage and the gate: ownership of a regression signature, the
-   morning digest and the orphan page.
+4. Built (story 554): ownership of a regression signature between the lane, triage and the
+   gate; the morning summary at 06:30; the orphan page counting PRs with no lane. The
+   alert responder's `rem-*` lane does not honour a claim yet (finding above).
 5. The first live merge: one class, one merge a night, a stateless leaf (story 556).
    Then stateful targets and our own images. Story 752 built the live mode, the
    write-capable token, the merge step and the change lock. Story 553 built the read-only
