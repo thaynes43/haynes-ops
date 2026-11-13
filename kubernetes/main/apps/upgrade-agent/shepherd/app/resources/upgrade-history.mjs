@@ -385,7 +385,7 @@ export function catchUpSince(doc, cfg) {
 // fates: Map pr -> PR (readFate) | null (unreadable); a gone PR missing from it was not
 // read this tick (the budget). reverts: Map revert pr -> { targets: [pr] | null, titles:
 // Map pr -> title }.
-export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rules, scan, fates = new Map(), reverts = new Map(), backfilling, renovateAuthors, recount = null, triedFates = [] }) {
+export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rules, scan, fates = new Map(), reverts = new Map(), backfilling, renovateAuthors, recount = null, triedFates = [], verifyEvents = [] }) {
   const st = replay(doc);
   if (st.errors.length) return { ok: false, why: `the history does not replay (${st.errors.length} event(s) refused): ${st.errors[0]}` };
   const out = [];
@@ -448,6 +448,16 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
       if (evs[1]?.type === 'merge-refused' && s.refusal && s.refusal.head === (verdict.head ?? null) && s.refusal.key === refusalKey(verdict.pr_refusals)) notes.collapsed.push({ pr: verdict.pr, head: verdict.head, why: 'refused again at the same head for the same reasons; recorded once' });
       else for (const ev of evs) add(s, ev, verdict.pr);
     } else if (['refused', 'merged', 'merge-failed', 'merge-unknown'].includes(verdict.verdict)) notes.unrecorded.push({ pr: verdict.pr, why: 'the merge step ran on a PR whose item the history does not hold' });
+  }
+
+  // 2b. the verifier's events (story 553, night-verify.mjs; only with night.verify.write_history_events):
+  // verified, verification-failed, escalated or awaiting-pin, and only on an item whose current
+  // attempt the lane made. A verdict on someone else's merge (practice) is never recorded.
+  for (const ev of verifyEvents || []) {
+    const s = st.items.get(ev.item_id);
+    const why = !s ? 'a verifier event for an item the history does not hold' : s.item.attempts.at(-1)?.actor?.kind !== 'lane' ? 'a verifier event on a merge the lane did not make (practice) is not recorded' : null;
+    if (why) { notes.unrecorded.push({ pr: ev.carrier?.pr ?? null, item: ev.item_id, type: ev.type, why }); continue; }
+    add(s, ev, ev.carrier?.pr ?? null);
   }
 
   // a merge on the item the lane's route names for what was merged
@@ -701,7 +711,7 @@ export function applyHistory(manifest, manager, env) {
 // ── the phase ───────────────────────────────────────────────────────────────────
 // write = false (a local run): plans and writes nothing. Returns { summary, terminals, ctx }:
 // ctx (the document and version written) lets commitMirrors() mark mirrored terminals.
-export function historyPhase({ rules, run, env, repo, at, records, openPrs, verdict, write, apply = applyHistory, clock = Date.now, startedAt = null }) {
+export function historyPhase({ rules, run, env, repo, at, records, openPrs, verdict, write, apply = applyHistory, clock = Date.now, startedAt = null, verifyEvents = [] }) {
   const sum = { configmap: `${HISTORY.namespace}/${HISTORY.name}`, read: null, written: false, write: 'not-attempted', why_not: null, events: 0, derived: 0, by_type: {}, total: null, backfill: null, catch_up: null, rotation: null, notes: null, terminals: [], reads: null, elapsed_ms: null };
   const t0 = clock();
   const stuck = why => ({ summary: { ...sum, write: 'stuck', why_not: why, elapsed_ms: clock() - t0 }, terminals: [] });
@@ -753,7 +763,7 @@ export function historyPhase({ rules, run, env, repo, at, records, openPrs, verd
     const counts = (rules.renovate_pr_authors || []).map(a => readCount(repo, `author:${a} merged:${s0}..${u0}`, run));
     recount = counts.every(Number.isInteger) ? counts.reduce((x, y) => x + y, 0) : null;
   }
-  const plan = planHistory({ doc: p.doc, records, openPrs, verdict, at, repo, cfg, rules, scan, fates, reverts, backfilling, renovateAuthors: rules.renovate_pr_authors || [], recount, triedFates: [...fates.keys()] });
+  const plan = planHistory({ doc: p.doc, records, openPrs, verdict, at, repo, cfg, rules, scan, fates, reverts, backfilling, renovateAuthors: rules.renovate_pr_authors || [], recount, triedFates: [...fates.keys()], verifyEvents });
   sum.reads = { per_pr: budget.reads, cap: cfg.max_pr_reads_per_tick, stopped: budget.stopped };
   if (!plan.ok) return stuck(`${plan.why}; nothing written`);
   for (const ev of plan.events) sum.by_type[ev.type] = (sum.by_type[ev.type] || 0) + 1;

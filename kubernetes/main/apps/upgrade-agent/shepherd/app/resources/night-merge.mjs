@@ -873,7 +873,7 @@ export function verifyMerged(repo, pr, head, run) {
 // suspend: true stops every tick, this work included. NOT BUILT in story 752: it reads
 // nothing and runs nothing, and says so.
 export function owedWork({ mode, paused }) {
-  return { built: false, mode, paused: !!paused, ran: [], note: 'verification (story 553) and revert (stories 753, 754) of a merge already made are not built; nothing owed was run' };
+  return { built: false, mode, paused: !!paused, ran: [], note: 'the verifier (story 553) runs in the tick (summary.verify), not under pause, and does not release the post-merge hold; revert (stories 753, 754) of a merge already made is not built; nothing owed was run here' };
 }
 
 // ── PR records and the stalled-check retry (story 549) ─────────────────────────────
