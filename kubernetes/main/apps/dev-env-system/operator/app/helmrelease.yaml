@@ -694,7 +694,14 @@ spec:
               # canary route is now off (T16), so this scope only keeps its retained result readable.
               - '--context-payload-read-projects=dev-env,sigo-alumni'
               - '--enable-durable-inbox=true'
-              - '--inbox-projects=dev-env'
+              # OP799 (2026-11-13): haynes-studio joins dev-env. The Studio epic coordinators start
+              # their workers as haynes-studio project tasks, and a worker's parent note was refused
+              # (404) because its project was not in this list. For a project-bound haynes-studio
+              # session this turns on the peer inbox, ask and reply, parent notes and coordinator
+              # instructions, under the same fences as dev-env. The coordinator-read, portal-question,
+              # task-claim and context-payload lists below and above are unchanged. No RBAC, route,
+              # Secret or egress change, and no code change.
+              - '--inbox-projects=dev-env,haynes-studio'
               - '--inbox-coordinator-read-projects=dev-env'
               # OP321 (dev-env#769, v2.76.0): turns on inbox ask and reply (kind question or reply, inReplyTo) and the thread view and sent
               # box. Same projects, ACLs and identities as the durable inbox above. No RBAC, route, Secret, egress, phone or Asks change.
