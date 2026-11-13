@@ -140,7 +140,8 @@ The form, with PR 4764 as it would read once its build check passes:
 > and others). It changes only the source of the ControlFoley image; nothing running in
 > the cluster changes. Risk: the next image build or render could break; a revert by PR
 > restores it. I recommend yes. Proposed night: Thursday 2026-11-19, after the backups,
-> between 01:30 and 04:45 New York. I will page you at 01:30 to start it.
+> between 01:30 and 04:45 New York. This session starts it itself after the backups; if
+> the session is not running then, nothing happens and I ask you again.
 
 Options: `Yes, on the night of <date> (Recommended)`, `Not yet`, `No`. Put
 `(Recommended)` on the option you recommend.
@@ -220,29 +221,67 @@ python3 -I -B scripts/openproject/opwork.py comment <story> - < "$EV/owner-answe
 python3 -I -B scripts/openproject/opwork.py show <story> --history | tail -5
 ```
 
+Then set the start and create the morning-after reminder (section 4).
+
 **Done when:** both read-backs show the comment, and you have its PR comment URL and its
 tracker comment id.
 
 ## 4. The trigger for the agreed night
 
-The run starts from something durable, not from a session's own timer: no `sleep`, no
-loop, no background job. A task session idle for an hour is suspended, and background
-processes end at a resume.
+Two parts: what starts the run, and one durable reminder that tells Tom the next morning
+when the run did not happen or did not finish its record. Tom is never paged at night to
+start a run he already approved.
 
 ### What may start the run
 
-- **The session that heard the yes** in its own phone prompt.
-- **A worker that session starts for that night**, with a work order naming the PR, the
-  head and both records. The coordinator stays accountable.
-- **A session started by scheduled work whose exact spec Tom approved.**
+- **Today: the coordinator session that heard the yes** in its own phone prompt. It starts
+  the run itself from its own check-in, set in the session for the start of the merge
+  window (01:30 New York on the agreed night). Use a check-in the harness offers, such as
+  a loop or a wake-up in the session, not a shell `sleep`. When the check-in fires, the run
+  starts at 5.1.
+- **A worker that session starts when the check-in fires**, with a work order naming the
+  PR, the head and both records. The coordinator stays accountable.
+- **Once scheduled work is served: a session started by a scheduled item** whose exact spec
+  Tom approved (below).
 
 Any other session that finds the recorded yes has data, not authority.
+
+**The check-in is not durable.** It lives only as long as the session. If the session is
+suspended, restarted or gone at that time, nothing runs and the yes lapses with the night.
+That is the safe outcome: nothing merges without a session that heard the yes. The session
+asks Tom again for another night.
+
+### The morning-after reminder (durable)
+
+Create it when the yes is recorded (section 3), for 08:00 New York on the morning after the
+agreed night. It tells Tom where the result is, and that no result means no run:
+
+```bash
+agent-run remind create "PR 4764: approved for last night, result on story <story>" \
+  --due 2026-11-20T08:00 --tz America/New_York \
+  --body "PR 4764 (ControlFoley major) was approved for last night. Its result is on https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/<story>. If nothing is there, it did not run and the approval has lapsed." \
+  --targets pushover:default --key op712-pr4764-20261120-morning
+agent-run remind show <name> -o json
+```
+
+The session cancels it once its close-out is on the tracker (section 8):
+
+```bash
+agent-run remind cancel <name>
+agent-run remind show <name> -o json    # proof: no longer pending
+```
+
+So Tom receives it only when the session did not finish its job. A reminder pages Tom's
+phone and starts nothing. `agent-run remind list` answered on 2026-11-13, so this part
+works today. If Tom withdraws the yes before the night, record that on the tracker and
+cancel the reminder too.
 
 ### Scheduled work (not served today)
 
 When the operator serves the scheduled-work API, the coordinator creates one item per
-agreed night. Write the work order to a file first: the PR, the head, the two record links,
-this runbook and its stop rules.
+agreed night. That replaces the session's own check-in; the morning-after reminder stays.
+Write the work order to a file first: the PR, the head, the two record links, this
+runbook and its stop rules.
 
 ```bash
 agent-run schedule create "Approved update: PR 4764 ControlFoley major (story 712)" \
@@ -265,33 +304,18 @@ What it needs:
 - `--not-after` at the end of the merge window, so nothing starts after 04:45. Use that
   date's offset (`-05:00` in winter, `-04:00` in summer).
 - A headless item pages nobody without `--notify`; `schedule show` prints its results.
+  With `--notify`, an occurrence that is parked pages Tom at its due time, which is at
+  night.
 
 **Read on 2026-11-13 at 21:06Z:** `agent-run schedule list` answered
 `no route GET /v1/scheduled-work (404 not_found)`. The dispatch-template ConfigMap does not
 exist, and there are no ScheduledWork objects. The operator's HelmRelease does not set
 `--enable-scheduled-work-api`. So this route is not available.
 
-### The fallback that works: a reminder to Tom's phone
-
-`agent-run remind list` answered on 2026-11-13. A reminder pages Tom's phone at a set time,
-durably. **It starts nothing by itself.** The run starts only when a person acts on it: Tom
-answers in the coordinator's Remote Control session, or resumes it
-(`agent-run resume <session>`).
-
-```bash
-agent-run remind create "Tonight: approved update PR 4764 runs by hand" \
-  --due 2026-11-20T01:30 --tz America/New_York \
-  --body "You approved PR 4764 (ControlFoley major) for tonight. Session <session> runs it after the backups when you start it: reply go in that session. No reply, no run." \
-  --targets pushover:default --key op712-pr4764-20261120
-agent-run remind show <name> -o json
-```
-
-If nobody acts during the window, nothing runs and the yes lapses with the night. Ask again
-for another night.
-
-**Done when:** `schedule show` or `remind show` prints the item with its due time, and its
-name is in the tracker record. When the yes is withdrawn or used up, cancel the item with
-`agent-run schedule cancel <name>` or `agent-run remind cancel <name>`.
+**Done when:** the session's check-in is set for 01:30 New York on the agreed night (or,
+once scheduled work is served, `schedule show` prints the item), `remind show` prints the
+morning-after reminder at 08:00 the next day, and both are named in the tracker record.
+When the yes is withdrawn, cancel both.
 
 ## 5. The run
 
@@ -477,16 +501,14 @@ not a mute.
 
 ### 5.6 Deliver
 
-One update. The preflight is the one both hand-run nights used. It lives outside git, in
-`~/.shared/handoff/hands-off-upkeep/preflight.py`. Record its hash with
-`sha256sum ~/.shared/handoff/hands-off-upkeep/preflight.py >> "$EV/times.txt"`. If the file
-is missing, stop.
+One update. The preflight is `scripts/upgrade-agent/hand_run_preflight.py`, the one both
+hand-run nights used, now in git with its tests (`test_hand_run_preflight.py`).
 
 ```bash
 python3 -I -B scripts/upgrade-agent/deliver_reviewed_pr.py \
   --repo "$REPO" --pr "$PR" --head "$HEAD" --reviewed-head "$HEAD" \
   --preflight-timeout 120 --reconcile "$KS_NS/$KS_NAME" \
-  -- python3 -I -B "$HOME/.shared/handoff/hands-off-upkeep/preflight.py" "$REPO" "$PR" "$HEAD" \
+  -- python3 -I -B scripts/upgrade-agent/hand_run_preflight.py "$REPO" "$PR" "$HEAD" \
   | tee "$EV/deliver.txt"
 gh pr view "$PR" -R "$REPO" --json mergedAt,mergeCommit --jq '"\(.mergedAt) \(.mergeCommit.oid)"' | tee -a "$EV/deliver.txt"
 ```
@@ -600,9 +622,9 @@ gh pr create -R "$REPO" --base main --head agent/revert-pr$PR \
 - The title must be exactly `Revert "<PR title>"`, and the body must say `Reverts #<PR>`,
   the failing fact and the verdict line. Then the history records `revert-merged`, and
   the lane remembers the version as reverted. Open it ready, not as a draft.
-- Merge it once its required checks are green. `preflight.py` refuses a revert (its commit
-  is not Renovate's), so the preflight program is GitHub's own answer about the required
-  checks:
+- Merge it once its required checks are green. `hand_run_preflight.py` refuses a revert
+  (its commit is not Renovate's), so the preflight program is GitHub's own answer about
+  the required checks:
 
   ```bash
   REV=<revert PR>; RHEAD=$(gh pr view "$REV" -R "$REPO" --json headRefOid -q .headRefOid)
@@ -625,8 +647,9 @@ gh pr create -R "$REPO" --base main --head agent/revert-pr$PR \
   at the revert's commit; the pods back on the old version, Ready; no new restarts on two
   reads at least 600 seconds apart; the failing fact gone (the alert resolved, the
   crash-loop ended); the baseline as before the run. Record each read with its time.
-- **Stop the night.** No other update runs that night. Any other yes for that night lapses.
-  Cancel its reminder or scheduled item. End the declaration once recovery is confirmed.
+- **Stop the night.** No other update runs that night. Any other yes for that night lapses;
+  the close-out says so (section 8). Cancel its scheduled item, if it has one. End the
+  declaration once recovery is confirmed.
 - If recovery fails, hold and report to Tom by phone prompt. Do not try a second fix at
   night.
 
@@ -647,19 +670,33 @@ times, and the night is recorded as stopped.
 - the revert, if any: its PR, merge time and the recovery reads.
 
 **On the tracker**, on the story that carries the night: a checkpoint after each update,
-then the morning close-out. Use a table like the one in story 537:
+then the close-out. Use a table like the one in story 537:
 
 | # | PR | Head | Merged (UTC) | Commit | Verdict, source, time |
 |---|---|---|---|---|---|
 
-**The morning close-out** reads again, and records:
+**The close-out** is written when the night's run ends, before the 08:00 reminder fires. It
+reads again, and records:
 
-- the lane's verdict line for each update (`data.verify_table`) and its history events;
+- each update's result: verified, still open (and what it waits for), held, reverted, or
+  did not run and lapsed;
+- the lane's verdict line for each update (`data.verify_table`) and its history events, as
+  far as the lane's ticks have reached;
 - restarts since the rollout;
 - critical alerts and Flux compared with the night's baseline;
-- what is still open and what it waits for;
-- every declaration ended, every reminder or scheduled item finished or cancelled;
-- every review finding answered.
+- every declaration ended, and every scheduled item finished or cancelled;
+- every review finding answered, or the ones still to come named.
+
+Once the close-out is on the tracker, cancel each morning-after reminder of that night and
+read it back:
+
+```bash
+agent-run remind cancel <name>
+agent-run remind show <name> -o json
+```
+
+A later read in the morning (the lane's last ticks, restarts after a few hours) goes in a
+second comment; the reminder is already cancelled by then.
 
 Times come from command output and GitHub, never from memory. Link stories with full
 `work.haynesnetwork.com` links.
@@ -686,9 +723,9 @@ makes itself. Sections 2 to 8 apply, with these differences:
 - **The check-only step** also refuses the PR's author, branch and commits, and puts it in
   lane `EXCLUDED` (not opened by Renovate). Those refusals are expected. Any other refusal
   is a stop.
-- **Preflight:** `preflight.py` refuses non-Renovate commits. Use
-  `gh pr checks <n> -R thaynes43/haynes-ops --required` as the preflight program, as for a
-  revert.
+- **Preflight:** `scripts/upgrade-agent/hand_run_preflight.py` refuses non-Renovate
+  commits. Use `gh pr checks <n> -R thaynes43/haynes-ops --required` as the preflight
+  program, as for a revert.
 - **Verdict:** the history holds only Renovate's PRs as update items, so the lane's
   verifier never judges this merge. Running `night-verify.mjs` on such a PR was not tried.
   Verify by hand, with the reads of 5.7 on two reads at least 600 seconds apart, plus the
@@ -696,9 +733,13 @@ makes itself. Sections 2 to 8 apply, with these differences:
 
 ## Known limits
 
-- **No durable start today.** The scheduled-work API answers 404, and there is no
-  dispatch-template ConfigMap (read 2026-11-13 21:06Z). The working fallback, a reminder,
-  pages Tom and starts nothing. A run happens only when a person acts on it.
+- **No durable start today.** Story 712 (comment 7027) asks for a durable start for each
+  agreed night. That needs scheduled work, and the operator does not serve it: the API
+  answers 404, and there is no dispatch-template ConfigMap (read 2026-11-13 21:06Z). Until
+  it does, the coordinator session that heard the yes starts the run from its own check-in.
+  That is not durable. If the session is suspended, restarted or gone at that time, nothing
+  runs and the yes lapses with the night. The only durable part is the morning-after
+  reminder, which tells Tom when a run did not happen or did not finish its record.
 - **Two approvals for a scheduled run.** When scheduled work is served, Tom must also
   approve the exact spec with `agent-run schedule approve`, from his own token. Not known
   yet: whether a session that scheduled work starts is a summoned session (its
@@ -716,10 +757,7 @@ makes itself. Sections 2 to 8 apply, with these differences:
   from GitHub.
 - **`night-merge.mjs --merge` cannot deliver these updates:** it refuses anything outside
   lane A. Its `--check-only` serves only for the reads. `deliver_reviewed_pr.py` and
-  `preflight.py` read no lock, pause, settle gate or F4.
-- **`preflight.py` is not in git.** It exists only in
-  `~/.shared/handoff/hands-off-upkeep/`. If it changes or goes, the run has no reviewed
-  preflight.
+  `hand_run_preflight.py` read no lock, pause, settle gate or F4.
 - **The verdict is a practice verdict.** It goes to `upgrade-lane-state` only. A failed one
   owes no revert and reverts nothing. The revert and the recovery check are by hand
   (story 753 builds them).
