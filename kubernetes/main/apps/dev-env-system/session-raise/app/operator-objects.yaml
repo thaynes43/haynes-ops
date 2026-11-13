@@ -1,0 +1,81 @@
+---
+# Install step 5, the operator's half (dev-env DESIGN-066 section 11, 6.5, 6.6; ADR-028
+# decision 6). Three objects precreated EMPTY, and the operator's get/update on them by
+# name, with get on the keeper's two public objects.
+#
+# Metadata-only precreation, like ../../rbac/app/session-allowances.yaml and the keeper's
+# Secrets in ../../secrets/app/keeper-secrets.yaml. The operator never creates them.
+# `ssa: IfNotPresent` makes Flux create each once and never touch it again, so a
+# reconcile cannot blank what the operator wrote; `prune: disabled` keeps it if this file
+# or its line is removed. Never add data or stringData here: the operator's leader writes
+# them, under a resourceVersion precondition.
+#
+# A key is replaced by a re-key under a new name (DESIGN-066 6.6): take back every raise,
+# then add a new empty Secret here and change the operator flag that names it. Removing
+# the old Secret from this file does not delete it (prune: disabled).
+#
+# The private key, written by the operator's leader (ed25519). Only the operator may read
+# it; who else can is install step 6, a read-only check.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dev-env-session-raise-operator-key
+  namespace: dev-env-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled
+type: Opaque
+---
+# The operator ledger (DESIGN-066 6.5): raised sessions with their record id and state,
+# used words as hashes, and the per-performer rate limits. No secret. Only the operator
+# may update or delete it (./ledger-guards.yaml). Never delete it: a record counts only
+# while it matches this ledger.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-session-raise-ledger
+  namespace: dev-env-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled
+---
+# The operator's public key and its keyId, published by the operator's leader. The keeper
+# verifies raise records with it. Only the operator may update or delete it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-session-raise-operator-public
+  namespace: dev-env-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled
+---
+# By name only. get, then update with the resourceVersion as one compare-and-set, on the
+# operator's own three objects; get on the keeper's notice ledger and public key. No
+# create, list, watch, patch or delete, and no other ConfigMap or Secret.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-operator-session-raise
+  namespace: dev-env-system
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-session-raise-ledger, dev-env-session-raise-operator-public]
+    verbs: [get, update]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [dev-env-session-raise-operator-key]
+    verbs: [get, update]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-keeper-raise-notices, dev-env-session-raise-keeper-public]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-operator-session-raise
+  namespace: dev-env-system
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-operator-session-raise}
+subjects: [{kind: ServiceAccount, name: dev-env-operator, namespace: dev-env-system}]

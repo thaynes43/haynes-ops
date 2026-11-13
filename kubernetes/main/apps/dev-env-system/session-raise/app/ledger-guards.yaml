@@ -1,0 +1,77 @@
+---
+# Install steps 3 and 4 (dev-env DESIGN-066 section 11, 6.4, 6.5, 6.6): each owner alone
+# may update or delete its ledger ConfigMap and its public-key ConfigMap. The objects are
+# precreated empty in ./operator-objects.yaml and ./keeper-objects.yaml.
+#
+# Why every other writer passes:
+# - resourceNames and the namespace selector are decided by the API server before any
+#   CEL runs: only these four names in dev-env-system reach an expression, and no other
+#   ConfigMap is touched.
+# - Matches UPDATE and DELETE only. CREATE is not matched, so Flux creates each object
+#   once from git.
+# - Flux never updates or deletes them afterwards: each carries
+#   kustomize.toolkit.fluxcd.io/ssa: IfNotPresent, and kustomize-controller skips an
+#   existing object with that annotation before its dry-run and its apply (fluxcd/pkg
+#   ssa manager_apply.go, shouldSkipApply, in the ssa v0.83.0 that kustomize-controller
+#   v1.10.1 uses); prune: disabled keeps Flux from deleting them.
+# - They have no ownerReferences, so the garbage collector never deletes them.
+# - The decision reads only request.userInfo.username, which every request has, so a
+#   DELETE (no object) and an UPDATE are judged the same way.
+#
+# Known effect: deleting the dev-env-system namespace would be refused on these four
+# objects until the bindings are removed.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-session-raise-operator-ledger
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: dev-env-system
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [UPDATE, DELETE]
+        resources: [configmaps]
+        resourceNames: [dev-env-session-raise-ledger, dev-env-session-raise-operator-public]
+  validations:
+    - expression: "request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator'"
+      message: only the dev-env operator may update or delete the session raise ledger and the operator's raise public key
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-session-raise-operator-ledger
+spec:
+  policyName: dev-env-session-raise-operator-ledger
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-session-raise-keeper-ledger
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: dev-env-system
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [UPDATE, DELETE]
+        resources: [configmaps]
+        resourceNames: [dev-env-keeper-raise-notices, dev-env-session-raise-keeper-public]
+  validations:
+    - expression: "request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-keeper'"
+      message: only the dev-env keeper may update or delete the raise notice ledger and the keeper's raise public key
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-session-raise-keeper-ledger
+spec:
+  policyName: dev-env-session-raise-keeper-ledger
+  validationActions: [Deny]

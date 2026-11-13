@@ -1,0 +1,104 @@
+---
+# Install step 5, the keeper's half (dev-env DESIGN-066 section 11, 6.4, 6.6; ADR-028
+# decision 6). Three objects precreated EMPTY, the keeper's get/update on them by name,
+# get on the operator's ledger and public key, and list on AgentSessions in dev-agents.
+#
+# Metadata-only precreation, like ../../rbac/app/keeper-ask-notifications.yaml and the
+# keeper's Secrets in ../../secrets/app/keeper-secrets.yaml. The keeper never creates them.
+# `ssa: IfNotPresent` makes Flux create each once and never touch it again, so a
+# reconcile cannot blank what the keeper wrote; `prune: disabled` keeps it if this file
+# or its line is removed. Never add data or stringData here: the keeper's leader writes
+# them, under a resourceVersion precondition.
+#
+# A key is replaced by a re-key under a new name (DESIGN-066 6.6): take back every raise,
+# then add a new empty Secret here and change the keeper flag that names it. Removing the
+# old Secret from this file does not delete it (prune: disabled).
+#
+# The private key, written by the keeper's leader (ed25519). Only the keeper may read it;
+# who else can is install step 6, a read-only check.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dev-env-session-raise-keeper-key
+  namespace: dev-env-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled
+type: Opaque
+---
+# The keeper's raise notice ledger (DESIGN-066 6.4): a reservation before every send, then
+# the signed outcome (record id, session UID, attempt, Sent/Failed/Ambiguous, time). No
+# secret and no notice text. Only the keeper may update or delete it
+# (./ledger-guards.yaml). It is not the Ask push ledger, dev-env-keeper-ask-notifications.
+# Never delete it: Flux would recreate it empty and the keeper would read a fresh ledger.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-keeper-raise-notices
+  namespace: dev-env-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled
+---
+# The keeper's public key and its keyId, published by the keeper's leader. The operator
+# verifies notice outcomes with it. Only the keeper may update or delete it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-session-raise-keeper-public
+  namespace: dev-env-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled
+---
+# By name only. get, then update with the resourceVersion as one compare-and-set, on the
+# keeper's own three objects; get on the operator's ledger and public key. No create,
+# list, watch, patch or delete, and no other ConfigMap or Secret.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-keeper-session-raise
+  namespace: dev-env-system
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-keeper-raise-notices, dev-env-session-raise-keeper-public]
+    verbs: [get, update]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [dev-env-session-raise-keeper-key]
+    verbs: [get, update]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [dev-env-session-raise-ledger, dev-env-session-raise-operator-public]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-keeper-session-raise
+  namespace: dev-env-system
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-keeper-session-raise}
+subjects: [{kind: ServiceAccount, name: dev-env-keeper, namespace: dev-env-system}]
+---
+# The raise notifier lists the AgentSessions that carry the raise annotation every 30
+# seconds (DESIGN-066 6.4). The keeper already has get on agentsessions in dev-agents
+# (../../rbac/app/keeper-credentials.yaml) but no list; this adds list only. No watch:
+# the design names list only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-keeper-session-raise
+  namespace: dev-agents
+rules:
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [agentsessions]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-keeper-session-raise
+  namespace: dev-agents
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-keeper-session-raise}
+subjects: [{kind: ServiceAccount, name: dev-env-keeper, namespace: dev-env-system}]

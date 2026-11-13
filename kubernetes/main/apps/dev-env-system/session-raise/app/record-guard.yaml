@@ -1,0 +1,54 @@
+---
+# Install step 1 (dev-env DESIGN-066 section 11, slice (a)): only the operator's account
+# may add, change or remove the raise record, the annotation dev-env.haynesops.com/raise
+# on an AgentSession (DESIGN-066 6.1; ADR-028 decision 5). A forged or replayed record
+# counts for nothing even without this rule, because it does not match the operator's
+# ledger; this rule stops anyone else writing one at all.
+#
+# Why every other writer passes:
+# - Matches CREATE and UPDATE of agentsessions only. DELETE is not matched, so deleting a
+#   session (by the operator, the garbage collector or anyone) is never refused here.
+# - No subresource is matched. agentsessions/status cannot change metadata anyway: the
+#   API server copies the old object and keeps only the new status
+#   (apiextensions-apiserver customresource/status_strategy.go, PrepareForUpdate).
+# - A write that leaves the annotation as it was passes, whoever sends it: a finalizer
+#   or label patch, an ownerReference change by the garbage collector, and Flux
+#   re-applying an unchanged object all keep both presence and value equal.
+# - A missing annotations map, on object or oldObject, reads as "not present" and ''.
+# - CREATE has no oldObject: the prior value is "not present", so a create without the
+#   annotation (every create today, including Flux's coordinator session) passes, and
+#   only a create that carries a raise record must come from the operator.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-session-raise-record
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [dev-env.haynesops.com]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE]
+        resources: [agentsessions]
+  variables:
+    - name: present
+      expression: "'dev-env.haynesops.com/raise' in object.metadata.?annotations.orValue({})"
+    - name: priorPresent
+      expression: "oldObject == null ? false : 'dev-env.haynesops.com/raise' in oldObject.metadata.?annotations.orValue({})"
+    - name: record
+      expression: "object.metadata.?annotations['dev-env.haynesops.com/raise'].orValue('')"
+    - name: priorRecord
+      expression: "oldObject == null ? '' : oldObject.metadata.?annotations['dev-env.haynesops.com/raise'].orValue('')"
+  validations:
+    - expression: >-
+        (variables.present == variables.priorPresent && variables.record == variables.priorRecord) ||
+        request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator'
+      message: only the dev-env operator may add, change or remove the dev-env.haynesops.com/raise annotation
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-session-raise-record
+spec:
+  policyName: dev-env-session-raise-record
+  validationActions: [Deny]
