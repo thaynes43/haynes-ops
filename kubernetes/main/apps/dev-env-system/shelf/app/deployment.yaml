@@ -52,7 +52,7 @@ spec:
           # code (internal/shelf, cmd/agentd shelf and its ctl commands) is unchanged since
           # 2.99.0: same args, HOME, mount and commands. Previous image
           # 2.99.0@sha256:f3ba7f1ce570591a95ee1f08bf515a368f34e04549c3e607d3bb65b8a349ab2d.
-          image: ghcr.io/thaynes43/dev-env:2.100.0@sha256:d22d60dbee6700107f1508a89cb490385b9c856da199c5220913334e859381f0
+          image: ghcr.io/thaynes43/dev-env:2.109.0@sha256:8b2b51d5997c7406271128143734e08b885de4c3efb2dcc271d9c6c2389a0dca
           args: ["shelf"]
           env:
             - name: HOME
