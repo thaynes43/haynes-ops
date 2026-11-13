@@ -587,7 +587,9 @@ async function tick() {
       C = await import('./night-claim.mjs');
       const work = C.claimConfig(rules);
       const deps = C.liveDeps({ run, env: childEnv, now, prom: PROM });
-      for (const r of failed) summary.claims.push(C.claimStep({ rec: r, live: MODE === 'live' && WRITE_STATE && !r.practice && work.ok, now, work, deps }));
+      // night.claim.write (git: false) gates every claim write: story 753 turns it on with the revert
+      for (const r of failed) summary.claims.push(C.claimStep({ rec: r, live: MODE === 'live' && WRITE_STATE && !r.practice && work.ok && work.write, now, work, deps,
+        readOnlyWhy: MODE === 'live' && !r.practice && work.ok && !work.write ? 'read only: night.claim.write is off until story 753 builds the revert' : null }));
     }
   } catch (e) { summary.claims_error = `${C ? '' : 'night-claim.mjs did not load: '}${String(e.message).slice(0, 300)}`; }
   log(`${summary.claims_error ? 'ERROR ' : ''}upgrade-night ${MODE}: claims: ${summary.claims_error ? `FAILED: ${summary.claims_error}` : C ? C.claimLine(summary.claims) : 'no failed verdict this tick'}`);

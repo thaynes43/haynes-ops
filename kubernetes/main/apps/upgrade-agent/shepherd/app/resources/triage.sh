@@ -167,7 +167,7 @@ state_upsert() {  # <sig> <class> <attempted> <result> [note] ; RETURNS the writ
 #
 # lane_hold <state-json> <sig> <reg-ids> — rc0 (and one line on stdout) when the lane holds
 # this regression: the entry for <sig> has holder=lane, or another lane claim still working
-# (lane_state working, until not passed) names one of <reg-ids>. The second covers a set that
+# (lane_state working or reverting, until not passed) names one of <reg-ids>. The second covers a set that
 # changed since the lane claimed it (an unrelated failure joined, a pod left): the signature
 # moved, the regression did not.
 lane_hold() {
@@ -180,11 +180,11 @@ lane_hold() {
       else
         ([ $d | to_entries[] | select(.key != $k)
            | .key as $sk | (.value | fromjson? // {}) as $o
-           | select(($o | type) == "object" and ($o.holder // "") == "lane" and ($o.lane_state // "") == "working"
+           | select(($o | type) == "object" and ($o.holder // "") == "lane" and (["working", "reverting"] | index($o.lane_state // "") != null)
                     and ((($o.until // "0") | tostring | tonumber? // 0) > $now))
            | [ ($o.ids // [])[] | select(. as $i | $mine | index($i) != null) ] as $hit
            | select(($hit | length) > 0)
-           | "the night lane holds \($sk) for #\($o.pr // "?") (working until \($o.until)), which names \($hit | join(", "))" ]
+           | "the night lane holds \($sk) for #\($o.pr // "?") (\($o.lane_state) until \($o.until)), which names \($hit | join(", "))" ]
          | first) // empty
       end' 2>/dev/null
 }

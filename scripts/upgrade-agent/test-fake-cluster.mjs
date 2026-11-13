@@ -10,13 +10,14 @@
 // pods: { "ns/name": pod }, jobs: { ns: list }, gitrepository }). FAKE_KUBE_LOG gets one JSON line
 // per call. FAKE_KUBE_HOOK (a JSON argv) runs once, before the first write, with FAKE_KUBE_HOOK
 // unset for it: another actor writing "at the same moment". FAKE_KUBE_UNREADABLE=1 fails every
-// ConfigMap read with a connection error.
+// ConfigMap read with a connection error; FAKE_KUBE_UNREADABLE_TIMES=N the first N.
 //
 // curl: every URL is appended to FAKE_CURL_URLS; GitHub answers one commit; a Prometheus
 // query (--data-urlencode query=...) answers from FAKE_PROM (JSON: { pods:
 // <query response>, default: <response> }); `vector(1)` answers one series; Pushover posts are
-// appended to FAKE_CURL_LOG (one JSON array of the arguments per line) and answer status 1, or
-// fail when FAKE_PUSHOVER_FAIL=1 (every post) or for the first FAKE_PUSHOVER_FAIL_TIMES posts.
+// appended to FAKE_CURL_LOG (one JSON array of the arguments per line); each answers as
+// FAKE_PUSHOVER_SEQ, FAKE_PUSHOVER_FAIL or FAKE_PUSHOVER_FAIL_TIMES say (below), else HTTP 200,
+// and prints the -w write-out with its http_code and time_connect.
 import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
@@ -33,14 +34,23 @@ if (tool === 'curl') {
   if (/api\.github\.com/.test(url)) { out('[{"sha":"x"}]'); process.exit(0); }
   if (/pushover/.test(url)) {
     if (env.FAKE_CURL_LOG) appendFileSync(env.FAKE_CURL_LOG, `${JSON.stringify(args)}\n`);
-    if (env.FAKE_PUSHOVER_FAIL === '1') fail('curl: (22) The requested URL returned error: 500', 22);
-    // FAKE_PUSHOVER_FAIL_TIMES=N: the first N posts fail (counted beside the log)
-    if (env.FAKE_PUSHOVER_FAIL_TIMES && env.FAKE_CURL_LOG) {
-      const cf = `${env.FAKE_CURL_LOG}.n`, n = Number(existsSync(cf) ? readFileSync(cf, 'utf8') : 0) + 1;
-      writeFileSync(cf, String(n));
-      if (n <= Number(env.FAKE_PUSHOVER_FAIL_TIMES)) fail('curl: (28) Operation timed out after 10001 milliseconds', 28);
-    }
-    out('{"status":1}');
+    // the outcome of this post: FAKE_PUSHOVER_SEQ is a comma list consumed one per post (ok,
+    // NNN = that HTTP status, resolve = exit 6, connect = exit 7, timeout = exit 28 after
+    // connecting, conntimeout = exit 28 with no connection); FAKE_PUSHOVER_FAIL=1 makes every
+    // post "connect"; FAKE_PUSHOVER_FAIL_TIMES=N the first N
+    const cf = `${env.FAKE_CURL_LOG || '/dev/null'}.n`;
+    const n = env.FAKE_CURL_LOG ? Number(existsSync(cf) ? readFileSync(cf, 'utf8') : 0) + 1 : 1;
+    if (env.FAKE_CURL_LOG) writeFileSync(cf, String(n));
+    const seq = (env.FAKE_PUSHOVER_SEQ || '').split(',').filter(Boolean);
+    const kind = env.FAKE_PUSHOVER_FAIL === '1' ? 'connect' : n <= Number(env.FAKE_PUSHOVER_FAIL_TIMES || 0) ? 'connect' : seq[n - 1] || 'ok';
+    const wi = args.findIndex(a => a === '-w' || a === '--write-out');
+    const wout = (code, tc) => { if (wi >= 0) out(String(args[wi + 1]).replace('%{http_code}', code).replace('%{time_connect}', tc)); else if (code === '200') out('{"status":1}'); };
+    if (kind === 'resolve') { wout('000', '0.000000'); fail('curl: (6) Could not resolve host: api.pushover.net', 6); }
+    if (kind === 'connect') { wout('000', '0.000000'); fail('curl: (7) Failed to connect to api.pushover.net port 443', 7); }
+    if (kind === 'conntimeout') { wout('000', '0.000000'); fail('curl: (28) Connection timed out after 5001 milliseconds', 28); }
+    if (kind === 'timeout') { wout('000', '0.041000'); fail('curl: (28) Operation timed out after 10001 milliseconds with 0 bytes received', 28); }
+    const code = kind === 'ok' ? '200' : kind;
+    wout(code, '0.041000');
     process.exit(0);
   }
   const qi = args.findIndex(a => a === '--data-urlencode');
@@ -79,6 +89,12 @@ if (verb === 'version') { out('{"serverVersion":{"major":"1","minor":"34"}}'); p
 if (verb === 'get') {
   if (isCm(kind)) {
     if (env.FAKE_KUBE_UNREADABLE === '1') fail('Unable to connect to the server: dial tcp 10.96.0.1:443: i/o timeout');
+    // FAKE_KUBE_UNREADABLE_TIMES=N: the first N ConfigMap reads fail (counted beside the state)
+    if (env.FAKE_KUBE_UNREADABLE_TIMES) {
+      const cf = `${stateFile}.reads`, n = Number(existsSync(cf) ? readFileSync(cf, 'utf8') : 0) + 1;
+      writeFileSync(cf, String(n));
+      if (n <= Number(env.FAKE_KUBE_UNREADABLE_TIMES)) fail('Unable to connect to the server: dial tcp 10.96.0.1:443: i/o timeout');
+    }
     const st = load();
     if (fsel) {
       const n = /metadata\.name=(.+)/.exec(fsel)?.[1];

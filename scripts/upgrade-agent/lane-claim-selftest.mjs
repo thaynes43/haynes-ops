@@ -135,9 +135,9 @@ try {
     ok(e.class === 'upgrade' && e.attempted === '1' && e.result === 'inprogress' && e.holder === 'lane' && e.lane_state === 'working', 'class upgrade, attempted 1, result inprogress, holder lane, working');
     ok(e.last_paged === '1794560000' && e.first_seen === String(NOW_S) && e.claimed_at === String(NOW_S) && e.until === String(NOW_S + 10800), 'keeps last_paged; first_seen and claimed_at are the claim; until is its own bound');
     ok(!/[\u0000-\u001f]/.test(e.note), 'the note carries no control characters');
-    ok(C.claimConfig({ night: { claim: { max_work_seconds: 10800 } } }).ok && !C.claimConfig({ night: { claim: { max_work_seconds: 99999 } } }).ok && !C.claimConfig({}).ok, 'night.claim.max_work_seconds is checked (1800..21600)');
+    ok(C.claimConfig({ night: { claim: { max_work_seconds: 10800, write: false } } }).ok && !C.claimConfig({ night: { claim: { max_work_seconds: 10800 } } }).ok && !C.claimConfig({ night: { claim: { max_work_seconds: 99999, write: true } } }).ok && !C.claimConfig({}).ok, 'night.claim is checked: write true or false, and max_work_seconds (1800..21600)');
     const rules = JSON.parse(readFileSync(join(RES, 'upgrade-rules.json'), 'utf8'));
-    ok(C.claimConfig(rules).ok && rules.night.claim.max_work_seconds === 10800, 'git ships a valid bound (10800 s)');
+    ok(C.claimConfig(rules).ok && rules.night.claim.max_work_seconds === 10800 && rules.night.claim.write === false && C.claimConfig(rules).write === false, 'git ships a valid bound (10800 s) and write false (story 753 turns it on with the revert)');
   }
 
   // ── 3. triage claims first: the lane stops ─────────────────────────────────────────
@@ -312,7 +312,8 @@ try {
     ok(s5.outcome === 'not-in-set' && !s5.wrote && s5.revert_allowed, 'a regression the coordination set does not name: nothing to claim (triage and the gate do not see it)');
     // the tick wires it: live only with --write-state, the lane's own merge and a valid bound
     const rn = readFileSync(join(RES, 'run-night.mjs'), 'utf8');
-    ok(/C\.claimStep\(\{ rec: r, live: MODE === 'live' && WRITE_STATE && !r\.practice && work\.ok, now, work, deps \}\)/.test(rn), 'run-night.mjs: live = live mode, --write-state, the lane\'s own merge, a valid bound');
+    ok(/C\.claimStep\(\{ rec: r, live: MODE === 'live' && WRITE_STATE && !r\.practice && work\.ok && work\.write, now, work, deps,/.test(rn), 'run-night.mjs: live = live mode, --write-state, the lane\'s own merge, a valid night.claim, and night.claim.write');
+    ok(/readOnlyWhy: MODE === 'live' && !r\.practice && work\.ok && !work\.write \? 'read only: night\.claim\.write is off until story 753 builds the revert'/.test(rn), 'run-night.mjs: with write off, a live failed verdict on the lane\'s own merge records why it only reads');
     ok(rn.indexOf('C.claimStep(') > rn.indexOf('V.verifyPhase(') && rn.indexOf('C.claimStep(') < rn.indexOf('H.historyPhase('), 'run-night.mjs: the step runs after the verifier and before the history');
   }
 
@@ -369,7 +370,7 @@ try {
     // L10: a moved signature pages now, with the true note
     const gm = gate({ cccccccccccc: e({ ids: ['flux/HelmRelease/media/seerr'] }) });
     const note = gm.flux[0]?.find(a => a.startsWith('message=')) || '';
-    ok(gm.flux.length === 1 && /the night lane is reverting #4869 \(claim cccccccccccc, until [0-9T:-]+Z\) and holds flux\/HelmRelease\/media\/seerr; the rest of this set \(flux\/Kustomization\/media\/seerr, pod\/ai\/kokoro-6dcbb966bf-c8z88, pod\/media\/seerr-bb94554fd-qd4fm\) has no owner/.test(note) && !/not attributable to a recent upgrade/.test(note),
+    ok(gm.flux.length === 1 && /the night lane has taken #4869 \(claim cccccccccccc, until [0-9T:-]+Z\) and holds flux\/HelmRelease\/media\/seerr; the rest of this set \(flux\/Kustomization\/media\/seerr, pod\/ai\/kokoro-6dcbb966bf-c8z88, pod\/media\/seerr-bb94554fd-qd4fm\) has no owner/.test(note) && !/not attributable to a recent upgrade/.test(note),
       'a set that moved since the lane claimed part of it: the gate pages, naming the lane\'s PR and ids and saying the rest has no owner', note.slice(0, 400));
     const gm2 = gate({ cccccccccccc: e({ ids: ['flux/HelmRelease/media/seerr'], until: String(NOW_S - 60), claimed_at: String(NOW_S - 3600) }) });
     ok(gm2.flux.length === 1 && gm2.flux[0].some(a => /not attributable to a recent upgrade/.test(a)), 'a lane claim past its bound under another signature: today\'s note');
@@ -422,6 +423,57 @@ try {
     ok(moved.r.status === 0 && /the night lane holds cccccccccccc for #4869/.test(moved.r.stderr) && moved.github === 0 && moved.w.writes().length === 0, 'triage.sh, run: a moved signature the lane holds part of: the same', moved.r.stderr.split('\n').slice(-4).join(' | ').slice(0, 500));
     const free = tri({ 'upgrade-remediation-state': {} });
     ok(free.r.status === 0 && free.github >= 1 && /attribution|merge to main/.test(free.r.stderr) && !/held by the night lane/.test(free.r.stderr), 'triage.sh, run, no lane claim: it reads GitHub and attributes as before (the control)', free.r.stderr.split('\n').slice(-3).join(' | ').slice(0, 300));
+  }
+
+  // ── 11. the second review (closing round) ──────────────────────────────────────────
+  section('11. the second review: no claim without a revert step (B), "reverting" only when one is under way, the 300 s boundary');
+  {
+    // B: live mode, the lane's own merge, its own regression, night.claim.write off: read only
+    const rulesOff = JSON.parse(readFileSync(join(RES, 'upgrade-rules.json'), 'utf8'));
+    const workOff = C.claimConfig(rulesOff);
+    const w = world({ cms: { 'upgrade-remediation-state': {} } });
+    const live = 'live' === 'live' && true && !REC.practice && workOff.ok && workOff.write; // run-night.mjs's condition, git's settings
+    const s = C.claimStep({ rec: REC, live, now: NOW, work: workOff, deps: laneDeps(w, SIG), readOnlyWhy: 'read only: night.claim.write is off until story 753 builds the revert' });
+    ok(live === false && s.outcome === 'would-claim' && !s.wrote && !s.revert_allowed && w.writes().length === 0 && /night\.claim\.write is off until story 753/.test(s.why), 'live, the lane\'s own merge, write off (git): nothing written, recorded as would-claim with why', JSON.stringify(s).slice(0, 300));
+    const h = harness(w, ['lane_hold', SIG.sig, SIG.ids.join('\n')]);
+    const c = harness(w, ['state_claim', SIG.sig, SIG.ids.join('\n')]);
+    ok(h.status !== 0 && c.status === 0 && w.entry(SIG.sig)?.holder === 'triage', 'and triage is not held: it claims the regression as on main');
+    const g = gate({ [SIG.sig]: undefined }, NOW_S);
+    ok(g.flux.length === 1, 'and the gate pages as on main');
+    const workOn = C.claimConfig({ night: { claim: { ...rulesOff.night.claim, write: true } } });
+    const w2 = world({ cms: { 'upgrade-remediation-state': {} } });
+    const s2 = C.claimStep({ rec: REC, live: workOn.ok && workOn.write, now: NOW, work: workOn, deps: laneDeps(w2, SIG) });
+    ok(s2.outcome === 'claimed' && s2.wrote && w2.entry(SIG.sig)?.holder === 'lane' && s2.lane_state === 'working', 'write on (story 753): the claim is written as before, lane_state working');
+    // "reverting" only when the claim says a revert is under way
+    const e = (o = {}) => JSON.stringify({ ...C.laneEntry({ pr: 4869, mine: MINE, now: NOW - 600e3, workSeconds: 10800, note: 'x' }), ...o });
+    const gw = gate({ [SIG.sig]: e() });
+    ok(gw.flux.length === 0 && /phase=inflight/.test(gw.r.stderr), 'working: silent');
+    const grv = gate({ [SIG.sig]: e({ lane_state: 'reverting' }) });
+    ok(grv.flux.length === 0 && /phase=inflight/.test(grv.r.stderr), 'reverting (story 753): silent too, until its bound');
+    const gmo = gate({ cccccccccccc: e({ ids: ['flux/HelmRelease/media/seerr'], lane_state: 'reverting' }) });
+    ok((gmo.flux[0] || []).some(a => /the night lane is reverting #4869 \(claim cccccccccccc/.test(a)), 'a moved signature while the lane says it is reverting: "is reverting"');
+    const gmw = gate({ cccccccccccc: e({ ids: ['flux/HelmRelease/media/seerr'] }) });
+    ok((gmw.flux[0] || []).some(a => /the night lane has taken #4869/.test(a)) && !(gmw.flux[0] || []).some(a => /reverting/.test(a)), 'the same while working: "has taken", never "reverting"');
+    const wr = world({ cms: { 'upgrade-remediation-state': { cccccccccccc: e({ ids: MINE, lane_state: 'reverting' }) } } });
+    const hr = harness(wr, ['lane_hold', SIG.sig, SIG.ids.join('\n')]);
+    ok(hr.status === 0 && /reverting until/.test(hr.stdout), 'triage: a reverting lane claim under another signature holds the regression', hr.stdout);
+    ok(C.claimStep({ rec: { ...REC, pr: 9999 }, live: true, now: NOW, work: WORK, deps: laneDeps(wr, SIG) }).outcome === 'lane-holds', 'the lane: the same, for another update');
+    const wu = world({ cms: { 'upgrade-remediation-state': {} } });
+    C.claimStep({ rec: REC, live: true, now: NOW, work: WORK, deps: laneDeps(wu, SIG) });
+    ok(C.updateClaim({ sig: SIG.sig, pr: 4869, laneState: 'reverting', now: NOW + 60e3, deps: laneDeps(wu, SIG) }).ok && wu.entry(SIG.sig).lane_state === 'reverting' && wu.entry(SIG.sig).result === 'inprogress', 'updateClaim (story 753): reverting, result still inprogress');
+    // the 300 s boundary (second review survivor: -le against -lt)
+    // first_seen an hour back, so a claim that is not believed falls to today's reading and pages
+    const b300 = gate({ [SIG.sig]: e({ claimed_at: String(NOW_S + 300), until: String(NOW_S + 3600), first_seen: String(NOW_S - 3600) }) });
+    const b301 = gate({ [SIG.sig]: e({ claimed_at: String(NOW_S + 301), until: String(NOW_S + 3600), first_seen: String(NOW_S - 3600) }) });
+    ok(b300.flux.length === 0 && /phase=inflight/.test(b300.r.stderr) && b301.flux.length === 1, 'claimed_at exactly 300 s ahead: believed (silent); 301 s: not, read as today (an hour old: pages)');
+    const f300 = gate({ [SIG.sig]: JSON.stringify({ class: 'upgrade', attempted: '1', result: 'none', first_seen: String(NOW_S + 300), last_paged: '0' }) });
+    const f301 = gate({ [SIG.sig]: JSON.stringify({ class: 'upgrade', attempted: '1', result: 'none', first_seen: String(NOW_S + 301), last_paged: '0' }) });
+    ok(f300.flux.length === 0 && f301.flux.length === 1, 'today\'s reading, first_seen exactly 300 s ahead: in flight (silent); 301 s: its grace counts as spent (pages)');
+    // the two the second review called harmless, where a test is cheap: both outcomes are a page
+    const fz = gate({ [SIG.sig]: JSON.stringify({ class: 'upgrade', attempted: '1', result: 'none', first_seen: `0${NOW_S - 60}`, last_paged: '0' }) });
+    ok(fz.flux.length === 1, 'a first_seen with a leading zero: treated as no time, so its grace is spent: pages (without the check, bash\'s octal error aborts remediation_phase and the gate pages all the same)');
+    const g13 = gate({ [SIG.sig]: e({ until: '9999999999999' }) });
+    ok(g13.flux.length === 0 && /phase=inflight/.test(g13.r.stderr), 'an until of 13 digits: not understood, read as today (class upgrade, inprogress, 10 minutes old: in flight); without the length check the 6-hour cap refuses it the same way');
   }
 } finally {
   rmSync(TMP, { recursive: true, force: true });
