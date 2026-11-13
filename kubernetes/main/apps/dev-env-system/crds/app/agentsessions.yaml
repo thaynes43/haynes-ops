@@ -4,27 +4,30 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main 59169f1ff9685a73945df985b372abe304659188 (merge of PR #1095),
-# verified byte for byte (SHA-256 b634125eda2aff61a4cc364131880e768352a651219099abbe1b2d78b5ac705a
-# below this header). One change since the copy from c4bc870d:
-# - dev-env 59169f1ff968, PR #1095, DESIGN-064 6.7 and 6.8, OpenProject #779 (slice c of
-#   #741): status.summon.pages (the page events the operator leader records on a summoned
-#   session, {event, at}, at most 8; this slice writes escalation-held and
-#   escalation-reminder, once each), and a rule that an entry is never removed or changed.
-#   Status only; nothing in spec changed.
-#   It must be here before the operator pin that writes the field: with an older schema
-#   the API server would drop pages and the leader would record the same event on every
-#   pass. Install precondition: no AgentSession has status.summon yet (read in the cluster
-#   before this copy merged; the PR records it), so no stored object meets the new rule.
-# Earlier changes in this file, still in force: status.summon.admittedAt,
+# Source: dev-env main e6f36eb8792defa56e75f678ddbdf6e501831705 (merge of PR #1104),
+# verified byte for byte (SHA-256 6b218e9caedd8fe9a2a51cd46c9f3fd5979d7536c110dc48d9691ed8eb5ab870
+# below this header). One change since the copy from 59169f1f:
+# - dev-env e6f36eb8792d, PR #1104, DESIGN-065 slice 1, OpenProject #785: spec.title (an
+#   optional role text for a session: 1 to 48 characters and at most 96 bytes, the first
+#   character a letter or a digit, set at create and immutable afterwards), one more
+#   clause for it in the spec-wide presence rule, and status.remoteControl.title (the
+#   display title agentd passed to the provider at launch, at most 128 bytes).
+#   It must be here before the operator pin that accepts a title: against an older schema
+#   that operator refuses a create that carries a title (it asks for strict validation),
+#   and a reported status title would be dropped. No install precondition: no stored
+#   object has either field, and the new presence clause holds for every stored session.
+# Earlier changes in this file, still in force: status.summon.pages and the rule that a
+# page entry is never removed or changed (dev-env 59169f1ff968, PR #1095, OpenProject
+# #779); status.summon.admittedAt,
 # status.summon.closed.released and the rules that keep the summon record (dev-env
 # c4bc870d914e, PR #1091, OpenProject #777); status.summon (closed, escalation) and the
 # status.outcome.note bound (dev-env db8f0a3f497a, PR #1088, OpenProject #740); spec.summon
 # and its rules (dev-env 66201204c557, PR #1079, OpenProject #756); status.agent.podUID
 # (dev-env 83a125e6eb11, PR #1077, OpenProject #709).
 # Do not roll this file back once a session with spec.summon or status.summon exists (an
-# older schema drops them at the next write) or once an operator writes
-# status.agent.podUID.
+# older schema drops them at the next write), once an operator writes
+# status.agent.podUID, or once a session with spec.title exists (an older schema drops
+# the title at the next write of that session).
 # Earlier cautions still hold: once a status.privateHistory record with an absent
 # executorTerminal.containers[].finishedAt exists (allowed only when reason is
 # ContainerStatusUnknown), or a status.privateHistory.expiry.bundle record exists, do not
@@ -705,6 +708,34 @@ spec:
                 - message: immutable after create; only operatingMode and lifecycle
                     may change
                   rule: self == oldSelf
+              title:
+                description: |-
+                  Title is optional role text for the phone and the listings (DESIGN-065).
+                  It is set at create and stays unchanged in this slice. Empty is absent
+                  and is never stored. The display title is the model family plus this
+                  text; this field holds only the role text.
+
+                  MaxLength bounds code points. The CEL rules also bound UTF-8 bytes, the
+                  character set and the spacing. Letters, marks, digits, punctuation and
+                  symbols are allowed, plus ASCII space. The first character is a letter
+                  or a digit. A bar, a control or format character, and anything above
+                  U+FFFF are not.
+                maxLength: 48
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: at most 96 bytes
+                  rule: size(bytes(self)) <= 96
+                - message: letters, marks, digits, punctuation and symbols only; the
+                    first character is a letter or a digit; no bar, no control or
+                    format character, and nothing above U+FFFF
+                  rule: self.matches('^[\\p{L}\\p{Nd}][\\p{L}\\p{M}\\p{Nd}\\p{P}\\p{S}
+                    ]*$') && !self.contains('|') && !self.matches('[\\x{10000}-\\x{10FFFF}]')
+                - message: no leading or trailing space, and no two spaces in a row
+                  rule: '!self.startsWith('' '') && !self.endsWith('' '') && !self.contains(''  '')'
+                - message: immutable after create; only operatingMode and lifecycle
+                    may change
+                  rule: self == oldSelf
               tools:
                 description: |-
                   Tools are the tool pools registered at boot (DESIGN-001 8.1), by ToolPool
@@ -820,7 +851,7 @@ spec:
                 == has(oldSelf.sessionDirectory) && has(self.privatePilot) == has(oldSelf.privatePilot)
                 && has(self.usageCaptureParentUID) == has(oldSelf.usageCaptureParentUID)
                 && has(self.coordinatorInstructionParentUID) == has(oldSelf.coordinatorInstructionParentUID)
-                && has(self.summon) == has(oldSelf.summon)
+                && has(self.summon) == has(oldSelf.summon) && has(self.title) == has(oldSelf.title)
             - message: project canaries require their fixed private bounded subscription
                 task contract
               rule: '!has(self.projectCanary) || (self.mode == ''task'' && self.agent
@@ -3013,6 +3044,18 @@ spec:
                     description: State is the entry's registration state, for example
                       registered.
                     type: string
+                  title:
+                    description: |-
+                      Title is the display title agentd passed to the provider at this pod's
+                      launch (DESIGN-065). It stays empty until that CLI process is live, and
+                      empty when agentd passed the session name. MaxLength bounds code points;
+                      the CEL rule also bounds UTF-8 bytes. The heartbeat clips a longer value
+                      so the stored text fits both.
+                    maxLength: 128
+                    type: string
+                    x-kubernetes-validations:
+                    - message: at most 128 bytes
+                      rule: size(bytes(self)) <= 128
                   url:
                     description: URL is the session's claude.ai link.
                     type: string
