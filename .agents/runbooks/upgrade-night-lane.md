@@ -1313,11 +1313,21 @@ merged it; the lane is never an actor on that edge), and the tick that sees it l
 `ERROR upgrade-night <mode>: HISTORY NEEDS A PERSON: … MERGED WHILE REMEMBERED: #<pr>
 (reverted)`. An item that was ever reverted is never forgotten by rotation.
 
-**Where an update lands is part of the item** (the format's item id has the place in it:
-the sorted targets, or the sorted changed paths when there is no cluster target). Two PRs
-for the same package and version in different places are two items. When a PR's place
-changes while it is open (Renovate rebased PR 4873 from two traefik targets to one after the
-other half merged as PR 4876), the old item closes as replaced and the new one is observed.
+**Where an update lands is part of the item.** The format's item id has the place in it:
+the sorted paths the update changes, a fact of the pull request alone. It is not the lane's
+targets: a tuning of the lane's rules would otherwise re-key open items. Two PRs for the
+same package and version in different files are two items. When a PR's files change while
+it is open (Renovate rebased PR 4873 from two traefik apps to one after the other half
+merged as PR 4876), the old item closes as replaced and the new one is observed.
+
+**A file list GitHub cut off.** GitHub lists at most 100 files for a pull request (the
+`files` field gh reads). The lane's `gatherFacts` already ends a shorter list than
+`changedFiles` with `<file list truncated>`. The history's own reads ask for `changedFiles`
+and add the same marker, so the lane and the backfill build the same id from the same cut
+list. Such an item is marked `files_cut: true` in `data.items` and counted in
+`summary.history.total.cut_file_items` and the log line. On 2026-11-13 none of the 301
+Renovate PRs merged in 30 days, and none of the 17 open ones, had more than 100 files (the
+largest had 14).
 Whether a version is remembered as reverted anywhere, whatever the place, is
 `rememberedReverted(historyItems(doc), name, version)`; nothing decides a merge with it yet
 (stories 753 and 556).
@@ -1497,10 +1507,6 @@ upgrade-night dryrun: history: WRITTEN: 311 new events (observed 13, merged 298)
   `haynes-ops-bot` and would record it as the shepherd's. The lane's own merges are told
   apart by the change lock's last holder, which story 556 builds before the first live
   class.
-- **The place re-keys an open item when the lane's rules change.** The targets come from
-  the PR's files through the lane's rules (R8 maps a shared component to its consumers). A
-  rules change that maps a component to new consumers gives an open PR new targets, and so
-  a new item: the old one closes as replaced, once.
 - **A deferred revert.** A revert left unread by the budget is read on a later tick only
   while its merge time is inside the catch-up window. During the backfill, that is the whole
   window, because the marker waits.

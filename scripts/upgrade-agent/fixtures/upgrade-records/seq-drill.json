@@ -6,7 +6,7 @@
   "record": {
     "item": {
       "schema": "haynes.upgrade-item/v1",
-      "id": "renovate-pr:2d6a80cd7bb60e53196f8fea",
+      "id": "renovate-pr:dfeb821559bf06b1b353815f",
       "source": "renovate-pr",
       "item": {
         "name": "docker.io/alpine/kubectl",
@@ -86,8 +86,8 @@
     "events": [
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:fe436b08feeb284dea012bd5",
-        "item_id": "renovate-pr:2d6a80cd7bb60e53196f8fea",
+        "id": "ev:f271c6e2f24186d2c64d2144",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "drill-requested",
         "from": "done",
         "to": "failed",
@@ -103,8 +103,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:d940d8879ec7d9303e18ef70",
-        "item_id": "renovate-pr:2d6a80cd7bb60e53196f8fea",
+        "id": "ev:f8102acacd7b57cc16386c15",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "revert-opened",
         "from": "failed",
         "to": "reverting",
@@ -123,8 +123,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:ae5559d20caf68bf627ed4c6",
-        "item_id": "renovate-pr:2d6a80cd7bb60e53196f8fea",
+        "id": "ev:8c4feea256adcf45954da344",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "revert-merged",
         "from": "reverting",
         "to": "reverted_unverified",
@@ -143,8 +143,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:a37cd6d10153434b27aa54e8",
-        "item_id": "renovate-pr:2d6a80cd7bb60e53196f8fea",
+        "id": "ev:15e1a9a7b3d6aba7abb6a9eb",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "recovery-verified",
         "from": "reverted_unverified",
         "to": "reverted",
@@ -159,8 +159,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:5fd5dae456afdebbe02ebcc7",
-        "item_id": "renovate-pr:2d6a80cd7bb60e53196f8fea",
+        "id": "ev:59417e3bdb56a4b57dc81b71",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "drill-cleared",
         "from": "reverted",
         "to": "needed",

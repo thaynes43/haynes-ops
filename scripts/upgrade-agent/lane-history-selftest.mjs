@@ -561,6 +561,26 @@ const phase = (f, recs, o = {}) => H.historyPhase({ rules, run: f.run, env: {}, 
     'point 6: a PR whose place changes while open closes the old item (replaced) and observes the new one (PR 4873)', JSON.stringify(types(m1)));
   const m2 = plan(m0.doc, { records: [], openPrs: [], at: at(15), scan: scanOf([{ ...mergedPr(9701, 10, { pkg: two.package }), files: oneT.files.map(path => ({ path })) }]) });
   ok(types(m2).join() === 'closed:needed>closed,merged:new>merged_unverified' && m2.events[1].item_id === itemOf(oneT), 'point 6: and when it merged in its new place before the lane saw it, the merge goes on the new place (the H1 path)');
+  // the place is the changed paths: a rules change that remaps the targets (the same files)
+  // is the same item, and writes nothing on the next tick (no 'replaced' that never happened)
+  const remapped = rec(9701, { ...two, targets: ['kubernetes/main/apps/network/traefik-remapped'] });
+  ok(itemOf(remapped) === itemOf(two) && plan(m0.doc, { records: [remapped], openPrs: [9701], at: at(15) }).events.length === 0, 'paths rule: a rules change that remaps the targets changes no id and writes no event');
+  // a file list GitHub cut off: the lane (gatherFacts) and the backfill build the same id from
+  // the same cut list, and the item and the summary say it was cut
+  const hundred = Array.from({ length: 100 }, (_, i) => `kubernetes/main/apps/x/big/app/f${String(i).padStart(3, '0')}.yaml`);
+  const laneCut = rec(9702, { files: [...hundred, RF.CUT_FILES], targets: ['kubernetes/main/apps/x/big'] });
+  const backCut = { ...mergedPr(9702, 10, { pkg: laneCut.package }), files: hundred.map(path => ({ path })), changedFiles: 120 };
+  const backFull = { ...backCut, changedFiles: 100 };
+  ok(H.laneItem(backCut, REPO, rules, at(0)).id === itemOf(laneCut) && H.laneItem(backCut, REPO, rules, at(0)).desc.files_cut === true && H.laneItem(backFull, REPO, rules, at(0)).id !== itemOf(laneCut) && !H.laneItem(backFull, REPO, rules, at(0)).desc.files_cut,
+    'cut list: 100 of 120 files: the backfill appends the lane\'s marker, gets the lane\'s id, and marks the item files_cut; a complete list of 100 does not');
+  // the marker the lane's gatherFacts writes is the format's CUT_FILES
+  const view = { number: 9702, headRefOid: sha('1'), headRefName: 'renovate/x', title: 't', author: { login: 'app/renovate' }, isDraft: false, labels: [], files: hundred.map(path => ({ path })), commits: [], statusCheckRollup: [], body: '', changedFiles: 120 };
+  const gf = L.gatherFacts(REPO, 9702, (cmd, argv) => (argv[0] === 'pr' ? JSON.stringify(view) : '[[]]'));
+  ok(gf.files.length === 101 && gf.files.at(-1) === RF.CUT_FILES, 'cut list: the lane\'s gatherFacts ends a cut list with the format\'s CUT_FILES marker, the same one the backfill adds');
+  const pc = plan(H.emptyDoc(), { backfilling: true, scan: scanOf([backCut]) });
+  const po = plan(withMarker(H.emptyDoc()), { records: [laneCut], openPrs: [9702] });
+  ok(pc.cut_file_items === 1 && po.cut_file_items === 1 && /1 with a file list GitHub cut off/.test(H.historyLine({ write: 'written', events: 1, total: { events: 1, items: 1, title_items: 0, cut_file_items: 1, bytes: 1, cap: 2 } })),
+    'cut list: the summary counts the items built on a cut list (backfilled or seen open), and the log line says so');
   // point 6: the memory across places, from the history's own items
   const s = rec(9800, { app: 1 });
   let d = plan(withMarker(H.emptyDoc()), { records: [s], openPrs: [9800], at: at(-60) }).doc;

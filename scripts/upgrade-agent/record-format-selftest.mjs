@@ -385,17 +385,20 @@ const laneRecordOf = (n, mutate) => {
   ok(F.eventsFromMergeStep(it, v26, { repo: REPO, at: '2026-11-13T01:00:00.000Z' })[0].attempt === 26, 'bounds: the next merge-step attempt is numbered 26, after the dropped ones');
   // the place in the id
   const one = laneRecordOf(4477), item = F.fromLaneRecord(one, { repo: REPO });
-  const other = F.fromLaneRecord({ ...one, targets: ['kubernetes/main/apps/somewhere/else'] }, { repo: REPO });
-  ok(item.id !== other.id && F.placeOf(item).join() === [...one.targets].sort().join(), 'id: the same package and version in another target is another item');
-  ok(F.fromLaneRecord({ ...one, head: 'f'.repeat(40) }, { repo: REPO }).id === item.id, 'id: a rebase (same files, same targets, new head) keeps the item');
-  const noTarget = F.fromLaneRecord({ ...one, targets: [], files: ['.github/workflows/a.yml'] }, { repo: REPO });
-  ok(noTarget.id !== F.fromLaneRecord({ ...one, targets: [], files: ['.github/workflows/b.yml'] }, { repo: REPO }).id && F.placeOf(noTarget).join() === '.github/workflows/a.yml', 'id: with no cluster target, the changed paths are the place');
+  ok(F.placeOf(item).join() === [...one.files].sort().join() && F.placeOf(item).length > 0, 'id: the place is the sorted changed paths (carrier.files), a fact of the pull request alone');
+  const otherFiles = F.fromLaneRecord({ ...one, files: ['kubernetes/main/apps/somewhere/else/app/helmrelease.yaml'] }, { repo: REPO });
+  ok(item.id !== otherFiles.id, 'id: the same package and version changed in other files is another item');
+  ok(F.fromLaneRecord({ ...one, head: 'f'.repeat(40), files: [...one.files].reverse() }, { repo: REPO }).id === item.id, 'id: a rebase (the same files, in any order, a new head) keeps the item');
+  // a rules change that remaps a target (R8 consumers, say) changes no id
+  ok(F.fromLaneRecord({ ...one, targets: ['kubernetes/main/apps/remapped/consumer', ...one.targets] }, { repo: REPO }).id === item.id && F.fromLaneRecord({ ...one, targets: [] }, { repo: REPO }).id === item.id, 'id: a rules change that remaps the targets changes no id (targets stay on the item for readers)');
+  const cutList = F.fromLaneRecord({ ...one, files: [...one.files, F.CUT_FILES] }, { repo: REPO });
+  ok(cutList.id !== item.id && F.placeOf(cutList).includes(F.CUT_FILES), 'id: an id built on a file list GitHub cut off carries the marker, so it says so');
   // the memory across places: a reverted version in one target is found from another target
   const rev = fixtures.find(f => f.file === 'seq-verify-failed-reverted.json').record;
   const done = F.replay(rev.item, rev.events).item;
   const pk = done.item.packages[0] || { name: done.item.name, to: done.available.version };
-  const elsewhere = F.fromLaneRecord({ ...laneRecordOf(4477), packages: done.item.packages, package: pk.name, to: pk.to, targets: ['kubernetes/main/apps/another/app'] }, { repo: REPO });
-  ok(done.state === 'reverted' && elsewhere.id !== done.id && F.rememberedReverted([done, elsewhere], pk.name, pk.to).map(x => x.id).join() === done.id, 'memory: a version reverted in one target is found when asked about the same package and version in another target', `${done.state} ${pk.name}@${pk.to}`);
+  const elsewhere = F.fromLaneRecord({ ...laneRecordOf(4477), packages: done.item.packages, package: pk.name, to: pk.to, files: ['kubernetes/main/apps/another/app/helmrelease.yaml'] }, { repo: REPO });
+  ok(done.state === 'reverted' && elsewhere.id !== done.id && F.rememberedReverted([done, elsewhere], pk.name, pk.to).map(x => x.id).join() === done.id, 'memory: a version reverted at one path is found when asked about the same package and version at another path', `${done.state} ${pk.name}@${pk.to}`);
   ok(F.rememberedReverted([done], pk.name, '0.0.0-other').length === 0 && F.rememberedReverted([{ ...done, state: 'done' }], pk.name, pk.to).length === 0, 'memory: another version, or the same version not reverted, is not remembered');
   // a merge of a remembered version can be recorded, by anyone but the lane
   const again = (kind) => { const e = { schema: F.EVENT_SCHEMA, id: '', item_id: done.id, type: 'merged', from: 'reverted', to: 'merged_unverified', at: '2026-11-14T00:00:00.000Z', actor: { kind, login: null }, recorded_by: 'lane', attempt: F.attemptCount(done) + 1, carrier: { repo: REPO, pr: 1 }, evidence: { merge_commit: 'c'.repeat(40) } }; e.id = F.eventId(e); return F.applyEvent(done, e); };

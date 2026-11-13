@@ -42,7 +42,7 @@ Renovate moves the PR to a newer version, that newer version is a new item.
 | Field | Meaning |
 |---|---|
 | `schema` | `haynes.upgrade-item/v1` |
-| `id` | `<source>:` followed by 24 hex digits of a sha256 over the source, `item.repo`, the sorted `[name, to]` pairs of `item.packages` (when there are no packages, the pair is `[item.name, available.version]`), and **the place**: the sorted `item.targets`, or, for an update with no cluster target, the sorted paths it changes (`carrier.files`). One update in one place. `itemId()` computes it, and the validator refuses any other value. Only the writer derives ids; a reader treats an id as opaque and never recomputes it. |
+| `id` | `<source>:` followed by 24 hex digits of a sha256 over the source, `item.repo`, the sorted `[name, to]` pairs of `item.packages` (when there are no packages, the pair is `[item.name, available.version]`), and **the place**: the sorted paths the update changes (`carrier.files`). One update in one place. The place is a fact of the pull request alone. It is not the lane's targets, which come through the lane's rules: those keep being tuned, and each tuning would re-key open items and record a "replaced" that never happened. This differs from the reader's suggestion (sorted targets). `item.targets` stays on the item for readers. A file list GitHub cut off (more than 100 files) ends in `<file list truncated>` (`CUT_FILES`), so an id built on it says so. `itemId()` computes it, and the validator refuses any other value. Only the writer derives ids; a reader treats an id as opaque and never recomputes it. |
 | `source` | The kind of update; see the sources table below. |
 | `item` | What gets updated: `name` (package, image, entity, device or credential), `repo`, `packages[]` (`name`, `update`, `from`, `to`), `targets[]` (repository paths of the apps the update lands in), and `own_images[]` when the update changes the source of one of our own images. |
 | `installed`, `available` | `version` (a string or null) and `kind` (`semver`, `digest`, `date`, `other`, `unknown`). `available.update_type` is the lane's update type, such as `patch`, `minor+digest` or `unknown`. |
@@ -82,16 +82,17 @@ from the 2026-11-09 queue.
 | `unknown` | The lane could not decide. |
 
 **Why the id is the update and its place, not the carrier.** A rebase keeps the item:
-Renovate replays the same change on the same files, and the targets come from those files,
-so the history stays attached to it. A new PR for a version that was reverted, in the same
-place, maps to the same item, which is still in state `reverted`. That is how the lane
-remembers never to merge that version again (story 753). The same version in another place
+Renovate replays the same change on the same files, so the history stays attached to it. A
+new PR for a version that was reverted, in the same files, maps to the same item, which is
+still in state `reverted`. That is how the lane
+remembers never to merge that version again (story 753). The same version in other files
 is another item; `rememberedReverted(items, name, version)` in `record-format.mjs` answers
 whether a package at a version is remembered as reverted anywhere, whatever the target
-(stories 753 and 556 use it; nothing decides a merge with it yet). When a PR's place changes
-while it is open (Renovate rebased PR 4873 from two traefik targets to one after the other
-half merged as PR 4876), the old item closes as replaced and the new one is observed, as for
-a newer version. `change_key` is a different value and is kept in `carrier`: it also hashes
+(stories 753 and 556 use it; nothing decides a merge with it yet). When a PR's files change
+while it is open (Renovate rebased PR 4873 from two traefik apps to one after the other half
+merged as PR 4876), the old item closes as replaced and the new one is observed, as for a
+newer version. A change of the lane's rules that maps a file to other targets changes no
+id. `change_key` is a different value and is kept in `carrier`: it also hashes
 the versions the update starts from.
 
 ### Approval
@@ -433,9 +434,9 @@ node scripts/upgrade-agent/record-format-selftest.mjs     # offline; Node 24
   gave different ids: 29 of 40 recent merged Renovate PRs differed. A reverted version
   recorded on a backfilled item would then not be the item the lane computes when Renovate
   reopens it. The fixture now follows the lane's route: the package table, labels and files
-  through `fromLaneRecord()`. With the place in the id (below), its item id is now
-  `renovate-pr:3ea27ebc88e7cb32c5d95612` and its event id `ev:3ac0230a4065e07d9a11b57c`, and
-  its carrier lists the PR's files. The
+  through `fromLaneRecord()`. With the place (the changed paths) in the id, its item id is
+  now `renovate-pr:396fd61c012d314c5103c24b` and its event id `ev:7f6776e5338a202d3ce67ed9`,
+  and its carrier lists the PR's files. The
   history names an item from a title only when the PR's body cannot be read, and marks it
   `basis: "title"` in its item description, which is not part of the item record.
 - **Size (story 593).** The history stores each event without `schema`, without `id` and
@@ -446,9 +447,10 @@ node scripts/upgrade-agent/record-format-selftest.mjs     # offline; Node 24
   events a day, not the 3,000 per MiB first planned.
 - **Repeated refusals (story 593).** In live mode, a refusal at the same head for the same
   reasons as the item's last refusal is recorded once.
-- **Settled in story 593 (the reader's points, 2026-11-13).** The place is in the item id,
-  so two PRs for the same package and version in different places (PRs 4376 and 4377) are
-  two items. A merge of a version remembered as reverted is an event (`merged`, from
+- **Settled in story 593 (the reader's points, 2026-11-13).** The place is in the item id
+  (the sorted changed paths, not the targets the reader suggested, so that the lane's rules
+  cannot re-key an item), so two PRs for the same package and version in different files
+  (PRs 4376 and 4377) are two items. A merge of a version remembered as reverted is an event (`merged`, from
   `reverted`, by anyone but the lane). The shepherd is an actor on `closed`. An actor that
   cannot be established is `unknown`, its login kept. An item first seen at its close is
   not recorded. Every string and list is bounded, and `attempts[]` keeps the newest 20.

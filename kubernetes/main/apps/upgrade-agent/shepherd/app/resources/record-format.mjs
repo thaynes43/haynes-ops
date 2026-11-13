@@ -156,13 +156,17 @@ export function schemaProblems(schema) {
 // ── ids ──────────────────────────────────────────────────────────────────────
 const sha = s => createHash('sha256').update(s).digest('hex');
 // One update in one place, not its carrier: the source, the repository, the sorted
-// [package, version] pairs, and the place it lands: the sorted item.targets, or when the
-// update has no cluster target the sorted paths it changes (carrier.files). Equal across a
-// rebase (Renovate replays the same change on the same files, and the targets come from
-// those files) and across a reopened PR for the same version in the same place, which is
-// what remembers a reverted version (story 753). Only the writer derives it: a reader treats
-// it as opaque and never recomputes it.
-export const placeOf = it => { const t = [...(it.item?.targets || [])].sort(); return t.length ? t : [...(it.carrier?.files || [])].sort(); };
+// [package, version] pairs, and the place: the sorted paths the update changes
+// (carrier.files), a fact of the pull request alone. Not the lane's targets: those come
+// through the lane's rules, which keep being tuned, and a tuning would re-key open items.
+// Equal across a rebase (Renovate replays the same change on the same files) and across a
+// reopened PR for the same version in the same files, which is what remembers a reverted
+// version (story 753). A file list GitHub cut off ends in '<file list truncated>' (the
+// lane's gatherFacts and the history's reads add it alike), so such an id says it was built
+// on a cut list. Only the writer derives it: a reader treats it as opaque and never
+// recomputes it.
+export const CUT_FILES = '<file list truncated>';
+export const placeOf = it => [...(it.carrier?.files || [])].sort();
 export function itemId(it) {
   const pk = it.item?.packages?.length ? it.item.packages.map(p => [p.name, p.to ?? null]) : [[it.item?.name ?? null, it.available?.version ?? null]];
   const key = JSON.stringify([it.source, it.item?.repo ?? null, pk.map(x => JSON.stringify(x)).sort(), placeOf(it)]);
@@ -218,7 +222,7 @@ export function checkItem(it) {
   const errs = validate(schemas.item, it);
   if (errs.length) return errs;
   const want = itemId(it);
-  if (it.id !== want) errs.push(`/id: is ${it.id}; the format derives ${want} from source, item.repo, the packages' target versions and the place (targets, else the changed files)`);
+  if (it.id !== want) errs.push(`/id: is ${it.id}; the format derives ${want} from source, item.repo, the packages' target versions and the place (the changed files)`);
   if (RESERVED_STATES.has(it.state)) errs.push(`/state: ${it.state} is reserved for piece 2 and refused in piece 1`);
   const dropped = it.attempts_dropped || 0;
   it.attempts.forEach((a, i) => {

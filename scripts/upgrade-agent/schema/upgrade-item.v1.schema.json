@@ -9,7 +9,7 @@
   "properties": {
     "schema": { "const": "haynes.upgrade-item/v1" },
     "id": {
-      "description": "Stable key: '<source>:' plus the first 24 hex digits of sha256 over [source, item.repo, the sorted [name, to] pairs of item.packages (or [[item.name, available.version]] when there are no packages), the place: the sorted item.targets, or when there are none the sorted carrier.files]. One update in one place. itemId() in record-format.mjs computes it; the validator refuses an id that does not match. Only the writer derives ids: a reader treats an id as opaque and never recomputes it.",
+      "description": "Stable key: '<source>:' plus the first 24 hex digits of sha256 over [source, item.repo, the sorted [name, to] pairs of item.packages (or [[item.name, available.version]] when there are no packages), the place: the sorted carrier.files, the paths the update changes]. One update in one place. The place is a fact of the pull request alone, not the lane's targets (those come through rules that keep being tuned). A file list GitHub cut off ends in '<file list truncated>', so the id says so. itemId() in record-format.mjs computes it; the validator refuses an id that does not match. Only the writer derives ids: a reader treats an id as opaque and never recomputes it.",
       "type": "string",
       "pattern": "^[a-z][a-z-]*:[0-9a-f]{24}$",
       "maxLength": 60
@@ -24,7 +24,7 @@
         "name": { "$ref": "#/$defs/name" },
         "repo": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", "maxLength": 200 },
         "packages": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/package" } },
-        "targets": { "description": "Repository paths of the apps the update lands in (the lane's targets). Part of the id.", "$ref": "#/$defs/names" },
+        "targets": { "description": "Repository paths of the apps the update lands in (the lane's targets), for readers. Not part of the id.", "$ref": "#/$defs/names" },
         "own_images": { "description": "Ids from own_images in upgrade-rules.json whose source this update changes.", "$ref": "#/$defs/names" }
       }
     },
@@ -225,7 +225,7 @@
         "fingerprint_basis": { "enum": ["commit-diff", "binary", "multi-commit", "unavailable", null] },
         "commit_count": { "type": ["integer", "null"], "minimum": 0 },
         "change_key": { "type": ["string", "null"], "pattern": "^[0-9a-f]{16}$", "maxLength": 16 },
-        "files": { "description": "The PR's changed files. With no item.targets, part of the id (the place).", "type": "array", "maxItems": 300, "items": { "$ref": "#/$defs/name" } },
+        "files": { "description": "The PR's changed files, sorted into the id (the place). A list GitHub cut off ends in '<file list truncated>'.", "type": "array", "maxItems": 300, "items": { "$ref": "#/$defs/name" } },
         "head_committed_at": { "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] }
       }
     },

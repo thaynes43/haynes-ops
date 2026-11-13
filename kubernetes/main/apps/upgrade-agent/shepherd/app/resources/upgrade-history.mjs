@@ -70,9 +70,9 @@ const REVERTABLE = ['failed', 'merged_unverified', 'awaiting_pin', 'done'];
 const AFTER_MERGE = ['merged_unverified', 'awaiting_pin', 'done', 'failed', 'reverting', 'reverted_unverified', 'reverted', 'escalated'];
 const TERMINAL = ['merged', 'closed'];
 const SHA = /^[0-9a-f]{40}$/;
-const LIST_FIELDS = 'number,title,author,mergedAt,mergedBy,labels,mergeCommit,headRefOid,body,files';
+const LIST_FIELDS = 'number,title,author,mergedAt,mergedBy,labels,mergeCommit,headRefOid,body,files,changedFiles';
 const REVERT_FIELDS = 'number,title,author,mergedAt,mergedBy,mergeCommit';
-const FATE_FIELDS = 'number,state,title,author,mergedAt,mergedBy,mergeCommit,closedAt,headRefOid,labels,body,files';
+const FATE_FIELDS = 'number,state,title,author,mergedAt,mergedBy,mergeCommit,closedAt,headRefOid,labels,body,files,changedFiles';
 const KUBECTL_TIMEOUT_MS = 30e3;
 const MAX_SPLITS = 6;
 const iso = v => new Date(typeof v === 'number' ? v : Date.parse(v)).toISOString();
@@ -270,14 +270,19 @@ export function laneItem(e, repo, rules, at) {
   let name = null, to = null;
   if (byTitle) { const m = TITLE.exec(String(e.title || '').trim()); if (m) { name = m[1].trim(); to = m[2]; } }
   else { const pk = packages[0] || {}; name = pk.name ?? null; to = pk.to ?? null; }
-  const files = (e.files || []).map(f => (typeof f === 'string' ? f : f?.path)).filter(Boolean);
+  // GitHub lists at most 100 files (gh's files field). A list shorter than changedFiles ends
+  // in the marker the lane's gatherFacts adds, so both routes build the same id from the
+  // same cut list, and the item says it was cut (files_cut)
+  const listed = (e.files || []).map(f => (typeof f === 'string' ? f : f?.path)).filter(Boolean);
+  const cut = Number.isInteger(e.changedFiles) && e.changedFiles > listed.length;
+  const files = cut ? [...listed, RF.CUT_FILES] : listed;
   const types = L.updateTypes({ labels, packages, title: e.title || '' });
   const ce = files.length ? L.clusterEffect(files, rules) : { own_images: [], targets: [] };
   const pk = packages[0] || {};
   const rec = { schema: RF.LANE_SCHEMA, pr: e.number, package: name, from: byTitle ? null : pk.from ?? null, to, packages, update_type: types.join('+') || 'unknown', own_images: ce.own_images, targets: ce.targets, files,
     lane: 'LANE-A', class: 'merged', reason: 'merged', rules: [], findings: [], checks: {}, updated: at };
   const it = RF.fromLaneRecord(rec, { repo, observed_at: at });
-  return { id: it.id, basis: byTitle ? 'title' : 'package-table', desc: { name: it.item.name, from: it.installed.version, to: it.available.version, type: it.available.update_type, pr: e.number, ...(packages.length > 1 ? { pk: packages.map(x => [x.name, x.to ?? null]) } : {}), ...(byTitle ? { basis: 'title' } : {}) } };
+  return { id: it.id, basis: byTitle ? 'title' : 'package-table', desc: { name: it.item.name, from: it.installed.version, to: it.available.version, type: it.available.update_type, pr: e.number, ...(packages.length > 1 ? { pk: packages.map(x => [x.name, x.to ?? null]) } : {}), ...(byTitle ? { basis: 'title' } : {}), ...(cut ? { files_cut: true } : {}) } };
 }
 // Revert titles: GitHub's revert button writes 'Revert "<the reverted PR's title>"'.
 const REVERT = /^Revert "(.+)"$/;
@@ -410,7 +415,7 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
     try { item = RF.fromLaneRecord(r, { repo, observed_at: at }); } catch (e) { notes.unrecorded.push({ pr: r.pr, why: e.message }); continue; }
     if (seen.has(item.id) && seen.get(item.id) !== r.pr) { notes.shared_item.push({ pr: r.pr, item: item.id, with: seen.get(item.id) }); continue; }
     seen.set(item.id, r.pr);
-    const desc = { name: item.item.name, from: item.installed.version, to: item.available.version, type: item.available.update_type, pr: r.pr, ...(item.item.packages.length > 1 ? { pk: item.item.packages.map(x => [x.name, x.to]) } : {}) };
+    const desc = { name: item.item.name, from: item.installed.version, to: item.available.version, type: item.available.update_type, pr: r.pr, ...(item.item.packages.length > 1 ? { pk: item.item.packages.map(x => [x.name, x.to]) } : {}), ...((item.carrier?.files || []).includes(RF.CUT_FILES) ? { files_cut: true } : {}) };
     for (const [id, s] of st.items) {
       if (id === item.id || s.item.carrier?.pr !== r.pr || !OPEN.includes(s.item.state)) continue;
       close(s, id, r.pr, at, renovate, `PR #${r.pr} now carries ${desc.name} ${desc.to ?? ''} (a newer version, or the same update in another place): it replaced this one`);
@@ -555,7 +560,8 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
   if (rot.dropped) rot.doc.meta.rotation = { at, dropped: rot.dropped, forgotten: rot.forgotten, oldest_kept: rot.doc.events[0]?.at ?? null };
   const changed = out.length > 0 || rot.dropped > 0 || JSON.stringify(doc.meta) !== JSON.stringify(rot.doc.meta) || JSON.stringify(doc.items) !== JSON.stringify(rot.doc.items);
   const titleItems = Object.values(rot.doc.items).filter(d => d.basis === 'title').length;
-  return { ok: true, doc: rot.doc, events: out, notes, compare, rotation: rot, changed, backfill_complete: backfilling ? complete : null, title_items: titleItems, terminals: terminalsOf(rot.doc, openSet), bytes: rot.bytes, catch_up_repeated: catchUpRepeated };
+  const cutItems = Object.values(rot.doc.items).filter(d => d.files_cut).length;
+  return { ok: true, doc: rot.doc, events: out, notes, compare, rotation: rot, changed, backfill_complete: backfilling ? complete : null, title_items: titleItems, cut_file_items: cutItems, terminals: terminalsOf(rot.doc, openSet), bytes: rot.bytes, catch_up_repeated: catchUpRepeated };
 }
 
 // Terminal events owed to PR records (story 593 (d)), on facts: an item whose newest event
@@ -738,7 +744,7 @@ export function historyPhase({ rules, run, env, repo, at, records, openPrs, verd
   if (!plan.ok) return stuck(`${plan.why}; nothing written`);
   for (const ev of plan.events) sum.by_type[ev.type] = (sum.by_type[ev.type] || 0) + 1;
   sum.derived = plan.events.length;
-  sum.total = { events: plan.doc.events.length, items: Object.keys(plan.doc.items).length, title_items: plan.title_items, bytes: plan.bytes, cap: cfg.max_bytes, oldest: plan.doc.events[0]?.at ?? null };
+  sum.total = { events: plan.doc.events.length, items: Object.keys(plan.doc.items).length, title_items: plan.title_items, cut_file_items: plan.cut_file_items, bytes: plan.bytes, cap: cfg.max_bytes, oldest: plan.doc.events[0]?.at ?? null };
   sum.rotation = plan.rotation.dropped ? { dropped: plan.rotation.dropped, forgotten: plan.rotation.forgotten } : null;
   sum.backfill = backfilling ? (plan.backfill_complete ? { state: 'this tick', window: scan.window, events: plan.doc.meta.backfill.events, compare: plan.compare } : { state: 'not yet', why: scan.ok ? 'reads left for a later tick (budget)' : scan.why, window: scan.window, ...(scan.ok ? { compare: plan.compare } : {}) })
     : { state: 'done', at: p.doc.meta.backfill.at, window: p.doc.meta.backfill.window, compare: plan.doc.meta.backfill?.compare ?? p.doc.meta.backfill.compare };
@@ -814,7 +820,7 @@ export function historyLine(h) {
   const bf = h.backfill?.state === 'this tick' ? `; backfill this tick: ${h.backfill.events} merged events, ${cmpLine(h.backfill.compare)}` : h.backfill?.state === 'not yet' ? `; backfill not yet: ${h.backfill.why}`
     : h.backfill?.compare && h.backfill.compare.match !== true ? `; backfill comparison still owed: ${cmpLine(h.backfill.compare)}` : '';
   const cu = h.catch_up ? (h.catch_up.why ? `; catch-up unreadable: ${h.catch_up.why}` : `; catch-up since ${h.catch_up.window.since}: ${cmpLine(h.catch_up)}${h.catch_up.match === false ? (h.catch_up.repeated ? ' on two ticks in a row' : ' (first disagreement: GitHub\'s search index may lag; an ERROR if the next tick disagrees again)') : ''}`) : '';
-  const tot = h.total ? `; ${h.write === 'written' ? 'holds' : 'would hold'} ${h.total.events} events, ${h.total.items} items (${h.total.title_items} named from a title), ${h.total.bytes} of ${h.total.cap} bytes` : '';
+  const tot = h.total ? `; ${h.write === 'written' ? 'holds' : 'would hold'} ${h.total.events} events, ${h.total.items} items (${h.total.title_items} named from a title${h.total.cut_file_items ? `, ${h.total.cut_file_items} with a file list GitHub cut off` : ''}), ${h.total.bytes} of ${h.total.cap} bytes` : '';
   const n = h.write === 'written' ? `${h.events} new event${h.events === 1 ? '' : 's'}${types ? ` (${types})` : ''}` : `${h.derived || 0} event${h.derived === 1 ? '' : 's'} derived${types ? ` (${types})` : ''}, none written`;
   const rm = ((h.remembered_merges || []).length ? `; MERGED WHILE REMEMBERED: ${h.remembered_merges.map(x => `#${x.pr} (${x.state})`).join(', ')}` : '')
     + ((h.redacted || []).length ? `; REDACTED ${h.redacted.map(x => `${x.field} of ${x.item} (shaped like ${x.shape})`).join(', ')}` : '');

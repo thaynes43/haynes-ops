@@ -6,7 +6,7 @@
   },
   "record": {
     "schema": "haynes.upgrade-item/v1",
-    "id": "renovate-pr:2d6a80cd7bb60e53196f8fea",
+    "id": "renovate-pr:dfeb821559bf06b1b353815f",
     "source": "docker-hub",
     "item": {
       "name": "docker.io/alpine/kubectl",
