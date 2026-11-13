@@ -50,6 +50,15 @@ var trusted = []string{
 	"volsync-system/volsync", "kube-system/reloader",
 }
 
+// summonCallers are the summoning callers (dev-env DESIGN-064 5.8, OP811). They
+// are not trusted actors: each one's pod holds a token the dev-env operator's API
+// accepts as that caller, so a session must not borrow one by a workload, a
+// token request or exec into its pod.
+var summonCallers = []string{
+	"upgrade-agent/alert-responder", "upgrade-agent/upgrade-shepherd",
+	"upgrade-agent/upgrade-health-gate", "upgrade-agent/cigar-curation",
+}
+
 func sa(s string) string         { return "system:serviceaccount:" + strings.ReplaceAll(s, "/", ":") }
 func controller(s string) string { return sa("kube-system/" + s) }
 
@@ -1024,7 +1033,7 @@ func TestComplementaryAgentGrantBorrowing(t *testing.T) {
 	identity := compile(t, loadVAP(t, "kubernetes/main/apps/dev-env-system/rbac/app/identity-guard.yaml"))
 	execPolicy := compile(t, load(t, "kubernetes/main/apps/kyverno/policies/app/dev-env-exec-guard.yaml"))
 	for _, who := range []string{agent, grant} {
-		for _, target := range trusted {
+		for _, target := range append(append([]string{}, trusted...), summonCallers...) {
 			parts := strings.Split(target, "/")
 			for _, kind := range []string{"Pod", "Job", "CronJob", "ReplicationController", "Deployment", "ReplicaSet", "StatefulSet", "DaemonSet"} {
 				o := workload(kind, "fixture", "")

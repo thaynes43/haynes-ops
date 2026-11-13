@@ -21,6 +21,13 @@
 # the cluster's ClusterRoleBindings on 2026-10-06. A new controller namespace goes in the
 # identity guard's controllerNamespaces.
 #
+# The four summoning callers are on the list for another power (dev-env DESIGN-064 5.8,
+# OpenProject #811): each one's pod holds a token that the dev-env operator's API accepts
+# as that caller, and with it a holder starts sessions on profile `ops` under the caller's
+# CallerPolicy. Exec into such a pod hands the agent that token. A session may not start
+# another session this way: only the caller's own CronJob may. Add every new summoning
+# caller here in the PR that adds its CallerPolicy.
+#
 # Matched by username to every dev-agents identity but the workbench (the same identities
 # as dev-env-identity-guard). failurePolicy Fail: Kyverno 1.19 copies a CEL policy's
 # matchConditions into its own fine-grained webhook, so the API server applies the
@@ -62,6 +69,8 @@ spec:
       expression: >-
         ['frontend/headlamp',
          'dev/dev-env', 'upgrade-agent/dev-env-ops',
+         'upgrade-agent/alert-responder', 'upgrade-agent/upgrade-shepherd',
+         'upgrade-agent/upgrade-health-gate', 'upgrade-agent/cigar-curation',
          'database/cloudnative-pg', 'database/dragonfly-operator-controller-manager',
          'network/multus', 'network/traefik-external', 'network/traefik-internal',
          'observability/grafana', 'observability/kube-prometheus-stack-operator',
