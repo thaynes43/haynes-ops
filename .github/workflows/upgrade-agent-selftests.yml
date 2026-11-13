@@ -73,6 +73,7 @@ jobs:
           node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/night-merge.mjs
           node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/upgrade-history.mjs
           node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/record-format.mjs
+          node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/night-verify.mjs
           jq -e . kubernetes/main/apps/upgrade-agent/shepherd/app/resources/upgrade-rules.json > /dev/null
       - name: Classifier, rules and check-map drift
         run: nice -n 19 node scripts/upgrade-agent/lane-classify-selftest.mjs
@@ -86,6 +87,8 @@ jobs:
         run: nice -n 19 node scripts/upgrade-agent/lane-pr-records-selftest.mjs
       - name: History of every attempt, rotation and backfill (story 593)
         run: nice -n 19 node scripts/upgrade-agent/lane-history-selftest.mjs
+      - name: The read-only verifier of each merge (story 553)
+        run: nice -n 19 node scripts/upgrade-agent/lane-verify-selftest.mjs
 
   shell:
     name: Upgrade Agent Selftests - Shell

@@ -483,5 +483,45 @@ node scripts/upgrade-agent/record-format-selftest.mjs     # offline; Node 24
   last holder (story 556).
 - The sources the lane does not write yet have only the generic item shape. Their adapter
   stories may need more fields.
+
+### Open points for the format (story 553, the verifier)
+
+The verifier (`night-verify.mjs`) writes `verified`, `verification-failed`, `escalated` and
+`awaiting-pin` for the lane's own merges, behind `night.verify.write_history_events` (git
+ships `false`). It uses only existing edges; nothing here was added to the format.
+
+**What the format lets a verdict on someone else's merge record.** All four. The edges
+constrain the verifier's actor (`lane`), not who merged, so on an item that Renovate's or the
+shepherd's `merged` event put in `merged_unverified` (attempt opened by `renovate`,
+`shepherd`, `person` or `unknown`) the lane may legally record `verified` (to `done`),
+`verification-failed` (to `failed`), `escalated` and `awaiting-pin`. The verifier's practice
+records show this: on 2026-11-13 each would-write `verified` on #4869, #4870, #4871, #4873 and
+#4874 is legal. The verifier does not write them, and the history refuses a verifier event on
+an item whose current attempt the lane did not make.
+
+**What the format lacks for that:**
+
+1. **A practice or observed verdict.** No field says that a verdict was made on a merge the
+   lane did not make. `recorded_by` is `lane` or `backfill`; the actor of `verified` is the
+   verifier, so a reader cannot tell "the lane verified its own merge" from "the lane watched
+   Renovate's merge roll out" except by reading the attempt's actor.
+2. **`failed` means a revert is owed, whoever merged.** A `verification-failed` on Renovate's
+   merge would make the lane owe a revert of another actor's merge, and
+   `rememberedReverted()` counts `failed` as a remembered version. There is no state for
+   "verification failed, and the revert is not the lane's".
+3. **Hold and report.** Q-548-04 says a failure with another change on the same target is
+   "cannot tell which change did it": no automatic revert. The nearest edge is `escalated`
+   (class `cannot-tell-which-change`), which loses that verification failed. There is no
+   state for "failed, cause not attributed".
+4. **The other changes.** The event has no field for them; the verifier puts them in
+   `evidence.checks` as one line (`other changes: <sha8> #<pr>, …` or `no other change`).
+5. **Failure classes.** `verification-failed`'s meaning names six classes; the story also
+   names crash loops and image-pull failures, which the verifier records as `crash-loop` and
+   `image-pull` (the schema's class pattern allows them; the meaning text does not list them).
+6. **Time boxes.** `awaiting_pin` and `pin-timeout` are described as time-boxed, and
+   `escalated` covers "verification cannot be read". Under Q-548-04 (facts, not clocks) the
+   verifier ends the pin wait on facts (a failed build, or three pushes to main after the build
+   with no pin) and writes nothing for `cannot-tell`. When a lasting `cannot-tell` should
+   become `escalated` has no fact yet.
 - `kind` is inferred from the version text. `semver` means the version starts with dotted
   numbers. Nothing infers `date` yet.

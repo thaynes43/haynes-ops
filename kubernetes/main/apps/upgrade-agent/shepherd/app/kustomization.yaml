@@ -31,6 +31,9 @@ configMapGenerator:
       - resources/upgrade-event.v1.schema.json
       - resources/upgrade-states.v1.json
       - resources/lane-v1-to-item-v1.json
+      # upgrade-night (story 553): the read-only verifier of each merge (practice verdicts in
+      # upgrade-lane-state; the lane's own merges become history events only when enabled).
+      - resources/night-verify.mjs
 generatorOptions:
   disableNameSuffixHash: true
   labels:

@@ -605,6 +605,34 @@ process.exit(0);
     ok(r.rec(4477).fingerprint === L.patchFingerprint(rebase.pairs[0].before.diff).fingerprint && r.rec(4477).fingerprint_basis === 'commit-diff', '#4477 record carries the fingerprint of the reviewed patch (byte-identical rebase)', String(r.rec(4477).fingerprint));
     ok(r.rec(4670).fingerprint === null && r.rec(4670).fingerprint_basis === 'unavailable' && blk(r, 4670) === '', 'a failed diff read records a null fingerprint and blocks nothing in step 2', `${r.rec(4670).fingerprint_basis} | ${blk(r, 4670)}`);
     ok(r.rec(4662).cluster_effect_wait?.waits_for === 'renovate-pin-after-next-push-to-main', 'the own-image record says it waits for the Renovate pin', JSON.stringify(r.rec(4662).cluster_effect_wait));
+    ok(r.summary.verify?.built === true && r.summary.verify.evaluated.length === 0 && /upgrade-night dryrun: verifier: 0 judged/.test(r.stderr), 'story 553: the verifier runs in the tick and logs its line; nothing to judge with no history yet', JSON.stringify(r.summary.verify).slice(0, 300));
+  }
+  // story 553: a practice verdict through the real tick. The history holds a Renovate merge
+  // made after the verifier was installed: the tick judges it, writes the verdict to
+  // upgrade-lane-state (data.verify, data.verify_table), and its writes are exactly the lock
+  // and the state: nothing to the history, no GitHub write, the merge verdict as before.
+  {
+    const H = await import(join(RES, 'upgrade-history.mjs'));
+    const w = baseWorld([4477, 4670, 4708, 4376, 4662]);
+    const first = await tick(w);
+    const MC = '7'.repeat(40), ITEM = 'renovate-pr:' + 'ab'.repeat(12);
+    const hist = JSON.parse(readFileSync(historyFile, 'utf8'));
+    const ev = H.makeEvent({ item_id: ITEM, type: 'merged', from: null, to: 'merged_unverified', at: '2026-11-02T06:00:00.000Z', actor: { kind: 'renovate', login: 'renovate[bot]' }, recorded_by: 'backfill', recorded_at: '2026-11-02T06:30:00.000Z', attempt: 1, carrier: { repo: 'thaynes43/haynes-ops', pr: 4001 }, evidence: { merge_commit: MC } });
+    hist.data.events += JSON.stringify(H.pack(ev)) + '\n';
+    hist.data.items = JSON.stringify({ ...JSON.parse(hist.data.items), [ITEM]: { name: 'ghcr.io/example/app4001', from: '1.0.0', to: '1.1.0', type: 'minor', pr: 4001 } });
+    writeFileSync(historyFile, JSON.stringify(hist));
+    const histBefore = readFileSync(historyFile, 'utf8');
+    const w2 = { ...w, mainNewest: { 'kubernetes/main/apps/upgrade-agent/shepherd/app/resources/night-verify.mjs': [{ sha: '6'.repeat(40), at: '2026-11-02T05:00:00Z' }] }, commitFiles: { [MC]: { sha: MC, files: [{ filename: 'kubernetes/main/apps/x/app4001/app/helmrelease.yaml' }] } } };
+    const r = await tick(w2, {}, ['--write-state'], { keepGh: true });
+    const v = JSON.parse(r.m.data?.verify || '{}');
+    ok(r.status === 0 && r.summary.verify?.evaluated?.join() === '4001' && r.summary.verify.since === '2026-11-02T05:00:00.000Z' && v.schema === 'haynes.upgrade-verify/v1' && v.items?.[ITEM]?.pr === 4001 && v.items[ITEM].practice === true && /^#4001 /.test(r.m.data?.verify_table || ''),
+      'story 553: the tick judges the practice item and writes its verdict to data.verify and data.verify_table on upgrade-lane-state', `${JSON.stringify(r.summary.verify).slice(0, 400)}`);
+    ok(v.items?.[ITEM]?.verdict === 'not-yet' && r.summary.verify.verdicts['not-yet'].join() === '4001' && /does not contain 77777777 yet/.test(v.items[ITEM].facts.find(f => f.fact === 'source')?.detail), 'story 553: a merge Flux\'s source does not contain (GitHub\'s compare reads behind) is not yet, never a pass', v.items?.[ITEM]?.why);
+    ok(JSON.stringify(r.writes.map(x => `${x.cmd} ${x.argv[0]}`)) === JSON.stringify(['kubectl create', 'kubectl replace', 'kubectl apply']) && isSsa(r.writes[2]) && readFileSync(historyFile, 'utf8') === histBefore && r.ghWrites.length === 0 && r.merges.length === 0,
+      'story 553: the practice verdict writes nothing but the state: the lock taken and released, one server-side apply of upgrade-lane-state; the history unchanged; no GitHub write', JSON.stringify(r.writes.map(x => [x.cmd, ...x.argv.slice(0, 3)])));
+    ok(r.summary.merge_step?.verdict === first.summary.merge_step?.verdict && r.summary.merge_step?.pr === first.summary.merge_step?.pr && JSON.stringify(r.recs.map(x => [x.pr, x.lane, x.class])) === JSON.stringify(first.recs.map(x => [x.pr, x.lane, x.class])), 'story 553: the merge verdict and the records are the same as without the practice item');
+    const again = await tick({ ...w2, k8s: { ...w2.k8s, 'configmaps@upgrade-agent': { items: [...(w2.k8s['configmaps@upgrade-agent'] ?? w2.k8s.configmaps).items.filter(c => c.metadata.name !== 'upgrade-lane-state'), { metadata: { name: 'upgrade-lane-state', resourceVersion: '8' }, data: { verify: r.m.data.verify } }] } } }, {}, ['--write-state'], { keepGh: true });
+    ok(again.summary.verify?.since === '2026-11-02T05:00:00.000Z' && !again.calls.some(c => c.argv.some(a => /night-verify\.mjs/.test(decodeURIComponent(a)))), 'story 553: the next tick keeps the install time from data.verify (no second read)', JSON.stringify(again.summary.verify).slice(0, 300));
   }
   // story 593: the history through the real tick. A failed or conflicting history write is
   // logged and recorded, changes no verdict, leaves the lock released and the state written;

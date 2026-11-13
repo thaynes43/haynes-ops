@@ -69,6 +69,16 @@
 // with a terminal event gets its record's terminal field after the open-PR records, with
 // its own stop and halt. The module is loaded inside the guarded step: one that does not
 // load is an ERROR line, and the tick goes on.
+//
+// STORY 553 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/553):
+// after the merge step and before the history, night-verify.mjs judges, read-only, each
+// merged update the history holds in merged_unverified or awaiting_pin: verified, failed,
+// not-yet or cannot-tell, fact by fact, with the other changes on main since the merge. In
+// dry-run it practises on merges the lane did not make; those verdicts go to data.verify and
+// data.verify_table on upgrade-lane-state and never to the history. A verdict on the lane's
+// own merge becomes history events only with night.verify.write_history_events (git ships
+// false). Loaded inside a guarded step like the history; it changes no verdict, no lock and
+// no other write.
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -539,12 +549,26 @@ async function tick() {
   for (const r of records) { r.updated = summary.at; r.preapproval = {}; r.schedule = {}; r.last_attempt = {}; }
   if (subjectRec) subjectRec.last_attempt = { at: summary.at, mode: MODE, chosen: subject.chosen, verdict: verdict.verdict, pr_refusals: verdict.pr_refusals || [], lane_refusals: verdict.lane_refusals || [], merge_call: verdict.merge_call || null };
 
+  // THE VERIFIER (story 553): after the merge step, before the history, read-only. Practice
+  // verdicts on merges the lane did not make go to data.verify only; the lane's own merges'
+  // verdicts become history events only with night.verify.write_history_events (git ships
+  // false). Its failure is logged and recorded; it changes no verdict, no lock and no other
+  // write, and the state keeps the last data.verify.
+  let V = null, ver;
+  try {
+    V = await import('./night-verify.mjs');
+    ver = await V.verifyPhase({ rules, run, repo: REPO, now, clock, startedAt: now, prevText: stateCm?.data?.verify ?? null, prevUnreadable: !cms,
+      deps: { alertSubject, nsFacts, prom: PROM, ...(cf.ks ? { ks: cf.ks } : {}), ...(cf.hr ? { hr: cf.hr } : {}), ...(settleFacts && settleFacts.source !== undefined ? { source: settleFacts.source } : {}) } });
+  } catch (e) { ver = { summary: { error: `${V ? '' : 'night-verify.mjs did not load: '}${String(e.message).slice(0, 300)}` }, memory: null, table: null, events: [] }; }
+  summary.verify = ver.summary;
+  log(`${ver.summary.error ? 'ERROR ' : ''}upgrade-night ${MODE}: verifier: ${V && !ver.summary.error ? V.verifyLine(ver.summary) : `FAILED: ${ver.summary.error}`}`);
+
   // THE HISTORY (story 593): after the merge step, whose lock is released by now. Its
   // failure is logged and recorded; it changes no verdict and stops no other write.
   let H = null, hist;
   try {
     H = await import('./upgrade-history.mjs');
-    hist = H.historyPhase({ rules, run, env: childEnv, repo: REPO, at: summary.at, records, openPrs: nums, verdict, write: WRITE_STATE, clock, startedAt: now });
+    hist = H.historyPhase({ rules, run, env: childEnv, repo: REPO, at: summary.at, records, openPrs: nums, verdict, write: WRITE_STATE, verifyEvents: ver.events || [], clock, startedAt: now });
   } catch (e) { hist = { summary: { error: `${H ? '' : 'upgrade-history.mjs did not load: '}${String(e.message).slice(0, 300)}`, written: false, write: 'failed' }, terminals: [] }; }
   summary.history = hist.summary;
   const terminalOf = new Map((hist.terminals || []).map(t => [t.pr, t.terminal]));
@@ -677,11 +701,14 @@ async function tick() {
   log(`upgrade-night ${MODE}: GitHub writes this tick: ${summary.github_writes} (no merge in dry-run)`);
   process.stdout.write(`PR records: ${recLine}\nretry: ${rtLine}\n`);
   process.stdout.write(`history: ${hLine}\n`);
+  process.stdout.write(`verifier: ${V && !ver.summary.error ? V.verifyLine(ver.summary) : `FAILED: ${ver.summary.error}`}\n`);
 
   if (!WRITE_STATE) { log('state not written (no --write-state); this was a local run'); return 0; }
   // the ledger first (its own field manager), then the tick's state
   if (ledger && JSON.stringify(ledger) !== ledgerBefore) summary.retry.ledger_written = persistLedger(ledger);
-  const ok = writeLaneState(stateManifest({ mode: MODE, updated: summary.at, summary: JSON.stringify(summary), table, records: JSON.stringify(records) })).ok;
+  // story 553: the verifier's memory and its morning view; the last ones kept when it failed
+  const verify = ver.memory ?? stateCm?.data?.verify, verifyTable = ver.memory ? ver.table : stateCm?.data?.verify_table;
+  const ok = writeLaneState(stateManifest({ mode: MODE, updated: summary.at, summary: JSON.stringify(summary), table, records: JSON.stringify(records), ...(verify ? { verify } : {}), ...(verifyTable ? { verify_table: verifyTable } : {}) })).ok;
   return ok ? 0 : 2;
 }
 
