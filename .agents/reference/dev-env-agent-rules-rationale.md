@@ -51,7 +51,9 @@ DESIGN-064 8.1).
   `agent-run report` to find out: on a summoned session a report ends the run.
 - **What replaces the phone question.** A summoned session has nobody to ask. A
   decision its contract does not settle ends the run with an `escalate` report,
-  which reaches Tom as a page, unless the contract names another report.
+  unless the contract names another report. The keeper's pager sends an escalated
+  close to Tom as a page (dev-env story 782; installed but not switched on when
+  this was written).
 - **Read by the coordinator who keeps the rules file** (OpenProject #501, comment
   7848, 2026-11-13): the default is said out loud for ordinary sessions, and the
   claim sentence was reworded so it reads one way.
