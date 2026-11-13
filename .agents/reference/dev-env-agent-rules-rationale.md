@@ -46,7 +46,15 @@ DESIGN-064 8.1).
   can influence (alert annotations, release notes, catalog data). If a sentence in
   that text could switch rules off, it would. So the test is a fact the session
   cannot write: the Session's `caller`, which the operator's API sets from the
-  authenticated caller, and the report route, which answers only such a session.
+  authenticated caller. `agent-run show <session> -o json` prints the server's
+  answer, so the key is there whatever the client's version. A session never runs
+  `agent-run report` to find out: on a summoned session a report ends the run.
+- **What replaces the phone question.** A summoned session has nobody to ask. A
+  decision its contract does not settle ends the run with an `escalate` report,
+  which reaches Tom as a page, unless the contract names another report.
+- **Read by the coordinator who keeps the rules file** (OpenProject #501, comment
+  7848, 2026-11-13): the default is said out loud for ordinary sessions, and the
+  claim sentence was reworded so it reads one way.
 - **What stays.** Everything else: secrets, a denial is a stop, running sessions are
   sacred, GitOps, the CPU budget, credentials and the MCP cautions. The contract may
   ask for a PR; then the branch and PR rules apply to it.
