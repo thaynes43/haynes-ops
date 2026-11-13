@@ -25,7 +25,7 @@ TITLE="${PAGE_TITLE:-[upgrade-gate] ${SEV} ${CHECK}/${COMP}}"
 #   3  may have been sent: the request timed out or broke after connecting; a retry could
 #      deliver a second copy, so do not retry;
 #   1  refused: any other HTTP answer (a 4xx: a retry would be refused too).
-out="$(curl -s -o /dev/null -w '%{http_code} %{time_connect}' --connect-timeout 5 --max-time 10 \
+out="$(curl -s -o /dev/null -w '%{http_code} %{time_connect}' --max-time 10 \
      https://api.pushover.net/1/messages.json \
      --form-string "token=${PUSHOVER_TOKEN}" \
      --form-string "user=${PUSHOVER_USER_KEY}" \
