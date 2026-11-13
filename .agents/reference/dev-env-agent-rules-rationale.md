@@ -59,11 +59,14 @@ DESIGN-064 8.1).
   headroom is asked of the coordinator; `hw-ssh` is used only inside a story that
   names it; `omnictl` and `talosctl` write only in an authorized story. A summoned
   session has none of the three, so the section says they stay closed for it: it
-  does not take the step and says so in its report. The advisory review of
-  haynes-ops PR 4882 asked for this to be said (2026-11-13); the other choice,
-  that the contract stands in for the story, would let a contract grant access. A
-  later caller's story (remediation, upgrade work orders) that needs one of these
-  changes this text in its own reviewed PR.
+  does not do the thing the rule gates (no `hw-ssh`, no node write, no heavy job on
+  unknown disk headroom) and says so in its report, which is its only handoff. The
+  section names the actions because "does not take that step" could also be read as
+  "goes on without a story" (the coordinator who keeps the rules file, #501 comment
+  7976). The advisory review of haynes-ops PR 4882 asked for this to be said
+  (2026-11-13); the other choice, that the contract stands in for the story, would
+  let a contract grant access. A later caller's story (remediation, upgrade work
+  orders) that needs one of these changes this text in its own reviewed PR.
 - **Read by the coordinator who keeps the rules file** (OpenProject #501, comment
   7848, 2026-11-13): the default is said out loud for ordinary sessions, and the
   claim sentence was reworded so it reads one way.
