@@ -1,0 +1,40 @@
+---
+name: Rescue notification offline tests
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - kubernetes/main/apps/dev-env-system/operator/app/prometheusrule.yaml
+      - kubernetes/main/apps/observability/kube-prometheus-stack/app/externalsecret.yaml
+      - kubernetes/main/apps/upgrade-agent/alert-responder/app/**
+      - scripts/tests/rescue-notifications/**
+      - .github/workflows/rescue-notifications-test.yml
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  offline:
+    name: Rescue Notification Offline Fixtures
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned fixture dependency
+        run: |
+          python3 -m venv /tmp/rescue-notification-fixtures
+          /tmp/rescue-notification-fixtures/bin/pip install PyYAML==6.0.3
+      - name: Offline notification and source-loop fixtures
+        env:
+          PROMTOOL: /tmp/rescue-notification-tools/promtool
+        run: |
+          mkdir -p /tmp/rescue-notification-tools
+          curl -fsSL --retry 1 --max-time 120 https://github.com/prometheus/prometheus/releases/download/v3.5.0/prometheus-3.5.0.linux-amd64.tar.gz -o /tmp/rescue-notification-tools/prometheus.tar.gz
+          echo 'e811827af26d822afb09a4f28314f61b618b12cff5369835a67f674d8b46f39a  /tmp/rescue-notification-tools/prometheus.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/rescue-notification-tools/prometheus.tar.gz -C /tmp/rescue-notification-tools --strip-components=1 prometheus-3.5.0.linux-amd64/promtool
+          bash -n kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
+          bash -n kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/rescue-incident.sh
+          /tmp/rescue-notification-fixtures/bin/python scripts/tests/rescue-notifications/test_notifications.py -v
