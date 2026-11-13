@@ -1,0 +1,6 @@
+2026-01-01T00:00:00Z stdout F {"level":"error","retention_policy":"classified-v1","retention_class":"debug_3"}
+2026-01-01T00:00:01Z stderr F {"level":"warn","message":"synthetic warning"}
+2026-01-01T00:00:02Z stdout F {"level":"info","event":"audit denied"}
+2026-01-01T00:00:03Z stdout F {"event":"volsync job"}
+2026-01-01T00:00:04Z stdout F not-json malformed record
+2026-01-01T00:00:05Z stdout F {"level":"info","message":"synthetic success"}
