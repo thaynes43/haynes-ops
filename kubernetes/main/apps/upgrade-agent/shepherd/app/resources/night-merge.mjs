@@ -975,9 +975,26 @@ const SECRET_SHAPES = Object.freeze([
 ]);
 // Story 593: the same shapes guard every free-text field the history stores. Returns what
 // the text is shaped like, or null.
-export function secretShape(text) {
+// exempt: the record's own package versions (from and to, as written and bare). Such an
+// exact string is not an address (pip's ==10.3.2.106 reads like 10.x.x.x), so it is masked
+// for the private-address shapes only; every other shape sees the whole text.
+const ADDRESS = 'a private network address';
+export function versionsOf(rec) {
+  const out = new Set();
+  for (const v of [rec?.from, rec?.to, ...(rec?.packages || []).flatMap(p => [p?.from, p?.to])]) {
+    if (typeof v !== 'string' || !v) continue;
+    out.add(v); const bare = L.bareVersion(v); if (bare) out.add(bare);
+  }
+  return [...out];
+}
+// only a version that is itself shaped like an address is masked, so a short version (10)
+// cannot hide part of a real address in the same text
+const addressShaped = v => SECRET_SHAPES.some(([re, what]) => what === ADDRESS && re.test(v));
+const mask = (t, exempt) => (exempt || []).filter(v => typeof v === 'string' && v && addressShaped(v)).sort((a, b) => b.length - a.length).reduce((x, v) => x.split(v).join(' '), t);
+export function secretShape(text, exempt = []) {
   const t = String(text ?? '');
-  for (const [re, what] of SECRET_SHAPES) if (re.test(t)) return what;
+  const masked = mask(t, exempt);
+  for (const [re, what] of SECRET_SHAPES) if (re.test(what === ADDRESS ? masked : t)) return what;
   return null;
 }
 // F3/F4 (story 549 review): what a failed GitHub write publishes is a fixed vocabulary,
@@ -997,10 +1014,13 @@ export function writeFailure(w) {
 }
 // The pause, as a public reason: never the pause's own text.
 const pauseWhy = (p, when) => (!p ? `unreadable: data.pause on upgrade-lane-state (${when})` : p.pause ? `paused (data.pause on upgrade-lane-state) ${when}` : null);
-export function publishProblems(pub, body, cfg) {
+export function publishProblems(pub, body, cfg, exempt = []) {
   const out = [];
   const raw = JSON.stringify(pub);
-  for (const [re, what] of SECRET_SHAPES) if (re.test(raw) || re.test(body)) out.push(`the record carries text shaped like ${what}`);
+  for (const [re, what] of SECRET_SHAPES) {
+    const [r, b] = what === ADDRESS ? [mask(raw, exempt), mask(body, exempt)] : [raw, body];
+    if (re.test(r) || re.test(b)) out.push(`the record carries text shaped like ${what}`);
+  }
   if (pub?.preapproval && Object.keys(pub.preapproval).length) out.push('preapproval is not empty (piece 1 reads no approval)');
   if (pub?.schema !== 'haynes.upgrade-lane/v1' || !Number.isInteger(pub?.pr)) out.push('not a haynes.upgrade-lane/v1 record of one PR');
   if (Buffer.byteLength(body) > cfg.max_body_bytes) out.push(`the record is ${Buffer.byteLength(body)} bytes, over ${cfg.max_body_bytes}`);
@@ -1289,7 +1309,7 @@ export function writePrRecords({ items, cfg, run, env, live, write = ghWrite, st
     if (!Array.isArray(comments)) { out.refused.push({ pr, why: 'unreadable: the comments of this PR (its facts were not read this tick)' }); continue; }
     const pub = projectRecord(rec, cfg);
     const body = renderRecord(pub, cfg);
-    const probs = publishProblems(pub, body, cfg);
+    const probs = publishProblems(pub, body, cfg, versionsOf(rec)); // the record's own versions are not addresses
     if (probs.length) { out.refused.push({ pr, why: probs.join('; ') }); continue; }
     let plan = planRecord(pub, comments, cfg);
     if (editOnly && plan.action === 'create') { out.no_record.push(pr); continue; }

@@ -114,12 +114,16 @@ const reasonOf = (s, cfg) => { const t = String(s ?? '').replace(/\s+/g, ' ').tr
 // by REDACTED and named in the notes (the field, never the text), and the tick logs an ERROR.
 // Then fit() cuts the event to the schema's bounds with a visible mark.
 export const REDACTED = '[redacted: the text was shaped like a credential, a private address or an in-cluster name]';
-const TEXT_FIELDS = [['reason'], ['evidence', 'merge_call'], ['evidence', 'revert_branch'], ['evidence', 'flux_revision']];
+// a patterned field keeps a value of its shape: evidence.url must start https://
+export const REDACTED_URL = 'https://redacted.invalid/';
+const TEXT_FIELDS = [['reason'], ['evidence', 'merge_call'], ['evidence', 'revert_branch'], ['evidence', 'flux_revision'], ['evidence', 'url'], ['actor', 'login']];
 const TEXT_LISTS = [['evidence', 'checks'], ['evidence', 'pr_refusals'], ['evidence', 'lane_refusals']];
-export function cleanEvent(ev, notes) {
+// exempt: the item's own package versions (night-merge.mjs versionsOf): such an exact string
+// is not an address, for the private-address shapes only.
+export function cleanEvent(ev, notes, exempt = []) {
   const e = structuredClone(ev);
-  const hit = (field, text) => { const what = M.secretShape(text); if (what) notes?.redacted?.push({ item: e.item_id, type: e.type, field, shape: what }); return what; };
-  for (const p of TEXT_FIELDS) { const o = p.length === 2 ? e[p[0]] : e; const k = p.at(-1); if (o && typeof o[k] === 'string' && hit(p.join('.'), o[k])) o[k] = REDACTED; }
+  const hit = (field, text) => { const what = M.secretShape(text, exempt); if (what) notes?.redacted?.push({ item: e.item_id, type: e.type, field, shape: what }); return what; };
+  for (const p of TEXT_FIELDS) { const o = p.length === 2 ? e[p[0]] : e; const k = p.at(-1); if (o && typeof o[k] === 'string' && hit(p.join('.'), o[k])) o[k] = k === 'url' ? REDACTED_URL : REDACTED; }
   for (const p of TEXT_LISTS) { const o = e[p[0]]; const k = p[1]; if (o && Array.isArray(o[k])) o[k] = o[k].map((x, i) => (typeof x === 'string' && hit(`${p.join('.')}[${i}]`, x) ? REDACTED : x)); }
   const f = RF.fit(RF.schemas.event, e);
   if (f.cuts.length) notes?.cut?.push({ item: e.item_id, type: e.type, fields: f.cuts });
@@ -225,7 +229,7 @@ export function historyItems(doc) {
   return [...st.items].map(([id, s]) => {
     const d = doc.items[id] || {};
     const packages = Array.isArray(d.pk) ? d.pk.map(([name, to]) => ({ name, update: null, from: null, to })) : d.name ? [{ name: d.name, update: null, from: d.from ?? null, to: d.to ?? null }] : [];
-    return { id, state: s.item.state, item: { name: d.name ?? null, packages, targets: [] }, available: { version: d.to ?? null }, carrier: { pr: s.item.carrier?.pr ?? d.pr ?? null } };
+    return { id, state: s.item.state, ever_reverted: s.item.ever_reverted === true, item: { name: d.name ?? null, packages, targets: [] }, available: { version: d.to ?? null }, carrier: { pr: s.item.carrier?.pr ?? d.pr ?? null } };
   });
 }
 export function replay(doc) {
@@ -388,9 +392,13 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
   const notes = { unread: [], deferred: [], not_observed: [], shared_item: [], unrecorded: [], still_open: [], collapsed: [], duplicate: 0, revert_unmatched: [], remembered_merges: [], superseded: [], redacted: [], cut: [] };
   const descs = new Map();
   const state = id => { let s = st.items.get(id); if (!s) { s = { item: blank(id), desc: null, refusal: null }; st.items.set(id, s); } return s; };
-  const add = (s, ev0, pr) => {
+  // the versions of an item (its record's this tick, else its description): not addresses
+  const vmap = new Map();
+  const descVersions = d => (d ? M.versionsOf({ from: d.from, to: d.to, packages: (d.pk || []).map(([, to]) => ({ to })) }) : []);
+  const versionsOf = id => [...(vmap.get(id) || []), ...descVersions(descs.get(id) || st.items.get(id)?.desc || doc.items[id])];
+  const add = (s, ev0, pr, extra = []) => {
     if (st.ids.has(ev0.id)) { notes.duplicate++; return false; }
-    const ev = cleanEvent(ev0, notes); // guarded and bounded; the id does not change
+    const ev = cleanEvent(ev0, notes, [...versionsOf(ev0.item_id), ...extra]); // guarded and bounded; the id does not change
     const r = RF.applyEvent(s.item, ev);
     if (r.errors.length) { notes.unrecorded.push({ pr: pr ?? null, item: ev.item_id, type: ev.type, why: r.errors[0] }); return false; }
     s.item = r.item; st.ids.add(ev.id); out.push(ev); track(s, ev);
@@ -399,8 +407,8 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
   const renovate = { kind: 'renovate', login: cfg.actors.renovate[0] };
   const openSet = new Set(openPrs);
   const byPr0 = prIndex(st);
-  const close = (s, id, pr, when, actor, reason, recordedAt) => add(s, makeEvent({ item_id: id, type: 'closed', from: s.item.state, to: 'closed', at: later(when, s.item.observed_at), actor, recorded_by: 'lane',
-    recorded_at: recordedAt && Date.parse(recordedAt) > Date.parse(later(when, s.item.observed_at)) ? recordedAt : undefined, reason: reasonOf(reason, cfg), carrier: { repo, pr } }), pr);
+  const close = (s, id, pr, when, actor, reason, recordedAt, extra = []) => add(s, makeEvent({ item_id: id, type: 'closed', from: s.item.state, to: 'closed', at: later(when, s.item.observed_at), actor, recorded_by: 'lane',
+    recorded_at: recordedAt && Date.parse(recordedAt) > Date.parse(later(when, s.item.observed_at)) ? recordedAt : undefined, reason: reasonOf(reason, cfg), carrier: { repo, pr } }), pr, extra);
 
   // 1. open PRs. One record per item: the lowest PR that carries it speaks for it, and a PR
   // whose facts were not read keeps the items it carries (an unreadable record changes nothing).
@@ -415,10 +423,11 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
     try { item = RF.fromLaneRecord(r, { repo, observed_at: at }); } catch (e) { notes.unrecorded.push({ pr: r.pr, why: e.message }); continue; }
     if (seen.has(item.id) && seen.get(item.id) !== r.pr) { notes.shared_item.push({ pr: r.pr, item: item.id, with: seen.get(item.id) }); continue; }
     seen.set(item.id, r.pr);
+    vmap.set(item.id, M.versionsOf(r));
     const desc = { name: item.item.name, from: item.installed.version, to: item.available.version, type: item.available.update_type, pr: r.pr, ...(item.item.packages.length > 1 ? { pk: item.item.packages.map(x => [x.name, x.to]) } : {}), ...((item.carrier?.files || []).includes(RF.CUT_FILES) ? { files_cut: true } : {}) };
     for (const [id, s] of st.items) {
       if (id === item.id || s.item.carrier?.pr !== r.pr || !OPEN.includes(s.item.state)) continue;
-      close(s, id, r.pr, at, renovate, `PR #${r.pr} now carries ${desc.name} ${desc.to ?? ''} (a newer version, or the same update in another place): it replaced this one`);
+      close(s, id, r.pr, at, renovate, `PR #${r.pr} now carries ${desc.name} ${desc.to ?? ''} (a newer version, or the same update in another place): it replaced this one`, undefined, M.versionsOf(r));
     }
     const s = state(item.id), cur = s.item;
     if (cur.state === null || (OBSERVABLE.includes(cur.state) && (cur.state !== item.state || cur.lane !== item.lane || cur.class !== item.class))) {
@@ -481,7 +490,7 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
       // Renovate moved the PR to a newer version before it merged or closed. A merge whose
       // merger or commit was not read waits: the old item must not close without the new one.
       if (f.state === 'MERGED' && (!actorOf(f.mergedBy?.login ?? f.mergedBy, cfg) || !SHA.test(f.mergeCommit?.oid ?? f.mergeCommit ?? ''))) { notes.unread.push({ pr, item: id, why: 'the PR merged a newer version, and who merged it or its merge commit could not be read; nothing written' }); continue; }
-      close(s, id, pr, when, renovate, `PR #${pr} moved to ${li.desc.name} ${li.desc.to ?? ''} before it ${f.state === 'MERGED' ? 'merged' : 'closed'}: a newer version replaced this one`, at);
+      close(s, id, pr, when, renovate, `PR #${pr} moved to ${li.desc.name} ${li.desc.to ?? ''} before it ${f.state === 'MERGED' ? 'merged' : 'closed'}: a newer version replaced this one`, at, descVersions(li.desc));
       notes.superseded.push({ pr, item: id, by: li.id });
       if (f.state === 'MERGED') { const fresh = !st.items.get(li.id)?.desc && !descs.has(li.id); if (mergedOn(li.id, f, 'lane') && fresh) descs.set(li.id, li.desc); }
       else notes.unrecorded.push({ pr, item: li.id, type: 'closed', why: 'the newer version was first seen at its close; the format has no edge from first sight to closed' });
@@ -490,8 +499,7 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
     if (f.state === 'MERGED') mergedOn(id, f, 'lane');
     else {
       const a = actorOf(f.closedBy, cfg);
-      // the format's closed edge has no shepherd actor: the nearest it allows is hand (an
-      // automated session-like actor), with the shepherd's login, and the reason says so
+      // the closer as GitHub names it: the shepherd, a session, a person, renovate, or unknown
       close(s, id, pr, when, a, `PR #${pr} was closed without a merge by ${a.login}`, at);
     }
   }
@@ -536,10 +544,16 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
   const complete = scan?.ok && !notes.deferred.some(d => !Number.isInteger(d.item));
   if (backfilling && complete) next.meta.backfill = { at, window: scan.window, query: scan.query, events: out.filter(e => e.recorded_by === 'backfill').length, compare };
   // the backfill's comparison, owed until made: GitHub's count read again (recount) against
-  // what the backfill listed and holds
+  // what the history holds for the backfill's window now (a merge GitHub's index had not
+  // listed on the backfill tick, recorded since by a catch-up, counts), not the frozen list
   const bc = next.meta.backfill?.compare;
   if (!backfilling && bc && bc.match !== true && Number.isInteger(recount)) {
-    next.meta.backfill = { ...next.meta.backfill, compare: { ...bc, github_count: recount, match: recount === bc.listed && bc.history_count === recount && (bc.missing || []).length === 0, compared_at: at } };
+    const w = next.meta.backfill.window;
+    const held = new Set(next.events.filter(e => e.type === 'merged' && Number.isInteger(e.carrier?.pr) && Date.parse(e.at) >= Date.parse(w.since) && Date.parse(e.at) <= Date.parse(w.until) && AFTER_MERGE.includes(st.items.get(e.item_id)?.item.state)).map(e => e.carrier.pr));
+    const shared = (bc.shared_item || []).filter(x => !held.has(x.pr)).length;
+    const missing = (bc.missing || []).filter(pr => !held.has(pr));
+    const historyCount = held.size + shared;
+    next.meta.backfill = { ...next.meta.backfill, compare: { ...bc, github_count: recount, history_count: historyCount, missing, match: recount === historyCount && missing.length === 0, compared_at: at } };
   }
   // the catch-up's comparison: one disagreement can be GitHub's search index (the list and the
   // count are read seconds apart); it is an ERROR only when the next tick disagrees again

@@ -589,7 +589,7 @@ const phase = (f, recs, o = {}) => H.historyPhase({ rules, run: f.run, env: {}, 
   d = { ...d, events: [...d.events, ev('merge-attempted', 'needed', 'in_progress', -59, { lane: 'A-night', carrier: { repo: REPO, pr: 9800 } }), ev('merged', 'in_progress', 'merged_unverified', -58, { carrier: { repo: REPO, pr: 9800 }, evidence: { merge_commit: sha('5') } }),
     ev('verification-failed', 'merged_unverified', 'failed', -50, { class: 'not-ready', reason: 'x' }), ev('revert-opened', 'failed', 'reverting', -49, { evidence: { revert_pr: 9001 } }), ev('revert-merged', 'reverting', 'reverted_unverified', -40, { evidence: { revert_commit: sha('6') } }), ev('recovery-verified', 'reverted_unverified', 'reverted', -30, {})] };
   const elsewhere = rec(9801, { pkg: s.package, app: 2 });
-  ok(itemOf(elsewhere) !== id && RF.rememberedReverted(H.historyItems(d), s.package, s.to).map(x => x.id).join() === id && RF.rememberedReverted(H.historyItems(d), s.package, '9.9.9').length === 0,
+  ok(itemOf(elsewhere) !== id && RF.rememberedReverted(H.historyItems(d), s.package, s.to).map(x => `${x.item.id}:${x.why}`).join() === `${id}:reverted` && RF.rememberedReverted(H.historyItems(d), s.package, '9.9.9').length === 0,
     'point 6: the history\'s items answer rememberedReverted: the version reverted in app1 is found when asked from app2 (another item)');
   // point 5: free text shaped like a secret is replaced before it is stored, and named
   const fake = ['gh', 'p_', 'A'.repeat(36)].join('');
@@ -610,6 +610,74 @@ const phase = (f, recs, o = {}) => H.historyPhase({ rules, run: f.run, env: {}, 
   // point 3: the attempt count survives rotation, so numbering carries on after attempts were dropped
   const sk = H.skeleton('renovate-pr:' + 'c'.repeat(24), { state: 'needed', at: at(0), attempts: 25, by: 'lane', result: 'merge-refused' });
   ok(RF.attemptCount(sk) === 25 && sk.attempts.length === 1 && sk.attempts_dropped === 24, 'point 3: an item\'s base keeps its attempt count (25) while holding one attempt, so the next is 26');
+}
+
+// ── 12. the closing round (the third review of the format round) ────────────────────────
+{
+  // M: the memory through the history: a revert by a person ends in reverted_unverified, and
+  // a version merged again after its revert keeps ever_reverted
+  const s = rec(9850, { app: 7 }), sid = itemOf(s);
+  const list = [mergedPr(9850, -300, { pkg: s.package, app: 7 }), { number: 9851, title: `Revert "${mergedPr(9850, 0, { pkg: s.package }).title}"`, author: { login: 'thaynes43' }, mergedAt: at(-200), mergedBy: { login: 'thaynes43' }, labels: [], mergeCommit: { oid: sha('8') } }];
+  const pr = plan(H.emptyDoc(), { backfilling: true, scan: scanOf(list), reverts: new Map([[9851, { targets: [9850], titles: new Map([[9850, list[0].title]]) }]]) });
+  const hit1 = RF.rememberedReverted(H.historyItems(pr.doc), s.package, s.to);
+  ok(stateOf(pr.doc, sid) === 'reverted_unverified' && hit1.map(x => x.why).join() === 'reverted_unverified', 'M: a version reverted by a person (reverted_unverified, where every revert the history records today stays) is remembered', JSON.stringify(hit1.map(x => x.why)));
+  // the same version merged again: the format's new edge needs reverted, so build it from a full revert
+  const full = { ...pr.doc, events: [...pr.doc.events, H.makeEvent({ item_id: sid, type: 'recovery-verified', from: 'reverted_unverified', to: 'reverted', at: at(-150), actor: { kind: 'hand', login: null }, recorded_by: 'lane', attempt: 1 })] };
+  const back = plan(full, { scan: scanOf([mergedPr(9852, -100, { pkg: s.package, app: 7 })], at(-200), at(0)) });
+  const hit2 = RF.rememberedReverted(H.historyItems(back.doc), s.package, s.to);
+  ok(stateOf(back.doc, sid) === 'merged_unverified' && H.historyItems(back.doc).find(x => x.id === sid)?.ever_reverted === true && hit2.map(x => x.why).join() === 'ever-reverted', 'M: a version merged again after its revert is remembered (historyItems passes ever_reverted)', JSON.stringify(hit2.map(x => x.why)));
+  ok(RF.rememberedReverted(H.historyItems(p1.doc), a.package, a.to).length === 0, 'M: a version never reverted returns nothing');
+
+  // L1: a package's own version shaped like a private address is not an address
+  const pip = rec(9860, { pkg: 'nvidia-curand-cu12', packages: [{ name: 'nvidia-curand-cu12', update: 'minor', from: '==10.3.2.106', to: '==10.3.10.19' }], from: '==10.3.2.106', to: '==10.3.10.19', class: 'major', lane: 'LANE-B-OWNER', reason: 'major: nvidia-curand-cu12 ==10.3.2.106 -> ==10.3.10.19' });
+  const pl = plan(withMarker(H.emptyDoc()), { records: [pip], openPrs: [9860] });
+  ok(pl.events[0]?.reason === pip.reason && pl.notes.redacted.length === 0, 'L1: a reason that names the item\'s own version 10.3.2.106 is stored as written (not an address)', JSON.stringify(pl.notes.redacted));
+  const other = rec(9861, { reason: 'reached 10.3.2.106 during the check' });
+  const po = plan(withMarker(H.emptyDoc()), { records: [other], openPrs: [9861] });
+  ok(po.events[0]?.reason === H.REDACTED && po.notes.redacted.some(x => x.field === 'reason' && x.shape === 'a private network address'), 'L1: the same text as free text, not one of the item\'s versions, is still caught');
+  ok(M.secretShape('reached 10.0.0.5', M.versionsOf({ from: '10', to: '11' })) === 'a private network address', 'L1: a short version (10) cannot hide a real address in the same text');
+  const rcd = M.recordConfig(rules);
+  const pub = M.projectRecord({ ...pip, reason: pip.reason }, rcd);
+  ok(M.publishProblems(pub, M.renderRecord(pub, rcd), rcd, M.versionsOf(pip)).length === 0 && M.publishProblems(pub, M.renderRecord(pub, rcd), rcd, []).some(x => /private network address/.test(x)), 'L1: the PR record\'s publish check exempts the record\'s own versions, and only them');
+  const w1 = M.writePrRecords({ items: [{ rec: { ...pip, schema: 'haynes.upgrade-lane/v1' }, comments: [] }], cfg: rcd, run: () => null, env: {}, live: false });
+  ok(w1.would_create.includes(9860) && !w1.refused.length, 'L1: and the record writer passes them (PR 4757\'s case: no refusal)', JSON.stringify(w1.refused));
+
+  // L2: a lagging count on the backfill tick; the missing merge recorded by a later catch-up;
+  // the recount then matches and the ERROR stops
+  const l2 = [mergedPr(9871, -600), mergedPr(9872, -500)];
+  const b0 = plan(H.emptyDoc(), { backfilling: true, scan: { ...scanOf(l2), github_count: 3 } });
+  ok(b0.doc.meta.backfill.compare.match === false, 'L2: the backfill tick: GitHub counts 3, the list holds 2 (its index lagged): a mismatch');
+  const r0 = plan(b0.doc, { at: at(15), recount: 3 });
+  ok(r0.doc.meta.backfill.compare.match === false && H.historyError({ write: 'written', backfill: { state: 'done', compare: r0.doc.meta.backfill.compare } }), 'L2: still a mismatch (an ERROR) while the history holds 2');
+  const c1 = plan(r0.doc, { at: at(30), scan: scanOf([...l2, mergedPr(9873, -400)], at(-30 * 1440), at(30)) });
+  const r1 = plan(c1.doc, { at: at(45), recount: 3 });
+  ok(c1.events.some(e => e.carrier?.pr === 9873) && r1.doc.meta.backfill.compare.match === true && r1.doc.meta.backfill.compare.history_count === 3 && !H.historyError({ write: 'written', backfill: { state: 'done', compare: r1.doc.meta.backfill.compare } }), 'L2: a catch-up records the missing merge; the recount counts what the history holds now, matches, and the ERROR stops', JSON.stringify(r1.doc.meta.backfill.compare));
+
+  // L3: tests that fail for the mutations that survived
+  const sk = H.skeleton('renovate-pr:' + 'd'.repeat(24), { state: 'merged_unverified', at: at(0), attempts: 2, by: 'renovate', result: 'merged', reverted: true });
+  ok(sk.ever_reverted === true && !H.forgettable(sk), 'L3: an item\'s base keeps ever_reverted, so a re-merged version is never forgotten');
+  const fake = ['gh', 'p_', 'B'.repeat(36)].join('');
+  const x = rec(9881);
+  const xb = plan(withMarker(H.emptyDoc()), { records: [x], openPrs: [9881] });
+  const lists = plan(xb.doc, { records: [x], openPrs: [9881], at: at(15), verdict: { pr: 9881, head: x.head, class: 'cluster-change', chosen: true, mode: 'live', verdict: 'refused', pr_refusals: [`token ${fake} in the way`], lane_refusals: [], merge_call: 'not made' } });
+  const refused = lists.events.find(e => e.type === 'merge-refused');
+  ok(refused?.evidence.pr_refusals[0] === H.REDACTED && lists.notes.redacted.some(r => r.field === 'evidence.pr_refusals[0]'), 'L3: a text list (pr_refusals) is redacted entry by entry');
+  const cleaned = H.cleanEvent({ ...refused, evidence: { ...refused.evidence, pr_refusals: [], lane_refusals: [`x ${fake}`], checks: [`y ${fake}`] } }, { redacted: [], cut: [] });
+  ok(cleaned.evidence.lane_refusals[0] === H.REDACTED && cleaned.evidence.checks[0] === H.REDACTED, 'L3: lane_refusals and checks are redacted too');
+  const named = rec(9882, { pkg: 'https://user:secret@example.com/repo' });
+  const pn = plan(withMarker(H.emptyDoc()), { records: [named], openPrs: [9882] });
+  ok(pn.doc.items[itemOf(named)]?.name === H.REDACTED && pn.notes.redacted.some(r => r.field === 'items.name'), 'L3: a stored item name shaped like a URL with credentials is redacted');
+  let tnow = Date.parse(at(0)) + 400e3;
+  const fb = api(); let reads = 0;
+  const runB = (cmd, argv) => { if (cmd === 'gh') reads++; return fb.run(cmd, argv); };
+  H.historyPhase({ rules, run: runB, env: {}, repo: REPO, at: at(0), records: [], openPrs: [], verdict: null, write: false, apply: fb.apply, clock: () => tnow, startedAt: Date.parse(at(0)) });
+  ok(reads === 0, 'L3: the read budget runs from the tick\'s start (startedAt): a phase that begins 400s into the tick reads nothing', `${reads} reads`);
+  const night = readFileSync(join(RES, 'run-night.mjs'), 'utf8');
+  ok(/H\.historyPhase\(\{[^}]*clock, startedAt: now \}\)/.test(night), 'L3: run-night.mjs passes the tick\'s start to the history phase');
+
+  // L6: evidence.url and actor.login pass the shape check too
+  const u = H.cleanEvent({ ...refused, actor: { kind: 'lane', login: fake }, evidence: { ...refused.evidence, url: 'https://user:secret@example.com/x' } }, { redacted: [], cut: [] });
+  ok(u.actor.login === H.REDACTED && u.evidence.url === H.REDACTED_URL && RF.checkEvent(u).length === 0, 'L6: evidence.url and actor.login are checked like the other free text, and the event stays valid (a URL-shaped placeholder for the url)', RF.checkEvent(u)[0]);
 }
 
 console.log(`\n${passes} passed, ${fails} failed`);

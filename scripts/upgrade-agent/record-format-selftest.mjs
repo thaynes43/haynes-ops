@@ -398,8 +398,27 @@ const laneRecordOf = (n, mutate) => {
   const done = F.replay(rev.item, rev.events).item;
   const pk = done.item.packages[0] || { name: done.item.name, to: done.available.version };
   const elsewhere = F.fromLaneRecord({ ...laneRecordOf(4477), packages: done.item.packages, package: pk.name, to: pk.to, files: ['kubernetes/main/apps/another/app/helmrelease.yaml'] }, { repo: REPO });
-  ok(done.state === 'reverted' && elsewhere.id !== done.id && F.rememberedReverted([done, elsewhere], pk.name, pk.to).map(x => x.id).join() === done.id, 'memory: a version reverted at one path is found when asked about the same package and version at another path', `${done.state} ${pk.name}@${pk.to}`);
-  ok(F.rememberedReverted([done], pk.name, '0.0.0-other').length === 0 && F.rememberedReverted([{ ...done, state: 'done' }], pk.name, pk.to).length === 0, 'memory: another version, or the same version not reverted, is not remembered');
+  ok(done.state === 'reverted' && elsewhere.id !== done.id && F.rememberedReverted([done, elsewhere], pk.name, pk.to).map(x => `${x.item.id}:${x.why}`).join() === `${done.id}:reverted`, 'memory: a version reverted at one path is found when asked about the same package and version at another path', `${done.state} ${pk.name}@${pk.to}`);
+  // conservative: every state a revert touches, and a version merged again after its revert
+  const steps = F.replay(rev.item, rev.events).item; // the sequence: ... failed, reverting, reverted_unverified, reverted
+  const upTo = to => { const k = rev.events.findIndex(e => e.to === to); return F.replay(rev.item, rev.events.slice(0, k + 1)).item; };
+  for (const st of ['failed', 'reverting', 'reverted_unverified']) {
+    const it = upTo(st);
+    ok(it.state === st && F.rememberedReverted([it], pk.name, pk.to).map(x => x.why).join() === st, `memory: an item in ${st} is remembered (why ${st})`, `${it.state}`);
+  }
+  const remerged = (() => { const e = { schema: F.EVENT_SCHEMA, id: '', item_id: steps.id, type: 'merged', from: 'reverted', to: 'merged_unverified', at: '2026-11-14T00:00:00.000Z', actor: { kind: 'person', login: 'thaynes43' }, recorded_by: 'lane', attempt: F.attemptCount(steps) + 1, carrier: { repo: REPO, pr: 1 }, evidence: { merge_commit: 'c'.repeat(40) } }; e.id = F.eventId(e); return F.applyEvent(steps, e).item; })();
+  ok(remerged.state === 'merged_unverified' && F.rememberedReverted([remerged], pk.name, pk.to).map(x => x.why).join() === 'ever-reverted', 'memory: a version merged again after its revert is remembered (why ever-reverted, from its attempts)');
+  ok(F.rememberedReverted([{ id: 'x', state: 'merged_unverified', ever_reverted: true, item: { name: pk.name, packages: [{ name: pk.name, to: pk.to }] }, available: { version: pk.to } }], pk.name, pk.to)[0]?.why === 'ever-reverted', 'memory: a history item with ever_reverted is remembered (why ever-reverted)');
+  const never = fixtures.find(f => f.file === 'item-done.json').record;
+  const npk = never.item.packages[0] || { name: never.item.name, to: never.available.version };
+  ok(F.rememberedReverted([never], npk.name, npk.to).length === 0 && F.rememberedReverted([done], pk.name, '0.0.0-other').length === 0, 'memory: a version never reverted, or another version, returns nothing');
+  // L4: a patterned field is never cut: validation refuses it with the real reason
+  const pat = { ...long, class: 'c'.repeat(150), reason: 'x' }; pat.id = F.eventId(pat);
+  const pf = F.fit(F.schemas.event, pat);
+  ok(pf.value.class === pat.class && !pf.cuts.includes('/class') && F.checkEvent(pf.value).some(e => /\/class: longer than 100/.test(e)), 'bounds: fit() never cuts a patterned field (class); validation refuses it as too long', F.checkEvent(pf.value)[0]);
+  // L5: the lane's gatherFacts writes the same cut-list marker as the format (two id routes)
+  const laneSrc = readFileSync(join(RES, 'lane-classify.mjs'), 'utf8');
+  ok(laneSrc.includes(`'${F.CUT_FILES}'`) && (laneSrc.match(/'<[^'>]*truncated[^'>]*>'/g) || []).every(m => m === `'${F.CUT_FILES}'`), 'copy: lane-classify.mjs writes the format\'s CUT_FILES marker for a cut file list, and no other');
   // a merge of a remembered version can be recorded, by anyone but the lane
   const again = (kind) => { const e = { schema: F.EVENT_SCHEMA, id: '', item_id: done.id, type: 'merged', from: 'reverted', to: 'merged_unverified', at: '2026-11-14T00:00:00.000Z', actor: { kind, login: null }, recorded_by: 'lane', attempt: F.attemptCount(done) + 1, carrier: { repo: REPO, pr: 1 }, evidence: { merge_commit: 'c'.repeat(40) } }; e.id = F.eventId(e); return F.applyEvent(done, e); };
   ok(again('renovate').errors.length === 0 && again('unknown').errors.length === 0 && again('lane').errors.length > 0, 'safety: a merge of a remembered version is recorded for renovate or unknown, and refused for the lane');

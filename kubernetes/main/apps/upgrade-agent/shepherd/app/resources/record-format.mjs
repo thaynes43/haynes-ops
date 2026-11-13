@@ -11,8 +11,9 @@
 //   fromLaneRecord(record, ctx) -> item               the mapping from haynes.upgrade-lane/v1
 //   eventsFromMergeStep(item, verdict, ctx) -> [event] what one merge-step verdict writes
 //   fit(schema, value)          -> { value, cuts }  a record cut to the schemas' bounds, visibly
-//   rememberedReverted(items, name, version) -> [item]  reverted items for a package at a
-//                                version, whatever the target (stories 753, 556 use it)
+//   rememberedReverted(items, name, version) -> [{ item, why }]  every item for a package at
+//                                a version that a revert touches or touched, whatever its
+//                                place, with why it matched (stories 753, 556 use it)
 //   validate(schema, value)     -> [error]   the JSON Schema subset below
 //   schemaProblems(schema)      -> [string]  keywords the subset lacks, $refs that do not resolve
 //
@@ -380,7 +381,9 @@ export function eventsFromMergeStep(item, v, ctx = {}) {
 }
 
 // ── bounds: a record cut to the schemas, with a visible mark (never refused for length) ──
-// A string over its maxLength keeps maxLength - 1 characters and ends in '…'. A list of
+// A string over its maxLength keeps maxLength - 1 characters and ends in '…', unless the
+// field has a pattern (a class, a timestamp, a repo, a SHA): a patterned field is never cut,
+// so validation refuses a value that is too long with the real reason. A list of
 // strings over its maxItems keeps maxItems - 1 entries and a last entry '… (+N more)'; a list
 // of objects keeps its first maxItems. cuts names each path that was cut, so the writer can
 // say so. The bounds are the schemas' own (one place): upgrade-item.v1.schema.json $defs
@@ -394,6 +397,7 @@ export function fit(schema, value) {
     const pick = k => list.map(n => n[k]).find(x => x !== undefined);
     if (typeof v === 'string') {
       const max = pick('maxLength'), chars = [...v];
+      if (pick('pattern') !== undefined) return v; // never cut a patterned field
       if (Number.isInteger(max) && chars.length > max) { cuts.push(path || '(root)'); return chars.slice(0, max - 1).join('') + '…'; }
       return v;
     }
@@ -416,11 +420,24 @@ export function fit(schema, value) {
 }
 
 // ── the memory across places (stories 753, 556; nothing here decides a merge) ─────────
-// The items in state reverted that update the package to the version, whatever their target:
-// the id has the place in it, so a reverted version in one place is another item than the
-// same version in another place, and this is how a reader asks about the version itself.
+// Conservative: every item that updates the package to the version, whatever its place (the
+// id has the place in it, so the same version in other files is another item), and that a
+// revert touches or touched. why says which: failed (a revert is owed), reverting (a revert
+// is open), reverted_unverified (the revert merged; recovery not verified, where every
+// revert the history records today stays), reverted (recovery verified), or ever-reverted
+// (the version was merged again after its revert; ever_reverted on a history item, or an
+// attempt with result reverted). A version never reverted returns nothing.
+export const REVERT_MEMORY = Object.freeze(['failed', 'reverting', 'reverted_unverified', 'reverted']);
 export function rememberedReverted(items, name, version) {
-  return (items || []).filter(it => it?.state === 'reverted' && (it.item?.packages?.length
-    ? it.item.packages.some(p => p.name === name && (p.to ?? null) === (version ?? null))
-    : it.item?.name === name && (it.available?.version ?? null) === (version ?? null)));
+  const out = [];
+  for (const it of items || []) {
+    const same = it?.item?.packages?.length
+      ? it.item.packages.some(p => p.name === name && (p.to ?? null) === (version ?? null))
+      : it?.item?.name === name && (it?.available?.version ?? null) === (version ?? null);
+    if (!same) continue;
+    const ever = it.ever_reverted === true || (it.attempts || []).some(a => a?.result === 'reverted');
+    const why = REVERT_MEMORY.includes(it.state) ? it.state : ever ? 'ever-reverted' : null;
+    if (why) out.push({ item: it, why });
+  }
+  return out;
 }

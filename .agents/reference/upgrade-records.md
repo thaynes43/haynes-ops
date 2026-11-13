@@ -86,9 +86,19 @@ Renovate replays the same change on the same files, so the history stays attache
 new PR for a version that was reverted, in the same files, maps to the same item, which is
 still in state `reverted`. That is how the lane
 remembers never to merge that version again (story 753). The same version in other files
-is another item; `rememberedReverted(items, name, version)` in `record-format.mjs` answers
-whether a package at a version is remembered as reverted anywhere, whatever the target
-(stories 753 and 556 use it; nothing decides a merge with it yet). When a PR's files change
+is another item. `rememberedReverted(items, name, version)` in `record-format.mjs` returns
+every item for that package at that version, whatever its files, that a revert touches or
+touched, each with `why` it matched:
+- `failed`: a revert is owed;
+- `reverting`: a revert is open;
+- `reverted_unverified`: the revert merged and recovery is not verified. Every revert the
+  history records today stays here, because nothing verifies recovery yet;
+- `reverted`: recovery verified;
+- `ever-reverted`: the version was merged again after its revert (`ever_reverted` on a
+  history item, or an attempt with result `reverted`).
+
+A version never reverted returns nothing. The answer is conservative, and stories 753 and
+556 decide what to do with it; nothing decides a merge with it yet. When a PR's files change
 while it is open (Renovate rebased PR 4873 from two traefik apps to one after the other half
 merged as PR 4876), the old item closes as replaced and the new one is observed, as for a
 newer version. A change of the lane's rules that maps a file to other targets changes no
@@ -157,7 +167,9 @@ records from the portal (PR 4824, 2026-11-12), and were settled in story 593.
    | `attempts[]`, 20 | the newest kept, `attempts_dropped` counts the rest |
    | inline | `repo` 200, `class` 100, `actor.login` 100, `update_type` 100, `url` 1000, and fixed-length SHAs, ids and times |
 
-   A cut string ends in `…`; a cut list of strings ends in an entry `… (+N more)`.
+   A cut string ends in `…`; a cut list of strings ends in an entry `… (+N more)`. A
+   patterned field (a class, a timestamp, a repo, a SHA, an id) is never cut: a value that is
+   too long is left as it is, so validation refuses it with the real reason.
 4. **`lane_detail` is not part of the contract**, apart from `lane_detail.checks`. Its other
    shapes are the lane's own (`lane-classify.mjs`, `run-night.mjs`, `night-merge.mjs`) and
    may change without a version change. A reader shows it as raw text at most. A field a
@@ -166,10 +178,20 @@ records from the portal (PR 4824, 2026-11-12), and were settled in story 593.
    free-text field of an event, and each item's name, through the same shape check the
    lane's PR record uses (`secretShape()` in `night-merge.mjs`: GitHub, Slack and AWS
    tokens, private keys, JWTs, URLs with credentials, bearer values, password assignments,
-   private network addresses and in-cluster names). On a hit the text is replaced by a
-   fixed placeholder (`[redacted: the text was shaped like a credential, a private address
-   or an in-cluster name]`), and the tick logs an ERROR that names the field, never the
+   private network addresses and in-cluster names). The fields checked are `reason`,
+   `evidence.merge_call`, `revert_branch`, `flux_revision`, `url`, the lists `checks`,
+   `pr_refusals` and `lane_refusals`, `actor.login`, and the item's name. On a hit the text
+   is replaced by a fixed placeholder (`[redacted: the text was shaped like a credential, a
+   private address or an in-cluster name]`; for `evidence.url`, `https://redacted.invalid/`,
+   so the field keeps its shape). The tick logs an ERROR that names the field, never the
    text.
+
+   One exemption, for the private-address shapes only: a string that is exactly one of the
+   item's own package versions (from or to, as written or without the pin operator) is not
+   an address. PR 4757 updates `nvidia-curand-cu12` from `==10.3.2.106`, which reads like
+   10.x.x.x. The lane's PR record uses the same check with the same exemption. Only a
+   version that is itself shaped like an address is exempt, so a short version cannot hide
+   part of a real address.
 
 ## The state machine
 

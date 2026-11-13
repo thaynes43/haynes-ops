@@ -1328,16 +1328,21 @@ list. Such an item is marked `files_cut: true` in `data.items` and counted in
 `summary.history.total.cut_file_items` and the log line. On 2026-11-13 none of the 301
 Renovate PRs merged in 30 days, and none of the 17 open ones, had more than 100 files (the
 largest had 14).
-Whether a version is remembered as reverted anywhere, whatever the place, is
-`rememberedReverted(historyItems(doc), name, version)`; nothing decides a merge with it yet
-(stories 753 and 556).
+`rememberedReverted(historyItems(doc), name, version)` returns every item for that package
+and version, whatever its files, that a revert touches or touched. Each comes with `why`:
+`failed`, `reverting`, `reverted_unverified` (where every revert the history records today
+stays), `reverted`, or `ever-reverted` (merged again after its revert). Nothing decides a
+merge with it yet (stories 753 and 556).
 
 **Free text is guarded and bounded before it is stored.** Every free-text field of an event
-(`reason`, `merge_call`, the refusal lines, `evidence.checks`) and each item's name passes
-the PR record's secret shapes (`secretShape()` in `night-merge.mjs`). A hit is replaced by
-a fixed placeholder, and the tick logs `REDACTED <field> of <item> (shaped like …)` at ERROR
-level: the field, never the text. Then `fit()` cuts the event to the format's bounds with a
-visible mark (`…`, `… (+N more)`).
+(`reason`, `merge_call`, `revert_branch`, `flux_revision`, `url`, the refusal lines,
+`evidence.checks`, `actor.login`) and each item's name passes the PR record's secret shapes
+(`secretShape()` in `night-merge.mjs`). A hit is replaced by a fixed placeholder, and the
+tick logs `REDACTED <field> of <item> (shaped like …)` at ERROR level: the field, never the
+text. The item's own package versions are exempt from the private-address shapes only
+(PR 4757's `==10.3.2.106` reads like 10.x.x.x); the PR record uses the same exemption. Then
+`fit()` cuts the event to the format's bounds with a visible mark (`…`, `… (+N more)`). A
+patterned field is never cut: validation refuses it instead.
 
 **Size** (measured in `lane-history-selftest.mjs`):
 
