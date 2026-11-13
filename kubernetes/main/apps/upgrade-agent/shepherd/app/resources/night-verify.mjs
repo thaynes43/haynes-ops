@@ -787,7 +787,8 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
   for (const [id, r] of Object.entries(mem.items)) if (r.final) mem.done[id] = `${r.verdict} ${r.verdict_at}`;
   // done is only there to skip a candidate: an id that is no longer one is forgotten; a record
   // that is neither a candidate nor final is too
-  for (const id of Object.keys(mem.done)) if (!live.has(id)) delete mem.done[id];
+  // (only on a tick that listed the practice candidates: practice off, or no install time, keeps it)
+  if (onlyPrs || (cfg.practice && mem.since)) for (const id of Object.keys(mem.done)) if (!live.has(id)) delete mem.done[id];
   for (const id of Object.keys(mem.items)) if (!live.has(id) && !mem.items[id].final) delete mem.items[id];
   mem.at = iso(now);
   const mergedAt = new Map(cands.list.map(c => [c.id, c.merged_at]));
@@ -843,6 +844,7 @@ export function tableOf(mem) {
     lines.push(`#${r.pr} ${r.name ?? '?'} ${r.from ?? '?'} -> ${r.to ?? '?'}, merged ${r.merged_at} by ${r.merged_by?.login ?? r.merged_by?.kind ?? '?'}${r.practice ? ' (practice)' : ''}: ${String(r.verdict).toUpperCase()}${r.attribution ? ` (${r.attribution})` : ''} at ${r.verdict_at}`);
     for (const f of r.facts || []) lines.push(`  ${f.fact}: ${f.result}${f.class ? ` [${f.class}]` : ''}${f.detail ? `: ${f.detail}` : ''}`);
     const oc = r.other_changes;
+    if (r.compacted) { lines.push('  (facts and other changes cut to keep data.verify within max_state_bytes; the verdict and the recorded pods are kept)'); continue; }
     lines.push(`  other changes: ${!oc ? 'not read' : oc.applicable === false ? 'not applicable (no target)' : !oc.complete ? `unreadable (${oc.why})` : oc.changes.length ? oc.changes.map(c => `${short(c.sha)}${c.pr ? ` #${c.pr}` : ''} ${c.subject} [${c.parts.join('; ')}]${c.fetched_by_flux === false ? ' (not fetched by Flux yet)' : ''}`).join(' | ') : 'none on the target, its chain or a cluster-wide part'}`);
     if ((r.would_write || []).length) lines.push(`  ${r.practice ? 'would write (not written: practice)' : 'events'}: ${r.would_write.map(e => `${e.type} ${e.from}->${e.to}${e.class ? ` [${e.class}]` : ''}${e.legal ? '' : ` REFUSED (${e.why})`}`).join(', ')}`);
   }

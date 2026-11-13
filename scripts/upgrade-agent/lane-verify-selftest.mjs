@@ -341,11 +341,14 @@ await failure('an image-pull failure', 4869, w => { podsIn(w, 'media', 'seerr-')
   // installed at the first commit of night-verify.mjs on main: earlier merges are the backfill's
   const w = world(); w.installed = [{ sha: 'f'.repeat(40), at: '2026-11-13T09:30:00Z' }, { sha: '9'.repeat(40), at: '2026-11-13T03:12:30Z' }];
   const r = await tick(w, { onlyPrs: null });
+  const t0mem = r.memory;
   ok(r.summary.since === '2026-11-13T03:12:30.000Z' && /first commit on main that added night-verify\.mjs: 99999999/.test(r.summary.since_basis), 'bound: since is the oldest commit of night-verify.mjs on main (a fact in git)', JSON.stringify([r.summary.since, r.summary.since_basis]));
   ok(r.summary.evaluated.sort().join() === '4870,4873,4874', 'bound: only merges at or after it are practised (#4869 and #4871 merged before)', r.summary.evaluated.join());
   const w2 = world();
   const r2 = await tick(w2, { onlyPrs: null });
   ok(r2.summary.evaluated.length === 0 && /unreadable: when the verifier was installed/.test(r2.summary.why_not), 'bound: an unreadable install time practises nothing (never the backfill)');
+  const off = await tick(world(), { onlyPrs: null, prev: JSON.stringify({ ...JSON.parse(t0mem), done: { x: 'verified 2026-11-13T00:00:00.000Z' } }), cfg: { practice: false } });
+  ok(JSON.parse(off.memory).done.x, 'memory: a tick with practice off keeps done (review of PR 4880)');
   const r3 = await tick(world(), { onlyPrs: null, prev: r.memory });
   ok(r3.summary.since === r.summary.since && !r3.calls.some(c => /night-verify\.mjs/.test(decodeURIComponent(c))), 'bound: kept in the memory, not read again');
   // own merges are verified whatever the bound
@@ -365,6 +368,7 @@ await failure('an image-pull failure', 4869, w => { podsIn(w, 'media', 'seerr-')
   const km = JSON.parse(k.memory), openKept = Object.values(km.items).filter(r => !r.final);
   ok(Buffer.byteLength(k.memory) <= 9000 && k.summary.trimmed === 1 && !km.items[Object.keys(km.items).find(id => km.items[id].pr === 4871)] && k.summary.compacted > 0 && openKept.length === 4 && openKept.every(r => r.baseline?.pods) && openKept.some(r => r.compacted),
     'memory over max_state_bytes: the final record goes first, then the open ones lose their details and keep their recorded pods', `${Buffer.byteLength(k.memory)} bytes ${JSON.stringify(k.summary)}`.slice(0, 400));
+  ok(/\(facts and other changes cut to keep data\.verify within max_state_bytes/.test(k.table), 'memory: the morning view says when a record\'s details were cut');
   const k2 = await tick(world(), { cfg: { max_state_bytes: 9000 }, now: T2, prev: k.memory });
   ok([4869, 4870, 4873, 4874].every(n => k2.summary.verdicts.verified.includes(n)) && Buffer.byteLength(k2.memory) <= 9000, 'memory over budget: the next tick still verifies the open items against the kept pods', JSON.stringify(k2.summary.verdicts));
   const kc = await tick(world(), { cfg: { max_items_kept: 2 } });
