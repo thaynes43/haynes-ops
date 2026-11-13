@@ -785,18 +785,16 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
   for (const r of Object.values(mem.items)) delete r.events; // never kept: rebuilt from the facts
   const live = new Set(cands.list.map(c => c.id));
   for (const [id, r] of Object.entries(mem.items)) if (r.final) mem.done[id] = `${r.verdict} ${r.verdict_at}`;
-  // forget what the history no longer holds as merged (done ids too), then cap the records
-  for (const id of Object.keys(mem.done)) if (!live.has(id) && !docItems_has(doc, id)) delete mem.done[id];
+  // done is only there to skip a candidate: an id that is no longer one is forgotten; a record
+  // that is neither a candidate nor final is too
+  for (const id of Object.keys(mem.done)) if (!live.has(id)) delete mem.done[id];
   for (const id of Object.keys(mem.items)) if (!live.has(id) && !mem.items[id].final) delete mem.items[id];
-  const recs = Object.entries(mem.items).sort((a, b) => String(b[1].merged_at).localeCompare(String(a[1].merged_at)));
-  mem.items = Object.fromEntries(recs.slice(0, cfg.max_items_kept));
   mem.at = iso(now);
+  const mergedAt = new Map(cands.list.map(c => [c.id, c.merged_at]));
+  const fit = fitMemory(mem, cfg, id => mem.items[id] ? !mem.items[id].final && live.has(id) : false, id => mergedAt.get(id) ?? mem.items[id]?.merged_at ?? '');
+  Object.assign(sum, fit.counts);
   sum.kept_final = Object.keys(mem.done).length;
-  let text = JSON.stringify(mem);
-  while (Buffer.byteLength(text) > cfg.max_state_bytes && Object.keys(mem.items).length) {
-    const oldest = Object.entries(mem.items).sort((a, b) => String(a[1].merged_at).localeCompare(String(b[1].merged_at)))[0][0];
-    delete mem.items[oldest]; sum.trimmed = (sum.trimmed || 0) + 1; text = JSON.stringify(mem);
-  }
+  const text = fit.text;
   sum.events_for_history = ev.length;
   sum.reads = { commands: reads };
   result.summary = { ...sum, elapsed_ms: clock() - t0 };
@@ -807,7 +805,36 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
   result.records = mem.items;
   return result;
 }
-const docItems_has = (doc, id) => !!doc.items?.[id] || doc.events.some(e => e.item_id === id);
+
+// The memory within its bounds (review of PR 4880). An open record (still a candidate, not
+// final) holds the pods recorded for stability, so it goes last. In order:
+//   1. final records beyond max_items_kept, oldest merge first (display only: done keeps them
+//      from being judged again);
+//   2. over max_state_bytes: final records, oldest first; then open records lose their
+//      details (facts, other changes, the events they would write), keeping the verdict and
+//      the recorded pods; then the oldest done entries (such an item may be judged again);
+//      last, the oldest open records, counted in trimmed_open.
+export function fitMemory(mem, cfg, isOpen, mergedAtOf) {
+  const counts = { trimmed: 0, compacted: 0, done_trimmed: 0, trimmed_open: 0 };
+  const byAge = ids => [...ids].sort((a, b) => String(mergedAtOf(a)).localeCompare(String(mergedAtOf(b))));
+  const finals = () => byAge(Object.keys(mem.items).filter(id => !isOpen(id)));
+  const opens = () => byAge(Object.keys(mem.items).filter(id => isOpen(id)));
+  const extra = Object.keys(mem.items).length - cfg.max_items_kept;
+  for (const id of finals().slice(0, Math.max(0, extra))) { delete mem.items[id]; counts.trimmed++; }
+  let text = JSON.stringify(mem);
+  const over = () => Buffer.byteLength(text) > cfg.max_state_bytes;
+  for (const id of finals()) { if (!over()) break; delete mem.items[id]; counts.trimmed++; text = JSON.stringify(mem); }
+  for (const id of opens()) {
+    if (!over()) break;
+    const r = mem.items[id];
+    mem.items[id] = { pr: r.pr, item: r.item, name: r.name, from: r.from, to: r.to, merged_at: r.merged_at, merged_by: r.merged_by, practice: r.practice, verdict: r.verdict, why: String(r.why || '').slice(0, 300),
+      verdict_at: r.verdict_at, first_at: r.first_at, ticks: r.ticks, final: r.final, baseline: r.baseline ?? null, ...(r.rebaselined ? { rebaselined: r.rebaselined } : {}), compacted: true };
+    counts.compacted++; text = JSON.stringify(mem);
+  }
+  for (const id of byAge(Object.keys(mem.done))) { if (!over()) break; delete mem.done[id]; counts.done_trimmed++; text = JSON.stringify(mem); }
+  for (const id of opens()) { if (!over()) break; delete mem.items[id]; counts.trimmed_open++; text = JSON.stringify(mem); }
+  return { text, counts: Object.fromEntries(Object.entries(counts).filter(([, v]) => v)) };
+}
 
 // The morning view: one block per update, newest merge first.
 export function tableOf(mem) {

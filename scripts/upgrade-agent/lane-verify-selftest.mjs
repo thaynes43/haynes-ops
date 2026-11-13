@@ -360,10 +360,20 @@ await failure('an image-pull failure', 4869, w => { podsIn(w, 'media', 'seerr-')
   const c2 = await tick(world(), { cfg: { max_items_per_tick: 2 }, now: T2, prev: c1.memory });
   ok(c1.summary.evaluated.length === 2 && c1.summary.deferred.length === 3 && c2.summary.evaluated.every(n => !c1.summary.evaluated.includes(n)), 'cap: two per tick, and the next tick takes the least recently judged', JSON.stringify([c1.summary.evaluated, c2.summary.evaluated]));
   // the byte budget and the kept cap
+  // review of PR 4880: an open record (with the pods recorded for stability) goes last
   const k = await tick(world(), { cfg: { max_state_bytes: 9000 } });
-  ok(Buffer.byteLength(k.memory) <= 9000 && k.summary.trimmed > 0, 'memory: data.verify stays within max_state_bytes (oldest records first)', `${Buffer.byteLength(k.memory)} bytes, trimmed ${k.summary.trimmed}`);
+  const km = JSON.parse(k.memory), openKept = Object.values(km.items).filter(r => !r.final);
+  ok(Buffer.byteLength(k.memory) <= 9000 && k.summary.trimmed === 1 && !km.items[Object.keys(km.items).find(id => km.items[id].pr === 4871)] && k.summary.compacted > 0 && openKept.length === 4 && openKept.every(r => r.baseline?.pods) && openKept.some(r => r.compacted),
+    'memory over max_state_bytes: the final record goes first, then the open ones lose their details and keep their recorded pods', `${Buffer.byteLength(k.memory)} bytes ${JSON.stringify(k.summary)}`.slice(0, 400));
+  const k2 = await tick(world(), { cfg: { max_state_bytes: 9000 }, now: T2, prev: k.memory });
+  ok([4869, 4870, 4873, 4874].every(n => k2.summary.verdicts.verified.includes(n)) && Buffer.byteLength(k2.memory) <= 9000, 'memory over budget: the next tick still verifies the open items against the kept pods', JSON.stringify(k2.summary.verdicts));
   const kc = await tick(world(), { cfg: { max_items_kept: 2 } });
-  ok(Object.keys(JSON.parse(kc.memory).items).length === 2, 'memory: at most max_items_kept records');
+  const kcm = JSON.parse(kc.memory);
+  ok(Object.keys(kcm.items).length === 4 && Object.values(kcm.items).every(r => !r.final) && kc.summary.trimmed === 1, 'memory: max_items_kept drops final records only, never an open one', JSON.stringify(kc.summary));
+  const big = { schema: 'haynes.upgrade-verify/v1', since: null, items: { open1: { pr: 1, merged_at: '2026-11-13T00:00:00Z', verdict: 'not-yet', why: 'x', facts: [{ fact: 'image', result: 'pass', detail: 'y'.repeat(800) }], baseline: { at: '2026-11-13T01:00:00Z', pods: { u1: { name: 'p', restarts: 0 } } }, final: false } },
+    done: Object.fromEntries(Array.from({ length: 2000 }, (_, i) => [`renovate-pr:${i.toString(16).padStart(24, '0')}`, 'verified 2026-11-13T00:00:00.000Z'])) };
+  const fm = V.fitMemory(big, { max_items_kept: 60, max_state_bytes: 9000 }, id => id === 'open1', id => (id === 'open1' ? '2026-11-13' : `2026-11-01-${id}`));
+  ok(Buffer.byteLength(fm.text) <= 9000 && JSON.parse(fm.text).items.open1?.baseline?.pods?.u1 && fm.counts.done_trimmed > 0 && !fm.counts.trimmed_open, 'memory: done over the budget is trimmed, oldest first, before an open record is touched', JSON.stringify(fm.counts));
   ok(V.parseMemory('not json').ok === false && V.parseMemory(null).absent === true, 'memory: an unparseable data.verify starts a new one; none is absent');
   // the time budget: no new item once the tick has run time_budget_seconds
   const f = fake(world());
