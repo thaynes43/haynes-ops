@@ -121,6 +121,10 @@ jobs:
           persist-credentials: false
       - name: Offline deliver-reviewed-pr suite
         run: nice -n 19 python3 -I -B scripts/upgrade-agent/test_deliver_reviewed_pr.py -v
+      # The preflight a hand run passes to deliver_reviewed_pr.py (story 712), against a
+      # fake gh on PATH.
+      - name: Offline hand-run preflight suite
+        run: nice -n 19 python3 -I -B scripts/upgrade-agent/test_hand_run_preflight.py -v
 
   success:
     if: ${{ always() }}
