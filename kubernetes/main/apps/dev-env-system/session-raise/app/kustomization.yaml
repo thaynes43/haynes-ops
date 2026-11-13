@@ -8,9 +8,10 @@ resources:
   # Step 1: only the operator writes the raise record annotation.
   - ./record-guard.yaml
   # Step 2: the depth label never changes after create; only the operator changes a
-  # session pod's profile label.
+  # session pod's profile or app.kubernetes.io/name label, through pods or pods/status.
   - ./label-guards.yaml
-  # Steps 3 and 4: each owner alone updates or deletes its ledger and public key.
+  # Steps 3 and 4: each owner alone updates or deletes its ledger, public key and
+  # private-key Secret.
   - ./ledger-guards.yaml
   # Step 5: the empty objects and get/update by name for each owner.
   - ./operator-objects.yaml

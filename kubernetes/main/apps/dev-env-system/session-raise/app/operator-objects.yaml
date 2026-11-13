@@ -14,8 +14,10 @@
 # then add a new empty Secret here and change the operator flag that names it. Removing
 # the old Secret from this file does not delete it (prune: disabled).
 #
-# The private key, written by the operator's leader (ed25519). Only the operator may read
-# it; who else can is install step 6, a read-only check.
+# The private key, written by the operator's leader (ed25519). Only the operator may update
+# or delete it (./ledger-guards.yaml). Admission cannot fence reads, and many cluster-wide
+# accounts can read Secrets in this namespace today; who can read it is install step 6, a
+# read-only check, and the coordinator rules on it in the design before any key is written.
 apiVersion: v1
 kind: Secret
 metadata:

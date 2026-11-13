@@ -58,6 +58,7 @@ type fixture struct {
 	name, kind, resource, group, subresource, operation, actor, namespace string
 	new, old                                                              obj
 	parents                                                               []obj
+	groups                                                                []string // empty: system:authenticated only
 	fault                                                                 string
 	allow                                                                 bool
 	wantCalls                                                             int // -1: only assert the bounded upper limit
@@ -202,10 +203,14 @@ func (h *harness) evaluate(t *testing.T, f fixture) (bool, *compiler.EvaluationR
 	}
 	gvk := schema.GroupVersionKind{Group: f.group, Version: version, Kind: f.kind}
 	gvr := schema.GroupVersionResource{Group: f.group, Version: version, Resource: f.resource}
+	groups := f.groups
+	if len(groups) == 0 {
+		groups = []string{"system:authenticated"}
+	}
 	req := admissionv1.AdmissionRequest{
 		Kind: metav1.GroupVersionKind(gvk), Resource: metav1.GroupVersionResource(gvr),
 		Namespace: namespace, Name: name, Operation: admissionv1.Operation(f.operation), SubResource: f.subresource,
-		UserInfo: authentication.UserInfo{Username: f.actor, Groups: []string{"system:authenticated"}},
+		UserInfo: authentication.UserInfo{Username: f.actor, Groups: groups},
 	}
 	attr := admission.NewAttributesRecord(fixtureObject(f.new), fixtureObject(f.old), gvk, namespace, name, gvr,
 		f.subresource, admission.Operation(f.operation), nil, false, &user.DefaultInfo{Name: f.actor, Groups: req.UserInfo.Groups})

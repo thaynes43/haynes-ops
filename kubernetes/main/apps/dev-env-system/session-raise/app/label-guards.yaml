@@ -50,30 +50,38 @@ spec:
 # Install step 2, second half (dev-env DESIGN-066 section 11 and 7.5): only the
 # operator's account may change the label dev-env.haynesops.com/profile on a session pod,
 # a pod in dev-agents labelled app.kubernetes.io/name: dev-env-session (dev-env
-# api/v1alpha1/labels.go). The operator sets it when it builds the pod.
+# api/v1alpha1/labels.go). The operator sets both labels when it builds the pod.
+#
+# Anyone but the operator must also leave app.kubernetes.io/name as it was. Otherwise a
+# writer could drop the selector label in one update (the profile unchanged, so allowed)
+# and change the profile in a second update that no longer matches the object selector.
+# With this, no writer but the operator can take a session pod out of the selector.
+#
+# pods/status is matched as well as pods. The API server keeps label changes sent through
+# pods/status (pkg/registry/core/pod/strategy.go, podStatusStrategy.PrepareForUpdate
+# resets only spec, deletionTimestamp and ownerReferences), and accounts that are not
+# nodes (multus, the scheduler, controllers, cluster-admin subjects) may write it.
+# Admission judges the stored object after the patch, so a status write that leaves both
+# labels as they were passes for every caller; the fixtures prove that for the kubelet,
+# the scheduler and multus, and prove that a status write changing the profile or
+# dropping the name label is refused. NodeRestriction already refuses a kubelet's label
+# change through pods/status.
 #
 # Why every other writer passes:
 # - The namespace and object selectors are decided by the API server before any CEL
 #   runs, so no pod outside dev-agents, and no dev-agents pod without the session label
 #   on either its old or its new object, ever reaches the expression.
-# - Matches UPDATE of pods only. CREATE is not matched, so the operator builds pods as
-#   today; DELETE is not matched, so deletes and graceful termination are never refused.
-# - No subresource is matched: the kubelet's, the scheduler's and multus's pods/status
-#   writes, pods/binding, pods/eviction, pods/exec and pods/ephemeralcontainers never
-#   reach this rule.
-# - A write that leaves the label as it was passes, whoever sends it: finalizer and
-#   ownerReference changes by the operator or the garbage collector keep both presence
-#   and value equal.
+# - Matches UPDATE of pods and pods/status only. CREATE is not matched, so the operator
+#   builds pods as today; DELETE is not matched, so deletes and graceful termination are
+#   never refused.
+# - pods/binding, pods/eviction, pods/exec, pods/ephemeralcontainers and pods/resize are
+#   not matched: binding and eviction do not store a Pod, exec stores nothing, and
+#   ephemeralcontainers and resize reset metadata, so none can store a label change.
+# - A write that leaves both labels as they were passes, whoever sends it: status writes,
+#   and finalizer and ownerReference changes by the operator or the garbage collector,
+#   keep presence and value equal.
 # - A missing labels map, on object or oldObject, reads as "not present" and ''. An
 #   UPDATE always has an oldObject.
-#
-# Not covered, by choice: pods/status. The API server keeps label changes sent through
-# pods/status (pkg/registry/core/pod/strategy.go, podStatusStrategy.PrepareForUpdate
-# resets only spec, deletionTimestamp and ownerReferences), so an account with pods/status
-# update could still change this label there. Matching pods/status would put every
-# kubelet status write on a session pod under a failurePolicy Fail rule. The watchdog
-# (DESIGN-066 7.5) treats a profile label owned by any field manager but the operator's
-# as not built for any profile.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -91,7 +99,7 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [UPDATE]
-        resources: [pods]
+        resources: [pods, pods/status]
   variables:
     - name: present
       expression: "'dev-env.haynesops.com/profile' in object.metadata.?labels.orValue({})"
@@ -101,11 +109,20 @@ spec:
       expression: "object.metadata.?labels['dev-env.haynesops.com/profile'].orValue('')"
     - name: priorProfile
       expression: "oldObject.metadata.?labels['dev-env.haynesops.com/profile'].orValue('')"
+    - name: appPresent
+      expression: "'app.kubernetes.io/name' in object.metadata.?labels.orValue({})"
+    - name: priorAppPresent
+      expression: "'app.kubernetes.io/name' in oldObject.metadata.?labels.orValue({})"
+    - name: app
+      expression: "object.metadata.?labels['app.kubernetes.io/name'].orValue('')"
+    - name: priorApp
+      expression: "oldObject.metadata.?labels['app.kubernetes.io/name'].orValue('')"
   validations:
     - expression: >-
-        (variables.present == variables.priorPresent && variables.profile == variables.priorProfile) ||
+        (variables.present == variables.priorPresent && variables.profile == variables.priorProfile &&
+        variables.appPresent == variables.priorAppPresent && variables.app == variables.priorApp) ||
         request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator'
-      message: only the dev-env operator may change the dev-env.haynesops.com/profile label on a session pod
+      message: only the dev-env operator may change the dev-env.haynesops.com/profile or app.kubernetes.io/name label on a session pod
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
