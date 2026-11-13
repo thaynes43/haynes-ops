@@ -473,7 +473,27 @@ spec:
               # (haynes-ops#4861). Rollback: that image, and only while no session has a title:
               # an operator that does not know spec.title drops it on a full update, and the
               # schema then refuses that update. The CRD copy stays.
-              tag: sha-e6f36eb@sha256:41a754c833ad3f49060368ee540be6496623925e7996b4eec10012076df515f0
+              # dev-env main ff0c9e8e (publish 43353794736's operator job signed and verified this
+              # digest; CI run 43353794821 on that commit was green before this pin merged). Two
+              # commits since sha-e6f36eb, both of the ops-profile lane (OP751):
+              # - dev-env#1100 (OP780, slice d of OP741): the executor latch of a summoned remote
+              #   session (one pod attempt, recorded before the pod is created), the start fence
+              #   check on the agent image version, and the fenced release. Its steps key on
+              #   spec.caller: observeSummonExecutor and the latch in ensure return at once for a
+              #   session without one, and no session has one. Its AgentSession CRD change
+              #   (status.summon.executor) was copied first by haynes-ops#4865.
+              # - dev-env#1093: the 2.107.0 release files.
+              # Three flags are added below with this pin, for OP783 (the usage gate, in the
+              # image since sha-e6f36eb): --summon-normal-max-five-hour=95,
+              # --summon-bulk-max-five-hour=80 and --summon-usage-max-age=15m.
+              # --summon-create-kinds stays unset, so no summoned session can be created.
+              # No permission, ConfigMap or Secret change: the operator's Role already has get on
+              # dev-env-session-allowances.
+              # Previous pin sha-e6f36eb@sha256:41a754c833ad3f49060368ee540be6496623925e7996b4eec10012076df515f0
+              # (haynes-ops#4863). Rollback: that image AND remove the three usage flags in the
+              # same change (all three or none: the operator refuses a line without a max age).
+              # The CRD copy stays.
+              tag: sha-ff0c9e8@sha256:267ad631f54c787fd16665b63f50418670556f9ee7b5084cfe974c6b5d7195ab
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
@@ -772,6 +792,18 @@ spec:
               # operator sha-c4bc870 or newer. It admits nothing today: no summoned session can be
               # created while --summon-create-kinds is unset.
               - --enable-summoned-lanes=true
+              # The usage gate for summoned sessions (dev-env DESIGN-064 6.9, dev-env#1101;
+              # OpenProject #783). The operator leader holds a Queued summoned upgrade while the
+              # plan's 5-hour usage window is past 95 percent, and a Queued curation run past 80
+              # percent. A reading older than 15 minutes counts as stale, and a stale or missing
+              # reading admits. The weekly line (--summon-bulk-max-seven-day) stays unset. The
+              # gate reads the newest reading in ConfigMap dev-env-session-allowances, and only
+              # when a summoned session is Queued; none can exist while --summon-create-kinds is
+              # unset. All three or none: the operator refuses to start with a line set and no
+              # max age.
+              - --summon-normal-max-five-hour=95
+              - --summon-bulk-max-five-hour=80
+              - --summon-usage-max-age=15m
             env:
               POD_NAMESPACE:
                 valueFrom:
