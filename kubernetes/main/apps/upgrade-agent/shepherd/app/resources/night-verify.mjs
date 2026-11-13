@@ -114,9 +114,9 @@ export function verifyConfig(rules) {
   const c = rules?.night?.verify || {};
   const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
   const ok = typeof c.practice === 'boolean' && typeof c.write_history_events === 'boolean' && int(c.max_items_per_tick, 1, 50) && int(c.max_items_kept, 1, 300)
-    && int(c.max_range_commits, 1, 250) && int(c.time_budget_seconds, 10, 400) && int(c.min_stable_seconds, 60, 3600) && int(c.needs_person_after_nights, 1, 14)
+    && int(c.max_range_commits, 1, 250) && int(c.time_budget_seconds, 10, 400) && int(c.min_stable_seconds, 60, 3600) && int(c.needs_person_after_nights, 1, 14) && int(c.needs_person_min_ticks, 1, 100)
     && int(c.max_replacements, 2, 20) && int(c.prometheus_restart_slack_seconds, 30, 1800) && int(c.max_state_bytes, 8192, 262144);
-  return { ok, ...c, why: ok ? null : 'night.verify in upgrade-rules.json is invalid (practice and write_history_events booleans; max_items_per_tick 1 to 50; max_items_kept 1 to 300; max_range_commits 1 to 250; time_budget_seconds 10 to 400; min_stable_seconds 60 to 3600; needs_person_after_nights 1 to 14; max_replacements 2 to 20; prometheus_restart_slack_seconds 30 to 1800; max_state_bytes 8192 to 262144)' };
+  return { ok, ...c, why: ok ? null : 'night.verify in upgrade-rules.json is invalid (practice and write_history_events booleans; max_items_per_tick 1 to 50; max_items_kept 1 to 300; max_range_commits 1 to 250; time_budget_seconds 10 to 400; min_stable_seconds 60 to 3600; needs_person_after_nights 1 to 14; needs_person_min_ticks 1 to 100; max_replacements 2 to 20; prometheus_restart_slack_seconds 30 to 1800; max_state_bytes 8192 to 262144)' };
 }
 
 // ── images ──────────────────────────────────────────────────────────────────────
@@ -279,7 +279,10 @@ export function factSource(m, ctx) {
   return has ? fact('source', 'pass', `Flux's source is at ${short(s)}, which contains ${short(m)}`) : fact('source', 'waiting', `Flux's source is at ${short(s)}, which does not contain ${short(m)} yet`);
 }
 
-export function factApplied(m, sc, ctx) {
+// A failing Kustomization of the target fails only on two reads min_stable_seconds apart (N2):
+// Flux's retry loop can hold one for an interval after a webhook blip or a CRD not established yet.
+export function factApplied(m, sc, ctx, seen = {}, next = {}) {
+  const minMs = (ctx.cfg?.min_stable_seconds ?? 600) * 1e3;
   const parts = [];
   if (!(sc.own || []).length) return fact('applied', 'unreadable', `no Kustomization applies ${(sc.targets || []).join(', ') || 'the target'}`);
   for (const id of sc.missing || []) parts.push({ r: 'unreadable', d: `Kustomization ${id} (the target's chain or one that applies it) is not listed` });
@@ -293,8 +296,8 @@ export function factApplied(m, sc, ctx) {
     if (s.state === 'failing') {
       const dep = /DependencyNotReady/.test(s.why);
       if (dep) parts.push({ r: 'unreadable', d: `Kustomization ${id}: ${s.why}: cannot tell whether the update applied` });
-      else if (has === true) parts.push({ r: 'fail', class: 'not-ready', d: `Kustomization ${id} applied ${short(applied)} and is failing: ${s.why}` });
-      else if (attempted && ctx.contains(m, attempted) === true) parts.push({ r: 'fail', class: 'not-applied', d: `Kustomization ${id} attempted ${short(attempted)} and did not apply it: ${s.why}` });
+      else if (has === true) parts.push(twice(`ks:${id}`, `Kustomization ${id} applied ${short(applied)} and is failing: ${s.why}`, 'not-ready', seen, next, ctx.now, minMs));
+      else if (attempted && ctx.contains(m, attempted) === true) parts.push(twice(`ks:${id}`, `Kustomization ${id} attempted ${short(attempted)} and did not apply it: ${s.why}`, 'not-applied', seen, next, ctx.now, minMs));
       else parts.push({ r: 'unreadable', d: `Kustomization ${id} is failing (${s.why}) before it attempted the merge` });
       continue;
     }
@@ -447,9 +450,10 @@ export function factImage(cand, u, rollout, ctx, seen = {}, next = {}) {
       continue;
     }
     if (crons.length) {
-      const bad = crons.filter(c => versionMatches(c, pkg.to, kind) !== true);
+      const unk = crons.filter(c => versionMatches(c, pkg.to, kind) === null), bad = crons.filter(c => versionMatches(c, pkg.to, kind) === false);
       parts.push(bad.length ? { r: 'fail', class: 'wrong-image', d: `CronJob ${bad[0].w.ns}/${bad[0].w.name} names ${bad[0].image}, not ${label}` }
-        : { r: 'pass', d: `CronJob ${crons.map(c => `${c.w.ns}/${c.w.name}`).join(', ')} names ${label}` });
+        : unk.length ? { r: 'unreadable', d: `the version CronJob ${unk[0].w.ns}/${unk[0].w.name} names (${unk[0].image}; the update is a ${kind} update)` }
+          : { r: 'pass', d: `CronJob ${crons.map(c => `${c.w.ns}/${c.w.name}`).join(', ')} names ${label}` });
       continue;
     }
     if (charts.length) {
@@ -493,26 +497,36 @@ export function nextCron(expr, tz, fromMs) {
   }
   return null;
 }
-// M1: a CronJob whose template names the update has run from the new template since the merge.
+// M1, L-c: a CronJob whose template names the update has run from the new template since the
+// merge. The newest finished Job from the new template made since the merge decides (a newer
+// one still running does not hide it). A failure is the update's only when the CronJob's last
+// finished Job from the old template did not fail too. A suspended CronJob is cannot-tell.
 export function factExercised(u, mergedAt, kind, ctx) {
   if (!u.crons.length) return null;
   const parts = [], t = Date.parse(mergedAt);
+  const finishedAs = j => { const c = type => (j.status?.conditions || []).some(x => x.type === type && x.status === 'True'); return c('Failed') ? 'failed' : c('Complete') || j.status?.succeeded > 0 ? 'complete' : null; };
+  const newest = list => [...list].sort((a, b) => String(b.metadata.creationTimestamp).localeCompare(String(a.metadata.creationTimestamp)));
   for (const c of u.crons) {
+    const id = `CronJob ${c.w.ns}/${c.w.name}`;
     const f = ctx.pods(c.w.ns);
     if (!f?.jobs) { parts.push({ r: 'unreadable', d: `Jobs in ${c.w.ns}` }); continue; }
-    const jobs = (f.jobs.items || []).filter(j => (j.metadata?.ownerReferences || []).some(r => r.kind === 'CronJob' && r.name === c.w.name) && Date.parse(j.metadata?.creationTimestamp || '') >= t
-      && templateContainers(j.spec?.template?.spec).some(x => parseImage(x.image)?.repo === c.repo && versionMatches({ ...parseImage(x.image) }, c.pkg.to, kind) === true))
-      .sort((a, b) => String(b.metadata.creationTimestamp).localeCompare(String(a.metadata.creationTimestamp)));
-    const id = `CronJob ${c.w.ns}/${c.w.name}`;
-    if (!jobs.length) {
+    if (c.cj?.spec?.suspend === true) { parts.push({ r: 'unreadable', d: `${id} is suspended: no run comes until someone resumes it` }); continue; }
+    const mine = (f.jobs.items || []).filter(j => (j.metadata?.ownerReferences || []).some(r => r.kind === 'CronJob' && r.name === c.w.name));
+    const fromNew = j => templateContainers(j.spec?.template?.spec).some(x => parseImage(x.image)?.repo === c.repo && versionMatches({ ...parseImage(x.image) }, c.pkg.to, kind) === true);
+    const since = mine.filter(j => Date.parse(j.metadata?.creationTimestamp || '') >= t && fromNew(j));
+    const done = newest(since.filter(finishedAs));
+    if (!done.length) {
+      if (since.length) { parts.push({ r: 'waiting', d: `${id}: Job ${newest(since)[0].metadata.name} from the new template is running` }); continue; }
       const next = nextCron(c.cj?.spec?.schedule, c.cj?.spec?.timeZone, ctx.now);
       parts.push({ r: 'waiting', d: `${id}: no Job from the new template since the merge; waiting for its first run (schedule ${c.cj?.spec?.schedule ?? '?'}${c.cj?.spec?.timeZone ? ` ${c.cj.spec.timeZone}` : ''}, last scheduled ${c.cj?.status?.lastScheduleTime ?? 'never'}, next ${next ?? 'unreadable'})` });
       continue;
     }
-    const j = jobs[0], cond = type => (j.status?.conditions || []).some(x => x.type === type && x.status === 'True');
-    if (cond('Failed')) parts.push({ r: 'fail', class: 'job-failed', d: `${id}: Job ${j.metadata.name} from the new template failed (${(j.status.conditions.find(x => x.type === 'Failed') || {}).reason || 'no reason'})` });
-    else if (cond('Complete') || j.status?.succeeded > 0) parts.push({ r: 'pass', d: `${id}: Job ${j.metadata.name} from the new template completed` });
-    else parts.push({ r: 'waiting', d: `${id}: Job ${j.metadata.name} from the new template is running` });
+    const j = done[0];
+    if (finishedAs(j) === 'complete') { parts.push({ r: 'pass', d: `${id}: Job ${j.metadata.name} from the new template completed` }); continue; }
+    const why = (j.status.conditions.find(x => x.type === 'Failed') || {}).reason || 'no reason';
+    const old = newest(mine.filter(x => !fromNew(x) && finishedAs(x)))[0];
+    if (old && finishedAs(old) === 'failed') parts.push({ r: 'unreadable', d: `${id}: Job ${j.metadata.name} from the new template failed (${why}), and its last Job from the old template (${old.metadata.name}) failed too: it was failing before the merge, so cannot tell` });
+    else parts.push({ r: 'fail', class: 'job-failed', d: `${id}: Job ${j.metadata.name} from the new template failed (${why})${old ? `; its last Job from the old template (${old.metadata.name}) completed` : ''}` });
   }
   return fold('exercised', parts);
 }
@@ -541,39 +555,68 @@ export function factRollout(wl, ctx) {
   return { fact: fold('rollout', parts, parts.map(p => p.d).join('; ') + '; pods alone cannot tell a controller that has not created all its replicas yet (story 755)'), per };
 }
 
-// Two ticks at least min_stable_seconds apart, on the tick's own clock (M2). prior: { at, pods:
-// { uid: { name, node, wkey, restarts: { container: n } } } }, recorded when the rollout was
-// complete. replaced: { workload: n } so far. A recorded pod that restarted an update's
-// container, or that is not Ready with the update's container not ready and its node Ready,
-// fails; the same elsewhere is cannot-tell, named (M3). A workload whose pods are replaced
-// max_replacements times fails as churn (M4).
-export function factStable(wl, u, prior, now, ctx, rolloutDone = true, replaced = {}) {
+// Two ticks at least min_stable_seconds apart, on the tick's own clock (M2). prior (the record):
+// { at, pods: { uid: { name, node, wkey, restarts: { container: n } } }, nodes: { node: bootID } },
+// taken when the rollout was complete. m0: the stability memory of the last tick: last (each
+// pod's state at its last read), replaced and moves (per workload), passed. Returns { fact,
+// baseline, mem }.
+//   - once stable has passed it stays passed for the item (N3): health after the soak is the
+//     alerting's business;
+//   - a recorded pod that is gone was moved when it was Ready with no new restarts at its last
+//     read (the descheduler, a drain): the pods are recorded again and the move is counted;
+//     otherwise it was replaced, and max_replacements replacements of the update's workload
+//     fail as churn (N3);
+//   - a restart of an update's container fails as restart-growth, unless its node rebooted
+//     (its boot id changed) or was not Ready since the record: then the pods are recorded again
+//     (N3); a restart of another container is cannot-tell, named (M3);
+//   - a recorded pod not Ready now fails as not-ready when an update's container is not ready
+//     and its node is Ready; on a node not Ready it is cannot-tell.
+export function factStable(wl, u, prior, now, ctx, rolloutDone = true, m0 = {}) {
   const ws = wl.filter(w => w.kind !== 'CronJob');
   const minMs = ctx.cfg.min_stable_seconds * 1e3;
-  if (!ws.length) return { fact: NA('stable', 'the target has no Deployment, StatefulSet or DaemonSet'), baseline: null, replaced };
+  const mem = { last: {}, replaced: { ...(m0.replaced || {}) }, moves: { ...(m0.moves || {}) }, passed: m0.passed ?? null };
+  if (!ws.length) return { fact: NA('stable', 'the target has no Deployment, StatefulSet or DaemonSet'), baseline: null, mem };
+  if (mem.passed) return { fact: fact('stable', 'pass', `passed at ${mem.passed.at} (${mem.passed.detail}); not read again: health after the soak is the alerting's business`), baseline: prior, mem };
   const pods = [];
-  for (const w of ws) { const f = ctx.pods(w.ns); if (!f?.pods) return { fact: fact('stable', 'unreadable', `pods in ${w.ns}`), baseline: prior, replaced }; for (const p of current(podsOf(w, f.pods.items))) pods.push({ p, w }); }
-  const snap = { at: iso(now), pods: Object.fromEntries(pods.map(({ p, w }) => [p.metadata.uid, { name: p.metadata.name, node: p.spec?.nodeName ?? null, wkey: wkey(w), restarts: Object.fromEntries(containersOf(p).filter(restartable).map(c => [c.container, c.restarts])) }])) };
-  if (!prior?.pods || !prior.at) return rolloutDone ? { fact: fact('stable', 'waiting', `the rollout is complete at ${snap.at} (${pods.length} pod(s) recorded); they are read again at least ${minMs / 1000} s later`), baseline: snap, replaced }
-    : { fact: fact('stable', 'waiting', 'read once the rollout is complete'), baseline: null, replaced };
+  for (const w of ws) { const f = ctx.pods(w.ns); if (!f?.pods) return { fact: fact('stable', 'unreadable', `pods in ${w.ns}`), baseline: prior, mem: { ...mem, last: m0.last || {} } }; for (const p of current(podsOf(w, f.pods.items))) pods.push({ p, w }); }
+  for (const { p } of pods) mem.last[p.metadata.uid] = { ready: podReady(p), restarts: Object.fromEntries(containersOf(p).filter(restartable).map(c => [c.container, c.restarts])) };
+  let nodeMap;
+  const nodes = () => {
+    if (nodeMap !== undefined) return nodeMap;
+    const l = ctx.nodes ? ctx.nodes() : null;
+    nodeMap = l ? Object.fromEntries((l.items || []).map(n => { const r = (n.status?.conditions || []).find(c => c.type === 'Ready'); return [n.metadata.name, { boot: n.status?.nodeInfo?.bootID ?? null, ready: r?.status === 'True', since: r?.lastTransitionTime ?? null }]; })) : null;
+    return nodeMap;
+  };
+  const record = () => {
+    const nm = nodes();
+    return { at: iso(now), pods: Object.fromEntries(pods.map(({ p, w }) => [p.metadata.uid, { name: p.metadata.name, node: p.spec?.nodeName ?? null, wkey: wkey(w), restarts: mem.last[p.metadata.uid].restarts }])),
+      nodes: nm ? Object.fromEntries(uniq(pods.map(x => x.p.spec?.nodeName).filter(Boolean)).map(n => [n, nm[n]?.boot ?? null])) : null };
+  };
+  if (!prior?.pods || !prior.at) return rolloutDone ? { fact: fact('stable', 'waiting', `the rollout is complete at ${iso(now)} (${pods.length} pod(s) recorded); they are read again at least ${minMs / 1000} s later`), baseline: record(), mem }
+    : { fact: fact('stable', 'waiting', 'read once the rollout is complete'), baseline: null, mem };
+  if (Date.parse(prior.at) >= now) return { fact: fact('stable', 'waiting', `recorded at ${prior.at}; a later tick reads the pods again`), baseline: prior, mem };
   const age = now - Date.parse(prior.at);
   const byUid = new Map(pods.map(x => [x.p.metadata.uid, x]));
   const gone = Object.entries(prior.pods).filter(([uid]) => !byUid.has(uid));
   if (gone.length) {
-    const next = { ...replaced };
-    for (const k of uniq(gone.map(([, b]) => b.wkey).filter(Boolean))) next[k] = (next[k] || 0) + 1;
-    const churn = Object.entries(next).filter(([, n]) => n >= ctx.cfg.max_replacements);
+    const what = [];
+    for (const [uid, b] of gone) {
+      const l = m0.last?.[uid] ?? { ready: true, restarts: b.restarts };
+      const moved = l.ready === true && Object.entries(b.restarts || {}).every(([c, n]) => (l.restarts?.[c] ?? n) <= n);
+      if (moved) { mem.moves[b.wkey] = (mem.moves[b.wkey] || 0) + 1; what.push(`${b.name} moved (Ready, no new restarts at its last read)`); }
+      else { mem.replaced[b.wkey] = (mem.replaced[b.wkey] || 0) + 1; what.push(`${b.name} replaced after it was ${l.ready ? 'restarting' : 'not Ready'}`); }
+    }
+    const churn = Object.entries(mem.replaced).filter(([, n]) => n >= ctx.cfg.max_replacements);
     if (churn.length) {
       const [k, n] = churn[0];
-      const w = ws.find(x => wkey(x) === k);
-      const mine = w && (u.chartWorkloads.has(k) || [...u.containers].some(x => x.startsWith(`${k}/`)));
-      return { fact: fact('stable', mine ? 'fail' : 'unreadable', `${k}: its recorded pods were replaced ${n} times since the rollout was first complete${mine ? '' : ' (not a workload the update changed: cannot tell)'}`, mine ? { class: 'churn' } : {}), baseline: rolloutDone ? snap : null, replaced: next };
+      const mine = u.chartWorkloads.has(k) || [...u.containers].some(x => x.startsWith(`${k}/`));
+      return { fact: fact('stable', mine ? 'fail' : 'unreadable', `${k}: pods replaced ${n} times after they were not Ready or restarting${mine ? '' : ' (not a workload the update changed: cannot tell)'}`, mine ? { class: 'churn' } : {}), baseline: rolloutDone ? record() : null, mem };
     }
-    return { fact: fact('stable', 'waiting', `pod ${gone[0][1].name}${gone.length > 1 ? ` (+${gone.length - 1})` : ''} recorded at ${prior.at} was replaced (${Object.entries(next).map(([k, n]) => `${k} ${n}x`).join(', ')}); ${rolloutDone ? `the pods are recorded again at ${snap.at}` : 'they are recorded again once the rollout is complete'}`), baseline: rolloutDone ? snap : null, replaced: next, rebaselined: true };
+    const counts = [...Object.entries(mem.moves).map(([k, n]) => `${k} moved ${n}x`), ...Object.entries(mem.replaced).map(([k, n]) => `${k} replaced ${n}x`)].join(', ');
+    return { fact: fact('stable', 'waiting', `${what.slice(0, 2).join('; ')}${what.length > 2 ? ` (+${what.length - 2})` : ''} since ${prior.at} (${counts}); ${rolloutDone ? `the pods are recorded again at ${iso(now)}` : 'they are recorded again once the rollout is complete'}`), baseline: rolloutDone ? record() : null, mem, rebaselined: true };
   }
-  if (age < minMs) return { fact: fact('stable', 'waiting', `the pods were recorded at ${prior.at}, ${Math.round(age / 1000)} s ago; they are read again at least ${minMs / 1000} s after that`), baseline: prior, replaced };
-  const parts = [];
-  let nodes;
+  if (age < minMs) return { fact: fact('stable', 'waiting', `the pods were recorded at ${prior.at}, ${Math.round(age / 1000)} s ago; they are read again at least ${minMs / 1000} s after that`), baseline: prior, mem };
+  const parts = [], maint = [];
   for (const [uid, b] of Object.entries(prior.pods)) {
     const { p, w } = byUid.get(uid);
     const cs = containersOf(p);
@@ -581,22 +624,28 @@ export function factStable(wl, u, prior, now, ctx, rolloutDone = true, replaced 
       const was = b.restarts?.[c.container];
       if (!Number.isInteger(was) || c.restarts <= was) continue;
       const d = `pod ${b.name} container ${c.container} restarted: ${was} at ${prior.at}, ${c.restarts} now`;
-      parts.push(u.has(w, c.container) ? { r: 'fail', class: 'restart-growth', d } : { r: 'unreadable', d: `${d} (not one of the update's containers: cannot tell)` });
+      if (!u.has(w, c.container)) { parts.push({ r: 'unreadable', d: `${d} (not one of the update's containers: cannot tell)` }); continue; }
+      const nm = nodes(), node = p.spec?.nodeName, cur = nm?.[node], rec0 = prior.nodes?.[node];
+      if (!node || !cur || !rec0) { parts.push({ r: 'unreadable', d: `${d}; whether its node ${node ?? '(none)'} rebooted cannot be read` }); continue; }
+      if (cur.boot !== rec0 || !cur.ready || Date.parse(cur.since || '') > Date.parse(prior.at)) { maint.push(`${d}, on node ${node}, which ${cur.boot !== rec0 ? 'rebooted (its boot id changed)' : 'was not Ready since the record'}`); continue; }
+      parts.push({ r: 'fail', class: 'restart-growth', d });
     }
     if (podReady(p)) continue;
-    if (nodes === undefined) nodes = ctx.nodes ? ctx.nodes() : null;
-    const node = (nodes?.items || []).find(n => n.metadata?.name === p.spec?.nodeName);
-    const nodeReady = node ? (node.status?.conditions || []).some(c => c.type === 'Ready' && c.status === 'True') : null;
+    const nm = nodes();
+    const node = (nm || {})[p.spec?.nodeName];
     const down = cs.filter(c => !c.init && !c.ready).map(c => c.container);
     const d = `pod ${b.name} was Ready at ${prior.at} and is not Ready now (${down.join(', ') || 'no container named'})`;
-    if (!p.spec?.nodeName || nodeReady === null) parts.push({ r: 'unreadable', d: `${d}; its node ${p.spec?.nodeName ?? '(none)'} could not be read` });
-    else if (!nodeReady) parts.push({ r: 'unreadable', d: `${d}; its node ${p.spec.nodeName} is not Ready: cannot tell` });
+    if (!p.spec?.nodeName || !node) parts.push({ r: 'unreadable', d: `${d}; its node ${p.spec?.nodeName ?? '(none)'} could not be read` });
+    else if (!node.ready) parts.push({ r: 'unreadable', d: `${d}; its node ${p.spec.nodeName} is not Ready: cannot tell` });
     else if (down.some(x => u.has(w, x))) parts.push({ r: 'fail', class: 'not-ready', d });
     else parts.push({ r: 'unreadable', d: `${d} (not one of the update's containers: cannot tell)` });
   }
-  if (parts.length) return { fact: fold('stable', parts), baseline: prior, replaced };
-  if (!rolloutDone) return { fact: fact('stable', 'waiting', `the ${Object.keys(prior.pods).length} pod(s) recorded at ${prior.at} are Ready with no new restarts, and the rollout is not complete now`), baseline: prior, replaced };
-  return { fact: fact('stable', 'pass', `the same ${Object.keys(prior.pods).length} pod(s) recorded at ${prior.at} (${Math.round(age / 1000)} s ago) are Ready now with no new restarts`), baseline: prior, replaced };
+  if (parts.length) return { fact: fold('stable', parts), baseline: prior, mem };
+  if (maint.length) return { fact: fact('stable', 'waiting', `${maint.join('; ')}: not the update's; the pods are recorded again at ${iso(now)}`), baseline: rolloutDone ? record() : null, mem, rebaselined: true };
+  if (!rolloutDone) return { fact: fact('stable', 'waiting', `the ${Object.keys(prior.pods).length} pod(s) recorded at ${prior.at} are Ready with no new restarts, and the rollout is not complete now`), baseline: prior, mem };
+  const detail = `the same ${Object.keys(prior.pods).length} pod(s) recorded at ${prior.at} (${Math.round(age / 1000)} s ago) are Ready now with no new restarts`;
+  mem.passed = { at: iso(now), detail };
+  return { fact: fact('stable', 'pass', detail), baseline: prior, mem };
 }
 
 // ── the verdict ──────────────────────────────────────────────────────────────────
@@ -712,13 +761,15 @@ const kList = (run, args) => { const j = parse(tryRun(run, 'kubectl', ['get', ..
 async function getJson(url) {
   try { const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(15000) }); return r.ok ? await r.json() : null; } catch { return null; }
 }
-// The image build of an own image for a commit: { state: success|failure|running|none, at } | null.
+// The image build of an own image for a commit: { state: success|failure|running|none, started,
+// at } | null. started (the run's start) ties a pin to the build (L-d); at is its last update.
 export function buildOf(runs, workflow) {
   if (!Array.isArray(runs)) return null;
   const mine = runs.filter(r => r?.path === workflow || String(r?.path || '').startsWith(`${workflow}@`));
   if (!mine.length) return { state: 'none' };
   const r = mine.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
-  return r.status !== 'completed' ? { state: 'running' } : { state: r.conclusion === 'success' ? 'success' : 'failure', conclusion: r.conclusion, at: r.updated_at || null };
+  const started = r.run_started_at || r.created_at || null;
+  return r.status !== 'completed' ? { state: 'running', started } : { state: r.conclusion === 'success' ? 'success' : 'failure', conclusion: r.conclusion, started, at: r.updated_at || null };
 }
 
 // One candidate, with every read it needs handed in (tests pass fakes). Returns its record.
@@ -727,7 +778,7 @@ export function judge(cand, ctx) {
   const { rules, range } = ctx;
   const prior = ctx.prior || {};
   const rec = { pr: cand.pr, item: cand.id, name: cand.name, from: cand.from, to: cand.to, type: cand.type ?? null, merged_at: cand.merged_at, merge_commit: cand.merge_commit, merged_by: cand.merged_by, practice: !cand.own,
-    flux_revision: ctx.sourceRev ?? null, facts: [], other_changes: null, baseline: null, mem: { failing: {}, errors: {}, replaced: { ...(prior.mem?.replaced || {}) } } };
+    flux_revision: ctx.sourceRev ?? null, facts: [], other_changes: null, baseline: null, mem: { failing: {}, errors: {}, stable: prior.mem?.stable ?? {} } };
   const files = cand.files;
   if (!files) {
     rec.facts.push(fact('source', 'unreadable', `the files of ${short(cand.merge_commit)} (the merge)`));
@@ -766,7 +817,7 @@ function judgeTarget(rec, cand, change, sc, clusterWide, upd, ctx) {
     for (const n of ['applied', 'helmreleases', 'pods', 'alerts', 'image', 'rollout', 'stable']) rec.facts.push(after(n, 'read once Flux\'s source contains the merge'));
     return finish(rec, cand, ctx);
   }
-  const ap = factApplied(m, sc, ctx);
+  const ap = factApplied(m, sc, ctx, seen.failing, rec.mem.failing);
   rec.facts.push(ap);
   const w = workloadsOf(sc, ctx.ks, ctx.hr);
   rec.workloads = w.workloads.map(x => `${x.kind} ${x.ns}/${x.name}`).slice(0, 20);
@@ -793,21 +844,27 @@ function judgeTarget(rec, cand, change, sc, clusterWide, upd, ctx) {
   // earlier one that recorded the pods (then a recorded pod gone unready fails); never when
   // the image fails
   const base = prior.baseline ?? null;
-  if (podsOk && !w.unread.length && (rolloutDone ? im.result === 'pass' : !!base?.pods && im.result !== 'fail')) {
-    const s = factStable(wl, u, base, now, ctx, rolloutDone && im.result === 'pass', rec.mem.replaced);
+  if (rec.mem.stable.passed) {
+    // N3: once stable has passed it stays passed for the item
+    const s = factStable(wl, u, base, now, ctx, rolloutDone, rec.mem.stable);
+    rec.facts.push(s.fact); rec.baseline = base; rec.mem.stable = s.mem;
+  } else if (podsOk && !w.unread.length && (rolloutDone ? im.result === 'pass' : !!base?.pods && im.result !== 'fail')) {
+    const s = factStable(wl, u, base, now, ctx, rolloutDone && im.result === 'pass', rec.mem.stable);
     rec.facts.push(s.fact);
     rec.baseline = s.baseline;
-    rec.mem.replaced = s.replaced || rec.mem.replaced;
+    rec.mem.stable = s.mem;
   } else rec.facts.push(after('stable', 'read once the image, the rollout and the pods pass'));
   return finish(rec, cand, ctx);
 }
 
-// An own-image source: verified only through its digest pin. The pin is a merged history item
-// that updates this image (its package is the image), made after this source's build finished
-// (its PR's last commit), whose commit on main changes one of the image's pins files (H2 a).
-// Its absence alone never fails (H2 b): a failed or cancelled build fails; an open pin PR whose
-// checks fail fails; otherwise the item stays awaiting its pin, shown every morning, and is
-// marked "needs a person" after needs_person_after_nights of the lane's nights.
+// An own-image source: verified only through its digest pin (N1, L-d). The pin is a merged
+// history item that updates this image (its package is the image), whose PR's last commit was
+// made after this source's build run started (or after the merge when no run is read: an image
+// cannot carry the change before it), and whose commit on main changes one of the image's pins
+// files. Before the pin has merged nothing of the update runs in the cluster, so nothing is
+// failed: a failed or cancelled build, a blocked pin PR or no pin keep the item awaiting its pin
+// with the reason, shown every morning and marked "needs a person" by the common rule. Only the
+// facts read after the pin merged (its rollout) can fail.
 function pinPath(rec, cand, images, ctx) {
   const { range, rules } = ctx;
   rec.other_changes = otherFor(cand, range, null, rules, null);
@@ -817,11 +874,8 @@ function pinPath(rec, cand, images, ctx) {
   const wf = images[0].build;
   const b = ctx.builds ? ctx.builds(cand.merge_commit) : null;
   const st = b ? buildOf(b, wf) : null;
-  rec.pin = { state: 'awaiting', images: images.map(o => o.id), build: st, since: st?.at ?? cand.merged_at };
-  if (!st) { rec.facts.push(fact('pin', 'unreadable', `the run of ${wf} for ${short(cand.merge_commit)}`)); rec.pin.state = 'unreadable'; return finish(rec, cand, ctx); }
-  if (st.state === 'none') { rec.facts.push(fact('pin', 'unreadable', `no run of ${wf} for ${short(cand.merge_commit)}`)); rec.pin.state = 'unreadable'; return finish(rec, cand, ctx); }
-  if (st.state === 'running') { rec.facts.push(fact('pin', 'waiting', `the image build ${wf} for ${short(cand.merge_commit)} is running`)); return finish(rec, cand, ctx); }
-  if (st.state === 'failure') { rec.facts.push(fact('pin', 'fail', `the image build ${wf} for ${short(cand.merge_commit)} ended ${st.conclusion}: the image was not published`, { class: 'not-applied' })); rec.pin.state = 'build-failed'; return finish(rec, cand, ctx); }
+  const anchor = st?.started ?? cand.merged_at;
+  rec.pin = { state: 'awaiting', images: images.map(o => o.id), build: st, anchor, since: st?.at ?? st?.started ?? cand.merged_at };
   if (!range?.complete) { rec.facts.push(fact('pin', 'unreadable', `the commits on main since the merge (${range?.why || 'not read'})`)); rec.pin.state = 'unreadable'; return finish(rec, cand, ctx); }
   const i = range.commits.findIndex(c => c.sha === cand.merge_commit);
   if (i < 0 && range.base !== cand.merge_commit) { rec.facts.push(fact('pin', 'unreadable', `${short(cand.merge_commit)} is older than the commits read this tick (more than the range limit since it)`)); rec.pin.state = 'unreadable'; return finish(rec, cand, ctx); }
@@ -832,20 +886,22 @@ function pinPath(rec, cand, images, ctx) {
     if (!item || !item.packages.some(p => names.has(normRepo(p.name)))) { skipped.push(`${short(c.sha)}${c.pr ? ` #${c.pr}` : ''} (not an update of ${ids})`); continue; }
     const head = ctx.prHeadDate ? ctx.prHeadDate(c.pr) : null;
     if (!head) { rec.facts.push(fact('pin', 'unreadable', `when #${c.pr}, an update of ${ids}, was made (its last commit)`)); rec.pin.state = 'unreadable'; return finish(rec, cand, ctx); }
-    if (Date.parse(head) < Date.parse(st.at)) { skipped.push(`#${c.pr} (made ${head}, before this build finished at ${st.at})`); continue; }
+    if (Date.parse(head) < Date.parse(anchor)) { skipped.push(`#${c.pr} (made ${head}, before this build started at ${anchor})`); continue; }
     pin = c; pinItem = item; break;
   }
   if (skipped.length) rec.pin.not_the_pin = skipped.slice(0, 5);
   if (!pin) {
-    // no pin on main: an open pin PR whose checks fail is a fact; otherwise awaiting (absence)
+    const build = !st ? `the run of ${wf} for ${short(cand.merge_commit)} could not be read` : st.state === 'none' ? `no run of ${wf} for ${short(cand.merge_commit)}`
+      : st.state === 'running' ? `the build ${wf} is running` : st.state === 'failure' ? `the build ${wf} for ${short(cand.merge_commit)} ended ${st.conclusion} (a later build may carry the change)` : `the build finished at ${st.at}`;
     const open = (ctx.openRecords || []).find(r => (r.packages || []).some(p => names.has(normRepo(p.name))) && (r.files || []).some(f => pinFiles.has(f)));
-    if (open && /check-failing/.test(String(open.class || ''))) { rec.facts.push(fact('pin', 'fail', `the pin PR #${open.pr} for ${ids} is open and its checks fail: ${String(open.reason || open.class).slice(0, 300)}`, { class: 'not-applied' })); rec.pin.state = 'pin-failing'; rec.pin.pr = open.pr; return finish(rec, cand, ctx); }
-    rec.facts.push(fact('pin', 'waiting', `awaiting the digest pin of ${ids} since the build finished at ${st.at}${open ? `; pin PR #${open.pr} is open (${open.lane}/${open.class})` : '; no pin PR is open'}${skipped.length ? `; not the pin: ${skipped.slice(0, 3).join(', ')}` : ''}`));
-    if (open) rec.pin.pr = open.pr;
+    const pr = !open ? 'no pin PR is open' : open.lane === 'BLOCKED' ? `pin PR #${open.pr} is blocked: ${open.class}: ${String(open.reason || '').slice(0, 200)}` : `pin PR #${open.pr} is open (${open.lane}/${open.class})`;
+    if (open) { rec.pin.pr = open.pr; rec.pin.pr_state = open.lane === 'BLOCKED' ? `blocked: ${open.class}` : 'open'; }
+    if (st?.state === 'failure') rec.pin.state = 'awaiting (build failed)';
+    rec.facts.push(fact('pin', 'waiting', `awaiting the digest pin of ${ids}: ${build}; ${pr}${skipped.length ? `; not the pin: ${skipped.slice(0, 3).join(', ')}` : ''}`));
     return finish(rec, cand, ctx);
   }
   rec.pin = { ...rec.pin, state: 'merged', commit: pin.sha, pr: pin.pr, at: pin.at, item: pinItem.id };
-  rec.facts.push(fact('pin', 'pass', `pinned by #${pin.pr} (${short(pin.sha)} at ${pin.at}), made after the build finished at ${st.at}`));
+  rec.facts.push(fact('pin', 'pass', `pinned by #${pin.pr} (${short(pin.sha)} at ${pin.at}), made after this build started at ${anchor}`));
   const ce = L.clusterEffect(pin.files, rules);
   if (!ctx.ks || !ctx.hr) { rec.facts.push(fact('applied', 'unreadable', 'kustomizations or helmreleases')); return finish(rec, cand, ctx); }
   const sc = M.settleScope({ cluster_effect: 'immediate', targets: ce.targets }, ctx.ks, ctx.hr);
@@ -860,14 +916,20 @@ function finish(rec, cand, ctx) {
   Object.assign(rec, v);
   rec.verdict_at = iso(ctx.now);
   rec.verdict_since = prior.verdict === v.verdict && prior.verdict_since ? prior.verdict_since : rec.verdict_at;
-  // final: a practice item is not judged again (its record stays); the lane's own merge is
-  // judged on every tick until the history moves it out of merged_unverified or awaiting_pin
+  rec.ticks = (prior.ticks || 0) + 1;
+  // final: not judged again (its record stays); the lane's own merge is judged on every tick
+  // until the history moves it out of merged_unverified or awaiting_pin
   rec.final = ['verified', 'failed'].includes(v.verdict);
-  // the lane's own nights this item stayed open; "needs a person" past the bound (H2, M4)
+  // "needs a person" (H2, M4, L-e): open on needs_person_after_nights of the lane's nights AND
+  // judged on at least needs_person_min_ticks of its ticks
   const night = nightOf(ctx.now, ctx.rules?.night?.timezone);
-  rec.nights = rec.final ? (prior.nights || []) : uniq([...(prior.nights || []), night]).slice(-((ctx.cfg?.needs_person_after_nights || 2) + 1));
-  rec.needs_person = !rec.final && rec.nights.length >= (ctx.cfg?.needs_person_after_nights || 2);
-  if (rec.needs_person) rec.why = `NEEDS A PERSON: open on ${rec.nights.length} of the lane's nights (${rec.nights.join(', ')}); ${rec.why}`;
+  const nights = ctx.cfg?.needs_person_after_nights || 2, minTicks = ctx.cfg?.needs_person_min_ticks || 8;
+  rec.nights = rec.final ? (prior.nights || []) : uniq([...(prior.nights || []), night]).slice(-(nights + 1));
+  rec.needs_person = !rec.final && rec.nights.length >= nights && rec.ticks >= minTicks;
+  if (rec.needs_person) rec.why = `NEEDS A PERSON: open on ${rec.nights.length} of the lane's nights (${rec.nights.join(', ')}) and ${rec.ticks} ticks; ${rec.why}`;
+  // a practice item that needs a person is given up (L-g): kept with its last facts, not judged
+  // again, so it no longer holds the commit range open; the lane's own merge is never given up
+  if (rec.needs_person && !cand.own) { rec.gave_up = true; rec.final = true; }
   const evs = eventsFor(cand, rec, iso(ctx.now), ctx.repo);
   rec.would_write = checkEvents(cand.item, evs);
   rec.events = evs.filter((_, i) => rec.would_write[i].legal);
@@ -887,6 +949,10 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
     verdicts: { verified: [], failed: [], 'not-yet': [], 'cannot-tell': [] }, needs_person: [], events_for_history: 0, practice_events_not_written: 0, reads: null, elapsed_ms: null, why_not: null };
   let reads = 0, gh = 0;
   const counted = (cmd, argv, o) => { reads++; if (cmd === 'gh') gh++; return run(cmd, argv, o); };
+  // L-g: every read after the shared start checks the tick's elapsed time, inside the range read
+  // and the per-merge reads too: once the budget is used a read fails and budgetHit says why
+  let budgetHit = false;
+  const timed = (cmd, argv, o) => { if (cfg.time_budget_seconds * 1e3 - (clock() - startedAt) <= 0) { budgetHit = true; if (o?.allowFail) return null; throw new Error('the verifier\'s time budget is used'); } return counted(cmd, argv, o); };
   const out = (extra = {}) => ({ summary: { ...sum, ...extra, reads: { commands: reads, github: gh }, elapsed_ms: clock() - t0 }, memory: null, table: null, events: [] });
   if (!cfg.ok) return out({ why_not: cfg.why });
   // L1: no read starts once the tick has run time_budget_seconds; the verifier stops, the tick goes on
@@ -944,7 +1010,8 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
     let range = null;
     for (const c of [...pick].sort((a, b) => Date.parse(a.merged_at) - Date.parse(b.merged_at))) {
       if (!need('reading the commits on main')) return stop('reading the commits on main');
-      range = M.readCommitRange(repo, c.merge_commit, 'main', counted, cfg.max_range_commits);
+      range = M.readCommitRange(repo, c.merge_commit, 'main', timed, cfg.max_range_commits);
+      if (budgetHit) return stop('the end of the commit-range read (it stopped inside the read)');
       if (range.complete || !/more than one read can attribute/.test(range.why || '')) break;
     }
     const pos = new Map((range?.complete ? range.commits : []).map((c, i) => [c.sha, i]));
@@ -955,13 +1022,14 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
       if (m === x) return true;
       if (pos.has(m) && pos.has(x)) return pos.get(x) >= pos.get(m);
       const k = `${m}...${x}`;
-      if (!memo.has(k)) { const c = left() > 0 ? parse(tryRun(counted, 'gh', ['api', `repos/${repo}/compare/${m}...${x}?per_page=1`])) : null; memo.set(k, !c?.status ? null : ['identical', 'ahead'].includes(c.status) ? true : ['behind', 'diverged'].includes(c.status) ? false : null); }
+      if (!memo.has(k)) { const c = parse(tryRun(timed, 'gh', ['api', `repos/${repo}/compare/${m}...${x}?per_page=1`])); memo.set(k, !c?.status ? null : ['identical', 'ahead'].includes(c.status) ? true : ['behind', 'diverged'].includes(c.status) ? false : null); }
       return memo.get(k);
     };
     const nsCache = new Map();
-    const pods = deps.nsFacts || (ns => { if (!nsCache.has(ns)) nsCache.set(ns, { pods: kList(counted, ['pods', '-n', ns]), cronjobs: kList(counted, ['cronjobs', '-n', ns]), jobs: kList(counted, ['jobs', '-n', ns]) }); return nsCache.get(ns); });
+    const own = ns => { if (!nsCache.has(ns)) nsCache.set(ns, { pods: kList(timed, ['pods', '-n', ns]), cronjobs: kList(timed, ['cronjobs', '-n', ns]), jobs: kList(timed, ['jobs', '-n', ns]) }); return nsCache.get(ns); };
+    const pods = ns => { if (left() <= 0) { budgetHit = true; return { pods: null, cronjobs: null, jobs: null }; } return (deps.nsFacts || own)(ns); };
     let nodeList;
-    const nodes = () => { if (nodeList === undefined) nodeList = kList(counted, ['nodes']); return nodeList; };
+    const nodes = () => { if (nodeList === undefined) nodeList = kList(timed, ['nodes']); return nodeList; };
     const prom = deps.prom || 'http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090';
     const gj = deps.getJson || getJson;
     if (!need('reading the alerts')) return stop('reading the alerts');
@@ -975,17 +1043,17 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
       if (!kind) return null;
       const ns = ref?.namespace || h.metadata.namespace;
       const name = ref ? ref.name : `${h.metadata.namespace}-${h.metadata.name}`;
-      const l = kList(counted, [kind, '-n', ns, '--field-selector', `metadata.name=${name}`]);
+      const l = kList(timed, [kind, '-n', ns, '--field-selector', `metadata.name=${name}`]);
       const o = l?.items?.find(x => x.metadata?.name === name);
       if (!o) return null;
       const s = M.fluxSettleState(o);
       return { id: `${kind.split('.')[0]} ${ns}/${name}`, version: String(o.status?.artifact?.revision || '').split('@')[0] || null, state: s.state, why: s.why };
     };
-    const builds = sha => { const j = parse(tryRun(counted, 'gh', ['api', `repos/${repo}/actions/runs?head_sha=${sha}&per_page=50`])); return Array.isArray(j?.workflow_runs) ? j.workflow_runs : null; };
-    const prHeadDate = pr => { const j = parse(tryRun(counted, 'gh', ['pr', 'view', String(pr), '-R', repo, '--json', 'commits'])); const c = Array.isArray(j?.commits) ? j.commits.at(-1) : null; return Number.isFinite(Date.parse(c?.committedDate || '')) ? c.committedDate : null; };
+    const builds = sha => { const j = parse(tryRun(timed, 'gh', ['api', `repos/${repo}/actions/runs?head_sha=${sha}&per_page=50`])); return Array.isArray(j?.workflow_runs) ? j.workflow_runs : null; };
+    const prHeadDate = pr => { const j = parse(tryRun(timed, 'gh', ['pr', 'view', String(pr), '-R', repo, '--json', 'commits'])); const c = Array.isArray(j?.commits) ? j.commits.at(-1) : null; return Number.isFinite(Date.parse(c?.committedDate || '')) ? c.committedDate : null; };
     const itemByPr = pr => { const ids = H.prIndex(docItems).get(pr) || []; const id = ids.find(x => ['merged_unverified', 'awaiting_pin', 'done', 'failed'].includes(docItems.items.get(x)?.item.state)); if (!id) return null; const d = doc.items[id] || {}; return { id, type: d.type ?? null, packages: packagesOf(d) }; };
     const filesBySha = new Map((range?.complete ? range.commits : []).map(c => [c.sha, c.files]));
-    const filesOf = c => { if (filesBySha.has(c.merge_commit)) return filesBySha.get(c.merge_commit); const j = parse(tryRun(counted, 'gh', ['api', `repos/${repo}/commits/${c.merge_commit}`])); const f = Array.isArray(j?.files) && j.files.length < 300 ? uniq(j.files.flatMap(x => [x.filename, x.previous_filename].filter(Boolean))) : null; if (f) filesBySha.set(c.merge_commit, f); return f; };
+    const filesOf = c => { if (filesBySha.has(c.merge_commit)) return filesBySha.get(c.merge_commit); const j = parse(tryRun(timed, 'gh', ['api', `repos/${repo}/commits/${c.merge_commit}`])); const f = Array.isArray(j?.files) && j.files.length < 300 ? uniq(j.files.flatMap(x => [x.filename, x.previous_filename].filter(Boolean))) : null; if (f) filesBySha.set(c.merge_commit, f); return f; };
     // L4: the earlier merges whose own verdict is not final yet (their files, when known)
     const prevFiles = new Map(Object.entries(mem.items || {}).map(([id, r]) => [id, Array.isArray(r.files) ? r.files : null]));
     const earlierOf = c => cands.list.filter(x => x.id !== c.id && Date.parse(x.merged_at) < Date.parse(c.merged_at) && !isFinal(x))
@@ -993,15 +1061,18 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
     for (const c of pick) {
       if (left() <= 0) { sum.deferred.push(c.pr); sum.stopped = sum.stopped || `the time budget (${cfg.time_budget_seconds} s of the tick) was used; the rest is judged next tick`; continue; }
       const prev = mem.items?.[c.id] || null;
+      budgetHit = false;
       const files = filesOf(c);
       const rec = judge({ ...c, files }, { rules, cfg, now, repo, range, ks, hr, st, sourceRev, contains, pods, nodes, alerts, promStart, alertSubject: deps.alertSubject, alertScope: rules.alert_scope || {}, chartSource, builds, prHeadDate, itemByPr,
         openRecords: deps.records || [], earlier: earlierOf(c), prior: prev });
+      // a record judged while the budget ran out is not kept: its reads failed for want of time
+      if (budgetHit) { sum.deferred.push(c.pr); sum.stopped = `the time budget (${cfg.time_budget_seconds} s of the tick) ran out while #${c.pr} was judged; its last record is kept, the rest is judged next tick`; break; }
       if (!rec.files && Array.isArray(prev?.files)) rec.files = prev.files;
       rec.first_at = prev?.first_at ?? rec.verdict_at;
-      rec.ticks = (prev?.ticks || 0) + 1;
       mem.items[c.id] = rec;
       sum.evaluated.push(c.pr);
     }
+    for (const c of pick) if (!sum.evaluated.includes(c.pr) && !sum.deferred.includes(c.pr)) sum.deferred.push(c.pr);
     sum.range = range ? (range.complete ? { base: short(range.base), commits: range.commits.length } : { why: range.why }) : null;
   }
   // the verdicts, the events, the memory kept
@@ -1011,17 +1082,23 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
     if (!r || r.verdict_at !== iso(now)) continue;
     sum.verdicts[r.verdict]?.push(c.pr);
     if (r.needs_person) sum.needs_person.push(c.pr);
+    if (r.gave_up) (sum.given_up = sum.given_up || []).push(c.pr);
     if (c.own && cfg.write_history_events) ev.push(...(r.events || []));
     else if (!c.own) sum.practice_events_not_written += (r.events || []).length;
   }
   for (const r of Object.values(mem.items)) delete r.events; // never kept: rebuilt from the facts
   const live = new Set(cands.list.map(c => c.id));
-  for (const [id, r] of Object.entries(mem.items)) if (r.final) mem.done[id] = `${r.verdict} ${r.verdict_at}`;
+  for (const [id, r] of Object.entries(mem.items)) if (r.final) mem.done[id] = `${r.gave_up ? 'given-up' : r.verdict} ${r.verdict_at}`;
   // forget only what a complete candidate list no longer holds (L3): done is there to skip a
   // candidate, and an open record holds the pods recorded for stability
   if (listed) {
+    const rotated = new Set(cands.skipped.map(x => x.item));
     for (const id of Object.keys(mem.done)) if (!live.has(id)) delete mem.done[id];
-    for (const id of Object.keys(mem.items)) if (!live.has(id) && !mem.items[id].final) delete mem.items[id];
+    for (const id of Object.keys(mem.items)) if (!live.has(id) && !mem.items[id].final) {
+      // L-e: said, not silent
+      (sum.forgotten = sum.forgotten || []).push({ pr: mem.items[id].pr, item: id, verdict: mem.items[id].verdict, why: rotated.has(id) ? 'its merged event rotated out of the history' : 'the history no longer holds it in merged_unverified or awaiting_pin' });
+      delete mem.items[id];
+    }
   }
   mem.at = iso(now);
   const mergedAt = new Map(cands.list.map(c => [c.id, c.merged_at]));
@@ -1063,7 +1140,7 @@ export function fitMemory(mem, cfg, isOpen, mergedAtOf) {
     if (!over()) break;
     const r = mem.items[id];
     mem.items[id] = { pr: r.pr, item: r.item, name: r.name, from: r.from, to: r.to, type: r.type ?? null, merged_at: r.merged_at, merged_by: r.merged_by, practice: r.practice, verdict: r.verdict, why: String(r.why || '').slice(0, 300),
-      verdict_at: r.verdict_at, verdict_since: r.verdict_since, first_at: r.first_at, ticks: r.ticks, final: r.final, nights: r.nights, needs_person: r.needs_person, baseline: r.baseline ?? null, mem: r.mem, files: r.files, compacted: true };
+      verdict_at: r.verdict_at, verdict_since: r.verdict_since, first_at: r.first_at, ticks: r.ticks, final: r.final, nights: r.nights, needs_person: r.needs_person, gave_up: r.gave_up, baseline: r.baseline ?? null, mem: r.mem, files: r.files, compacted: true };
     counts.compacted++; text = JSON.stringify(mem);
   }
   for (const id of byAge(Object.keys(mem.done))) { if (!over()) break; delete mem.done[id]; counts.done_trimmed++; text = JSON.stringify(mem); }
@@ -1076,8 +1153,10 @@ export function fitMemory(mem, cfg, isOpen, mergedAtOf) {
 export function tableOf(mem, now = Date.now()) {
   const lines = [];
   for (const r of Object.values(mem.items || {}).sort((a, b) => String(b.merged_at).localeCompare(String(a.merged_at)))) {
-    lines.push(`#${r.pr} ${r.name ?? '?'} ${r.from ?? '?'} -> ${r.to ?? '?'}, merged ${r.merged_at} by ${r.merged_by?.login ?? r.merged_by?.kind ?? '?'}${r.practice ? ' (practice)' : ''}: ${r.needs_person ? 'NEEDS A PERSON: ' : ''}${String(r.verdict).toUpperCase()}${r.attribution ? ` (${r.attribution})` : ''} at ${r.verdict_at}`);
-    if (!r.final) lines.push(`  open: ${r.verdict} since ${r.verdict_since ?? r.first_at ?? '?'}; judged on ${r.ticks ?? 1} tick(s) over ${(r.nights || []).length} night(s) (${(r.nights || []).join(', ')})${Object.keys(r.mem?.replaced || {}).length ? `; pods replaced: ${Object.entries(r.mem.replaced).map(([k, n]) => `${k} ${n}x`).join(', ')}` : ''}${r.baseline?.at ? `; pods recorded at ${r.baseline.at} (${ago(now, r.baseline.at)} ago)` : ''}`);
+    lines.push(`#${r.pr} ${r.name ?? '?'} ${r.from ?? '?'} -> ${r.to ?? '?'}, merged ${r.merged_at} by ${r.merged_by?.login ?? r.merged_by?.kind ?? '?'}${r.practice ? ' (practice)' : ''}: ${r.gave_up ? 'GIVEN UP, NEEDS A PERSON: ' : r.needs_person ? 'NEEDS A PERSON: ' : ''}${String(r.verdict).toUpperCase()}${r.attribution ? ` (${r.attribution})` : ''} at ${r.verdict_at}`);
+    const sm = r.mem?.stable || {};
+    const counts = [...Object.entries(sm.moves || {}).map(([k, n]) => `${k} moved ${n}x`), ...Object.entries(sm.replaced || {}).map(([k, n]) => `${k} replaced ${n}x`)].join(', ');
+    if (!r.final || r.gave_up) lines.push(`  ${r.gave_up ? 'given up' : 'open'}: ${r.verdict} since ${r.verdict_since ?? r.first_at ?? '?'}; judged on ${r.ticks ?? 1} tick(s) over ${(r.nights || []).length} night(s) (${(r.nights || []).join(', ')})${counts ? `; pods ${counts}` : ''}${r.baseline?.at ? `; pods recorded at ${r.baseline.at} (${ago(now, r.baseline.at)} ago)` : ''}`);
     if (r.compacted) { lines.push('  (facts and other changes cut to keep data.verify within max_state_bytes; the verdict and the recorded pods are kept)'); continue; }
     for (const f of r.facts || []) lines.push(`  ${f.fact}: ${f.result}${f.class ? ` [${f.class}]` : ''}${f.detail ? `: ${f.detail}` : ''}`);
     const oc = r.other_changes;
@@ -1091,7 +1170,7 @@ export function verifyLine(s) {
   if (!s) return 'not run';
   if (s.error) return `FAILED: ${s.error}`;
   const v = Object.entries(s.verdicts || {}).filter(([, l]) => l.length).map(([k, l]) => `${k} ${l.map(p => `#${p}`).join(', ')}`).join('; ');
-  return `${s.evaluated?.length || 0} judged${v ? ` (${v})` : ''}${s.needs_person?.length ? `; NEEDS A PERSON ${s.needs_person.map(p => `#${p}`).join(', ')}` : ''}${s.deferred?.length ? `, deferred ${s.deferred.map(p => `#${p}`).join(', ')}` : ''}; since ${s.since ?? 'unreadable'}; history ${s.history ?? 'not read'}${s.why_not ? `; ${s.why_not}` : ''}${s.stopped ? `; ${s.stopped}` : ''}; ${s.events_for_history} event(s) for the history, ${s.practice_events_not_written} practice event(s) not written; ${s.reads?.commands ?? 0} reads (${s.reads?.github ?? 0} GitHub); ${s.elapsed_ms ?? '?'} ms`;
+  return `${s.evaluated?.length || 0} judged${v ? ` (${v})` : ''}${s.needs_person?.length ? `; NEEDS A PERSON ${s.needs_person.map(p => `#${p}`).join(', ')}` : ''}${s.given_up?.length ? ` (practice given up: ${s.given_up.map(p => `#${p}`).join(', ')})` : ''}${s.forgotten?.length ? `; forgotten ${s.forgotten.map(x => `#${x.pr} (${x.why})`).join(', ')}` : ''}${s.deferred?.length ? `, deferred ${s.deferred.map(p => `#${p}`).join(', ')}` : ''}; since ${s.since ?? 'unreadable'}; history ${s.history ?? 'not read'}${s.why_not ? `; ${s.why_not}` : ''}${s.stopped ? `; ${s.stopped}` : ''}; ${s.events_for_history} event(s) for the history, ${s.practice_events_not_written} practice event(s) not written; ${s.reads?.commands ?? 0} reads (${s.reads?.github ?? 0} GitHub); ${s.elapsed_ms ?? '?'} ms`;
 }
 
 // A history document of merged pull requests (gh pr view), each item named by the lane's

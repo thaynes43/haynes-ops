@@ -96,8 +96,8 @@ function fake(w) {
   };
   return { run, calls };
 }
-const READY_NODE = n => ({ metadata: { name: n }, status: { conditions: [{ type: 'Ready', status: 'True' }] } });
-const world = () => ({ ks: structuredClone(fx.ks), hr: structuredClone(fx.hr), source: structuredClone(fx.source), pods: structuredClone(fx.pods), alerts: structuredClone(fx.alerts), promStart: '2026-11-01T00:00:00Z', nodes: { items: [READY_NODE('talosw01'), READY_NODE('talosw02')] } });
+const READY_NODE = (n, boot = 'boot-1', since = '2026-11-01T00:00:00Z') => ({ metadata: { name: n }, status: { nodeInfo: { bootID: boot }, conditions: [{ type: 'Ready', status: 'True', lastTransitionTime: since }] } });
+const world = () => { const pods = structuredClone(fx.pods); for (const ns of Object.keys(pods)) for (const p of pods[ns].pods.items) p.spec.nodeName = p.spec.nodeName || 'talosw01'; return { ks: structuredClone(fx.ks), hr: structuredClone(fx.hr), source: structuredClone(fx.source), pods, alerts: structuredClone(fx.alerts), promStart: '2026-11-01T00:00:00Z', nodes: { items: [READY_NODE('talosw01'), READY_NODE('talosw02')] } }; };
 const views = list => list.map(n => fx.prs.find(p => p.number === n));
 const vrules = over => ({ ...rules, night: { ...rules.night, verify: { ...rules.night.verify, ...over } } });
 const gjOf = w => async url => (/runtimeinfo$/.test(url) ? (w.promStart ? { data: { startTime: w.promStart } } : null) : (w.alertsUnreadable ? null : w.alerts));
@@ -190,9 +190,14 @@ async function failure(name, n, mutate, cls, { secondTick = false, mutateSecond 
   return rec;
 }
 const piperKs = w => ksOf(w, 'ai/piper');
-await failure('not applied', 4870, w => { const k = piperKs(w); k.status.lastAppliedRevision = `main@sha1:${sha(4869)}`; k.status.lastAttemptedRevision = w.source.status.artifact.revision; k.status.conditions = [{ type: 'Ready', status: 'False', reason: 'BuildFailed' }]; }, 'not-applied');
+await failure('not applied, on two reads 900 s apart (N2)', 4870, w => { const k = piperKs(w); k.status.lastAppliedRevision = `main@sha1:${sha(4869)}`; k.status.lastAttemptedRevision = w.source.status.artifact.revision; k.status.conditions = [{ type: 'Ready', status: 'False', reason: 'BuildFailed' }]; }, 'not-applied', { secondTick: true });
 await failure('a HelmRelease failing on two reads 900 s apart (M4)', 4870, w => { hrOf(w, 'ai/piper').status.conditions = [{ type: 'Ready', status: 'False', reason: 'UpgradeFailed' }, { type: 'Stalled', status: 'True', reason: 'RetriesExceeded' }]; }, 'not-applied', { secondTick: true });
-await failure('not Ready (Kustomization health)', 4869, w => { ksOf(w, 'media/seerr').status.conditions = [{ type: 'Ready', status: 'False', reason: 'HealthCheckFailed' }]; }, 'not-ready');
+await failure('not Ready (Kustomization health), on two reads 900 s apart (N2)', 4869, w => { ksOf(w, 'media/seerr').status.conditions = [{ type: 'Ready', status: 'False', reason: 'HealthCheckFailed' }]; }, 'not-ready', { secondTick: true });
+{
+  const wk = world(); ksOf(wk, 'media/seerr').status.conditions = [{ type: 'Ready', status: 'False', reason: 'HealthCheckFailed' }];
+  const rk = await tick(wk, { prs: [4869] });
+  ok(rk.rec(4869).verdict === 'not-yet' && /media\/seerr applied .* and is failing.*since .*fails if it still holds 600 s after that/.test(factOf(rk.rec(4869), 'applied').detail), 'N2: a failing Kustomization on one read is not yet, saying since when', rk.rec(4869).why);
+}
 await failure('wrong image', 4869, w => { for (const p of podsIn(w, 'media', 'seerr-')) p.spec.containers[0].image = 'ghcr.io/seerr-team/seerr:v3.5.1'; }, 'wrong-image');
 await failure('restart growth of the update\'s container', 4870, null, 'restart-growth', { secondTick: true, mutateSecond: w => { podsIn(w, 'ai', 'piper-')[0].status.containerStatuses[0].restartCount += 1; } });
 await failure('the update\'s container not Ready on the later tick, its node Ready', 4870, w => placePods(w, 'ai', 'piper-'), 'not-ready', { secondTick: true, mutateSecond: w => { const p = podsIn(w, 'ai', 'piper-')[0]; p.status.conditions = [{ type: 'Ready', status: 'False' }]; p.status.containerStatuses[0].ready = false; } });
@@ -207,12 +212,24 @@ await failure('a chart settled on the old version with its source settled too (n
 await failure('a chart source failing on two reads 900 s apart (M4)', 4873, w => { const h = hrOf(w, 'network/traefik-external'); h.status.history[0].chartVersion = '42.3.2+89dc66bab32a';
   w.charts = [{ metadata: { name: 'traefik-external-oci', namespace: 'network', generation: 2 }, status: { observedGeneration: 2, conditions: [{ type: 'Ready', status: 'False', reason: 'OCIArtifactPullFailed' }, { type: 'Stalled', status: 'True' }] } }]; }, 'not-applied', { secondTick: true });
 {
-  // the churn count: pods replaced on three reads fail; the count shows in the morning view
-  const w = world(); const r1 = await tick(w, { prs: [4869] });
-  let prev = r1.memory, doc = r1.doc, last;
-  for (let i = 1; i <= 3; i++) { const wi = world(); const p = podsIn(wi, 'media', 'seerr-')[0]; p.metadata.uid += `-${i}`; p.metadata.name += `-${i}`; last = await tick(wi, { prs: [4869], now: T1 + i * 900e3, prev, doc }); prev = last.memory; }
-  ok(last.rec(4869).verdict === 'failed' && last.rec(4869).failing[0].class === 'churn' && /replaced 3 times/.test(factOf(last.rec(4869), 'stable').detail), 'churn (M4): a workload whose recorded pods are replaced max_replacements (3) times fails', last.rec(4869).why);
-  ok(/pods replaced: Deployment\/media\/seerr 2x/.test((await (async () => { const w0 = world(); const a0 = await tick(w0, { prs: [4869] }); let pv = a0.memory, t; for (let i = 1; i <= 2; i++) { const wi = world(); const pp = podsIn(wi, 'media', 'seerr-')[0]; pp.metadata.uid += `-${i}`; pp.metadata.name += `-${i}`; t = await tick(wi, { prs: [4869], now: T1 + i * 900e3, prev: pv, doc: a0.doc }); pv = t.memory; } return t; })()).table), 'churn: the morning view counts the replacements of an open verdict');
+  // N3: churn counts only pods replaced after they were not Ready or restarting; a pod moved
+  // while Ready (the descheduler, a drain) is recorded again and counted as a move
+  const seerrW = (gen, ready = true) => { const w = world(); const p = podsIn(w, 'media', 'seerr-')[0]; if (gen) { p.metadata.uid += `-${gen}`; p.metadata.name += `-${gen}`; } if (!ready) { p.status.conditions = [{ type: 'Ready', status: 'False' }]; p.status.containerStatuses[0].ready = false; } return w; };
+  // a sick pod (not Ready on a read under 600 s after the record) then replaced, three times
+  const r0 = await tick(seerrW(0), { prs: [4869] });
+  let prev = r0.memory, last, t = T1;
+  for (let i = 1; i <= 3; i++) {
+    t += 300e3; last = await tick(seerrW(i - 1, false), { prs: [4869], now: t, prev, doc: r0.doc }); prev = last.memory;
+    t += 300e3; last = await tick(seerrW(i), { prs: [4869], now: t, prev, doc: r0.doc }); prev = last.memory;
+  }
+  ok(last.rec(4869).verdict === 'failed' && last.rec(4869).failing[0].class === 'churn' && /replaced 3 times after they were not Ready or restarting/.test(factOf(last.rec(4869), 'stable').detail), 'churn (N3): pods replaced three times after they were not Ready fail', last.rec(4869).why);
+  // healthy pods moved three times: never churn, the moves are counted and shown
+  const m0 = await tick(seerrW(0), { prs: [4869] });
+  let pm = m0.memory, lm;
+  for (let i = 1; i <= 3; i++) { lm = await tick(seerrW(i), { prs: [4869], now: T1 + i * 900e3, prev: pm, doc: m0.doc }); pm = lm.memory; }
+  ok(lm.rec(4869).verdict === 'not-yet' && /moved \(Ready, no new restarts at its last read\)/.test(factOf(lm.rec(4869), 'stable').detail) && /pods Deployment\/media\/seerr moved 3x/.test(lm.table), 'N3: a Ready pod moved three times is not churn; the moves show in the morning view', lm.rec(4869).why);
+  const after = await tick(seerrW(3), { prs: [4869], now: T1 + 4 * 900e3, prev: pm, doc: m0.doc });
+  ok(after.rec(4869).verdict === 'verified', 'N3: after the moves the new record soaks and verifies', after.rec(4869).why);
 }
 {
   // an alert that fired before the merge is not new; another app's in the target's namespace is not the target's
@@ -349,51 +366,64 @@ await failure('a chart source failing on two reads 900 s apart (M4)', 4873, w =>
     return w;
   };
   const run2 = (w, views_, o = {}) => tick(w, { prs: views_.map(v => v.number), onlyPrs: [9101], views: views_, ...o });
-  // 1 push, no pin: awaiting, with since when; would write awaiting-pin
+  // 1 push, no pin: awaiting, with the build's state; would write awaiting-pin
   const w = base(); w.extraCommits.push({ sha: 'e1'.repeat(20), at: '2026-11-13T05:10:00Z', subject: 'docs: a push', pr: 9103, author: 'haynes-dev-bot[bot]', files: ['docs/x.md'] });
   const r = await run2(w, [src]);
-  ok(r.rec(9101).verdict === 'not-yet' && /awaiting the digest pin of audio-authoring since the build finished at 2026-11-13T05:06:00Z; no pin PR is open/.test(factOf(r.rec(9101), 'pin').detail), 'own image: not yet, awaiting the digest pin, since the build finished', r.rec(9101).why);
+  ok(r.rec(9101).verdict === 'not-yet' && /awaiting the digest pin of audio-authoring: the build finished at 2026-11-13T05:06:00Z; no pin PR is open/.test(factOf(r.rec(9101), 'pin').detail), 'own image: not yet, awaiting the digest pin, with the build\'s state', r.rec(9101).why);
   ok(r.rec(9101).would_write.map(e => `${e.type}:${e.from}>${e.to}:${e.legal}`).join() === 'awaiting-pin:merged_unverified>awaiting_pin:true', 'own image: would write awaiting-pin (legal)');
   const o = await run2(base(), [src], { own: true, cfg: { write_history_events: true } });
   const p = planWith(o.doc, o.events, iso(T1));
   ok(o.events[0]?.type === 'awaiting-pin' && stateOf(p.doc, o.events[0].item_id) === 'awaiting_pin', 'own image, the lane\'s merge: awaiting-pin recorded, the item awaiting_pin');
-  // H2 b: many pushes and no pin is still only awaiting; after the bound in the lane's nights it needs a person, never failed
+  // H2 b, L-e, L-g: no pin is only awaiting; open on two nights and enough ticks it needs a person; a practice item is then given up
   const w2 = base(); for (let i = 0; i < 6; i++) w2.extraCommits.push({ sha: `e${i}`.repeat(20), at: `2026-11-13T05:1${i}:00Z`, subject: 'a push', pr: 9200 + i, author: 'haynes-dev-bot[bot]', files: ['docs/x.md'] });
-  const n1 = await run2(w2, [src]);
-  const n2 = await run2(w2, [src], { now: T1 + DAY, prev: n1.memory, doc: n1.doc });
-  ok(n1.rec(9101).verdict === 'not-yet' && !n1.rec(9101).needs_person && n2.rec(9101).verdict === 'not-yet' && n2.rec(9101).needs_person === true && /^NEEDS A PERSON: open on 2 of the lane's nights/.test(n2.rec(9101).why) && /NEEDS A PERSON/.test(n2.table) && n2.summary.needs_person.join() === '9101',
-    'own image (H2 b): six pushes and no pin is still awaiting, never failed; on the second of the lane\'s nights it needs a person', n2.rec(9101).why);
-  // H2 a: commits to the pins file that are not the pin
+  const n1 = await run2(w2, [src], { cfg: { needs_person_min_ticks: 3 } });
+  const n2 = await run2(w2, [src], { now: T1 + DAY, prev: n1.memory, doc: n1.doc, cfg: { needs_person_min_ticks: 3 } });
+  const n3 = await run2(w2, [src], { now: T1 + DAY + 900e3, prev: n2.memory, doc: n1.doc, cfg: { needs_person_min_ticks: 3 } });
+  ok(n1.rec(9101).verdict === 'not-yet' && !n2.rec(9101).needs_person && n3.rec(9101).verdict === 'not-yet' && n3.rec(9101).needs_person === true && /^NEEDS A PERSON: open on 2 of the lane's nights .* and 3 ticks/.test(n3.rec(9101).why) && /GIVEN UP, NEEDS A PERSON/.test(n3.table) && n3.summary.needs_person.join() === '9101',
+    'own image (H2 b, L-e): no pin is never failed; on the second night it needs a person only once it has the minimum ticks (2 ticks over 2 nights: not yet marked)', n3.rec(9101).why);
+  ok(n3.rec(9101).gave_up === true && n3.rec(9101).final === true && /given-up/.test(JSON.parse(n3.memory).done[n3.rec(9101).item]) && n3.summary.given_up.join() === '9101', 'L-g: a practice item that needs a person is given up: final, in done, not judged again');
+  // H2 a, L-d: commits to the pins file that are not the pin; a pin made after the build started (before it finished) is the pin
   const w3 = base();
   w3.extraCommits.push({ sha: X, at: '2026-11-13T05:15:00Z', subject: 'fix(audio-authoring): a values change by the shepherd', pr: 9104, author: 'haynes-ops-bot[bot]', files: [img.pins[0]] });
   const other = pinOf(9105, 'f5'.repeat(20), '2026-11-13T05:16:00Z', 'e'.repeat(64), 'ghcr.io/thaynes43/blender-authoring');
   w3.extraCommits.push({ sha: other.mergeCommit.oid, at: other.mergedAt, subject: other.title, pr: 9105, author: 'renovate[bot]', files: [img.pins[0]] });
   const early = pinOf(9106, 'a7'.repeat(20), '2026-11-13T05:17:00Z', 'b'.repeat(64));
   w3.extraCommits.push({ sha: early.mergeCommit.oid, at: early.mergedAt, subject: early.title, pr: 9106, author: 'renovate[bot]', files: [img.pins[0]] });
-  w3.prHead = { 9106: '2026-11-13T05:01:00Z' }; // made before this build finished: another build's digest
+  w3.prHead = { 9106: '2026-11-13T04:59:00Z' }; // made before this build started: another build's digest
   const r3 = await run2(w3, [src, other, early]);
-  ok(r3.rec(9101).verdict === 'not-yet' && /not the pin: c3c3c3c3 #9104 \(not an update of audio-authoring\), f5f5f5f5 #9105 \(not an update of audio-authoring\), #9106 \(made 2026-11-13T05:01:00Z, before this build finished/.test(factOf(r3.rec(9101), 'pin').detail),
-    'own image (H2 a): a shepherd edit of the pins file, a pin of another image and a pin made before this build are not the pin', factOf(r3.rec(9101), 'pin').detail);
-  // the pin, made after the build: verified through it (and its digest is all digits-safe)
-  const w6 = base(); w6.extraCommits.push({ sha: P, at: pin.mergedAt, subject: pin.title, pr: 9102, author: 'renovate[bot]', files: [img.pins[0]] });
-  w6.source.status.artifact.revision = `main@sha1:${P}`; // Flux fetched the pin, and the target applied it
-  for (const k of w6.ks.items) { k.status.lastAppliedRevision = w6.source.status.artifact.revision; k.status.lastAttemptedRevision = w6.source.status.artifact.revision; }
+  ok(r3.rec(9101).verdict === 'not-yet' && /not the pin: c3c3c3c3 #9104 \(not an update of audio-authoring\), f5f5f5f5 #9105 \(not an update of audio-authoring\), #9106 \(made 2026-11-13T04:59:00Z, before this build started at 2026-11-13T05:00:10Z/.test(factOf(r3.rec(9101), 'pin').detail),
+    'own image (H2 a): a shepherd edit of the pins file, a pin of another image and a pin made before this build started are not the pin', factOf(r3.rec(9101), 'pin').detail);
+  const w3b = base(); w3b.extraCommits.push({ sha: early.mergeCommit.oid, at: early.mergedAt, subject: early.title, pr: 9106, author: 'renovate[bot]', files: [img.pins[0]] });
+  w3b.prHead = { 9106: '2026-11-13T05:03:00Z' }; // after the build started at 05:00:10, before it finished at 05:06 (it signs after pushing)
+  ok(/pinned by #9106 .* made after this build started at 2026-11-13T05:00:10Z/.test(factOf((await run2(w3b, [src, early])).rec(9101), 'pin').detail), 'L-d: a pin made after the build started, before its last update, is the pin (the run\'s start ties them)');
+  // the pin, made after the build: verified through it
+  const pinned = () => { const w6 = base(); w6.extraCommits.push({ sha: P, at: pin.mergedAt, subject: pin.title, pr: 9102, author: 'renovate[bot]', files: [img.pins[0]] });
+    w6.source.status.artifact.revision = `main@sha1:${P}`; // Flux fetched the pin, and the target applied it
+    for (const k of w6.ks.items) { k.status.lastAppliedRevision = w6.source.status.artifact.revision; k.status.lastAttemptedRevision = w6.source.status.artifact.revision; }
+    for (const pp of w6.pods.dev.pods.items) pp.spec.nodeName = 'talosw01';
+    return w6; };
+  const w6 = pinned();
   const a6 = await run2(w6, [src, pin]);
   const b6 = await run2(w6, [src, pin], { now: T2, prev: a6.memory, doc: a6.doc });
-  ok(a6.rec(9101).verdict === 'not-yet' && b6.rec(9101).verdict === 'verified' && /pinned by #9102 .* made after the build finished/.test(factOf(b6.rec(9101), 'pin').detail) && /1 container\(s\) in dev\/audio-authoring run ghcr\.io\/thaynes43\/audio-authoring d4d4d4d/.test(factOf(b6.rec(9101), 'image').detail), 'own image: verified through its pin #9102 (the new digest runs and is stable)', b6.rec(9101).why);
-  // facts that do fail: a cancelled build, an open pin PR whose checks fail
+  ok(a6.rec(9101).verdict === 'not-yet' && b6.rec(9101).verdict === 'verified' && /pinned by #9102 .* made after this build started/.test(factOf(b6.rec(9101), 'pin').detail) && /1 container\(s\) in dev\/audio-authoring run ghcr\.io\/thaynes43\/audio-authoring d4d4d4d/.test(factOf(b6.rec(9101), 'image').detail), 'own image: verified through its pin #9102 (the new digest runs and is stable)', b6.rec(9101).why);
+  // N1: after the pin merged, its rollout can fail; before it, nothing does
+  const w6f = pinned(); for (const pp of w6f.pods.dev.pods.items) { pp.spec.containers[0].image = `ghcr.io/thaynes43/audio-authoring:0.2.0@sha256:${'1'.repeat(64)}`; pp.status.containerStatuses[0].imageID = `ghcr.io/thaynes43/audio-authoring@sha256:${'1'.repeat(64)}`; }
+  ok((await run2(w6f, [src, pin])).rec(9101).failing?.[0]?.class === 'wrong-image', 'N1: after the pin merged its rollout fails (the old digest runs)');
   const w7 = base(); w7.runs[S][0].conclusion = 'cancelled';
-  ok((await run2(w7, [src])).rec(9101).failing?.[0]?.class === 'not-applied', 'own image: a cancelled build fails (the image was not published)');
-  const w8 = base();
-  const openPin = { pr: 9110, lane: 'BLOCKED', class: 'check-failing', reason: 'failing: Flux Local - Test (main)', packages: [{ name: 'ghcr.io/thaynes43/audio-authoring', to: 'abc1234' }], files: [img.pins[0]] };
-  const r8 = await run2(w8, [src], { deps: { records: [openPin] } });
-  ok(r8.rec(9101).verdict === 'failed' && /the pin PR #9110 for audio-authoring is open and its checks fail: failing: Flux Local/.test(factOf(r8.rec(9101), 'pin').detail), 'own image: an open pin PR whose checks fail fails, with the reason', r8.rec(9101).why);
+  const r7 = await run2(w7, [src]);
+  ok(r7.rec(9101).verdict === 'not-yet' && /the build .* ended cancelled \(a later build may carry the change\)/.test(factOf(r7.rec(9101), 'pin').detail) && r7.rec(9101).pin.state === 'awaiting (build failed)', 'N1: a cancelled build is not a failure: awaiting the pin, with the reason', r7.rec(9101).why);
+  const w7b = base(); w7b.runs[S][0].conclusion = 'failure';
+  ok((await run2(w7b, [src])).rec(9101).verdict === 'not-yet', 'N1: a failed build is not a failure either');
+  const openPin = { pr: 9110, lane: 'BLOCKED', class: 'check-failing-after-retry', reason: 'failing: Flux Local - Test (main) after a retry', packages: [{ name: 'ghcr.io/thaynes43/audio-authoring', to: 'abc1234' }], files: [img.pins[0]] };
+  const r8 = await run2(base(), [src], { deps: { records: [openPin] } });
+  ok(r8.rec(9101).verdict === 'not-yet' && /pin PR #9110 is blocked: check-failing-after-retry: failing: Flux Local - Test \(main\) after a retry/.test(factOf(r8.rec(9101), 'pin').detail), 'N1: a blocked pin PR is not a failure: awaiting, with its class and reason', r8.rec(9101).why);
   const r8b = await run2(base(), [src], { deps: { records: [{ ...openPin, lane: 'LANE-B-AGENT', class: 'rule-agent' }] } });
-  ok(r8b.rec(9101).verdict === 'not-yet' && /pin PR #9110 is open \(LANE-B-AGENT\/rule-agent\)/.test(factOf(r8b.rec(9101), 'pin').detail), 'own image: an open pin PR that is not failing: still awaiting, named');
+  ok(r8b.rec(9101).verdict === 'not-yet' && /pin PR #9110 is open \(LANE-B-AGENT\/rule-agent\)/.test(factOf(r8b.rec(9101), 'pin').detail), 'own image: an open pin PR that is not blocked: still awaiting, named');
   const w4 = base(); w4.runs[S][0].status = 'in_progress';
   ok((await run2(w4, [src])).rec(9101).verdict === 'not-yet', 'own image: a build still running is not yet');
   const w5 = base(); w5.runs = {};
-  ok((await run2(w5, [src])).rec(9101).verdict === 'cannot-tell', 'own image: the build unreadable is cannot tell');
+  const r5 = await run2(w5, [src]);
+  ok(r5.rec(9101).verdict === 'not-yet' && /the run of .* could not be read/.test(factOf(r5.rec(9101), 'pin').detail), 'N1: the build unreadable keeps it awaiting (never failed), saying so', r5.rec(9101).why);
 }
 
 // ── 7. practice never reaches the history ─────────────────────────────────────────────
@@ -471,8 +501,12 @@ await failure('a chart source failing on two reads 900 s apart (M4)', 4873, w =>
   ok(V.verifyLine(t2.summary).includes('verified #') && /\(\d+ GitHub\)/.test(V.verifyLine(t2.summary)) && V.verifyLine({ error: 'x' }) === 'FAILED: x', 'the log line, with the GitHub read count');
   // needs a person: a cannot-tell that stays open on the lane's nights
   const wp = world(); wp.alertsUnreadable = true;
-  const p1 = await tick(wp, { prs: [4869] }), p2 = await tick(wp, { prs: [4869], now: T2, prev: p1.memory, doc: p1.doc }), p3 = await tick(wp, { prs: [4869], now: T1 + DAY, prev: p2.memory, doc: p1.doc });
-  ok(!p2.rec(4869).needs_person && p3.rec(4869).needs_person === true && p3.rec(4869).nights.length === 2 && /open: cannot-tell since .* over 2 night\(s\)/.test(p3.table), 'needs a person: a cannot-tell open on two of the lane\'s nights (two ticks of one night count once)', JSON.stringify(p3.rec(4869).nights));
+  const c3 = { needs_person_min_ticks: 3 };
+  const p1 = await tick(wp, { prs: [4869], cfg: c3 }), p2 = await tick(wp, { prs: [4869], now: T2, prev: p1.memory, doc: p1.doc, cfg: c3 }), p3 = await tick(wp, { prs: [4869], now: T1 + DAY, prev: p2.memory, doc: p1.doc, cfg: c3 });
+  ok(!p2.rec(4869).needs_person && p3.rec(4869).needs_person === true && p3.rec(4869).nights.length === 2 && /given up: cannot-tell since .* over 2 night\(s\)/.test(p3.table), 'needs a person: a cannot-tell open on two of the lane\'s nights and three ticks (two ticks of one night count once)', JSON.stringify(p3.rec(4869).nights));
+  // L-e: an item merged late and open at the first tick of the next night is not marked after two ticks
+  const q1 = await tick(wp, { prs: [4869], now: Date.parse('2026-11-13T10:40:00Z') }), q2 = await tick(wp, { prs: [4869], now: Date.parse('2026-11-14T06:00:00Z'), prev: q1.memory, doc: q1.doc });
+  ok(q2.rec(4869).nights.length === 2 && q2.rec(4869).ticks === 2 && !q2.rec(4869).needs_person, 'L-e: two local dates in two ticks are not enough (needs_person_min_ticks, 8 in git)', JSON.stringify([q2.rec(4869).nights, q2.rec(4869).ticks]));
 }
 
 // ── 9. the review of PR 4880 ─────────────────────────────────────────────────────────
@@ -555,6 +589,53 @@ await failure('a chart source failing on two reads 900 s apart (M4)', 4873, w =>
   ok(l5a.rec(4870).verdict === 'verified' && /1 container\(s\) in ai\/piper run rhasspy\/wyoming-piper 2\.5\.3/.test(factOf(l5a.rec(4870), 'image').detail), 'L5: an image used only in an init container (a native sidecar) is found', factOf(l5a.rec(4870), 'image').detail);
   const l5b = (await twice(wl5, { prs: [4870] }, wl52)).b;
   ok(l5b.rec(4870).failing?.[0]?.class === 'restart-growth' && /container piper-init restarted/.test(factOf(l5b.rec(4870), 'stable').detail), 'L5: a native sidecar of the update that restarts fails as restart growth', l5b.rec(4870).why);
+  // N3: a restart on a node that rebooted, or that was not Ready since the record, is not the update's
+  const reboot = (boot, since) => { const w = world(); w.nodes = { items: [READY_NODE('talosw01', boot, since), READY_NODE('talosw02')] }; podsIn(w, 'ai', 'piper-')[0].status.containerStatuses[0].restartCount = 1; return w; };
+  const nb1 = await tick(world(), { prs: [4870] });
+  const nb2 = await tick(reboot('boot-2'), { prs: [4870], now: T2, prev: nb1.memory, doc: nb1.doc });
+  ok(nb2.rec(4870).verdict === 'not-yet' && /container app restarted: 0 at .*, 1 now, on node talosw01, which rebooted \(its boot id changed\): not the update's; the pods are recorded again/.test(factOf(nb2.rec(4870), 'stable').detail), 'N3: a restart on a node whose boot id changed is recorded again, not failed', nb2.rec(4870).why);
+  const nb3 = await tick(reboot('boot-2'), { prs: [4870], now: T3, prev: nb2.memory, doc: nb1.doc });
+  ok(nb3.rec(4870).verdict === 'verified', 'N3: after the node reboot the new record soaks and verifies', nb3.rec(4870).why);
+  const nr2 = await tick(reboot('boot-1', iso(T1 + 300e3)), { prs: [4870], now: T2, prev: nb1.memory, doc: nb1.doc });
+  ok(nr2.rec(4870).verdict === 'not-yet' && /which was not Ready since the record/.test(factOf(nr2.rec(4870), 'stable').detail), 'N3: a restart on a node that was not Ready since the record is recorded again', nr2.rec(4870).why);
+  const wnn = reboot('boot-1'); wnn.nodes = null;
+  ok((await tick(wnn, { prs: [4870], now: T2, prev: nb1.memory, doc: nb1.doc })).rec(4870).verdict === 'cannot-tell', 'N3: a restart whose node cannot be read is cannot tell');
+  // N3: once stable has passed it stays passed for the item (an item judged again, here a named PR)
+  const sp2 = (await twice(world(), { prs: [4870] })).b;
+  const wl3 = world(); podsIn(wl3, 'ai', 'piper-')[0].status.containerStatuses[0].restartCount = 5;
+  const sp3 = await tick(wl3, { prs: [4870], now: T3, prev: sp2.memory, doc: sp2.doc });
+  ok(sp2.rec(4870).verdict === 'verified' && sp3.rec(4870).verdict === 'verified' && /passed at .*; not read again: health after the soak is the alerting's business/.test(factOf(sp3.rec(4870), 'stable').detail), 'N3: stable passed stays passed; a later restart is the alerting\'s business', sp3.rec(4870).why);
+  // L-b: a CronJob template whose version cannot be read for an update of unknown type is unreadable, not a wrong image
+  const lbView = { ...cjView, labels: [], body: '| Package | Update | Change |\n|---|---|---|\n| ghcr.io/example/backup-tool |  | `1234abc` → `abcd123` |\n' };
+  const lb = await tick(cjWorld([], 'ghcr.io/example/backup-tool:1.1.0'), { prs: [9300], views: [lbView] });
+  ok(lb.rec(9300).verdict === 'cannot-tell' && /the version CronJob media\/backup-tool names .*either update/.test(factOf(lb.rec(9300), 'image').detail), 'L-b: an unknown-type update and a tag-only template: cannot tell, not a wrong image', lb.rec(9300).why);
+  // L-c: the newest finished Job decides; a running newer one does not hide it; failing before the merge; suspended
+  const running = job('backup-tool-newer', '2026-11-13T09:00:00Z', null);
+  const lc1 = await tick(cjWorld([job('backup-tool-new', '2026-11-13T08:00:00Z', 'Complete'), running]), { prs: [9300], views: [cjView] });
+  ok(lc1.rec(9300).verdict === 'verified' && /backup-tool-new from the new template completed/.test(factOf(lc1.rec(9300), 'exercised').detail), 'L-c: a newer Job still running does not hide the finished one', lc1.rec(9300).why);
+  const lc2 = await tick(cjWorld([job('backup-tool-old', '2026-11-12T08:00:00Z', 'Failed', 'ghcr.io/example/backup-tool:1.0.0'), job('backup-tool-new', '2026-11-13T08:00:00Z', 'Failed')]), { prs: [9300], views: [cjView] });
+  ok(lc2.rec(9300).verdict === 'cannot-tell' && /failed too: it was failing before the merge/.test(factOf(lc2.rec(9300), 'exercised').detail), 'L-c: a new Job that fails where the old template failed too is cannot tell', lc2.rec(9300).why);
+  const wsus = cjWorld([]); wsus.pods.media.cronjobs.items[0].spec.suspend = true;
+  const lc3 = await tick(wsus, { prs: [9300], views: [cjView] });
+  ok(lc3.rec(9300).verdict === 'cannot-tell' && /is suspended: no run comes until someone resumes it/.test(factOf(lc3.rec(9300), 'exercised').detail) && !/next /.test(factOf(lc3.rec(9300), 'exercised').detail), 'L-c: a suspended CronJob says suspended, not a next run', lc3.rec(9300).why);
+  // L-h: a Job from the new template made before the merge does not count
+  const lh = await tick(cjWorld([job('backup-tool-early', '2026-11-13T05:00:00Z', 'Complete')]), { prs: [9300], views: [cjView] });
+  ok(lh.rec(9300).verdict === 'not-yet' && /no Job from the new template since the merge/.test(factOf(lh.rec(9300), 'exercised').detail), 'L-h: a Job made before the merge does not count', lh.rec(9300).why);
+  // L-e: a record forgotten because the history no longer holds it is named in the summary
+  const ghost = JSON.stringify({ schema: 'haynes.upgrade-verify/v1', since: null, items: { 'renovate-pr:000000000000000000000abc': { pr: 4000, merged_at: '2026-11-12T00:00:00Z', verdict: 'not-yet', final: false } }, done: {} });
+  const fg = await tick(world(), { prs: [4869], prev: ghost });
+  ok(fg.summary.forgotten?.some(x => x.pr === 4000 && /no longer holds it/.test(x.why)) && /forgotten #4000/.test(V.verifyLine(fg.summary)), 'L-e: a record the history no longer holds is named when it is forgotten', JSON.stringify(fg.summary.forgotten));
+  // L-g, L-h: the time budget inside the commit-range read, and before it
+  const budgetRun = async (stepMs, startLeftMs, deps0) => {
+    const w = world(); let t = T1; const f = fake(w);
+    const run = (cmd, argv, o) => { t += stepMs; return f.run(cmd, argv, o); };
+    const r = await V.verifyPhase({ rules, run, repo: REPO, now: T1, startedAt: T1 - (150e3 - startLeftMs), clock: () => t, onlyPrs: PRS, deps: { doc: V.docOf(views(PRS), { repo: REPO, rules, at: iso(T1) }), alertSubject: N.alertSubject, getJson: gjOf(w), ...deps0 } });
+    return { r, calls: f.calls };
+  };
+  const inRange = await budgetRun(5e3, 12e3, { ks: fx.ks, hr: fx.hr, source: fx.source });
+  ok(/before the end of the commit-range read \(it stopped inside the read\)/.test(inRange.r.summary.why_not) && inRange.r.memory === null && inRange.calls.filter(c => /commits\//.test(c)).length <= 2, 'L-g: the budget runs out inside the range read: it stops there, judges nothing, keeps the memory', `${inRange.r.summary.why_not} ${inRange.calls.length}`);
+  const beforeRange = await budgetRun(130e3, 120e3, { hr: fx.hr, source: fx.source });
+  ok(/before reading the commits on main/.test(beforeRange.r.summary.why_not) && !beforeRange.calls.some(c => /compare/.test(c)), 'L-h: the budget used by the Flux read stops it before the range read starts', beforeRange.r.summary.why_not);
   ok(V.nextCron('*/15 1-5 * * *', 'America/New_York', Date.parse('2026-11-13T10:50:00Z')) === '2026-11-14T06:00:00.000Z' && V.nextCron('bad', 'UTC', 0) === null, 'nextCron: the lane\'s own schedule; an expression it cannot read is null');
 }
 

@@ -524,9 +524,11 @@ an item whose current attempt the lane did not make.
    written: the absence of a pin is not a failure (review of PR 4880).
 6. **Time boxes.** `awaiting_pin` and `pin-timeout` are described as time-boxed, and
    `escalated` covers "verification cannot be read". Under Q-548-04 (facts, not clocks) the
-   verifier fails a pin wait only on facts (a failed or cancelled build, an open pin PR whose
-   checks fail), and otherwise keeps it open and marks it "needs a person" in
-   `upgrade-lane-state` once it has stayed open on `night.verify.needs_person_after_nights` of
-   the lane's nights; the same holds for a lasting not-yet or cannot-tell. That mark is not an
+   verifier never fails a pin wait (before the pin has merged nothing of the update runs; a
+   failed or cancelled build or a blocked pin PR is shown as the reason), keeps it open, and
+   marks it "needs a person" in `upgrade-lane-state` once it has stayed open on
+   `night.verify.needs_person_after_nights` of the lane's nights and
+   `night.verify.needs_person_min_ticks` of its ticks; the same holds for a lasting not-yet or
+   cannot-tell. A practice item so marked is given up in that memory. That mark is not an
    event: the format has no edge for "open, a person should look" short of `escalated`, which
    the verifier does not write for it.

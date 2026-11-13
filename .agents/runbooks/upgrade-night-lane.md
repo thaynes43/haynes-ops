@@ -1540,7 +1540,10 @@ is `night-verify.mjs`, and the settings are `night.verify` in `upgrade-rules.jso
 positive evidence that the update did it. Where the evidence is only absence, or points
 elsewhere, the verdict is `not-yet` or `cannot-tell`. It is shown every morning with what it
 waits for and since when, and it is never silently open for ever: once it stays open on
-`needs_person_after_nights` (2) of the lane's nights it reads `NEEDS A PERSON`.
+`needs_person_after_nights` (2) of the lane's nights and `needs_person_min_ticks` (8) of its
+ticks it reads `NEEDS A PERSON`. A practice item that needs a person is given up: it keeps its
+last facts, is not judged again, and no longer holds the commit-range read open. The lane's
+own merge is never given up.
 
 **When it runs.** Once per tick, after the merge step and before the history, inside a
 guarded step: a verifier that fails or does not load is an ERROR line and
@@ -1571,15 +1574,15 @@ on the tick's own clock; on the first read the fact waits and says since when.
 | Fact | What is read | Fails when | Unreadable when |
 |---|---|---|---|
 | `source` | GitRepository `flux-system/haynes-ops` `status.artifact.revision` contains the merge commit (position on main from the tick's one commit-range read, else a GitHub compare) | (waits) | the revision or the compare cannot be read |
-| `applied` | the target's own Kustomizations (`settleScope`: those whose `spec.path` is the target or below) have a `lastAppliedRevision` that contains the merge and are settled; the `dependsOn` chain and the Kustomizations that apply the target are settled (`fluxStates`, story 551) | `not-applied`: attempted the merge and failing; `not-ready`: applied it and failing | no Kustomization applies the target; one is suspended; it waits on a failing dependency; a chain Kustomization or an applier is failing (not charged to the update) |
+| `applied` | the target's own Kustomizations (`settleScope`: those whose `spec.path` is the target or below) have a `lastAppliedRevision` that contains the merge and are settled; the `dependsOn` chain and the Kustomizations that apply the target are settled (`fluxStates`, story 551) | on two reads: `not-applied` (attempted the merge and failing), `not-ready` (applied it and failing) | no Kustomization applies the target; one is suspended; it waits on a failing dependency; a chain Kustomization or an applier is failing (not charged to the update) |
 | `helmreleases` | the HelmReleases in those inventories (and with their Flux labels) are settled and their last release is `deployed` | `not-applied`: failing, or its last release failed, on two reads | a HelmRelease is missing or suspended |
 | `pods` | in pods made at or after the merge, the update's containers (init containers included) | `crash-loop`; `image-pull`; `not-ready`: CreateContainerConfigError, CreateContainerError or RunContainerError on two reads | pods unreadable; the same in another container; a Pending pod (with the scheduler's reason) |
 | `alerts` | Prometheus `/api/v1/alerts`, critical and firing, traced by R5's `alertSubject`; new means `activeAt` at or after the merge; Prometheus's start from `/api/v1/status/runtimeinfo` | `critical-alert`: a new alert whose subject belongs to the target or its chain | Prometheus or its start unreadable; a new alert within `prometheus_restart_slack_seconds` (300) of a Prometheus restart after the merge (a rule with no `for:` restarts its clock); a new alert in a target namespace that cannot be traced, or names no workload; for a cluster-wide target, a new alert with no namespace |
-| `image` | each package: the update's containers run the new version (digest or tag decided by the update type the history recorded, never by the characters); else a CronJob template names it; else the HelmRelease whose last release is that chart | `wrong-image`: the old version with nothing rolling; a CronJob template naming another version; a HelmRelease settled on another chart while its chart source is settled; `not-applied`: the chart source failing on two reads | no container, CronJob or chart of the target is the package; a version cannot be read |
-| `exercised` | a CronJob whose template names the update: the newest Job from the new template made since the merge | `job-failed`: that Job failed | Jobs unreadable; none yet waits for the CronJob's first run, with its schedule, last run and next run |
+| `image` | each package: the update's containers run the new version (digest or tag decided by the update type the history recorded, never by the characters); else a CronJob template names it; else the HelmRelease whose last release is that chart | `wrong-image`: the old version with nothing rolling; a CronJob template naming another version; a HelmRelease settled on another chart while its chart source is settled; `not-applied`: the chart source failing on two reads | no container, CronJob or chart of the target is the package; a version cannot be read (in a pod or a CronJob template) |
+| `exercised` | a CronJob whose template names the update: the newest finished Job from the new template made since the merge (a newer one still running does not hide it) | `job-failed`: that Job failed, and the CronJob's last finished Job from the old template did not fail too | Jobs unreadable; the CronJob suspended; the old template's last Job failed too (it was failing before the merge). None yet waits for the first run, with its schedule, last run and next run |
 | `rollout` | each Deployment, StatefulSet and DaemonSet in the inventories: its pods (by owner) are of one template, none terminating, all Ready | (waits) | a workload has no running pod |
-| `stable` | two reads (below) | `restart-growth` or `not-ready` of an update's container; `churn` | pods or nodes unreadable; the same in another container; a pod on a node that is not Ready |
-| `pin` | own images only (below) | `not-applied`: the build failed or was cancelled, or an open pin PR's checks fail | the build run, or when the pin was made, cannot be read |
+| `stable` | two reads (below) | `restart-growth` or `not-ready` of an update's container on a node that did not reboot; `churn` | pods or nodes unreadable; the same in another container; a pod on a node that is not Ready |
+| `pin` | own images only (below) | never: before the pin has merged nothing of the update runs, so the item stays awaiting | when a pin candidate was made cannot be read |
 
 `workloads` appears as an extra unreadable fact when an inventory cannot be read. Facts
 are read in order: until `source` passes, the rest wait; `image`, `exercised`, `rollout` and
@@ -1591,9 +1594,18 @@ container) in its memory, and `stable` waits. A later tick reads them again once
 `min_stable_seconds` have passed on its own clock: the same pods still there and Ready, with no
 more restarts of the update's containers, is a pass. Earlier, the verdict is not yet and says
 how long ago the pods were recorded. This minimum is the lane's own measurement of the target
-(the story's 10-minute soak), not a wait on another actor. A recorded pod that was replaced
-starts the record again once the rollout is complete, and the replacements are counted per
-workload: at `max_replacements` (3) the update's workload fails as `churn`.
+(the story's 10-minute soak), not a wait on another actor. Cluster maintenance is not the
+update's:
+
+- a restart of an update's container on a node whose boot id changed since the record, or that
+  was not Ready since the record (its Ready condition moved after it), takes a new record and
+  says so;
+- a recorded pod that is gone after it was Ready with no new restarts at its last read was
+  moved (the descheduler, a drain): a new record, and the move is counted;
+- a recorded pod gone after it was not Ready or restarting was replaced; at `max_replacements`
+  (3) replacements the update's workload fails as `churn`;
+- once `stable` has passed it stays passed for the item: health after the soak is the
+  alerting's business.
 
 **The verdict.** `failed` when any fact fails; else `cannot-tell` when any is unreadable;
 else `not-yet` (with what it waits for); else `verified`. An unreadable fact never yields a
@@ -1612,18 +1624,23 @@ most `max_range_commits`, 60).
 
 **Own images.** A source merge of an image whose digest pin Renovate auto-merges
 (`own_image_pin_wait`) is verified through its pin. The pin is identified by what it pins: a
-merged history item whose package is this image, made after this source's build finished (the
-last commit of its PR), whose commit on main changes one of the image's `pins` files. Another
-PR that edits those files (the shepherd's own changes), a pin of another image, or a pin made
-before this build is not the pin, and the morning view names it. The pin is then verified on
-its own target with its digest. The absence of a pin is never a failure:
+merged history item whose package is this image, whose commit on main changes one of the
+image's `pins` files, and whose PR's last commit was made after this source's image build
+started. **What ties a pin to a build** is that time: the run's start
+(`run_started_at`, from `gh api …/actions/runs?head_sha=<merge>`), not its last update,
+because the shepherd's build signs the image after pushing it and a re-run moves the last
+update. With no run read, the source merge's own time is the bound (no image carries the
+change before it). Another PR that edits those files (the shepherd's own changes), a pin of
+another image, or a pin made before the build started is not the pin, and the morning view
+names it. The pin is then verified on its own target with its digest, and only those facts,
+read after the pin merged, can fail.
 
-- the image build for the merge (`gh api …/actions/runs?head_sha=`) failed or was cancelled:
-  failed (`not-applied`);
-- an open pin PR for the image whose checks fail (from the tick's own records): failed, with
-  the reason;
-- otherwise not yet, "awaiting the digest pin since the build finished at …", every morning,
-  and `NEEDS A PERSON` on the second of the lane's nights.
+Before the pin has merged nothing of the update runs in the cluster, so the verdict is never
+failed: a build that failed or was cancelled (GitHub cancels an older pending run when a newer
+push queues, and a later run may carry the change), a pin PR that is blocked (its class and
+reason, for example `check-failing-after-retry`), an unreadable build run or simply no pin
+keep the item "awaiting the digest pin" with that reason, every morning, until the common
+"needs a person" rule marks it.
 
 ### What it writes
 
@@ -1650,9 +1667,11 @@ its own target with its digest. The absence of a pin is never a failure:
 **Budget.** Per tick at most `max_items_per_tick` (12) updates, the least recently judged
 first. No read starts once the tick has run `time_budget_seconds` (150; the Job's deadline is
 600): the check runs before each shared read (the install time, the history, the Flux
-objects, each try of the commit-range read, the alerts) and before each update; when it is
-used, the verifier does nothing more that tick, says so in `summary.verify.why_not` or
-`stopped`, keeps its memory, and the tick goes on. `data.verify` keeps at most
+objects, each try of the commit-range read, the alerts), inside the commit-range read (each
+commit read) and inside each update's own reads. When it is used, the verifier does nothing
+more that tick, says so in `summary.verify.why_not` or `stopped`, keeps its memory (an update
+whose reads ran out keeps its last record), and the tick goes on. A record the history no
+longer holds is named in `summary.verify.forgotten` when it is dropped. `data.verify` keeps at most
 `max_items_kept` (60) records within `max_state_bytes` (128 KiB): final records go first; an
 open record keeps its recorded pods (only its details are cut), then the oldest `done` entries
 go, and an open record is dropped only last (`summary.verify.trimmed_open`).
@@ -1734,6 +1753,13 @@ The missing rule: `apiGroups: ["apps"]`, `resources: ["deployments", "statefulse
   it finds: pods alone cannot show that a template did not need to change.
 - `NEEDS A PERSON` is a mark in `upgrade-lane-state`, not a history event and not a page;
   story 554 decides how it reaches a person.
+- An earlier merge that is still open and whose files are unknown makes every later merge's
+  list of other changes incomplete, in any scope; stored files are cut at 100. Both err towards
+  `cannot-tell` (L-f of the review, not changed).
+- A pin made by a person or a session is not a history item, so it is not found: the source
+  merge stays awaiting its pin and ends at `NEEDS A PERSON` (L-d of the review).
+- Only `stable` stays passed once it has passed. An item kept open by another fact (a CronJob
+  that has not run yet) still reads its pods, alerts and image on every tick.
 - Pause stops the tick before the verifier, and the verifier does not release the
   post-merge hold of the change lock (stories 753 and 556).
 
