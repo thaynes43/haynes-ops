@@ -1621,7 +1621,9 @@ no pin means the pin did not come.
 **Budget.** Per tick at most `max_items_per_tick` (12) updates, the least recently judged
 first; no new update once the tick has run `time_budget_seconds` (150; the Job's deadline is
 600). `data.verify` keeps at most `max_items_kept` (60) records within `max_state_bytes`
-(128 KiB). Measured on 2026-11-13 from a session pod: five merges, 22 reads, 5.8 s (16 s on a
+(128 KiB). Final records go first; an open record keeps its recorded pods (only its details
+are cut), then the oldest `done` entries go, and an open record is dropped only last
+(`summary.verify.trimmed_open`). Measured on 2026-11-13 from a session pod: five merges, 22 reads, 5.8 s (16 s on a
 cold first run). With no history yet, 2 reads in 0.4 s.
 
 ### Reading it
