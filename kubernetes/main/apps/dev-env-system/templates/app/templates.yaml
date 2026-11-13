@@ -130,17 +130,34 @@
 # suspend and resume; their agentd ignores the title key. A paired Codex host on 2.102.0 or
 # newer stays usable for automatic selection after this pin.
 # Rollback image:2.105.0@sha256:1127ec6b4a31365b84031ac84f18a61d91a126649dda413df22af7812fcc7b70.
-image: ghcr.io/thaynes43/dev-env:2.107.0@sha256:bbb81c6e847f2fb0ef9824178d27323100fc99ece7fc188bf4ec1561a5d52875
+# v2.109.0 source 4576341c (release #1124). publish-agent.yml run 43430319057 built, smoke-tested,
+# signed and verified this digest. It carries 2.108.0 as well, which was released and never
+# pinned. What a session gains:
+# - The typed rename of a running session (DESIGN-065 slice 3 and ADR-027, dev-env#1127, OP787):
+#   agentd can type "/rename <title>" plus Enter into its own Claude remote session, only when
+#   the operator's heartbeat answer carries a title, which it does only for a session named by
+#   the operator flag --title-rename-sessions. The operator on main does not know that flag
+#   yet and answers every heartbeat with no body, so with this pin alone agentd types nothing.
+#   agent-run gains the title command, which today answers that the operator has no title route.
+# - A summoned session's provider starts once (DESIGN-064 5.9, dev-env#1100, OP780, from
+#   2.108.0): the start fence in run-agent, the tmux handoff record and the refusal to resume.
+#   Each step returns at once for a session without spec.caller, and no session has one: the
+#   operator's --summon-create-kinds is unset. I read that diff for an ordinary session's boot.
+# No new env, mount or template field. Sessions on an older image keep running until their own
+# suspend and resume. A paired Codex host on 2.102.0 or newer stays usable for automatic
+# selection after this pin.
+# Rollback image:2.107.0@sha256:bbb81c6e847f2fb0ef9824178d27323100fc99ece7fc188bf4ec1561a5d52875.
+image: ghcr.io/thaynes43/dev-env:2.109.0@sha256:8b2b51d5997c7406271128143734e08b885de4c3efb2dcc271d9c6c2389a0dca
 
 # New-sessions-only rollout for THIS image (DESIGN-001 5.2, dev-env#925; Q-03 option B, a
 # per-rollout deviation recorded in the PR that sets it). While this equals `image`, the
-# operator marks no session Draining: new sessions and resumes use the 2.107.0 revision and
+# operator marks no session Draining: new sessions and resumes use the 2.109.0 revision and
 # running sessions keep their pods until their own suspend and resume. It is not part of the
 # revision. It MUST equal `image` exactly: the Renovate rule bumps only the `image:` line, so
 # the next image bump PR must update this line to the new image or delete it (deleting it
 # resumes idle drain), otherwise the templates are invalid and new sessions wait.
 rollout:
-  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.107.0@sha256:bbb81c6e847f2fb0ef9824178d27323100fc99ece7fc188bf4ec1561a5d52875
+  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.109.0@sha256:8b2b51d5997c7406271128143734e08b885de4c3efb2dcc271d9c6c2389a0dca
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
