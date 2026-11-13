@@ -4,26 +4,36 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main c4bc870d914e48d2ac446e29ba39b6ba58c7d34a (merge of PR #1091),
-# verified byte for byte (SHA-256 849e35412498455b98602a8680d615b6f7bfaa1db71b6a42b7cbee4714f6930e
-# below this header). One change since the copy from db8f0a3f:
-# - dev-env c4bc870d914e, PR #1091, DESIGN-064 5.9 and 6.7, OpenProject #777 (slice a of
-#   #741): status.summon.admittedAt (when the operator leader admitted a summoned session;
-#   set once), status.summon.closed.released (its lane and pool slot are free; true is
-#   never reversed), and rules that keep the summon record: admittedAt never changes, the
-#   closed record cannot be removed, and status.summon cannot be removed, also by removing
-#   status. Status only; nothing in spec changed.
-#   It must be here before the operator pin that writes these fields: with an older
-#   schema the API server would drop admittedAt and no summoned session could ever start.
-#   Install precondition: no AgentSession has status.summon yet (read in the cluster
-#   before this copy merged; the PR records it), so no stored object meets the new rules.
-# Earlier changes in this file, still in force: status.summon (closed, escalation) and the
+# Source: dev-env main ff0c9e8e74da14ef5ed901b89da1caff6ca65a06 (merge of PR #1100),
+# verified byte for byte (SHA-256 2260800b56c16aa4c45d70ad81cc1a225a1461aae6ab9ededfd798f1054edb5a
+# below this header). One change since the copy from e6f36eb8:
+# - dev-env ff0c9e8e74da, PR #1100, DESIGN-064 5.9, OpenProject #780 (slice d of #741):
+#   status.summon.executor, a summoned remote session's executor latch ({attempted,
+#   intent, podUID, notCreated}; the operator records its one pod attempt before the Pod
+#   create and the pod's UID once it appears), with its rules (an attempt is never
+#   reversed, the intent and the recorded pod UID never change, a pod is recorded only for
+#   an attempt, only an attempt with no recorded pod can be marked not created), one rule
+#   on status.summon (the executor latch cannot be removed), and two reworded
+#   descriptions under status.summon.pages. Status only; nothing in spec changed.
+#   It must be here before the operator pin that writes the latch: with an older schema
+#   the API server would drop it, and a recreated pod of a summoned remote session would
+#   not be refused. Install precondition: no AgentSession has status.summon yet (read in
+#   the cluster before this copy merged; the PR records it), so no stored object meets
+#   the new rules.
+# Earlier changes in this file, still in force: spec.title, its clause in the spec-wide
+# presence rule and status.remoteControl.title (dev-env e6f36eb8792d, PR #1104,
+# OpenProject #785); status.summon.pages and the rule that a
+# page entry is never removed or changed (dev-env 59169f1ff968, PR #1095, OpenProject
+# #779); status.summon.admittedAt,
+# status.summon.closed.released and the rules that keep the summon record (dev-env
+# c4bc870d914e, PR #1091, OpenProject #777); status.summon (closed, escalation) and the
 # status.outcome.note bound (dev-env db8f0a3f497a, PR #1088, OpenProject #740); spec.summon
 # and its rules (dev-env 66201204c557, PR #1079, OpenProject #756); status.agent.podUID
 # (dev-env 83a125e6eb11, PR #1077, OpenProject #709).
 # Do not roll this file back once a session with spec.summon or status.summon exists (an
-# older schema drops them at the next write) or once an operator writes
-# status.agent.podUID.
+# older schema drops them at the next write), once an operator writes
+# status.agent.podUID, or once a session with spec.title exists (an older schema drops
+# the title at the next write of that session).
 # Earlier cautions still hold: once a status.privateHistory record with an absent
 # executorTerminal.containers[].finishedAt exists (allowed only when reason is
 # ContainerStatusUnknown), or a status.privateHistory.expiry.bundle record exists, do not
@@ -704,6 +714,34 @@ spec:
                 - message: immutable after create; only operatingMode and lifecycle
                     may change
                   rule: self == oldSelf
+              title:
+                description: |-
+                  Title is optional role text for the phone and the listings (DESIGN-065).
+                  It is set at create and stays unchanged in this slice. Empty is absent
+                  and is never stored. The display title is the model family plus this
+                  text; this field holds only the role text.
+
+                  MaxLength bounds code points. The CEL rules also bound UTF-8 bytes, the
+                  character set and the spacing. Letters, marks, digits, punctuation and
+                  symbols are allowed, plus ASCII space. The first character is a letter
+                  or a digit. A bar, a control or format character, and anything above
+                  U+FFFF are not.
+                maxLength: 48
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: at most 96 bytes
+                  rule: size(bytes(self)) <= 96
+                - message: letters, marks, digits, punctuation and symbols only; the
+                    first character is a letter or a digit; no bar, no control or
+                    format character, and nothing above U+FFFF
+                  rule: self.matches('^[\\p{L}\\p{Nd}][\\p{L}\\p{M}\\p{Nd}\\p{P}\\p{S}
+                    ]*$') && !self.contains('|') && !self.matches('[\\x{10000}-\\x{10FFFF}]')
+                - message: no leading or trailing space, and no two spaces in a row
+                  rule: '!self.startsWith('' '') && !self.endsWith('' '') && !self.contains(''  '')'
+                - message: immutable after create; only operatingMode and lifecycle
+                    may change
+                  rule: self == oldSelf
               tools:
                 description: |-
                   Tools are the tool pools registered at boot (DESIGN-001 8.1), by ToolPool
@@ -819,7 +857,7 @@ spec:
                 == has(oldSelf.sessionDirectory) && has(self.privatePilot) == has(oldSelf.privatePilot)
                 && has(self.usageCaptureParentUID) == has(oldSelf.usageCaptureParentUID)
                 && has(self.coordinatorInstructionParentUID) == has(oldSelf.coordinatorInstructionParentUID)
-                && has(self.summon) == has(oldSelf.summon)
+                && has(self.summon) == has(oldSelf.summon) && has(self.title) == has(oldSelf.title)
             - message: project canaries require their fixed private bounded subscription
                 task contract
               rule: '!has(self.projectCanary) || (self.mode == ''task'' && self.agent
@@ -3012,6 +3050,18 @@ spec:
                     description: State is the entry's registration state, for example
                       registered.
                     type: string
+                  title:
+                    description: |-
+                      Title is the display title agentd passed to the provider at this pod's
+                      launch (DESIGN-065). It stays empty until that CLI process is live, and
+                      empty when agentd passed the session name. MaxLength bounds code points;
+                      the CEL rule also bounds UTF-8 bytes. The heartbeat clips a longer value
+                      so the stored text fits both.
+                    maxLength: 128
+                    type: string
+                    x-kubernetes-validations:
+                    - message: at most 128 bytes
+                      rule: size(bytes(self)) <= 128
                   url:
                     description: URL is the session's claude.ai link.
                     type: string
@@ -3381,6 +3431,92 @@ spec:
                     - name
                     - state
                     type: object
+                  executor:
+                    description: |-
+                      Executor is a summoned remote session's executor latch (DESIGN-064 5.9,
+                      F3, OP780): the operator records its one pod attempt before the Pod
+                      create and the pod's UID once it appears, so no path builds a second
+                      pod. A summoned task uses status.privateHistory instead. It is never
+                      removed.
+                    properties:
+                      attempted:
+                        description: |-
+                          Attempted is written, and confirmed, before the one Pod create. It is
+                          never reversed: a create whose result is unknown stays an attempt.
+                        type: boolean
+                      intent:
+                        description: Intent names that one create; the pod carries
+                          it in an annotation.
+                        maxLength: 128
+                        type: string
+                      notCreated:
+                        description: |-
+                          NotCreated is DESIGN-019's known non-attempt: the operator returned
+                          before calling Create for Intent because an observation failed. Only
+                          then may the same intent re-arm, once per mark.
+                        type: boolean
+                      podUID:
+                        description: |-
+                          PodUID is the pod that create made, recorded once an uncached read
+                          finds it with the intent. It never changes.
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    required:
+                    - attempted
+                    - intent
+                    type: object
+                    x-kubernetes-validations:
+                    - message: an executor attempt is never reversed
+                      rule: '!oldSelf.attempted || self.attempted'
+                    - message: the executor intent never changes
+                      rule: size(oldSelf.intent) == 0 || self.intent == oldSelf.intent
+                    - message: the recorded executor pod UID never changes or goes
+                      rule: '!has(oldSelf.podUID) || (has(self.podUID) && self.podUID
+                        == oldSelf.podUID)'
+                    - message: an executor attempt has one intent
+                      rule: '!self.attempted || size(self.intent) > 0'
+                    - message: an executor pod is recorded only for an attempt
+                      rule: '!has(self.podUID) || self.attempted'
+                    - message: only an attempt with no recorded pod can be marked
+                        not created
+                      rule: '!has(self.notCreated) || !self.notCreated || (self.attempted
+                        && !has(self.podUID))'
+                  pages:
+                    description: |-
+                      Pages are the session's lifecycle page events, each recorded once by
+                      the operator leader (DESIGN-064 6.8, ruling D9 on item 741, OP779). The
+                      keeper sends them (story 742); nothing sends them yet. No terminal event
+                      is stored here or anywhere: the keeper derives a session's terminal page
+                      from its close record (ruling Q1 on item 742, built in PR 1102). An
+                      entry is never removed or changed.
+                    items:
+                      description: |-
+                        SummonPage is one page event: what happened and when the operator
+                        recorded it (DESIGN-064 6.8's {event, at}).
+                      properties:
+                        at:
+                          format: date-time
+                          type: string
+                        event:
+                          description: |-
+                            SummonPageEvent is a lifecycle page event of DESIGN-064 6.8 recorded on a
+                            session. This slice writes the two lifecycle events it decides; story 742
+                            adds the rest of 6.8's lifecycle events. A terminal event is never a page
+                            event here: the keeper derives it from the close record (ruling Q1 on item
+                            742, built in PR 1102).
+                          enum:
+                          - escalation-held
+                          - escalation-reminder
+                          maxLength: 32
+                          type: string
+                      required:
+                      - at
+                      - event
+                      type: object
+                    maxItems: 8
+                    type: array
+                    x-kubernetes-list-type: atomic
                 type: object
                 x-kubernetes-validations:
                 - message: admittedAt is set once and never changes
@@ -3388,6 +3524,11 @@ spec:
                     == oldSelf.admittedAt)'
                 - message: the closed record cannot be removed
                   rule: '!has(oldSelf.closed) || has(self.closed)'
+                - message: a page event is never removed or changed
+                  rule: '!has(oldSelf.pages) || (has(self.pages) && oldSelf.pages.all(p,
+                    p in self.pages))'
+                - message: the executor latch cannot be removed
+                  rule: '!has(oldSelf.executor) || has(self.executor)'
               suspendedAt:
                 description: |-
                   SuspendedAt is when the operator first saw the session suspended with
