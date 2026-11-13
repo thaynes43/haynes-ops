@@ -513,9 +513,10 @@ spec:
               # Previous pin sha-ff0c9e8@sha256:267ad631f54c787fd16665b63f50418670556f9ee7b5084cfe974c6b5d7195ab
               # (haynes-ops#4866). Rollback: that image. The --inbox-projects value may stay or go
               # back to dev-env on its own; neither image needs the other value.
-              # dev-env main 96d4fcd7 (publish 43427335771's operator job signed and verified this
-              # digest; CI run 43427335875 on that commit was green before this pin merged). One
-              # commit since sha-42552fa:
+              # dev-env main e28fbd8c (publish 43435722689's operator job signed and verified this
+              # digest; the commit's tree is the tree of dev-env#1137's last head, on which CI run
+              # 43432439116 was green). Two code commits since sha-42552fa; the other three in the
+              # range are the 2.109.0 release files and docs:
               # - dev-env#1127 (OP787, DESIGN-065 slice 3, ADR-027): an agent renames a running
               #   session. In the operator: the route PUT /v1/sessions/{name}/title records a
               #   changed title as the annotation dev-env.haynesops.com/title (spec.title stays
@@ -524,15 +525,20 @@ spec:
               #   providerTitle; and for a session named by --title-rename-sessions the heartbeat
               #   answer carries the recorded title. Its AgentSession CRD change was copied first
               #   by haynes-ops#4878.
-              # The typing itself is agentd's, in the agent image, which this pin does not change:
-              # the session pods keep 2.107.0, whose agentd reads no heartbeat answer and types
-              # nothing. --title-rename-sessions is set below to one unused test session.
+              # - dev-env#1137 (OP787): a session nobody renamed keeps the single-session view it
+              #   had before, so an older agent-run, whose show --json --once and usage export
+              #   refuse an unknown key, still reads it. sha-96d4fcd, the image of #1127 alone,
+              #   was never pinned for that reason.
+              # The typing is agentd's, in the agent image. Only an agentd of 2.109.0 or newer
+              # reads the heartbeat answer; older ones discard it. And the operator sends an
+              # answer only for a session --title-rename-sessions names, which is set below to
+              # one unused test session. So no working session is typed into.
               # No permission, ConfigMap or Secret change.
               # Previous pin sha-42552fa@sha256:c4c55ed09901108e8ad8c6dd14b0131c151705d649b86649cfde97fd49c814c8
               # (haynes-ops#4877). Rollback: that image AND remove --title-rename-sessions in the
               # same change (sha-42552fa does not know the flag and would refuse to start). The
               # CRD copy stays.
-              tag: sha-96d4fcd@sha256:736331c4c52310b40ab81dcec6a6afc7e4a9b741ca2a9eaa83fbeabd498bb435
+              tag: sha-e28fbd8@sha256:21594e113dd0bfd59f9c3544f8aaae0f4794f49f7e713749883e889fdb8558a5
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
