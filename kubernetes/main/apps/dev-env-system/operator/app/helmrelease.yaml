@@ -456,7 +456,24 @@ spec:
               # Previous pin sha-c4bc870@sha256:c7ffda11220a0e868250a0490b1761ace0b33957b1138ddfef8bb3963104a90e
               # (haynes-ops#4859); rollback target for the operator alone, with
               # --enable-summoned-lanes kept. The CRD copy stays.
-              tag: sha-59169f1@sha256:813a612b8a6695e6f9f3a062d60b2836d1344c9bee7c18c1fd66364a0314a88e
+              # dev-env main e6f36eb8 (publish 43348557101's operator job signed and verified this
+              # digest; CI run 43348557116 on that commit was green before this pin merged). Two
+              # code commits since sha-59169f1:
+              # - dev-env#1104 (OP785, DESIGN-065 slice 1): an optional session title. The create
+              #   request takes `title`, the session document carries it, and the heartbeat stores
+              #   status.remoteControl.title. A session without a title is unchanged: its create
+              #   options, its session document and its stored status are what they were. The
+              #   AgentSession CRD change (spec.title, status.remoteControl.title) was copied
+              #   first by haynes-ops#4862.
+              # - dev-env#1101 (OP783): the usage gate for summoned sessions. Its lines are flags
+              #   with no code default; none is set here, so the gate is not built and admission
+              #   is as before. The ops-profile coordinator adds its flags with its own pin.
+              # No flag, permission, ConfigMap or Secret change in this pin.
+              # Previous pin sha-59169f1@sha256:813a612b8a6695e6f9f3a062d60b2836d1344c9bee7c18c1fd66364a0314a88e
+              # (haynes-ops#4861). Rollback: that image, and only while no session has a title:
+              # an operator that does not know spec.title drops it on a full update, and the
+              # schema then refuses that update. The CRD copy stays.
+              tag: sha-e6f36eb@sha256:41a754c833ad3f49060368ee540be6496623925e7996b4eec10012076df515f0
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
