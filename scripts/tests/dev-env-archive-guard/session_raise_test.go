@@ -29,13 +29,21 @@ const raiseAdmin = "fixture-cluster-admin"
 const raiseKubelet = "system:node:fixture-node"
 const raiseScheduler = "system:kube-scheduler"
 
+type raisePolicy struct {
+	file    string
+	failure registration.FailurePolicyType
+}
+
 // The guard files and the policies each must hold, with a binding of the same name.
-var raisePolicies = map[string]string{
-	"dev-env-session-raise-record":          "record-guard.yaml",
-	"dev-env-session-depth-label":           "label-guards.yaml",
-	"dev-env-session-pod-profile-label":     "label-guards.yaml",
-	"dev-env-session-raise-operator-ledger": "ledger-guards.yaml",
-	"dev-env-session-raise-keeper-ledger":   "ledger-guards.yaml",
+// Each policy's failurePolicy is named one by one: Ignore only on the bind path
+// (coordinator ruling R-5), Fail on every other.
+var raisePolicies = map[string]raisePolicy{
+	"dev-env-session-raise-record":          {"record-guard.yaml", registration.Fail},
+	"dev-env-session-depth-label":           {"label-guards.yaml", registration.Fail},
+	"dev-env-session-pod-profile-label":     {"label-guards.yaml", registration.Fail},
+	"dev-env-session-pod-bind-labels":       {"label-guards.yaml", registration.Ignore},
+	"dev-env-session-raise-operator-ledger": {"ledger-guards.yaml", registration.Fail},
+	"dev-env-session-raise-keeper-ledger":   {"ledger-guards.yaml", registration.Fail},
 }
 
 type raiseDocs struct {
@@ -104,8 +112,9 @@ func loadRaiseVAP(t *testing.T, file, name string) *harness {
 	return nil
 }
 
-// Every guard is failurePolicy Fail, and every binding names its policy, denies, and
-// neither narrows nor parameterises it. The app's kustomization lists every guard file.
+// Every guard has the failurePolicy named for it above, and every binding names its
+// policy, denies, and neither narrows nor parameterises it. The app's kustomization lists
+// every guard file.
 func TestSessionRaiseBindings(t *testing.T) {
 	kustomization, err := os.ReadFile(repoPath(raiseDir + "kustomization.yaml"))
 	if err != nil {
@@ -120,11 +129,13 @@ func TestSessionRaiseBindings(t *testing.T) {
 		policyCount += len(docs.policies)
 		bindingCount += len(docs.bindings)
 		for name, p := range docs.policies {
-			if raisePolicies[name] != file {
+			want, known := raisePolicies[name]
+			if !known || want.file != file {
 				t.Errorf("unexpected policy %s in %s", name, file)
+				continue
 			}
-			if p.Spec.FailurePolicy == nil || *p.Spec.FailurePolicy != registration.Fail {
-				t.Errorf("%s: failurePolicy must be Fail", name)
+			if p.Spec.FailurePolicy == nil || *p.Spec.FailurePolicy != want.failure {
+				t.Errorf("%s: failurePolicy must be %s", name, want.failure)
 			}
 			pb, ok := docs.bindings[name]
 			if !ok {
@@ -461,4 +472,82 @@ func TestSessionRaiseLedgers(t *testing.T) {
 			})
 		})
 	}
+}
+
+// labels: nil leaves the map out entirely; obj{} is an empty map.
+func raiseBinding(namespace string, labels obj) obj {
+	meta := obj{"name": "fixture", "namespace": namespace}
+	if labels != nil {
+		meta["labels"] = labels
+	}
+	return obj{"apiVersion": "v1", "kind": "Binding", "metadata": meta,
+		"target": obj{"apiVersion": "v1", "kind": "Node", "name": "fixture-node"}}
+}
+
+// A CREATE of pods/binding (legacy false) or of the legacy bindings resource (true).
+func bindWrite(binding obj, actor string, legacy bool) fixture {
+	f := fixture{kind: "Binding", new: binding, actor: actor, operation: "CREATE"}
+	if meta, ok := binding["metadata"].(obj); ok {
+		if namespace, ok := meta["namespace"].(string); ok {
+			f.namespace = namespace
+		}
+	}
+	if legacy {
+		f.resource = "bindings"
+	} else {
+		f.resource = "pods"
+		f.subresource = "binding"
+	}
+	return f
+}
+
+func TestSessionPodBindLabels(t *testing.T) {
+	h := loadRaiseVAP(t, "label-guards.yaml", "dev-env-session-pod-bind-labels")
+	const profileKey = "dev-env.haynesops.com/profile"
+	const app = "app.kubernetes.io/name"
+	topology := obj{"topology.kubernetes.io/zone": "fixture-zone", "topology.kubernetes.io/region": "fixture-region"}
+	profile := obj{profileKey: "workbench"}
+	name := obj{app: "dev-env-session"}
+	both := obj{profileKey: "workbench", app: "dev-env-session"}
+	withTopology := obj{profileKey: "workbench", "topology.kubernetes.io/zone": "fixture-zone"}
+	daemonSets := controller("daemon-set-controller")
+	headlamp := sa("frontend/headlamp")
+	for _, legacy := range []bool{false, true} {
+		resource := "pods-binding"
+		if legacy {
+			resource = "bindings"
+		}
+		t.Run(resource, func(t *testing.T) {
+			runRaise(t, h, []raiseCase{
+				{"scheduler-no-labels-map", bindWrite(raiseBinding(ns, nil), raiseScheduler, legacy), true, true},
+				{"scheduler-empty-labels", bindWrite(raiseBinding(ns, obj{}), raiseScheduler, legacy), true, true},
+				{"scheduler-topology-only", bindWrite(raiseBinding(ns, topology), raiseScheduler, legacy), true, true},
+				{"scheduler-other-label", bindWrite(raiseBinding(ns, obj{"fixture/other": "x"}), raiseScheduler, legacy), true, true},
+				{"scheduler-profile", bindWrite(raiseBinding(ns, profile), raiseScheduler, legacy), true, false},
+				{"scheduler-name", bindWrite(raiseBinding(ns, name), raiseScheduler, legacy), true, false},
+				{"scheduler-both", bindWrite(raiseBinding(ns, both), raiseScheduler, legacy), true, false},
+				{"scheduler-profile-beside-topology", bindWrite(raiseBinding(ns, withTopology), raiseScheduler, legacy), true, false},
+				{"scheduler-empty-profile-value", bindWrite(raiseBinding(ns, obj{profileKey: ""}), raiseScheduler, legacy), true, false},
+				{"daemon-set-controller-profile", bindWrite(raiseBinding(ns, profile), daemonSets, legacy), true, false},
+				{"cluster-admin-headlamp-profile", bindWrite(raiseBinding(ns, profile), headlamp, legacy), true, false},
+				{"cluster-admin-flux-name", bindWrite(raiseBinding(ns, name), raiseFlux, legacy), true, false},
+				{"masters-user-both", func() fixture {
+					f := bindWrite(raiseBinding(ns, both), raiseAdmin, legacy)
+					f.groups = []string{"system:masters", "system:authenticated"}
+					return f
+				}(), true, false},
+				{"operator-profile", bindWrite(raiseBinding(ns, profile), raiseOperator, legacy), true, false},
+				{"other-namespace-skipped", bindWrite(raiseBinding("dev-tools", profile), raiseScheduler, legacy), false, true},
+				{"system-namespace-skipped", bindWrite(raiseBinding(raiseSystem, both), raiseAdmin, legacy), false, true},
+			})
+		})
+	}
+	// The pod rule itself does not match a bind: a Binding has no old object to compare.
+	// The Binding carries the session label, so the object selector would match and only
+	// the resource rule leaves it out.
+	pod := loadRaiseVAP(t, "label-guards.yaml", "dev-env-session-pod-profile-label")
+	runRaise(t, pod, []raiseCase{
+		{"pod-rule-skips-pods-binding", bindWrite(raiseBinding(ns, both), raiseScheduler, false), false, true},
+		{"pod-rule-skips-bindings", bindWrite(raiseBinding(ns, both), raiseScheduler, true), false, true},
+	})
 }

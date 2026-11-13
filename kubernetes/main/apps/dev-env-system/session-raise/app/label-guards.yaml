@@ -74,9 +74,14 @@ spec:
 # - Matches UPDATE of pods and pods/status only. CREATE is not matched, so the operator
 #   builds pods as today; DELETE is not matched, so deletes and graceful termination are
 #   never refused.
-# - pods/binding, pods/eviction, pods/exec, pods/ephemeralcontainers and pods/resize are
-#   not matched: binding and eviction do not store a Pod, exec stores nothing, and
-#   ephemeralcontainers and resize reset metadata, so none can store a label change.
+# - pods/binding is not matched here, because a Binding is a CREATE with no old object to
+#   compare. On Kubernetes 1.35 a first bind does copy the Binding's labels onto the pod
+#   (BindingREST.setPodNodeAndMetadata, feature gate PodTopologyLabelsAdmission), with no
+#   admission on the Pod; dev-env-session-pod-bind-labels below refuses a Binding that
+#   carries either label.
+# - pods/eviction, pods/exec, pods/ephemeralcontainers and pods/resize are not matched:
+#   eviction does not store a Pod, exec stores nothing, and ephemeralcontainers and resize
+#   reset metadata, so none can store a label change.
 # - A write that leaves both labels as they were passes, whoever sends it: status writes,
 #   and finalizer and ownerReference changes by the operator or the garbage collector,
 #   keep presence and value equal.
@@ -130,4 +135,60 @@ metadata:
   name: dev-env-session-pod-profile-label
 spec:
   policyName: dev-env-session-pod-profile-label
+  validationActions: [Deny]
+---
+# Install step 2, the bind path (coordinator ruling R-5 on the second review of haynes-ops
+# PR 4888). On Kubernetes 1.35 the first bind of a pod copies every label on the Binding
+# onto the Pod (pkg/registry/core/pod/storage/storage.go,
+# BindingREST.setPodNodeAndMetadata, while spec.nodeName is empty; feature gate
+# PodTopologyLabelsAdmission, default on). That write goes through GuaranteedUpdate with no
+# admission on the Pod, so dev-env-session-pod-profile-label never sees it. This policy
+# refuses a Binding in dev-agents, through pods/binding or the legacy bindings resource,
+# whose labels contain dev-env.haynesops.com/profile or app.kubernetes.io/name.
+#
+# No account is exempt. The operator never binds. The scheduler's DefaultBinder sends a
+# Binding with no labels, and the PodTopologyLabels admission plugin adds only
+# topology.kubernetes.io/zone and topology.kubernetes.io/region, so an ordinary schedule
+# passes.
+#
+# failurePolicy Ignore, deliberately, on this one policy. Every start and resume of a
+# session pod passes through it, and an evaluation error must never stop a session from
+# being scheduled. The writers it stops are the control plane's own and cluster admins:
+# by the coordinator's read of the live bindings (2026-11-13) only system:masters, the
+# cluster-admin ServiceAccounts, kube-system/daemon-set-controller and the user
+# system:kube-scheduler can create a binding in dev-agents. The expression reads only the
+# Binding's own metadata, which every Binding has; a missing labels map reads as empty, so
+# it has no error path a caller can trigger.
+#
+# Why every other request passes:
+# - Matches CREATE of pods/binding and bindings in dev-agents only; nothing else reaches it.
+# - A Binding with no labels map, an empty one, or only other labels (the topology keys)
+#   passes.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-session-pod-bind-labels
+spec:
+  failurePolicy: Ignore
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: dev-agents
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods/binding, bindings]
+  validations:
+    - expression: >-
+        !('dev-env.haynesops.com/profile' in object.metadata.?labels.orValue({})) &&
+        !('app.kubernetes.io/name' in object.metadata.?labels.orValue({}))
+      message: a Binding in dev-agents may not carry the dev-env.haynesops.com/profile or app.kubernetes.io/name label
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-session-pod-bind-labels
+spec:
+  policyName: dev-env-session-pod-bind-labels
   validationActions: [Deny]
