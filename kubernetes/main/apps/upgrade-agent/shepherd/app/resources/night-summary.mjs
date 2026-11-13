@@ -28,15 +28,15 @@
 // command line: the sender passes it to curl as one quoted --form-string argument.
 
 export const SUMMARY_SCHEMA = 'haynes.upgrade-morning/v1';
-export const DELIVERY_KEYS = Object.freeze(['morning_text', 'morning_night', 'morning_composed_at', 'morning_ticks', 'morning_ticks_expected', 'morning_last_tick', 'morning_mode']);
+export const DELIVERY_KEYS = Object.freeze(['morning_text', 'morning_night', 'morning_composed_at', 'morning_ticks', 'morning_last_tick', 'morning_last_tick_expected', 'morning_mode']);
 const parse = s => { try { return JSON.parse(s); } catch { return null; } };
 const iso = ms => new Date(ms).toISOString();
 
 export function summaryConfig(rules) {
   const c = rules?.night?.summary || {};
   const int = (k, lo, hi) => Number.isInteger(c[k]) && c[k] >= lo && c[k] <= hi;
-  const ok = int('max_bytes', 200, 1000) && int('ticks_per_night', 1, 96) && /^\d\d:\d\d$/.test(c.last_tick_local || '') && int('max_items_per_line', 1, 20) && int('max_name_chars', 8, 80) && int('max_reason_chars', 16, 200);
-  return { ok, ...c, why: ok ? null : 'night.summary in upgrade-rules.json is invalid (max_bytes 200..1000, ticks_per_night 1..96, last_tick_local HH:MM, max_items_per_line 1..20, max_name_chars 8..80, max_reason_chars 16..200)' };
+  const ok = int('max_bytes', 200, 1000) && /^([01]\d|2[0-3]):[0-5]\d$/.test(c.last_tick_local || '') && int('max_items_per_line', 1, 20) && int('max_name_chars', 8, 80) && int('max_reason_chars', 16, 200);
+  return { ok, ...c, why: ok ? null : 'night.summary in upgrade-rules.json is invalid (max_bytes 200..1000, last_tick_local HH:MM, max_items_per_line 1..20, max_name_chars 8..80, max_reason_chars 16..200)' };
 }
 
 // ── outside text ────────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ const actorOf = a => {
 // A blocked record's reason, in fewer words where its form is known: a check that failed again
 // after the one retry names the check (story 549's "failed again on <sha> after one retry on
 // <sha> at <time>: <checks>").
-const BLOCKED_WORDS = { 'check-failing-after-retry': 'a check still fails after one retry' };
+const BLOCKED_WORDS = { 'check-failing-after-retry': 'a check still fails after one retry', 'facts-incomplete': 'its facts could not be read' };
 function shortReason(klass, reason) {
   const t = String(reason ?? '');
   if (klass === 'check-failing-after-retry') return t.replace(/^failed again on [0-9a-f]+ after one retry on [0-9a-f]+ at \S+: /, '');
@@ -99,7 +99,14 @@ export function composeFacts({ now, mode, rules, prev = null, records = [], veri
       const d = doc.items?.[ev.item_id] || {};
       const base = { pr: ev.carrier?.pr ?? null, name: clean(d.name, N), to: clean(d.to, 24), at: ev.at };
       if (ev.type === 'merged') facts.merged.push({ ...base, by: ev.actor?.kind || 'unknown', by_login: clean(ev.actor?.login || '', 40) || null });
-      else if (['revert-merged', 'recovery-verified', 'recovery-failed'].includes(ev.type)) facts.reverted.push({ ...base, type: ev.type, reason: clean(ev.reason, R) });
+      else if (['revert-merged', 'recovery-verified', 'recovery-failed'].includes(ev.type)) {
+        // one entry per item: the revert, then whether the target recovered (the last word wins)
+        let x = facts.reverted.find(r => r.item === ev.item_id);
+        if (!x) facts.reverted.push(x = { ...base, item: ev.item_id, recovered: null, reason: null });
+        if (ev.type === 'recovery-verified') x.recovered = true;
+        if (ev.type === 'recovery-failed') { x.recovered = false; x.reason = clean(ev.reason, R); }
+        x.at = ev.at;
+      }
     }
   }
   // the verifier's records: verified in the window; open; failed; and the marks for a person
@@ -118,50 +125,68 @@ export function composeFacts({ now, mode, rules, prev = null, records = [], veri
     else if (r.lane === 'LANE-B-OWNER') facts.waits.owner.push({ pr: r.pr, name: clean(r.package || r.title, N), class: clean(r.class, 40) });
   }
   if (historyNote?.needs_person) facts.waits.history = clean(historyNote.line, R * 2);
-  facts.claims = (claims || []).map(c => ({ pr: c.pr, outcome: c.outcome, sig: c.sig, practice: c.practice }));
+  facts.claims = (claims || []).map(c => ({ pr: c.pr, outcome: c.outcome, holder: c.holder ?? null, sig: c.sig, practice: c.practice }));
   return facts;
 }
 
 // ── the text ────────────────────────────────────────────────────────────────────────
+// Ordered by what a reader must not miss (review M4). The first lines carry every count, so
+// cutting from the end never loses one: the night (the lane's mode and its ticks); merged, by
+// whom; reverted and whether each recovered; verified, still checking, failed; how many items
+// wait. Then the detail: a revert that did not recover; what waits; reverts that recovered; the
+// merges; the checks. Every line is in plain words for a reader who knows nothing of the lane.
 const list = (items, f, max) => `${items.slice(0, max).map(f).join(', ')}${items.length > max ? `, +${items.length - max} more` : ''}`;
 const prName = x => `#${x.pr}${x.name ? ` ${x.name}` : ''}`;
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+// who is handling a failed update, from the claims step (summary.claims)
+export function claimWords(c) {
+  if (!c) return '';
+  if (c.outcome === 'claimed') return 'the night lane is reverting it';
+  if (c.outcome === 'triage-holds' || (c.outcome === 'lost' && c.holder === 'triage')) return 'the automatic remediation (triage) is handling it';
+  if (c.outcome === 'lane-holds') return 'the night lane is already reverting it with another update';
+  if (c.outcome === 'not-in-set') return 'only this note reports it (the health gate does not watch this kind of failure)';
+  if (c.outcome === 'unreadable') return 'who is handling it could not be read';
+  return 'no automatic fix has taken it yet';
+}
 
-export function composeText(facts, { now, cfg, tz, ticks, ticksExpected }) {
+export function composeText(facts, { now, cfg, tz, ticks, finished }) {
   const max = cfg.max_items_per_line || 6;
-  const lines = [];
-  const lane = facts.merged.filter(m => m.by === 'lane');
-  lines.push(`Night of ${dayLabel(now, tz)}: lane ${facts.mode === 'live' ? 'live' : 'dry-run'}, ${ticks} of ${ticksExpected} ticks (last ${hhmm(now, tz)}). ${lane.length ? `The lane merged ${lane.length}.` : 'The lane merged nothing.'}`);
-  // what waits for Tom first: it is the part he acts on
+  const historyKnown = !facts.unreadable.some(u => u.startsWith('the history'));
+  const checksKnown = !facts.unreadable.some(u => u.startsWith('the verifier'));
   const w = facts.waits;
-  const waitLines = [];
-  for (const x of w.needs_person) waitLines.push(`- ${prName(x)}: needs a person${x.given_up ? ' (practice given up)' : ''}, open ${x.nights} nights: ${x.why}`);
-  for (const x of w.awaiting_pin) waitLines.push(`- ${prName(x)}: awaiting its digest pin: ${x.why}`);
-  for (const x of w.blocked) waitLines.push(`- ${prName(x)}: blocked, ${BLOCKED_WORDS[x.class] || x.class}: ${x.why}`);
-  if (w.owner.length) waitLines.push(`- your decision: ${list(w.owner, x => `#${x.pr} ${x.name} (${x.class})`, max)}`);
-  if (w.history) waitLines.push(`- the history needs a person: ${w.history}`);
-  lines.push(waitLines.length ? `Waits for you (${waitLines.length}):` : 'Waits for you: nothing.');
-  lines.push(...waitLines);
-  // failed verdicts next, with who holds the regression (the claims step)
-  for (const x of facts.failed) {
-    const c = facts.claims.find(k => k.pr === x.pr);
-    const claim = !c ? '' : c.outcome === 'triage-holds' || c.outcome === 'lost' ? '; triage holds the regression' : c.outcome === 'claimed' ? '; the lane holds the regression' : c.outcome === 'would-claim' ? '; triage does not hold it' : c.outcome === 'not-in-set' ? '; triage and the gate do not see it' : c.outcome === 'unreadable' ? '; the claim could not be read' : '';
-    lines.push(`FAILED ${prName(x)}${x.practice ? ' (practice)' : ''}: ${x.why}${x.attribution === 'own-regression' ? ' (its own regression)' : ' (cannot tell which change)'}${claim}`);
+  const waitCount = w.needs_person.length + w.awaiting_pin.length + w.blocked.length + w.owner.length + (w.history ? 1 : 0);
+  const judged = [...facts.verified, ...facts.checking, ...facts.failed];
+  const practice = facts.mode !== 'live' || (judged.length > 0 && judged.every(x => x.practice));
+  const by = new Map();
+  for (const m of facts.merged) { const k = m.by === 'person' || m.by === 'unknown' ? actorOf({ kind: m.by, login: m.by_login }) : actorOf({ kind: m.by }); by.set(k, [...(by.get(k) || []), m]); }
+  const since = `since ${hhmm(Date.parse(facts.window_from), tz)} ${dayLabel(Date.parse(facts.window_from), tz)}`;
+  const notRecovered = facts.reverted.filter(x => x.recovered === false), recovered = facts.reverted.filter(x => x.recovered === true), unchecked = facts.reverted.filter(x => x.recovered === null);
+  const lines = [];
+  // 1. every count
+  lines.push(`Night of ${dayLabel(now, tz)} (lane ${facts.mode === 'live' ? 'live' : 'dry-run'}): ${plural(ticks, 'tick')}${finished ? '' : ' so far'}, the last at ${hhmm(now, tz)}${finished ? ' (the night\'s last)' : ''}.`);
+  lines.push(!historyKnown ? 'Merged and reverted: not known (the update history could not be read).'
+    : `Merged ${facts.merged.length} ${since}${facts.merged.length ? ` (${[...by].map(([who, ms]) => `${who} ${ms.length}`).join(', ')})` : ''}. Reverted ${facts.reverted.length}${facts.reverted.length ? ` (${[notRecovered.length && `${notRecovered.length} did NOT recover`, recovered.length && `${recovered.length} recovered`, unchecked.length && `${unchecked.length} not checked yet`].filter(Boolean).join(', ')})` : ''}.`);
+  lines.push(`${checksKnown ? `Health checks after merging${practice ? ' (practice: the lane watched merges it did not make)' : ''}: ${facts.verified.length} passed, ${facts.checking.length} still being checked, ${facts.failed.length} failed.` : 'Health checks after merging: not known (their records could not be read).'} Waiting for you: ${plural(waitCount, 'item')}.`);
+  // 2. detail
+  for (const x of notRecovered) lines.push(`- NOT RECOVERED after its revert: ${prName(x)}${x.to ? ` ${x.to}` : ''}${x.reason ? `: ${x.reason}` : ''}`);
+  if (waitCount) lines.push('Waiting for you:');
+  for (const x of w.needs_person) lines.push(`- ${prName(x)}: needs a person: its check has stayed open ${plural(x.nights, 'night')}${x.given_up ? ' and was given up' : ''}: ${x.why}`);
+  for (const x of w.awaiting_pin) lines.push(`- ${prName(x)}: waiting for the update that pins its new image: ${x.why}`);
+  for (const x of w.blocked) lines.push(`- ${prName(x)}: blocked, ${BLOCKED_WORDS[x.class] || x.class}: ${x.why}`);
+  if (w.owner.length) lines.push(`- your decision on ${plural(w.owner.length, 'update')} the lane may not make (${list([...new Set(w.owner.map(x => x.class))], x => x, 3)}): ${list(w.owner, x => `#${x.pr} ${x.name}`, max)}`);
+  if (w.history) lines.push(`- the update history needs a person: ${w.history}`);
+  if (recovered.length) lines.push(`- reverted and recovered: ${list(recovered, x => `${prName(x)}${x.to ? ` ${x.to}` : ''}`, max)}`);
+  if (unchecked.length) lines.push(`- reverted, recovery not checked yet: ${list(unchecked, x => `${prName(x)}${x.to ? ` ${x.to}` : ''}`, max)}`);
+  for (const [who, ms] of by) lines.push(`- merged by ${who}: ${list(ms, m => `${prName(m)}${m.to ? ` ${m.to}` : ''}`, max)}`);
+  if (checksKnown) {
+    for (const x of facts.failed) {
+      const c = facts.claims.find(k => k.pr === x.pr);
+      const who = claimWords(c);
+      lines.push(`- FAILED its health check: ${prName(x)}${x.practice ? ' (practice)' : ''}: ${x.why}; ${x.attribution === 'own-regression' ? 'caused by this update (no other change reached the app)' : 'another change reached the same app, so it cannot tell which one caused it'}${who ? `; ${who}` : ''}`);
+    }
+    if (facts.verified.length) lines.push(`- passed: ${list(facts.verified, x => `#${x.pr}`, max * 2)}`);
+    if (facts.checking.length) lines.push(`- still being checked: ${list(facts.checking, x => `#${x.pr} (${x.why || x.verdict})`, max)}`);
   }
-  // merged, by whom
-  if (!facts.unreadable.some(u => u.startsWith('the history'))) {
-    const by = new Map();
-    for (const m of facts.merged) { const k = m.by === 'person' || m.by === 'unknown' ? actorOf({ kind: m.by, login: m.by_login }) : actorOf({ kind: m.by }); by.set(k, [...(by.get(k) || []), m]); }
-    const since = `since ${hhmm(Date.parse(facts.window_from), tz)} ${dayLabel(Date.parse(facts.window_from), tz)}`;
-    lines.push(facts.merged.length ? `Merged ${since} (${facts.merged.length}):` : `Merged ${since}: nothing.`);
-    for (const [who, ms] of by) lines.push(`- ${who} ${ms.length}: ${list(ms, m => `${prName(m)}${m.to ? ` ${m.to}` : ''}`, max)}`);
-  } else lines.push('Merged: not known (the history could not be read).');
-  // verified, still being checked, failed
-  const practice = facts.mode !== 'live' || [...facts.verified, ...facts.checking, ...facts.failed].every(x => x.practice);
-  if (facts.unreadable.some(u => u.startsWith('the verifier'))) lines.push('Checks: not known (the verifier\'s records could not be read).');
-  else {
-    lines.push(`Checks${practice ? ' (practice, on merges the lane did not make)' : ''}: verified ${facts.verified.length ? list(facts.verified, x => `#${x.pr}`, max * 2) : 'none'}; still checking ${facts.checking.length ? list(facts.checking, x => `#${x.pr} (${x.verdict})`, max) : 'none'}${facts.failed.length ? `; failed ${list(facts.failed, x => `#${x.pr}`, max)} (above)` : ''}.`);
-  }
-  lines.push(facts.reverted.length ? `Reverted: ${list(facts.reverted, x => `${prName(x)} ${x.type === 'recovery-verified' ? 'recovered' : x.type === 'recovery-failed' ? 'NOT recovered' : 'revert merged'}`, max)}.` : 'Reverted: none.');
   return fit(lines, cfg.max_bytes || 1000);
 }
 
@@ -188,9 +213,13 @@ export function composeMorning({ now, mode, rules, prevText = null, records, ver
   const prev = parseMorning(prevText);
   const facts = composeFacts({ now, mode, rules, prev, records, verify, doc, historyNote, claims });
   const ticks = prev?.night === facts.night && Number.isInteger(prev.ticks_completed) ? prev.ticks_completed + 1 : 1;
-  const { text, cut } = composeText(facts, { now, cfg, tz, ticks, ticksExpected: cfg.ticks_per_night });
-  const morning = { schema: SUMMARY_SCHEMA, night: facts.night, composed_at: iso(now), window_from: facts.window_from, ticks_completed: ticks, ticks_expected: cfg.ticks_per_night,
-    last_tick_local: hhmm(now, tz), expected_last_tick_local: cfg.last_tick_local, mode, bytes: bytes(text), lines_cut: cut, text, facts };
-  const delivery = { morning_text: text, morning_night: facts.night, morning_composed_at: morning.composed_at, morning_ticks: String(ticks), morning_ticks_expected: String(cfg.ticks_per_night), morning_last_tick: morning.last_tick_local, morning_mode: mode };
+  // finished: this tick is the night's last one (review L6). The count is information only: the
+  // night the clocks go forward has 16 ticks, the night they go back may have more than 20.
+  const last = hhmm(now, tz);
+  const finished = last >= cfg.last_tick_local;
+  const { text, cut } = composeText(facts, { now, cfg, tz, ticks, finished });
+  const morning = { schema: SUMMARY_SCHEMA, night: facts.night, composed_at: iso(now), window_from: facts.window_from, ticks_completed: ticks, finished,
+    last_tick_local: last, expected_last_tick_local: cfg.last_tick_local, mode, bytes: bytes(text), lines_cut: cut, text, facts };
+  const delivery = { morning_text: text, morning_night: facts.night, morning_composed_at: morning.composed_at, morning_ticks: String(ticks), morning_last_tick: last, morning_last_tick_expected: cfg.last_tick_local, morning_mode: mode };
   return { ok: true, morning, delivery };
 }

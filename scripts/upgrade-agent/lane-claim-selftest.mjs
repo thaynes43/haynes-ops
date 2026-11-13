@@ -246,26 +246,28 @@ try {
     ok(C.claimStatus({ found: true, cm: { data: {} } }, SIG.sig).state === 'unreadable', 'no resourceVersion: unreadable (nothing to write against)');
   }
 
+  // the shipped gate.sh and page.sh against the fake cluster, its clock pinned to nowS
+  const gate = (stateData, nowS = NOW_S) => {
+    const w = world({ cms: stateData === undefined ? {} : { 'upgrade-remediation-state': stateData } });
+    const curlLog = join(w.dir, 'curl.log');
+    writeFileSync(curlLog, '');
+    // NOW is the gate's own clock (date -u +%s): pin it with a fake date that answers %s
+    const fakeDate = join(w.dir, 'bin');
+    mkdirSync(fakeDate);
+    const realDate = spawnSync('bash', ['-c', 'command -v date'], { encoding: 'utf8' }).stdout.trim();
+    writeFileSync(join(fakeDate, 'date'), `#!/usr/bin/env bash\nfor a in "$@"; do [ "$a" = "+%s" ] && { echo ${nowS}; exit 0; }; done\nexec ${realDate} "$@"\n`);
+    chmodSync(join(fakeDate, 'date'), 0o755);
+    // the ConfigMap mounts the scripts 0555; git does not carry the mode, so copy them
+    const gd = join(w.dir, 'gate'); mkdirSync(gd);
+    for (const f of ['gate.sh', 'page.sh']) { writeFileSync(join(gd, f), readFileSync(join(GATE_RES, f))); chmodSync(join(gd, f), 0o755); }
+    const r = spawnSync('bash', [join(gd, 'gate.sh')], { env: { ...w.env, PATH: `${fakeDate}:${w.env.PATH}`, COORD_LIB: LIB, PUSHOVER_TOKEN: 'test-token', PUSHOVER_USER_KEY: 'test-user', FAKE_CURL_LOG: curlLog, PROMETHEUS_URL: 'http://prometheus.test:9090' }, encoding: 'utf8' });
+    const pages = readFileSync(curlLog, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
+    return { r, pages, w, flux: pages.filter(p => p.some(a => /^title=.*critical flux/.test(a))), podsP: pages.filter(p => p.some(a => /^title=.*critical pods/.test(a))) };
+  };
+
   // ── 7. the gate ───────────────────────────────────────────────────────────────────
   section('7. the gate reads the lane\'s claim');
   {
-    const gate = (stateData, nowS = NOW_S) => {
-      const w = world({ cms: stateData === undefined ? {} : { 'upgrade-remediation-state': stateData } });
-      const curlLog = join(w.dir, 'curl.log');
-      writeFileSync(curlLog, '');
-      // NOW is the gate's own clock (date -u +%s): pin it with a fake date that answers %s
-      const fakeDate = join(w.dir, 'bin');
-      mkdirSync(fakeDate);
-      const realDate = spawnSync('bash', ['-c', 'command -v date'], { encoding: 'utf8' }).stdout.trim();
-      writeFileSync(join(fakeDate, 'date'), `#!/usr/bin/env bash\nfor a in "$@"; do [ "$a" = "+%s" ] && { echo ${nowS}; exit 0; }; done\nexec ${realDate} "$@"\n`);
-      chmodSync(join(fakeDate, 'date'), 0o755);
-      // the ConfigMap mounts the scripts 0555; git does not carry the mode, so copy them
-      const gd = join(w.dir, 'gate'); mkdirSync(gd);
-      for (const f of ['gate.sh', 'page.sh']) { writeFileSync(join(gd, f), readFileSync(join(GATE_RES, f))); chmodSync(join(gd, f), 0o755); }
-      const r = spawnSync('bash', [join(gd, 'gate.sh')], { env: { ...w.env, PATH: `${fakeDate}:${w.env.PATH}`, COORD_LIB: LIB, PUSHOVER_TOKEN: 'test-token', PUSHOVER_USER_KEY: 'test-user', FAKE_CURL_LOG: curlLog, PROMETHEUS_URL: 'http://prometheus.test:9090' }, encoding: 'utf8' });
-      const pages = readFileSync(curlLog, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
-      return { r, pages, w, flux: pages.filter(p => p.some(a => /^title=.*critical flux/.test(a))), podsP: pages.filter(p => p.some(a => /^title=.*critical pods/.test(a))) };
-    };
     const working = C.laneEntry({ pr: 4869, mine: MINE, now: NOW - 600e3, workSeconds: 10800, note: 'night lane' });
     const g1 = gate({ [SIG.sig]: JSON.stringify(working) });
     ok(g1.r.status === 0 && g1.flux.length === 0 && g1.podsP.length === 0 && /coordination sig=.* phase=inflight: nothing to page/.test(g1.r.stderr), 'a working lane claim: the gate is silent (phase inflight)', g1.r.stderr.split('\n').filter(l => /coordination|paged/.test(l)).join(' | ').slice(0, 400));
@@ -338,6 +340,88 @@ try {
     ok(u.ok && w.entry(SIG.sig).lane_state === 'revert-failed' && w.entry(SIG.sig).result === 'failed', 'updateClaim (story 753): revert-failed -> result failed');
     ok(!C.updateClaim({ sig: SIG.sig, pr: 9999, laneState: 'reverted', now: NOW, deps: laneDeps(w, SIG) }).ok, 'updateClaim refuses a claim that is not this PR\'s');
     ok(!C.updateClaim({ sig: SIG.sig, pr: 4869, laneState: 'bogus', now: NOW, deps: laneDeps(w, SIG) }).ok, 'updateClaim refuses an unknown state');
+  }
+
+  // ── 10. the review of the branch (fix round) ────────────────────────────────────────
+  section('10. the review: the gate on its own clock (M2), the moved signature (L10), F4 (L7), and the surviving mutations');
+  {
+    const e = (o = {}) => JSON.stringify({ ...C.laneEntry({ pr: 4869, mine: MINE, now: NOW - 600e3, workSeconds: 10800, note: 'night lane' }), ...o });
+    // M2: a claim from the future is not believed; the cap is on the gate's silence
+    const y10 = String(NOW_S + 10 * 365 * 86400);
+    const gf = gate({ [SIG.sig]: e({ claimed_at: y10, until: String(Number(y10) + 3600), first_seen: y10 }) });
+    ok(gf.flux.length === 1, 'claimed_at ten years ahead, until an hour after it: not believed, the gate pages (was silent for years)', gf.r.stderr.split('\n').filter(l => /coordination/.test(l)).join(' | ').slice(0, 300));
+    const gd = gate({ [SIG.sig]: e({ claimed_at: String(NOW_S + 86400), until: String(NOW_S + 86400 + 3600), first_seen: String(NOW_S + 86400) }) });
+    ok(gd.flux.length === 1, 'claimed_at a day ahead: the gate pages');
+    const gs = gate({ [SIG.sig]: e({ claimed_at: String(NOW_S + 200), until: String(NOW_S + 3600), first_seen: String(NOW_S + 200) }) });
+    ok(gs.flux.length === 0, 'claimed_at 200 s ahead (within CLOCK_SKEW_SECONDS, 300): believed, silent');
+    const gu = gate({ [SIG.sig]: e({ claimed_at: String(NOW_S + 200), until: String(NOW_S + 100), first_seen: String(NOW_S - 3600) }) });
+    ok(gu.flux.length === 1, 'until before claimed_at (and NOW before until): not understood, read as today, pages (mutation: no until >= claimed_at check)');
+    const gc = gate({ [SIG.sig]: e({ claimed_at: String(NOW_S - 3600), until: String(NOW_S - 3600 + 25200), first_seen: String(NOW_S - 3600) }) });
+    ok(gc.flux.length === 1, 'a claim 7 hours long (over the 6-hour cap), not yet past until: not understood, read as today (an hour past the 40-minute grace), pages (mutation: the cap disabled)');
+    const gz = gate({ [SIG.sig]: e({ claimed_at: `0${NOW_S - 600}`, first_seen: String(NOW_S - 3600) }) });
+    ok(gz.flux.length === 1, 'a leading zero (octal to bash arithmetic): not understood, read as today');
+    const gr = gate({ [SIG.sig]: JSON.stringify({ class: 'upgrade', attempted: '1', result: 'none', first_seen: String(NOW_S + 86400), last_paged: '0' }) });
+    ok(gr.flux.length === 1, 'today\'s reading, a first_seen a day ahead (remediation_phase): its grace counts as spent, the gate pages (was silent)');
+    const gr2 = gate({ [SIG.sig]: JSON.stringify({ class: 'upgrade', attempted: '1', result: 'none', first_seen: String(NOW_S + 120), last_paged: '0' }) });
+    ok(gr2.flux.length === 0, 'today\'s reading, a first_seen 120 s ahead (within the tolerance): in flight, silent as before');
+    const gsh = readFileSync(join(GATE_RES, 'gate.sh'), 'utf8');
+    ok(/CLOCK_SKEW_SECONDS="\$\{CLOCK_SKEW_SECONDS:-300\}"/.test(gsh), 'the tolerance is named: CLOCK_SKEW_SECONDS, 300');
+    // L10: a moved signature pages now, with the true note
+    const gm = gate({ cccccccccccc: e({ ids: ['flux/HelmRelease/media/seerr'] }) });
+    const note = gm.flux[0]?.find(a => a.startsWith('message=')) || '';
+    ok(gm.flux.length === 1 && /the night lane is reverting #4869 \(claim cccccccccccc, until [0-9T:-]+Z\) and holds flux\/HelmRelease\/media\/seerr; the rest of this set \(flux\/Kustomization\/media\/seerr, pod\/ai\/kokoro-6dcbb966bf-c8z88, pod\/media\/seerr-bb94554fd-qd4fm\) has no owner/.test(note) && !/not attributable to a recent upgrade/.test(note),
+      'a set that moved since the lane claimed part of it: the gate pages, naming the lane\'s PR and ids and saying the rest has no owner', note.slice(0, 400));
+    const gm2 = gate({ cccccccccccc: e({ ids: ['flux/HelmRelease/media/seerr'], until: String(NOW_S - 60), claimed_at: String(NOW_S - 3600) }) });
+    ok(gm2.flux.length === 1 && gm2.flux[0].some(a => /not attributable to a recent upgrade/.test(a)), 'a lane claim past its bound under another signature: today\'s note');
+    // L7: the morning summary's Jobs never merge, so F4 does not wait for them
+    const job = (meta, done = false) => ({ metadata: { name: 'x-1', ...meta }, status: done ? { completionTime: 't' } : {} });
+    const mj = M.mergingJobs({ items: [job({ ownerReferences: [{ kind: 'CronJob', name: 'upgrade-health-gate-morning-summary' }] }), job({ name: 'manual', labels: { 'app.kubernetes.io/controller': 'morning-summary' } })] }, { found: true, cm: { data: {} } });
+    ok(mj.readable && mj.active.length === 0, 'F4: a running morning-summary Job (by its CronJob, or by its controller label) is not one that can merge', JSON.stringify(mj));
+    ok(M.mergingJobs({ items: [job({ ownerReferences: [{ kind: 'CronJob', name: 'something-new' }] })] }, { found: true, cm: { data: {} } }).active.length === 1, 'an unknown Job still counts (fail closed: the control)');
+    // surviving mutation: triage's create counted as claimed on AlreadyExists (losing a create race to the lane)
+    const w3 = world();
+    const hookOut = join(w3.dir, 'hook.out');
+    const t3 = harness(w3, ['state_claim', SIG.sig, SIG.ids.join('\n')], {
+      FAKE_KUBE_HOOK: JSON.stringify(['node', join(ROOT, 'scripts/upgrade-agent/test-lane-claim-hook.mjs')]), FAKE_KUBE_HOOK_ONCE: join(w3.dir, 'hook.once'), FAKE_HOOK_OUT: hookOut,
+      FIXTURE: FX_PATH, SIG: SIG.sig, IDS: JSON.stringify(SIG.ids), NOW_MS: String(NOW), LIVE: '1' });
+    ok(t3.status !== 0 && /claim refused/.test(t3.stderr) && /standing down: not triage's/.test(t3.stderr) && w3.entry(SIG.sig)?.holder === 'lane', 'ConfigMap absent at triage\'s read, the lane creates it first: triage\'s create is AlreadyExists, it reads again and stands down', t3.stderr.slice(0, 300));
+    // surviving mutation: a lane claim under another signature holding for ever on the lane's side
+    const w4 = world({ cms: { 'upgrade-remediation-state': { eeeeeeeeeeee: JSON.stringify({ holder: 'lane', pr: '1234', lane_state: 'working', attempted: '1', result: 'inprogress', claimed_at: String(NOW_S - 20000), until: String(NOW_S - 9200), ids: MINE, first_seen: String(NOW_S - 20000) }) } } });
+    ok(C.claimStep({ rec: REC, live: true, now: NOW, work: WORK, deps: laneDeps(w4, SIG) }).outcome === 'claimed', 'another update\'s lane claim past its own until does not hold this regression for ever (the lane claims it)');
+    const w4b = world({ cms: { 'upgrade-remediation-state': { eeeeeeeeeeee: JSON.stringify({ holder: 'lane', pr: '1234', lane_state: 'working', attempted: '1', result: 'inprogress', claimed_at: String(NOW_S - 600), until: String(NOW_S + 9000), ids: MINE, first_seen: String(NOW_S - 600) }) } } });
+    ok(C.claimStep({ rec: REC, live: true, now: NOW, work: WORK, deps: laneDeps(w4b, SIG) }).outcome === 'lane-holds', 'the same claim before its until: it holds (the control)');
+    // surviving mutation: after a write error that is not a conflict, the lane reads back whether its claim landed
+    const w5 = world({ cms: { 'upgrade-remediation-state': {} } });
+    const d5 = laneDeps(w5, SIG);
+    const s5 = C.claimStep({ rec: REC, live: true, now: NOW, work: WORK, deps: { ...d5, write: (verb, m) => { d5.write(verb, m); return { ok: false, conflict: false, detail: 'timed out waiting for the server' }; } } });
+    ok(s5.outcome === 'claimed' && s5.revert_allowed && /landed \(read back after: timed out/.test(s5.why), 'a write that landed but reported an error (a timeout): read back, it is the lane\'s claim', JSON.stringify(s5).slice(0, 300));
+    const s5b = C.claimStep({ rec: REC, live: true, now: NOW, work: WORK, deps: { ...laneDeps(world({ cms: { 'upgrade-remediation-state': {} } }), SIG), write: () => ({ ok: false, conflict: false, detail: 'Forbidden' }) } });
+    ok(s5b.outcome === 'lost' && !s5b.revert_allowed && /Forbidden/.test(s5b.why), 'a write refused (RBAC) that did not land: no revert');
+    // surviving mutation: triage's early lane-hold exit (behaviour, not source order): the shipped
+    // triage.sh, its fixed paths pointed at stubs, against the fake cluster
+    const tri = (cms) => {
+      const w = world({ cms });
+      const d = join(w.dir, 'tri'); mkdirSync(d);
+      writeFileSync(join(d, 'gh_token'), 'not-a-token');
+      writeFileSync(join(d, 'summon.sh'), `#!/usr/bin/env bash\necho SUMMONED >> ${JSON.stringify(join(d, 'summoned'))}\n`);
+      for (const b of ['git', 'gh']) { writeFileSync(join(d, b), '#!/usr/bin/env bash\nexit 128\n'); chmodSync(join(d, b), 0o755); }
+      // triage's clock (date -u +%s) pinned to the fixture's, like the gate's
+      const realDate = spawnSync('bash', ['-c', 'command -v date'], { encoding: 'utf8' }).stdout.trim();
+      writeFileSync(join(d, 'date'), `#!/usr/bin/env bash\nfor a in "$@"; do [ "$a" = "+%s" ] && { echo ${NOW_S}; exit 0; }; done\nexec ${realDate} "$@"\n`); chmodSync(join(d, 'date'), 0o755);
+      const src = readFileSync(join(RES, 'triage.sh'), 'utf8').replaceAll('/creds/gh_token', join(d, 'gh_token')).replaceAll('/opt/shepherd/run-shepherd.sh', join(d, 'summon.sh')).replaceAll('/opt/coordination/escalate.sh', join(d, 'summon.sh'));
+      writeFileSync(join(d, 'triage.sh'), src);
+      const urls = join(d, 'urls');
+      writeFileSync(urls, '');
+      const r = spawnSync('bash', [join(d, 'triage.sh')], { env: { ...w.env, PATH: `${d}:${w.env.PATH}`, COORD_LIB: LIB, PROMETHEUS_URL: 'http://prometheus.test:9090', FAKE_CURL_URLS: urls, HOME: d }, encoding: 'utf8' });
+      return { r, w, github: readFileSync(urls, 'utf8').split('\n').filter(u => /api\.github\.com/.test(u)).length, summoned: existsSync(join(d, 'summoned')) };
+    };
+    const held = tri({ 'upgrade-remediation-state': { [SIG.sig]: e() } });
+    ok(held.r.status === 0 && /is held by the night lane for #4869 .* — not triage's: NOT summoning remediation and NOT writing its entry/.test(held.r.stderr) && held.github === 0 && !held.summoned && held.w.writes().length === 0,
+      'triage.sh, run: a signature the lane holds: it says so, reads nothing from GitHub, attributes nothing, summons nothing, writes nothing', held.r.stderr.split('\n').slice(-4).join(' | ').slice(0, 400));
+    const moved = tri({ 'upgrade-remediation-state': { cccccccccccc: e({ ids: ['flux/HelmRelease/media/seerr'] }) } });
+    ok(moved.r.status === 0 && /the night lane holds cccccccccccc for #4869/.test(moved.r.stderr) && moved.github === 0 && moved.w.writes().length === 0, 'triage.sh, run: a moved signature the lane holds part of: the same', moved.r.stderr.split('\n').slice(-4).join(' | ').slice(0, 500));
+    const free = tri({ 'upgrade-remediation-state': {} });
+    ok(free.r.status === 0 && free.github >= 1 && /attribution|merge to main/.test(free.r.stderr) && !/held by the night lane/.test(free.r.stderr), 'triage.sh, run, no lane claim: it reads GitHub and attributes as before (the control)', free.r.stderr.split('\n').slice(-3).join(' | ').slice(0, 300));
   }
 } finally {
   rmSync(TMP, { recursive: true, force: true });
