@@ -12,7 +12,9 @@
 #   a session of today exists    -> exit 0 before any create;
 #   403, 409, 422, 429           -> exit 2, one create, no retry that day;
 #   503 (unconfirmed)            -> re-read the list, then retry with the same key;
-#   still unconfirmed            -> exit 3 after three attempts.
+#   still unconfirmed            -> exit 3 after three attempts;
+#   no connection at all         -> exit 3 after three attempts, no create;
+#   the list refused (401, 403)  -> exit 2, no create.
 # The token must never reach a log, and the worst case must fit the Job's
 # activeDeadlineSeconds.
 #
@@ -160,12 +162,17 @@ TODAY_SUFFIX_DONE="{\"status\":200,\"body\":{\"sessions\":[{\"name\":\"$NAME-2\"
 TODAY_NAME_ONLY="{\"status\":200,\"body\":{\"sessions\":[{\"name\":\"$NAME\",\"outcome\":{\"state\":\"failed\"}}]}}"
 YESTERDAY_DONE="{\"status\":200,\"body\":{\"sessions\":[{\"name\":\"wo-cigar-curate-$YESTERDAY\",\"idempotencyKey\":\"cigar-curate-$YESTERDAY\",\"outcome\":{\"state\":\"done\"}}]}}"
 NO_LIST='{"status":200,"body":{"items":[]}}'
-CREATED="{\"status\":201,\"body\":{\"name\":\"$NAME\",\"mode\":\"task\",\"lane\":\"curation\",\"outcome\":{\"state\":\"pending\"}}}"
+# A fresh create's 201, as the API's view() renders a session just created
+# (dev-env internal/apiserver/summon_create.go returns view(sess, false); view.go;
+# apiv1/types.go Session): status is still empty, so phase is "Pending" (phaseOf in
+# sessions.go) and there is no outcome, which only a report sets.
+CREATED="{\"status\":201,\"body\":{\"uid\":\"5b0c6a54-3f1e-4c7a-9d2e-1f8a7b6c5d4e\",\"name\":\"$NAME\",\"repo\":\"haynes-ops\",\"agent\":\"claude\",\"mode\":\"task\",\"model\":\"claude-opus-5-5\",\"effort\":\"xhigh\",\"profile\":\"ops\",\"limits\":{\"timeout\":\"2h0m0s\"},\"parent\":\"upgrade-agent/cigar-curation\",\"caller\":\"upgrade-agent.cigar-curation\",\"lane\":\"curation\",\"idempotencyKey\":\"$KEY\",\"createdAt\":\"2026-11-14T15:15:04Z\",\"phase\":\"Pending\"}}"
 REUSED="{\"status\":200,\"body\":{\"name\":\"$NAME\",\"mode\":\"task\",\"lane\":\"curation\",\"outcome\":{\"state\":\"running\"}}}"
 NAMELESS='{"status":201,"body":{}}'
 refusal() { printf '{"status":%s,"body":{"error":{"code":"%s","message":"%s"}}}' "$1" "$2" "$3"; }
 R403="$(refusal 403 forbidden "summoning creates of kind task are not switched on: the operator's --summon-create-kinds does not name task (DESIGN-064 5.9)")"
 R403_LIST="$(refusal 403 forbidden "upgrade-agent/cigar-curation may not call this API")"
+R401_LIST="$(refusal 401 unauthenticated "the token was not accepted for audience dev-env-operator")"
 R409="$(refusal 409 conflict "the idempotency key is held by a different request")"
 R422="$(refusal 422 invalid "data.extra: not in the entry's brief.fields")"
 R429="$(refusal 429 limit_exceeded "the caller's queued limit is reached")"
@@ -192,6 +199,7 @@ n_posts() { local n; n="$(count POST)"; if [ "$n" = "$1" ]; then ok "$CASE: $1 c
 n_gets() { local n; n="$(count GET)"; if [ "$n" = "$1" ]; then ok "$CASE: $1 list read(s)"; else bad "$CASE: $n list reads, want $1"; fi; }
 pauses() { local p; p="$(tr '\n' ' ' < "$WORK/sleeps" | sed 's/ $//')"; if [ "$p" = "$1" ]; then ok "$CASE: pauses [${1}]"; else bad "$CASE: pauses [${p}], want [${1}]"; fi; }
 says() { if grep -qF -- "$2" "$OUT"; then ok "$CASE: $1"; else bad "$CASE: $1 (output: $(tail -n 3 "$OUT" | tr '\n' ' '))"; fi; }
+says_line() { if grep -qxF -- "$2" "$OUT"; then ok "$CASE: $1"; else bad "$CASE: $1, want the line [$2] (output: $(tail -n 3 "$OUT" | tr '\n' ' '))"; fi; }
 says_not() { if grep -qF -- "$2" "$OUT"; then bad "$CASE: $1"; else ok "$CASE: $1"; fi; }
 order() {  # the methods of the requests, in order, as one word: GPGP...
   local o; o="$(jq -r '.method[0:1]' "$WORK/requests" | tr -d '\n')"
@@ -199,10 +207,13 @@ order() {  # the methods of the requests, in order, as one word: GPGP...
 }
 
 # ── 1. 201: list, then one create with exactly the request 6.11 names ──────────────
+if jq -e '.status == 201 and .body.phase == "Pending" and (.body | has("outcome") | not)' <<<"$CREATED" >/dev/null 2>&1; then
+  ok "the fake 201 is a fresh create's view: phase Pending, no outcome"
+else bad "the fake 201 is not a fresh create's view (phase Pending, no outcome)"; fi
 scenario "201" "$EMPTY" "$CREATED"
 run_summon 0
 n_posts 1; order GP; pauses ""
-says "logs the session it started" "cigar-curation: session $NAME pending"
+says_line "logs the session it started, in Pending" "cigar-curation: session $NAME Pending"
 says "the client logs the 201" "dev-env-api: POST /v1/sessions HTTP 201"
 body="$(jq -s -r '[.[] | select(.method == "POST")][0].body' "$WORK/requests")"
 if jq -e --arg n "$NAME" --arg k "$KEY" --arg d "$DAY" --arg r "$POD" '
@@ -264,7 +275,7 @@ n_posts 2; order GPGP; pauses "60"
 if [ "$(jq -s -r '[.[] | select(.method == "POST") | .body] | unique | length' "$WORK/requests")" = 1 ]; then
   ok "503 then 201: the retry sends the same request, same key"
 else bad "503 then 201: the retry changed the request"; fi
-says "logs the session it started" "cigar-curation: session $NAME pending"
+says_line "logs the session it started, in Pending" "cigar-curation: session $NAME Pending"
 scenario "503 then the session exists" "$EMPTY,$TODAY_RUNNING" "$R503,$CREATED"
 run_summon 0
 n_posts 1; order GPG; pauses "60"
@@ -286,6 +297,12 @@ scenario "list refused" "$R403_LIST" "$CREATED"
 run_summon 2
 n_posts 0; pauses ""
 says "says no create" "no create for $DAY"
+scenario "list 401" "$R401_LIST" "$CREATED"
+run_summon 2
+n_posts 0; n_gets 1; pauses ""
+says "the client logs the 401" "dev-env-api: GET /v1/sessions HTTP 401"
+says "the API's reason reaches the log" "refused: unauthenticated: the token was not accepted for audience dev-env-operator"
+says "says no create" "refused reading this caller's sessions (the client's line above); no create for $DAY"
 scenario "list 503 then empty" "$R503,$EMPTY" "$CREATED"
 run_summon 0
 n_posts 1; order GGP; pauses "60"
@@ -334,7 +351,24 @@ if [ "$(grep -c -- '^+' "$OUT")" -gt 30 ]; then ok "forced xtrace traced summon.
 else bad "forced xtrace produced too few lines to prove anything"; fi
 if grep -qF -- "$TOKEN" "$OUT"; then bad "the token appears in a forced xtrace line"; else ok "the token appears in no line of a forced xtrace"; fi
 
-# ── 9. the worst case fits the Job's activeDeadlineSeconds ──────────────────────────
+# ── 9. no connection: the fake server stopped ───────────────────────────────────────
+# Last of the cases that send, because it stops the server for good. Every read gets
+# no answer (HTTP 000), so there is no create, three attempts, two pauses, exit 3.
+kill "$SERVER_PID" 2>/dev/null
+wait "$SERVER_PID" 2>/dev/null
+SERVER_PID=""
+scenario "server stopped" "$EMPTY" "$CREATED"
+run_summon 3
+pauses "60 60"
+if [ ! -s "$WORK/requests" ]; then ok "$CASE: the stopped server received nothing"; else bad "$CASE: the stopped server recorded a request"; fi
+n=$(grep -c -- '^dev-env-api: GET /v1/sessions HTTP 000$' "$OUT")
+if [ "$n" = 4 ]; then ok "$CASE: four list reads got no answer (HTTP 000), three attempts and the last read"
+else bad "$CASE: $n list reads logged HTTP 000, want 4"; fi
+says_not "no create is attempted" "POST /v1/sessions"
+says "attempt 3 of 3 sends no create" "could not read this caller's sessions; no create on this attempt (attempt 3 of 3)"
+says "says nothing was confirmed" "no session for $DAY confirmed after 3 attempts"
+
+# ── 10. the worst case fits the Job's activeDeadlineSeconds ─────────────────────────
 deadline="$(sed -n 's/^ *activeDeadlineSeconds: *\([0-9][0-9]*\).*/\1/p' "$HELMRELEASE")"
 attempts="$(sed -n 's/^ATTEMPTS=\([0-9][0-9]*\)$/\1/p' "$SUMMON")"
 pause="$(sed -n 's/^PAUSE=\([0-9][0-9]*\)$/\1/p' "$SUMMON")"
