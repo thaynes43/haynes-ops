@@ -213,9 +213,9 @@ Tracker: https://work.haynesnetwork.com/projects/haynes-engineering/work_package
 Post both and read them back:
 
 ```bash
-gh pr comment 4764 -R thaynes43/haynes-ops --body-file "$EV/owner-answer.md"
-gh api repos/thaynes43/haynes-ops/issues/4764/comments \
-  --jq '[.[] | select(.user.login == "haynes-dev-bot[bot]")] | last | {id, html_url, created_at}'
+gh pr comment 4764 -R thaynes43/haynes-ops --body-file "$EV/owner-answer.md"   # prints the comment URL
+gh api --paginate repos/thaynes43/haynes-ops/issues/4764/comments \
+  --jq '.[] | select(.user.login == "haynes-dev-bot[bot]") | "\(.id) \(.html_url) \(.created_at)"' | tail -1
 python3 -I -B scripts/openproject/opwork.py comment <story> - < "$EV/owner-answer.md"
 python3 -I -B scripts/openproject/opwork.py show <story> --history | tail -5
 ```
@@ -615,8 +615,12 @@ gh pr create -R "$REPO" --base main --head agent/revert-pr$PR \
 
 - Read any finding the advisory Claude review has posted, and answer it on the PR. Do not
   wait for one that has not arrived; answer it in the morning.
-- The merge deletes the branch, and with it the local worktree. Keep nothing unpushed
-  there.
+- The merge deletes the remote branch. `deliver_reviewed_pr.py` passes `--repo`, and with
+  it gh leaves the local branch and the worktree in place. Without `--repo`, gh has also
+  removed the local worktree (PR 4824, 2026-11-12). So keep nothing unpushed there. After
+  the merge, check `git -C ~/repos/haynes-ops worktree list`, and remove what is left:
+  `git -C ~/repos/haynes-ops worktree remove ~/work/revert-pr$PR`, then
+  `git -C ~/repos/haynes-ops branch -D agent/revert-pr$PR`.
 - **Confirm recovery.** Nothing verifies a revert yet (story 753). Read by hand: Flux Ready
   at the revert's commit; the pods back on the old version, Ready; no new restarts on two
   reads at least 600 seconds apart; the failing fact gone (the alert resolved, the
