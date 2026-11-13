@@ -1003,7 +1003,7 @@ PR-write phase in `run-night.mjs`. The settings are `night.pr_record` and `night
   text, then a fenced JSON block with schema `haynes.upgrade-lane/v1`. The JSON holds the
   tick's record from `upgrade-lane-state`, cut down to `night.pr_record.fields`: `schema`, `pr`, `head`, `fingerprint`, `lane`,
   `class`, `reason`, `rules`, `checks`, `backup`, `preapproval` (always `{}`), `schedule`,
-  `last_attempt`, `retry` and `updated`. It leaves out `gates`, `findings`, `files` and
+  `last_attempt`, `retry`, `terminal` (story 593: see below) and `updated`. It leaves out `gates`, `findings`, `files` and
   everything else in the state.
 - **The lane's identity** is the haynes-ops-bot GitHub App: REST `user.login`
   `haynes-ops-bot[bot]`, `user.type` `Bot`. The night CronJob mints its token from the same
@@ -1231,6 +1231,293 @@ record, except for `updated` and `last_attempt.at`. The other lists are `refused
 `summary.retry` holds `eligible`, `selected`, `attempts` (outcome and reason for each) and
 `by_state`.
 
+## The history of every attempt (story 593)
+
+Story 593 (<https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/593>)
+adds the history piece 1 remembers: ConfigMap `upgrade-agent/upgrade-ledger`, and beside it
+`upgrade-agent/upgrade-ledger-marker`. Both are runtime state, like `upgrade-lane-state`, and
+Flux does not manage them. The code is `upgrade-history.mjs`, and the settings are
+`night.history` in `upgrade-rules.json`. The records follow the format in
+`.agents/reference/upgrade-records.md`.
+
+**What this does, and what it does not.** The history *remembers*: every attempt, and the
+item states that outlive it, such as `reverted` (never merge this version again). Nothing
+reads it before a merge yet. Refusing a remembered version before a merge is the work of
+stories 753 and 556.
+
+### What a tick writes
+
+The phase runs once per tick, after the merge step, when the change lock is already
+released. `run-night.mjs` loads the module inside the guarded step, so a module that does
+not load is an ERROR line and the rest of the tick runs. Each event is a
+`haynes.upgrade-event/v1` record, built and checked by `record-format.mjs`. A tick writes
+each of these events once:
+
+| Event | When |
+|---|---|
+| `observed` | An open Renovate PR's item is seen for the first time, or its state (`needed`, `held`, `blocked`), lane or class changed. |
+| `closed` | The PR closed without a merge, by whoever GitHub says closed it: the shepherd as `shepherd`, a bot the lane does not know as `unknown` with its login. Also when Renovate replaced the item with a newer version on the same PR, whether the lane saw the newer version open or only at the merge (actor `renovate`). |
+| `merged` | Someone other than the lane merged it: Renovate's auto-merge, the shepherd, a session, a person, or `unknown` (another bot, its login kept). It goes on the item that was merged. A merge of a version the history remembers as `reverted` is recorded too (`merged`, from `reverted`; the lane is never an actor on that edge). When Renovate moved the PR to a newer version before it merged, the old item closes and the merge goes on the new one. A PR the lane never saw open is recorded with `recorded_by: backfill`. |
+| `revert-merged` | A merged PR titled `Revert "<title>"` whose body names (`Reverts #N`) a PR of exactly that title that the history holds as merged, merged by a session or a person. |
+
+In live mode the merge step's verdict also becomes events, through `eventsFromMergeStep()`.
+A refusal at the same head for the same reasons as the item's last refusal is recorded
+only once.
+
+**Nothing is written for:**
+
+- an unchanged item, or a rebase (a new head is the same item);
+- a record whose facts were not read (`facts-incomplete`), which names no item and does not
+  move an item to another PR (see below);
+- a fact the tick could not read, such as who closed a PR, who merged it, or its merge
+  commit. The next tick reads it again; the lane is never recorded as the closer.
+
+**Two PRs, one item.** When two open PRs carry the same item (the same package and
+version), the lowest PR speaks for it. A transient `facts-incomplete` on that PR does not
+hand the item to the other one.
+
+**Every item is named by the lane's own route.** That is the PR's package table, labels,
+title and files, read the way `gatherFacts` and `classify` read them, through
+`fromLaneRecord()`. A backfilled item is therefore the same item the lane computes for the
+same update while it is open.
+- When a PR's body cannot be read, or gives no package table (edited to empty, say), the
+  item is named from its title instead and marked `basis: "title"` in `data.items`.
+  `summary.history.total.title_items` counts these items. A title-named item is never
+  taken as a move to a newer version.
+- On the 2026-11-09 queue, all 30 real PRs get the same id by both routes
+  (`lane-history-selftest.mjs`).
+
+### The ConfigMaps
+
+| Object and key | Holds |
+|---|---|
+| `upgrade-ledger` `data.events` | One event per line, oldest first. Each line is the format's event without the constant `schema` key, without `id` (that is `eventId()` over item, type, time and attempt) and without a null `actor.login`. `unpack()` restores all three. |
+| `upgrade-ledger` `data.items` | For each item, what the events cannot say: `name`, `from`, `to`, `type` (update type), `pr` and, for an item named from a title, `basis`. Also `base`, the item's state when its earlier events rotated out, and `mirrored`, the terminal event its PR record now carries. |
+| `upgrade-ledger` `data.meta` | `schema` `haynes.upgrade-ledger/v1`; the backfill marker (`backfill.at`, `window`, `query`, `events`, `compare`); the last rotation; `mirror_halt`; `catch_up_mismatch` (a catch-up disagreement waiting for the next tick); and `tried` (`fate`, `mirror`: when each PR still waiting was last tried, for the fair order). |
+| `upgrade-ledger-marker` `data.marker` | `schema` `haynes.upgrade-ledger-marker/v1`, `created_at` and `backfilled_at`: that a history exists. |
+
+**Rotation.** `night.history.max_bytes` caps the bytes of `upgrade-ledger`'s data, which is
+what the API server limits to 1 MiB. It is set to 768 KiB, the same budget the lane state
+keeps. When the cap is reached, the oldest events go first, and an item whose events
+rotated out keeps its state in `items[id].base`:
+
+- `reverted` stays `reverted`;
+- an open item keeps its place, and so does an item whose attempt still owes work. That
+  includes a `merged_unverified` the lane merged, whose verification is owed (story 553);
+- an item that is `closed` or `done`, or `merged_unverified` after someone else merged it,
+  is forgotten once no event of it is left.
+
+**A merge of a remembered version.** If GitHub shows a merge of a version the history
+holds as `reverted`, it is recorded as an event (`merged`, from `reverted`, by whoever
+merged it; the lane is never an actor on that edge), and the tick that sees it logs
+`ERROR upgrade-night <mode>: HISTORY NEEDS A PERSON: … MERGED WHILE REMEMBERED: #<pr>
+(reverted)`. An item that was ever reverted is never forgotten by rotation.
+
+**Where an update lands is part of the item.** The format's item id has the place in it:
+the sorted paths the update changes, a fact of the pull request alone. It is not the lane's
+targets: a tuning of the lane's rules would otherwise re-key open items. Two PRs for the
+same package and version in different files are two items. When a PR's files change while
+it is open (Renovate rebased PR 4873 from two traefik apps to one after the other half
+merged as PR 4876), the old item closes as replaced and the new one is observed.
+
+**A file list GitHub cut off.** GitHub lists at most 100 files for a pull request (the
+`files` field gh reads). The lane's `gatherFacts` already ends a shorter list than
+`changedFiles` with `<file list truncated>`. The history's own reads ask for `changedFiles`
+and add the same marker, so the lane and the backfill build the same id from the same cut
+list. Such an item is marked `files_cut: true` in `data.items` and counted in
+`summary.history.total.cut_file_items` and the log line. On 2026-11-13 none of the 301
+Renovate PRs merged in 30 days, and none of the 17 open ones, had more than 100 files (the
+largest had 14).
+`rememberedReverted(historyItems(doc), name, version)` returns every item for that package
+and version, whatever its files, that a revert touches or touched. Each comes with `why`:
+`failed`, `reverting`, `reverted_unverified` (where every revert the history records today
+stays), `reverted`, or `ever-reverted` (merged again after its revert). Nothing decides a
+merge with it yet (stories 753 and 556).
+
+**Free text is guarded and bounded before it is stored.** Every free-text field of an event
+(`reason`, `merge_call`, `revert_branch`, `flux_revision`, `url`, the refusal lines,
+`evidence.checks`, `actor.login`) and each item's name passes the PR record's secret shapes
+(`secretShape()` in `night-merge.mjs`). A hit is replaced by a fixed placeholder, and the
+tick logs `REDACTED <field> of <item> (shaped like …)` at ERROR level: the field, never the
+text. The item's own package versions are exempt from the private-address shapes only
+(PR 4757's `==10.3.2.106` reads like 10.x.x.x); the PR record uses the same exemption. Then
+`fit()` cuts the event to the format's bounds with a visible mark (`…`, `… (+N more)`). A
+patterned field is never cut: validation refuses it instead.
+
+**Size** (measured in `lane-history-selftest.mjs`):
+
+- A stored line is about 440 bytes: 489 for an `observed` with a 160-character reason, 438
+  for a `merged`. An item's description adds about 130 bytes more.
+- With 5,000 merges of distinct items, the cap holds 1,370 of them (784,944 of 786,432
+  bytes).
+- The rate on 2026-11-12: 303 Renovate merges and 61 closures in 30 days, about 12 items a
+  day at one or two events each, plus the state changes of the 14 open PRs (not measured
+  yet). At about 20 events a day the cap holds about 75 days; at 17 a day, about 90.
+
+### The writes
+
+- **The history.** A server-side apply under field manager `upgrade-night-history`, always
+  with the `metadata.resourceVersion` the tick read. The API server answers 409 Conflict
+  when another writer changed the object since:
+  - `Store.Update` in kubernetes `staging/src/k8s.io/apiserver/pkg/registry/generic/registry/store.go`
+    compares the applied object's resourceVersion with the stored one.
+  - The apply patcher (`endpoints/handlers/patch.go`, `applyPatcher`) merges the applied
+    configuration, resourceVersion included, over the live object first.
+- **The first write.** When the object is missing, the tick creates it empty under
+  `upgrade-night-history-init`. A create through apply wipes the resourceVersion, so a
+  version on it guards nothing, and an apply also succeeds on an object that already
+  exists. So the tick reads what the create returned: if it already holds events, another
+  first writer got there first, and this tick writes nothing (a conflict). Otherwise the
+  tick writes at the version the create returned.
+- **Reading them.** The tick reads the marker first, then the history. A first writer
+  writes the history and then the marker, so this order cannot read a marker without its
+  history.
+- **The marker.** After the history it vouches for, the tick writes the marker under
+  `upgrade-night-history-marker`: once at the first write, and again when the backfill
+  completes. It is its own ConfigMap, so it never moves the resourceVersion of
+  `upgrade-lane-state`, which story 549's retry ledger writes depend on.
+- **A conflict or a failure** writes nothing. The log line reads
+  `ERROR upgrade-night <mode>: HISTORY NOT WRITTEN: …`, and kubectl's own text goes to the
+  Job log only. `summary.history.write` says `conflict` or `failed`. The next tick derives
+  the same events again; event ids are deterministic, so a duplicate line is dropped on
+  read.
+- **Stuck.** A history the tick cannot read (a line that is not a valid event), a history
+  that does not replay, an invalid `night.history`, or a history over the cap with
+  remembered items alone, is never overwritten. Each one reads
+  `HISTORY NOT WRITTEN: STUCK: …` at ERROR level on every tick, with `summary.history.write`
+  `stuck`.
+- **No effect on the rest of the tick.** None of this changes a merge verdict or the lock,
+  and the state write still happens.
+
+### The history was lost
+
+If `upgrade-ledger-marker` says a history exists but `upgrade-ledger` is absent or has no
+data (deleted, or emptied by hand), the tick writes nothing and logs on every tick:
+
+```text
+ERROR upgrade-night dryrun: HISTORY NOT WRITTEN: STUCK: …; the history was lost: upgrade-ledger-marker says a history exists (created …, backfilled …), but upgrade-ledger is absent. Nothing is written until a person restores upgrade-ledger or deletes upgrade-ledger-marker …
+```
+
+`summary.history.lost` carries the marker. A person does one of two things:
+
+- **Restore the history** from a copy, for example a saved `kubectl get cm upgrade-ledger
+  -o yaml` with `resourceVersion`, `uid` and `managedFields` removed, applied under the
+  history's own field manager:
+  `kubectl apply --server-side --field-manager=upgrade-night-history -f <file>`.
+  A session cannot write ConfigMaps in `upgrade-agent`, so this is the owner's to do.
+- **Accept the loss and start again:** `kubectl -n upgrade-agent delete cm
+  upgrade-ledger-marker`. The next tick starts a new history and backfills 30 days again.
+  The remembered `reverted` items are gone for good.
+
+### The backfill and the catch-up
+
+- **What is read.** With no backfill marker in `meta`, the tick lists the merged pull
+  requests of the last `backfill_days` (30) that become items: Renovate's (`gh pr list
+  --state merged --search "author:app/renovate merged:<since>..<until>"`, with body, labels
+  and files). It also lists the revert candidates (`"Revert in:title merged:…"`, any author).
+- **Split lists.** A list that reaches GitHub's search limit (`max_search_results`, 1,000)
+  is split in halves, at most 6 times. A list still at the limit is refused, never taken as
+  complete. On 2026-11-12 the 30 days held 303 Renovate PRs; all authors together held 845,
+  and the 1,000 limit would have cut a busier month.
+- **What is recorded.** Each merged Renovate PR becomes an item in `merged_unverified`,
+  with its `merged` event (actor, time, merge commit, labels in the reason), shaped like
+  the format's fixture `seq-backfill-renovate-automerge.json`. Only Renovate's PRs become
+  items; the others are not update items (accepted, comment 7383 on story 593).
+- **The count comparison** goes to `meta.backfill.compare` and to
+  `summary.history.backfill`. It compares two numbers: `github_count`, GitHub's own search
+  `total_count` for the same query and window, read separately from the list, against
+  `history_count`, the Renovate PRs of that window that the history holds. It also gives
+  `listed`, `recorded`, `shared_item`, `missing`, `reverts` and `match`.
+  - `match` is true only when GitHub's count equals both the list and what the history
+    holds, and none is missing.
+  - It is null, never true, when GitHub's count could not be read. The comparison is then
+    still owed: each later tick reads GitHub's count for the backfill's window again (one
+    search, the backfill is not re-run) until a count has been read. A mismatch is an
+    ERROR line on every tick until a later count matches. To re-run the backfill instead,
+    remove `meta.backfill` (the events are kept, and their ids make it idempotent).
+  - `shared_item` is a PR whose package and version another PR in the window already
+    carried: the format holds one item per package and version.
+- **Read-only run on 2026-11-12 17:33Z** (`run-night.mjs` without `--write-state`): GitHub
+  counted 303 merged Renovate PRs in the 30 days, 303 were listed, and the history would
+  hold 303 (298 on their own item, 5 through another PR's item), with none missing. Its
+  first tick would write 311 events (13 observed, 298 merged) in 182,804 bytes, with no item
+  named from a title. The history step took 16.6 seconds.
+- **The catch-up.** Each later tick reads the merges since the newest one the history
+  holds, less `catch_up_margin_hours` (24, for GitHub's search index). It records the PRs
+  it does not hold yet, and compares that window the same way in
+  `summary.history.catch_up`. The list and the count are read seconds apart for a window
+  that ends at the tick's start, so GitHub's search index can put a merge just before the
+  tick in one and not the other. A first disagreement is therefore an info line and a
+  summary field (`meta.catch_up_mismatch`). It becomes an ERROR when the next tick
+  disagrees again (`catch_up.repeated`). No wait is added.
+- **The budget.** Per tick, at most `max_pr_reads_per_tick` (30) per-PR reads: a PR's fate,
+  who closed it, a revert's body, a reverted PR's title, a record to mirror. No read starts
+  once the tick has run `time_budget_seconds` (300; the Job's deadline is 600). What is left
+  carries over to the next tick, and the backfill marker waits until nothing is left.
+- **The fair order.** A PR that stays unread is tried again on later ticks in the order of
+  when it was last tried, the least recent first (`meta.tried.fate`), so one stuck PR
+  cannot hold a read on every tick. The terminal mirrors use the same order
+  (`meta.tried.mirror`).
+
+### Terminal events on the PR record
+
+- **The field.** When a PR leaves the open list with a terminal event (`merged`, `closed`),
+  the lane's own record on that PR gains `terminal: { type, at, state, by, item, event,
+  merge_commit }`. `terminal` is one of `night.pr_record.fields`, goes through the publish
+  check, and is mapped in `lane-v1-to-item-v1.json`.
+- **Owed on facts, not on a clock.** A terminal recorded by the lane stays owed until the
+  history marks it mirrored (`items[id].mirrored`): its record carries it, or the PR has no
+  lane record. Backfilled merges are never owed, because the lane did not watch those PRs.
+- **When the mirrors are written.** After the open-PR records, at most
+  `max_mirrors_per_tick` (10) per tick, in the fair order, and only when the PR-write phase
+  can write: no comment is read otherwise. A record that is refused or cannot be parsed
+  stays owed and takes its turn, so it cannot starve the others. The edit happens only when the content changes, and a PR with
+  no lane record gets no new comment (`summary.history.mirrors.no_record`).
+- **Their own stop.** A failure on a mirror stops only the mirrors. A denial halts only the
+  mirrors: it is kept in `meta.mirror_halt`, whose text names that key, and logged as
+  `ERROR … TERMINAL MIRRORS HALTED`. The open-PR records go on. To clear it, after fixing the cause:
+
+  ```bash
+  kubectl -n upgrade-agent get cm upgrade-ledger -o json \
+    | jq '.data.meta |= (fromjson | del(.mirror_halt) | tojson) | del(.metadata.managedFields, .metadata.uid, .metadata.creationTimestamp)' \
+    | kubectl apply --server-side --field-manager=upgrade-night-history -f -
+  ```
+
+  The resourceVersion in that object makes the apply fail if a tick wrote in between; run
+  it again.
+- **No edit storm.** On an open PR `terminal` is null, and a null compares equal to a record
+  written before the field existed, so the change edits no current record.
+
+### Reading it
+
+```bash
+kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.summary}' | jq .history
+kubectl -n upgrade-agent get cm upgrade-ledger -o jsonpath='{.data.meta}' | jq '{backfill: .backfill.compare, catch_up_mismatch, mirror_halt}'
+kubectl -n upgrade-agent get cm upgrade-ledger -o jsonpath='{.data.events}' | jq -c 'select(.type != "merged" or .recorded_by != "backfill")'
+kubectl -n upgrade-agent get cm upgrade-ledger -o jsonpath='{.data.items}' | jq 'to_entries[] | select(.value.base.state == "reverted" or .value.basis == "title")'
+kubectl -n upgrade-agent get cm upgrade-ledger-marker -o jsonpath='{.data.marker}' | jq .
+```
+
+Log line of each tick (stderr):
+
+```text
+upgrade-night dryrun: history: WRITTEN: 311 new events (observed 13, merged 298); backfill this tick: 298 merged events, GitHub counts 303 merged Renovate PRs, listed 303, the history holds 303 (5 through another PR's item), missing none; holds 311 events, 311 items (0 named from a title), 182804 of 786432 bytes; 16605 ms
+```
+
+**Known limits.**
+
+- **The lane and the shepherd share one identity.** In dry-run a merge by
+  `haynes-ops-bot` is the shepherd's, because the lane merges nothing. In live mode, if the
+  history write fails on the tick that merged, the next tick finds the PR merged by
+  `haynes-ops-bot` and would record it as the shepherd's. The lane's own merges are told
+  apart by the change lock's last holder, which story 556 builds before the first live
+  class.
+- **A deferred revert.** A revert left unread by the budget is read on a later tick only
+  while its merge time is inside the catch-up window. During the backfill, that is the whole
+  window, because the marker waits.
+- **The scripts ConfigMap grows.** `upgrade-shepherd-scripts` now holds about 516 KB of its
+  1 MiB, with the lane's copy of the record format and the history module.
+
 ## Lane verdicts in the labeler
 
 `.github/workflows/pr-disposition.yml` reads a lane verdict only from a comment that
@@ -1447,6 +1734,7 @@ node scripts/upgrade-agent/lane-merge-step-selftest.mjs    # the merge step's re
 bash scripts/upgrade-agent/shepherd-stand-aside-selftest.sh  # the shepherd standing aside for a lane change in progress (story 551)
 node scripts/upgrade-agent/lane-pr-records-selftest.mjs      # story 549: the record, whose record, the retry's facts, limits and ledger, the GitHub writes
 bash scripts/upgrade-agent/shepherd-prefilter-selftest.sh    # story 549: vet markers count only from our bot (64 real markers, forged copies)
+node scripts/upgrade-agent/lane-history-selftest.mjs         # story 593: the history: events, backfill, comparison, rotation, conflicts, terminal records
 ```
 
 `lane-night-dryrun-selftest.mjs` section 6 runs story 549 through the real tick against a

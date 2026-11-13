@@ -149,7 +149,10 @@ const NON_RESERVED_EVENTS = Object.keys(M.events).filter(e => !M.reserved.events
   ok(written.size >= 5, 'machine: lock phases found in night-merge.mjs', [...written].join(', '));
   for (const ph of written) ok(phases.includes(ph), `machine: lock phase ${ph}, written by night-merge.mjs, is in lock_phases`);
   const outOfReverted = edges.filter(e => e.from.includes('reverted')).map(e => `${e.name}:${[...e.actors].sort().join('+')}`).sort();
-  ok(same(outOfReverted, ['drill-cleared:hand+lane', 'resolved:person']), 'safety: exactly drill-cleared (a drill) and resolved by a person leave reverted', outOfReverted.join(', '));
+  ok(same(outOfReverted, ['drill-cleared:hand+lane', 'merged:hand+person+renovate+shepherd+unknown', 'resolved:person']), 'safety: three edges leave reverted: drill-cleared (a drill), resolved by a person, and a merge by anyone but the lane (it records that the version runs again)', outOfReverted.join(', '));
+  ok(edges.filter(e => e.from.includes('reverted') && e.actors.includes('lane')).map(e => e.name).join() === 'drill-cleared', 'safety: the lane leaves reverted only by drill-cleared, so it never merges a remembered version');
+  ok(M.events.closed.edges[0].actors.includes('shepherd') && M.events.closed.edges[0].actors.includes('unknown'), 'machine: closed takes the shepherd, and unknown for a closer that cannot be established');
+  ok(edges.filter(e => e.actors.includes('unknown')).every(e => ['merged', 'closed'].includes(e.name)), 'machine: the actor unknown appears only on merged by others and closed, never where the lane acts');
   ok(M.events['drill-cleared'].requires.includes('drill'), 'safety: drill-cleared requires drill true');
   ok(edges.filter(e => e.from.includes('held')).every(e => e.actors.every(a => a !== 'lane') || e.name === 'observed' || e.name === 'closed'), 'safety: the lane takes no action on a held item');
 }
@@ -318,6 +321,107 @@ const laneRecordOf = (n, mutate) => {
   const later = (type, to, extra) => { const e = { schema: F.EVENT_SCHEMA, id: '', item_id: base.id, type, from: 'merge_unknown', to, at: '2026-11-02T07:15:00.000Z', actor: { kind: 'lane', login: null }, recorded_by: 'lane', attempt: 1, carrier: { repo: REPO, pr: base.carrier.pr, head: base.carrier.head }, ...extra }; e.id = F.eventId(e); return e; };
   ok(F.applyEvent(r0.item, later('merged', 'merged_unverified', { evidence: { merge_commit: 'f'.repeat(40) } })).errors.length === 0, 'events: merge_unknown read later as merged');
   ok(F.applyEvent(r0.item, later('merge-failed', 'needed', { class: 'not-merged', reason: 'open at that head on the next read', evidence: { merge_call: unk.merge_step.merge_call } })).errors.length === 0, 'events: merge_unknown read later as not merged');
+}
+
+// ── 6. the lane's copy (story 593) ──────────────────────────────────────────────
+// The night lane runs from the scripts ConfigMap, built from the shepherd app's resources/
+// directory only, so it carries a copy of the format. The copy must be the format: a change
+// made here and not copied fails until it is.
+{
+  for (const f of ['record-format.mjs', 'upgrade-item.v1.schema.json', 'upgrade-event.v1.schema.json', 'upgrade-states.v1.json', 'lane-v1-to-item-v1.json']) {
+    const want = readFileSync(join(ROOT, 'scripts/upgrade-agent/schema', f));
+    let got = null;
+    try { got = readFileSync(join(RES, f)); } catch { got = null; }
+    ok(got !== null && Buffer.compare(want, got) === 0, `copy: resources/${f} is byte-identical to scripts/upgrade-agent/schema/${f}`, `cp scripts/upgrade-agent/schema/${f} kubernetes/main/apps/upgrade-agent/shepherd/app/resources/${f}`);
+  }
+  const kz = readFileSync(join(RES, '..', 'kustomization.yaml'), 'utf8');
+  for (const f of ['record-format.mjs', 'upgrade-item.v1.schema.json', 'upgrade-event.v1.schema.json', 'upgrade-states.v1.json', 'lane-v1-to-item-v1.json', 'upgrade-history.mjs'])
+    ok(kz.includes(`      - resources/${f}\n`), `copy: the scripts ConfigMap carries resources/${f}`);
+}
+
+// ── 7. the reader's points (format review of 2026-11-12, decided in story 593) ─────────
+{
+  // bounds: every string and every list in both schemas has one
+  const unbounded = [];
+  for (const [name, root] of Object.entries(F.schemas)) {
+    const walk = (n, p) => {
+      if (!n || typeof n !== 'object') return;
+      const t = [].concat(n.type || []);
+      if (t.includes('string') && n.maxLength === undefined && !n.enum && n.const === undefined) unbounded.push(`${name} ${p}`);
+      if (t.includes('array') && n.maxItems === undefined) unbounded.push(`${name} ${p}`);
+      for (const [k, v] of Object.entries(n.properties || {})) walk(v, `${p}/${k}`);
+      for (const [k, v] of Object.entries(n.$defs || {})) walk(v, `#/$defs/${k}`);
+      if (n.items) walk(n.items, `${p}[]`);
+      for (const k of ['anyOf', 'allOf']) (n[k] || []).forEach((x, i) => walk(x, `${p}|${k}${i}`));
+    };
+    walk(root, '');
+  }
+  ok(unbounded.length === 0, 'bounds: every string and every list of both schemas has a maxLength or maxItems', unbounded.join('; '));
+  const d = F.schemas.item.$defs;
+  ok(d.name.maxLength === 300 && d.text.maxLength === 1000 && d.names.maxItems === 100 && d.texts.maxItems === 100 && F.MAX_ATTEMPTS === 20, 'bounds: the numbers in one place (the item schema\'s $defs name 300, text 1000, names and texts 100; attempts 20)');
+  // fit: cut with a visible mark, never refused
+  const long = { schema: F.EVENT_SCHEMA, id: '', item_id: 'renovate-pr:' + 'a'.repeat(24), type: 'merge-refused', from: 'in_progress', to: 'needed', at: '2026-11-13T06:00:00.000Z', actor: { kind: 'lane', login: null }, recorded_by: 'lane', attempt: 1, class: 'merge-step-refused',
+    reason: 'r'.repeat(1500), evidence: { pr_refusals: Array.from({ length: 130 }, (_, i) => `refusal ${i}`), lane_refusals: [], merge_call: 'm'.repeat(1200) } };
+  long.id = F.eventId(long);
+  ok(F.checkEvent(long).some(e => /longer than 1000/.test(e)), 'bounds: the validator refuses a record over its bounds');
+  const cut = F.fit(F.schemas.event, long);
+  ok(F.checkEvent(cut.value).length === 0 && cut.value.reason.length === 1000 && cut.value.reason.endsWith('…') && cut.value.evidence.pr_refusals.length === 100 && cut.value.evidence.pr_refusals[99] === '… (+31 more)' && cut.value.id === long.id && cut.cuts.sort().join() === '/evidence/merge_call,/evidence/pr_refusals,/reason',
+    'bounds: fit() cuts a string and a list to its bound with a visible mark, keeps the id, and names the cuts', JSON.stringify(cut.cuts));
+  // attempts: the newest 20, the dropped counted, the numbering carried on
+  const fx = fixtures.find(f => f.file === 'seq-merge-step-refused.json').record;
+  let it = { ...clone(fx.item), state: null, attempts: [] };
+  const mk = (type, from, to, n, min, extra) => { const e = { schema: F.EVENT_SCHEMA, id: '', item_id: it.id, type, from, to, at: new Date(Date.parse('2026-11-13T00:00:00.000Z') + min * 60e3).toISOString(), actor: { kind: 'lane', login: null }, recorded_by: 'lane', attempt: n, ...extra }; e.id = F.eventId(e); return e; };
+  const first = mk('observed', null, 'needed', null, 0, { lane: 'A-night', class: 'no-cluster-effect', reason: 'x' });
+  delete first.attempt; first.id = F.eventId(first);
+  let r = F.applyEvent(it, first);
+  it = r.item;
+  for (let n = 1; n <= 25; n++) {
+    for (const ev of [mk('merge-attempted', 'needed', 'in_progress', n, n, { lane: 'A-night', carrier: { repo: REPO, pr: it.carrier.pr } }), mk('merge-refused', 'in_progress', 'needed', n, n, { class: 'merge-step-refused', reason: 'refused' })]) {
+      r = F.applyEvent(it, ev); if (r.errors.length) break; it = r.item;
+    }
+  }
+  ok(r.errors.length === 0 && it.attempts.length === 20 && it.attempts_dropped === 5 && it.attempts[0].n === 6 && it.attempts.at(-1).n === 25 && F.checkItem(it).length === 0 && F.attemptCount(it) === 25, 'bounds: 25 attempts keep the newest 20, count 5 dropped, and stay a valid item', `${r.errors[0] || ''} ${it.attempts.length} ${it.attempts_dropped}`);
+  const v26 = { pr: it.carrier.pr, head: it.carrier.head, mode: 'live', verdict: 'refused', pr_refusals: ['x'], lane_refusals: [], merge_call: 'not made' };
+  ok(F.eventsFromMergeStep(it, v26, { repo: REPO, at: '2026-11-13T01:00:00.000Z' })[0].attempt === 26, 'bounds: the next merge-step attempt is numbered 26, after the dropped ones');
+  // the place in the id
+  const one = laneRecordOf(4477), item = F.fromLaneRecord(one, { repo: REPO });
+  ok(F.placeOf(item).join() === [...one.files].sort().join() && F.placeOf(item).length > 0, 'id: the place is the sorted changed paths (carrier.files), a fact of the pull request alone');
+  const otherFiles = F.fromLaneRecord({ ...one, files: ['kubernetes/main/apps/somewhere/else/app/helmrelease.yaml'] }, { repo: REPO });
+  ok(item.id !== otherFiles.id, 'id: the same package and version changed in other files is another item');
+  ok(F.fromLaneRecord({ ...one, head: 'f'.repeat(40), files: [...one.files].reverse() }, { repo: REPO }).id === item.id, 'id: a rebase (the same files, in any order, a new head) keeps the item');
+  // a rules change that remaps a target (R8 consumers, say) changes no id
+  ok(F.fromLaneRecord({ ...one, targets: ['kubernetes/main/apps/remapped/consumer', ...one.targets] }, { repo: REPO }).id === item.id && F.fromLaneRecord({ ...one, targets: [] }, { repo: REPO }).id === item.id, 'id: a rules change that remaps the targets changes no id (targets stay on the item for readers)');
+  const cutList = F.fromLaneRecord({ ...one, files: [...one.files, F.CUT_FILES] }, { repo: REPO });
+  ok(cutList.id !== item.id && F.placeOf(cutList).includes(F.CUT_FILES), 'id: an id built on a file list GitHub cut off carries the marker, so it says so');
+  // the memory across places: a reverted version in one target is found from another target
+  const rev = fixtures.find(f => f.file === 'seq-verify-failed-reverted.json').record;
+  const done = F.replay(rev.item, rev.events).item;
+  const pk = done.item.packages[0] || { name: done.item.name, to: done.available.version };
+  const elsewhere = F.fromLaneRecord({ ...laneRecordOf(4477), packages: done.item.packages, package: pk.name, to: pk.to, files: ['kubernetes/main/apps/another/app/helmrelease.yaml'] }, { repo: REPO });
+  ok(done.state === 'reverted' && elsewhere.id !== done.id && F.rememberedReverted([done, elsewhere], pk.name, pk.to).map(x => `${x.item.id}:${x.why}`).join() === `${done.id}:reverted`, 'memory: a version reverted at one path is found when asked about the same package and version at another path', `${done.state} ${pk.name}@${pk.to}`);
+  // conservative: every state a revert touches, and a version merged again after its revert
+  const steps = F.replay(rev.item, rev.events).item; // the sequence: ... failed, reverting, reverted_unverified, reverted
+  const upTo = to => { const k = rev.events.findIndex(e => e.to === to); return F.replay(rev.item, rev.events.slice(0, k + 1)).item; };
+  for (const st of ['failed', 'reverting', 'reverted_unverified']) {
+    const it = upTo(st);
+    ok(it.state === st && F.rememberedReverted([it], pk.name, pk.to).map(x => x.why).join() === st, `memory: an item in ${st} is remembered (why ${st})`, `${it.state}`);
+  }
+  const remerged = (() => { const e = { schema: F.EVENT_SCHEMA, id: '', item_id: steps.id, type: 'merged', from: 'reverted', to: 'merged_unverified', at: '2026-11-14T00:00:00.000Z', actor: { kind: 'person', login: 'thaynes43' }, recorded_by: 'lane', attempt: F.attemptCount(steps) + 1, carrier: { repo: REPO, pr: 1 }, evidence: { merge_commit: 'c'.repeat(40) } }; e.id = F.eventId(e); return F.applyEvent(steps, e).item; })();
+  ok(remerged.state === 'merged_unverified' && F.rememberedReverted([remerged], pk.name, pk.to).map(x => x.why).join() === 'ever-reverted', 'memory: a version merged again after its revert is remembered (why ever-reverted, from its attempts)');
+  ok(F.rememberedReverted([{ id: 'x', state: 'merged_unverified', ever_reverted: true, item: { name: pk.name, packages: [{ name: pk.name, to: pk.to }] }, available: { version: pk.to } }], pk.name, pk.to)[0]?.why === 'ever-reverted', 'memory: a history item with ever_reverted is remembered (why ever-reverted)');
+  const never = fixtures.find(f => f.file === 'item-done.json').record;
+  const npk = never.item.packages[0] || { name: never.item.name, to: never.available.version };
+  ok(F.rememberedReverted([never], npk.name, npk.to).length === 0 && F.rememberedReverted([done], pk.name, '0.0.0-other').length === 0, 'memory: a version never reverted, or another version, returns nothing');
+  // L4: a patterned field is never cut: validation refuses it with the real reason
+  const pat = { ...long, class: 'c'.repeat(150), reason: 'x' }; pat.id = F.eventId(pat);
+  const pf = F.fit(F.schemas.event, pat);
+  ok(pf.value.class === pat.class && !pf.cuts.includes('/class') && F.checkEvent(pf.value).some(e => /\/class: longer than 100/.test(e)), 'bounds: fit() never cuts a patterned field (class); validation refuses it as too long', F.checkEvent(pf.value)[0]);
+  // L5: the lane's gatherFacts writes the same cut-list marker as the format (two id routes)
+  const laneSrc = readFileSync(join(RES, 'lane-classify.mjs'), 'utf8');
+  ok(laneSrc.includes(`'${F.CUT_FILES}'`) && (laneSrc.match(/'<[^'>]*truncated[^'>]*>'/g) || []).every(m => m === `'${F.CUT_FILES}'`), 'copy: lane-classify.mjs writes the format\'s CUT_FILES marker for a cut file list, and no other');
+  // a merge of a remembered version can be recorded, by anyone but the lane
+  const again = (kind) => { const e = { schema: F.EVENT_SCHEMA, id: '', item_id: done.id, type: 'merged', from: 'reverted', to: 'merged_unverified', at: '2026-11-14T00:00:00.000Z', actor: { kind, login: null }, recorded_by: 'lane', attempt: F.attemptCount(done) + 1, carrier: { repo: REPO, pr: 1 }, evidence: { merge_commit: 'c'.repeat(40) } }; e.id = F.eventId(e); return F.applyEvent(done, e); };
+  ok(again('renovate').errors.length === 0 && again('unknown').errors.length === 0 && again('lane').errors.length > 0, 'safety: a merge of a remembered version is recorded for renovate or unknown, and refused for the lane');
 }
 
 console.log(`\n${passes} passed, ${fails} failed`);

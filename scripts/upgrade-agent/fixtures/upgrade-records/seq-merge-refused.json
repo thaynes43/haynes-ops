@@ -6,7 +6,7 @@
   "record": {
     "item": {
       "schema": "haynes.upgrade-item/v1",
-      "id": "renovate-pr:1d7a362939cd391c85d1adb5",
+      "id": "renovate-pr:dfeb821559bf06b1b353815f",
       "source": "renovate-pr",
       "item": {
         "name": "docker.io/alpine/kubectl",
@@ -72,8 +72,8 @@
     "events": [
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:15a131b5a2043ee4f23d4708",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:9051399fb31995538fddfc48",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "observed",
         "from": null,
         "to": "needed",
@@ -95,8 +95,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:040a40e1bbfac70b9e6bd72a",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:3ab371dd44b07367c2be3978",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "merge-attempted",
         "from": "needed",
         "to": "in_progress",
@@ -117,8 +117,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:44b4d1be636aa7a80759b043",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:4f180343e2f7b33662dd862a",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "merge-refused",
         "from": "in_progress",
         "to": "blocked",
@@ -140,8 +140,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:d13a330da6ca3e9149c99c8a",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:af68ba134c06ac6933d60ea3",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "observed",
         "from": "blocked",
         "to": "needed",
@@ -163,8 +163,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:31429768a5e833a7d4fb08f1",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:794dd9758fb09e37094359cc",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "merge-attempted",
         "from": "needed",
         "to": "in_progress",
@@ -185,8 +185,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:dd2c8b362f1ce8de801c6f7e",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:842f0144f44c67aad8afcef7",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "merge-refused",
         "from": "in_progress",
         "to": "needed",

@@ -493,7 +493,52 @@ spec:
               # (haynes-ops#4863). Rollback: that image AND remove the three usage flags in the
               # same change (all three or none: the operator refuses a line without a max age).
               # The CRD copy stays.
-              tag: sha-ff0c9e8@sha256:267ad631f54c787fd16665b63f50418670556f9ee7b5084cfe974c6b5d7195ab
+              # dev-env main 42552fa3 (publish 43367182880's operator job signed and verified this
+              # digest; CI run 43367183019 on that commit was green before this pin merged). Two
+              # code commits since sha-ff0c9e8, both of the ops-profile lane (OP751, DESIGN-064);
+              # the other six commits in the range are docs, release files and CI dependencies:
+              # - dev-env#1119 (OP790, DESIGN-064 6.9): a curation run held for quota closes with
+              #   reason quota-hold-expired at its hold bound, the hold message names the window,
+              #   the percentage, the line and the reading's time, and the usage ConfigMap is read
+              #   at most once per admission pass (it was a 30-second reuse). Only a session with
+              #   spec.caller reaches this code, and no session has one.
+              # - dev-env#1102 (OP782, DESIGN-064 6.8): the summoning create puts the label
+              #   dev-env.haynesops.com/summoned on the session it makes. No other create path
+              #   sets it. The keeper's pager for summoned sessions is in this image and is not
+              #   started by this pin: the keeper keeps its own image and flags.
+              # --summon-create-kinds stays unset, so no summoned session can be created.
+              # No AgentSession or other CRD change in the range, and no flag, permission,
+              # ConfigMap or Secret change for the image. The --inbox-projects line below changes
+              # in the same pull request (OP799); that is the only argument change.
+              # Previous pin sha-ff0c9e8@sha256:267ad631f54c787fd16665b63f50418670556f9ee7b5084cfe974c6b5d7195ab
+              # (haynes-ops#4866). Rollback: that image. The --inbox-projects value may stay or go
+              # back to dev-env on its own; neither image needs the other value.
+              # dev-env main e28fbd8c (publish 43435722689's operator job signed and verified this
+              # digest; the commit's tree is the tree of dev-env#1137's last head, on which CI run
+              # 43432439116 was green). Two code commits since sha-42552fa; the other three in the
+              # range are the 2.109.0 release files and docs:
+              # - dev-env#1127 (OP787, DESIGN-065 slice 3, ADR-027): an agent renames a running
+              #   session. In the operator: the route PUT /v1/sessions/{name}/title records a
+              #   changed title as the annotation dev-env.haynesops.com/title (spec.title stays
+              #   immutable, so a title write does not bump metadata.generation); readers show the
+              #   effective title; the heartbeat stores agentd's status.remoteControl.rename and
+              #   providerTitle; and for a session named by --title-rename-sessions the heartbeat
+              #   answer carries the recorded title. Its AgentSession CRD change was copied first
+              #   by haynes-ops#4878.
+              # - dev-env#1137 (OP787): a session nobody renamed keeps the single-session view it
+              #   had before, so an older agent-run, whose show --json --once and usage export
+              #   refuse an unknown key, still reads it. sha-96d4fcd, the image of #1127 alone,
+              #   was never pinned for that reason.
+              # The typing is agentd's, in the agent image. Only an agentd of 2.109.0 or newer
+              # reads the heartbeat answer; older ones discard it. And the operator sends an
+              # answer only for a session --title-rename-sessions names, which is set below to
+              # one unused test session. So no working session is typed into.
+              # No permission, ConfigMap or Secret change.
+              # Previous pin sha-42552fa@sha256:c4c55ed09901108e8ad8c6dd14b0131c151705d649b86649cfde97fd49c814c8
+              # (haynes-ops#4877). Rollback: that image AND remove --title-rename-sessions in the
+              # same change (sha-42552fa does not know the flag and would refuse to start). The
+              # CRD copy stays.
+              tag: sha-e28fbd8@sha256:21594e113dd0bfd59f9c3544f8aaae0f4794f49f7e713749883e889fdb8558a5
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
@@ -694,7 +739,14 @@ spec:
               # canary route is now off (T16), so this scope only keeps its retained result readable.
               - '--context-payload-read-projects=dev-env,sigo-alumni'
               - '--enable-durable-inbox=true'
-              - '--inbox-projects=dev-env'
+              # OP799 (2026-11-13): haynes-studio joins dev-env. The Studio epic coordinators start
+              # their workers as haynes-studio project tasks, and a worker's parent note was refused
+              # (404) because its project was not in this list. For a project-bound haynes-studio
+              # session this turns on the peer inbox, ask and reply, parent notes and coordinator
+              # instructions, under the same fences as dev-env. The coordinator-read, portal-question,
+              # task-claim and context-payload lists below and above are unchanged. No RBAC, route,
+              # Secret or egress change, and no code change.
+              - '--inbox-projects=dev-env,haynes-studio'
               - '--inbox-coordinator-read-projects=dev-env'
               # OP321 (dev-env#769, v2.76.0): turns on inbox ask and reply (kind question or reply, inReplyTo) and the thread view and sent
               # box. Same projects, ACLs and identities as the durable inbox above. No RBAC, route, Secret, egress, phone or Asks change.
@@ -804,6 +856,17 @@ spec:
               - --summon-normal-max-five-hour=95
               - --summon-bulk-max-five-hour=80
               - --summon-usage-max-age=15m
+              # The typed rename of a running session (dev-env DESIGN-065 slice 3 and ADR-027,
+              # dev-env#1127; OpenProject #787). The value is a comma-separated list of session
+              # names, or *; empty names no session. For a named session the heartbeat answer
+              # carries the recorded title, and that session's agentd (agent image 2.109.0 or
+              # newer) types /rename plus Enter into its own pane, only when the session is idle
+              # with an empty input line and nobody attached. For every other session the answer
+              # is the empty one of before, and agentd types nothing.
+              # Today it names one session: dev-env-1113-004614, the coordinator's own unused test
+              # session, for the live proof of OP787. No working session is named. Widening this
+              # list is a separate change, after that proof is recorded on OP787.
+              - --title-rename-sessions=dev-env-1113-004614
             env:
               POD_NAMESPACE:
                 valueFrom:

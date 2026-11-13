@@ -6,7 +6,7 @@
   "record": {
     "item": {
       "schema": "haynes.upgrade-item/v1",
-      "id": "renovate-pr:78ee8938e12fead7783d26e9",
+      "id": "renovate-pr:12924a4a95567a93a1fb4320",
       "source": "renovate-pr",
       "item": {
         "name": "ghcr.io/haraldkoch/rsync",
@@ -72,8 +72,8 @@
     "events": [
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:675e441e050394f378d1e143",
-        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "id": "ev:08c91e61290762418364b392",
+        "item_id": "renovate-pr:12924a4a95567a93a1fb4320",
         "type": "observed",
         "from": null,
         "to": "needed",
@@ -95,8 +95,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:4d540b854d28ff8f07767ae9",
-        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "id": "ev:115d8e56718897014bee9e16",
+        "item_id": "renovate-pr:12924a4a95567a93a1fb4320",
         "type": "merge-attempted",
         "from": "needed",
         "to": "in_progress",
@@ -117,8 +117,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:d95b8724fb7a68f9097e7ada",
-        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "id": "ev:dc90c2802dfe41381d74a95b",
+        "item_id": "renovate-pr:12924a4a95567a93a1fb4320",
         "type": "merged",
         "from": "in_progress",
         "to": "merged_unverified",
@@ -141,8 +141,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:ddaf11a4c9e6b6d09f9d4900",
-        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "id": "ev:365319ecc348a2668bd14d67",
+        "item_id": "renovate-pr:12924a4a95567a93a1fb4320",
         "type": "verification-failed",
         "from": "merged_unverified",
         "to": "failed",
@@ -158,8 +158,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:aa844e8e3384370488b56ad3",
-        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "id": "ev:09fc44f8a95b41db0cc1b589",
+        "item_id": "renovate-pr:12924a4a95567a93a1fb4320",
         "type": "revert-opened",
         "from": "failed",
         "to": "reverting",
@@ -177,8 +177,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:1d85fef3fc95fba114370580",
-        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "id": "ev:b06df8c2632db9296c33a174",
+        "item_id": "renovate-pr:12924a4a95567a93a1fb4320",
         "type": "escalated",
         "from": "reverting",
         "to": "escalated",
@@ -194,8 +194,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:6c6b2318247b941b2afff7cf",
-        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "id": "ev:75869f340f3af71e4cda69d6",
+        "item_id": "renovate-pr:12924a4a95567a93a1fb4320",
         "type": "resolved",
         "from": "escalated",
         "to": "reverted",

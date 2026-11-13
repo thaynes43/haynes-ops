@@ -6,7 +6,7 @@
   "record": {
     "item": {
       "schema": "haynes.upgrade-item/v1",
-      "id": "renovate-pr:1d7a362939cd391c85d1adb5",
+      "id": "renovate-pr:dfeb821559bf06b1b353815f",
       "source": "renovate-pr",
       "item": {
         "name": "docker.io/alpine/kubectl",
@@ -86,8 +86,8 @@
     "events": [
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:6e1f802af8914d190dd8aa1f",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:f271c6e2f24186d2c64d2144",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "drill-requested",
         "from": "done",
         "to": "failed",
@@ -103,8 +103,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:1496445e19be204a6a191889",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:f8102acacd7b57cc16386c15",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "revert-opened",
         "from": "failed",
         "to": "reverting",
@@ -123,8 +123,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:bac2d866c80e1be70899ab86",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:8c4feea256adcf45954da344",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "revert-merged",
         "from": "reverting",
         "to": "reverted_unverified",
@@ -143,8 +143,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:57837e3dbbf7fcf5e1c1d485",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:15e1a9a7b3d6aba7abb6a9eb",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "recovery-verified",
         "from": "reverted_unverified",
         "to": "reverted",
@@ -159,8 +159,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:156e1908808f532d3e5f75e1",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:59417e3bdb56a4b57dc81b71",
+        "item_id": "renovate-pr:dfeb821559bf06b1b353815f",
         "type": "drill-cleared",
         "from": "reverted",
         "to": "needed",

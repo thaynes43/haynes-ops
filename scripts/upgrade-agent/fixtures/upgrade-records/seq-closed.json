@@ -6,7 +6,7 @@
   "record": {
     "item": {
       "schema": "haynes.upgrade-item/v1",
-      "id": "own-image:e0515b21079942e27dacad30",
+      "id": "own-image:90c4a799f2721b7e4ebc26d4",
       "source": "own-image",
       "item": {
         "name": "docker.io/moby/buildkit",
@@ -70,8 +70,8 @@
     "events": [
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:d3ca3479622919c6329f313d",
-        "item_id": "own-image:e0515b21079942e27dacad30",
+        "id": "ev:a66b1bdaf86dd50f6113f171",
+        "item_id": "own-image:90c4a799f2721b7e4ebc26d4",
         "type": "observed",
         "from": null,
         "to": "needed",
@@ -93,8 +93,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:cc90925289877b73eb677f33",
-        "item_id": "own-image:e0515b21079942e27dacad30",
+        "id": "ev:e371bae963d902926e01af18",
+        "item_id": "own-image:90c4a799f2721b7e4ebc26d4",
         "type": "closed",
         "from": "needed",
         "to": "closed",

@@ -22,6 +22,15 @@ configMapGenerator:
       - resources/run-night.mjs
       # upgrade-night (story 752): the merge step, the change lock and the hand-run CLI.
       - resources/night-merge.mjs
+      # upgrade-night (story 593): the history (ConfigMap upgrade-ledger), and the record
+      # format it is a thin layer over: byte-identical copies of scripts/upgrade-agent/schema/
+      # (record-format-selftest.mjs fails on any drift).
+      - resources/upgrade-history.mjs
+      - resources/record-format.mjs
+      - resources/upgrade-item.v1.schema.json
+      - resources/upgrade-event.v1.schema.json
+      - resources/upgrade-states.v1.json
+      - resources/lane-v1-to-item-v1.json
 generatorOptions:
   disableNameSuffixHash: true
   labels:

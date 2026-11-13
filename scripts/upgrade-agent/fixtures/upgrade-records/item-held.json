@@ -5,7 +5,7 @@
   "from_pr": 3915,
   "record": {
     "schema": "haynes.upgrade-item/v1",
-    "id": "renovate-pr:89b2c4e648f16b67a7aee2ec",
+    "id": "renovate-pr:ec4b5267c53aac0efb47e9cd",
     "source": "renovate-pr",
     "item": {
       "name": "k8s.io/api",
