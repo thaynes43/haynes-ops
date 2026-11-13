@@ -54,6 +54,16 @@ DESIGN-064 8.1).
   unless the contract names another report. The keeper's pager sends an escalated
   close to Tom as a page (dev-env story 782; merged, and neither installed in
   the keeper nor switched on when this was written).
+- **A contract is not a story.** Four rules work only through a story, a tracker
+  record or a coordinator: a blocked handoff goes in a tracker record; unknown disk
+  headroom is asked of the coordinator; `hw-ssh` is used only inside a story that
+  names it; `omnictl` and `talosctl` write only in an authorized story. A summoned
+  session has none of the three, so the section says they stay closed for it: it
+  does not take the step and says so in its report. The advisory review of
+  haynes-ops PR 4882 asked for this to be said (2026-11-13); the other choice,
+  that the contract stands in for the story, would let a contract grant access. A
+  later caller's story (remediation, upgrade work orders) that needs one of these
+  changes this text in its own reviewed PR.
 - **Read by the coordinator who keeps the rules file** (OpenProject #501, comment
   7848, 2026-11-13): the default is said out loud for ordinary sessions, and the
   claim sentence was reworded so it reads one way.
