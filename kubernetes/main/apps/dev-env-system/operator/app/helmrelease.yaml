@@ -513,7 +513,26 @@ spec:
               # Previous pin sha-ff0c9e8@sha256:267ad631f54c787fd16665b63f50418670556f9ee7b5084cfe974c6b5d7195ab
               # (haynes-ops#4866). Rollback: that image. The --inbox-projects value may stay or go
               # back to dev-env on its own; neither image needs the other value.
-              tag: sha-42552fa@sha256:c4c55ed09901108e8ad8c6dd14b0131c151705d649b86649cfde97fd49c814c8
+              # dev-env main 96d4fcd7 (publish 43427335771's operator job signed and verified this
+              # digest; CI run 43427335875 on that commit was green before this pin merged). One
+              # commit since sha-42552fa:
+              # - dev-env#1127 (OP787, DESIGN-065 slice 3, ADR-027): an agent renames a running
+              #   session. In the operator: the route PUT /v1/sessions/{name}/title records a
+              #   changed title as the annotation dev-env.haynesops.com/title (spec.title stays
+              #   immutable, so a title write does not bump metadata.generation); readers show the
+              #   effective title; the heartbeat stores agentd's status.remoteControl.rename and
+              #   providerTitle; and for a session named by --title-rename-sessions the heartbeat
+              #   answer carries the recorded title. Its AgentSession CRD change was copied first
+              #   by haynes-ops#4878.
+              # The typing itself is agentd's, in the agent image, which this pin does not change:
+              # the session pods keep 2.107.0, whose agentd reads no heartbeat answer and types
+              # nothing. --title-rename-sessions is set below to one unused test session.
+              # No permission, ConfigMap or Secret change.
+              # Previous pin sha-42552fa@sha256:c4c55ed09901108e8ad8c6dd14b0131c151705d649b86649cfde97fd49c814c8
+              # (haynes-ops#4877). Rollback: that image AND remove --title-rename-sessions in the
+              # same change (sha-42552fa does not know the flag and would refuse to start). The
+              # CRD copy stays.
+              tag: sha-96d4fcd@sha256:736331c4c52310b40ab81dcec6a6afc7e4a9b741ca2a9eaa83fbeabd498bb435
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
@@ -831,6 +850,17 @@ spec:
               - --summon-normal-max-five-hour=95
               - --summon-bulk-max-five-hour=80
               - --summon-usage-max-age=15m
+              # The typed rename of a running session (dev-env DESIGN-065 slice 3 and ADR-027,
+              # dev-env#1127; OpenProject #787). The value is a comma-separated list of session
+              # names, or *; empty names no session. For a named session the heartbeat answer
+              # carries the recorded title, and that session's agentd (agent image 2.109.0 or
+              # newer) types /rename plus Enter into its own pane, only when the session is idle
+              # with an empty input line and nobody attached. For every other session the answer
+              # is the empty one of before, and agentd types nothing.
+              # Today it names one session: dev-env-1113-004614, the coordinator's own unused test
+              # session, for the live proof of OP787. No working session is named. Widening this
+              # list is a separate change, after that proof is recorded on OP787.
+              - --title-rename-sessions=dev-env-1113-004614
             env:
               POD_NAMESPACE:
                 valueFrom:
