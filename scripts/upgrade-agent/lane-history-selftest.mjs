@@ -50,11 +50,14 @@ const sha = c => c.repeat(40);
 // Renovate's package table, as gatherFacts reads it (parsePackageTable)
 const table = pkgs => '| Package | Update | Change |\n|---|---|---|\n' + pkgs.map(p => `| ${p.name} | ${p.update || ''} | \`${p.from}\` → \`${p.to}\` |`).join('\n') + '\n';
 // a lane record as run-night.mjs writes it (haynes.upgrade-lane/v1), small
+// the place: app<n> under kubernetes/main/apps/x (o.app moves it); the record's target and the
+// merged PR's files agree, as the classifier makes them agree
+const placeFiles = n => [`kubernetes/main/apps/x/app${n}/app/helmrelease.yaml`];
 const rec = (pr, o = {}) => ({ schema: 'haynes.upgrade-lane/v1', pr, head: sha((pr % 10).toString(16)), fingerprint: null, package: o.pkg ?? `ghcr.io/example/app${pr}`, from: '1.0.0', to: o.to ?? '1.1.0', packages: [{ name: o.pkg ?? `ghcr.io/example/app${pr}`, update: 'minor', from: '1.0.0', to: o.to ?? '1.1.0' }],
-  update_type: 'minor', lane: 'LANE-A', class: 'cluster-change', reason: `checks pass on #${pr}`, findings: [], rules: [], checks: {}, targets: [`kubernetes/main/apps/x/app${pr}`], own_images: [], ...o });
+  update_type: 'minor', lane: 'LANE-A', class: 'cluster-change', reason: `checks pass on #${pr}`, findings: [], rules: [], checks: {}, targets: [`kubernetes/main/apps/x/app${o.app ?? pr}`], files: placeFiles(o.app ?? pr), own_images: [], ...o });
 // a merged PR as gh lists it, with the facts the lane's route names its item by
-const mergedPr = (n, min, o = {}) => { const to = o.to ?? '1.1.0', name = o.pkg ?? `ghcr.io/example/app${n}`; const { to: _t, pkg: _p, ...rest } = o;
-  return { number: n, title: `fix(container): update image ${name} to v${to}`, author: { login: 'app/renovate' }, mergedAt: at(min), mergedBy: { login: 'app/renovate' }, labels: [{ name: 'renovate/container' }, { name: 'type/minor' }], mergeCommit: { oid: sha('a') }, headRefOid: sha('b'), body: table([{ name, update: 'minor', from: '1.0.0', to }]), files: [], ...rest }; };
+const mergedPr = (n, min, o = {}) => { const to = o.to ?? '1.1.0', name = o.pkg ?? `ghcr.io/example/app${n}`; const { to: _t, pkg: _p, app: _a, ...rest } = o;
+  return { number: n, title: `fix(container): update image ${name} to v${to}`, author: { login: 'app/renovate' }, mergedAt: at(min), mergedBy: { login: 'app/renovate' }, labels: [{ name: 'renovate/container' }, { name: 'type/minor' }], mergeCommit: { oid: sha('a') }, headRefOid: sha('b'), body: table([{ name, update: 'minor', from: '1.0.0', to }]), files: placeFiles(o.app ?? n).map(path => ({ path })), ...rest }; };
 const scanOf = (list, since = at(-30 * 1440), until = at(0), extra = {}) => ({ ok: true, list: list.filter(e => !H.isRevertTitle(e.title)), reverts: list.filter(e => H.isRevertTitle(e.title)), github_count: list.filter(e => AUTHORS.includes(e.author?.login) && !H.isRevertTitle(e.title)).length, window: { since, until }, query: 'gh pr list (test)', repo: REPO, ...extra });
 const plan = (doc, o = {}) => H.planHistory({ doc, records: [], openPrs: [], verdict: null, at: at(0), repo: REPO, cfg, rules, scan: scanOf([]), backfilling: false, renovateAuthors: AUTHORS, ...o });
 const withMarker = doc => ({ ...doc, meta: { ...doc.meta, backfill: { at: at(-1440), window: { since: at(-31 * 1440), until: at(-1440) }, query: 'q', events: 0, compare: null } } });
@@ -124,7 +127,7 @@ const p1 = plan(withMarker(H.emptyDoc()), { records: [a, b, c], openPrs: [101, 1
     'H1: moved to a newer version and then closed: the old item closes as replaced; the newer one, never seen open, is named (the format has no edge for it)', JSON.stringify(h1c.notes.unrecorded));
   const h1u = plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), scan: scanOf([mergedPr(101, 10, { to: '1.3.0', mergeCommit: null })]) });
   ok(h1u.events.length === 0 && h1u.notes.unread.some(x => x.pr === 101), 'H1: a newer version merged whose commit was not read: nothing yet, not even the old item\'s close');
-  for (const [who, kind] of [['app/haynes-ops-bot', 'shepherd'], ['app/haynes-dev-bot', 'hand'], ['thaynes43', 'person'], ['app/github-actions', 'hand']]) {
+  for (const [who, kind] of [['app/haynes-ops-bot', 'shepherd'], ['app/haynes-dev-bot', 'hand'], ['thaynes43', 'person'], ['app/github-actions', 'unknown']]) {
     const p = plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), scan: scanOf([mergedPr(101, 10, { mergedBy: { login: who } })]) });
     ok(p.events[0]?.actor.kind === kind && p.events[0].actor.login === H.normLogin(who) && RF.checkEvent(p.events[0]).length === 0, `tick: merged by ${who} is actor ${kind}, login kept`, JSON.stringify(p.events[0]?.actor));
   }
@@ -134,10 +137,10 @@ const p1 = plan(withMarker(H.emptyDoc()), { records: [a, b, c], openPrs: [101, 1
   const p7u = plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), fates: new Map([[101, closedFate(101, { closedBy: null, closed_by_read: false })]]) });
   ok(p7u.events.length === 0 && p7u.notes.unread.some(x => x.pr === 101 && /who closed it could not be read/.test(x.why)), 'M3: who closed it could not be read: no event this tick (never the lane as the closer)');
   const sh = plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), fates: new Map([[101, closedFate(101, { closedBy: 'haynes-ops-bot[bot]' })]]) });
-  ok(JSON.stringify(types(sh)) === JSON.stringify(['closed:needed>closed']) && sh.events[0].actor.kind === 'hand' && sh.events[0].actor.login === 'haynes-ops-bot[bot]' && /the shepherd's identity \(recorded as hand: the format's closed edge has no shepherd actor\)/.test(sh.events[0].reason) && RF.checkEvent(sh.events[0]).length === 0,
-    'second review 2: a close by the shepherd is recorded (actor hand, the nearest the format allows; the shepherd\'s login and identity kept), so the item does not stay open', JSON.stringify(sh.events[0]));
+  ok(JSON.stringify(types(sh)) === JSON.stringify(['closed:needed>closed']) && sh.events[0].actor.kind === 'shepherd' && sh.events[0].actor.login === 'haynes-ops-bot[bot]' && RF.checkEvent(sh.events[0]).length === 0,
+    'format point 8: a close by the shepherd is recorded as the shepherd\'s', JSON.stringify(sh.events[0]));
   const ga = plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), fates: new Map([[101, closedFate(101, { closedBy: 'github-actions[bot]' })]]) });
-  ok(ga.events[0]?.actor.kind === 'hand' && ga.events[0].actor.login === 'github-actions[bot]', 'M3: closed by another bot: actor hand, its login kept');
+  ok(ga.events[0]?.actor.kind === 'unknown' && ga.events[0].actor.login === 'github-actions[bot]', 'format point 9: closed by another bot: actor unknown (not established), its login kept');
   ok(plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), fates: new Map([[101, null]]) }).notes.unread.some(x => x.pr === 101), 'tick: a PR that left the open list and cannot be read: no event');
   ok(plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15) }).notes.deferred.some(x => x.pr === 101), 'L4: a PR whose state was not read this tick (budget) is deferred, no event');
   ok(plan(p1.doc, { records: [b, c], openPrs: [102, 103], at: at(15), fates: new Map([[101, { ...closedFate(101), state: 'OPEN' }]]) }).notes.still_open.some(x => x.pr === 101), 'tick: open but not listed: no event');
@@ -145,14 +148,14 @@ const p1 = plan(withMarker(H.emptyDoc()), { records: [a, b, c], openPrs: [101, 1
   const fi = { schema: 'haynes.upgrade-lane/v1', pr: 104, lane: 'BLOCKED', class: 'facts-incomplete', reason: 'read failed', update_type: 'unknown', rules: [], checks: {}, targets: [] };
   ok(plan(p1.doc, { records: [a, b, c, fi], openPrs: [101, 102, 103, 104], at: at(15) }).events.length === 0, 'tick: a record whose facts could not be read writes nothing');
   // two open PRs that carry the same item: no flip-flop, and an unreadable lower PR changes nothing (L7)
-  const twin = rec(105, { pkg: a.package, lane: 'LANE-B-AGENT', class: 'rule-agent' });
+  const twin = rec(105, { pkg: a.package, app: 101, lane: 'LANE-B-AGENT', class: 'rule-agent' });
   const p10 = plan(p1.doc, { records: [twin, a, b, c], openPrs: [101, 102, 103, 105], at: at(15) });
   ok(p10.events.length === 0 && plan(p10.doc, { records: [a, twin, b, c], openPrs: [101, 102, 103, 105], at: at(30) }).events.length === 0, 'tick: two open PRs that carry the same item write one record and do not flip-flop');
   const fi101 = { ...fi, pr: 101 };
   const p11 = plan(p10.doc, { records: [fi101, twin, b, c], openPrs: [101, 102, 103, 105], at: at(45) });
   ok(p11.events.length === 0 && p11.notes.shared_item.some(x => x.pr === 105 && x.with === 101) && plan(p11.doc, { records: [a, twin, b, c], openPrs: [101, 102, 103, 105], at: at(60) }).events.length === 0,
     'L7: a transient facts-incomplete on the lower PR does not hand the item to the higher one (no events either way)', JSON.stringify(p11.notes.shared_item));
-  const again = plan(p6.doc, { records: [rec(106, { pkg: a.package })], openPrs: [106], at: at(30) });
+  const again = plan(p6.doc, { records: [rec(106, { pkg: a.package, app: 101 })], openPrs: [106], at: at(30) });
   ok(again.events.length === 0 && again.notes.not_observed.some(x => x.pr === 106 && x.state === 'merged_unverified'), 'tick: a new PR for an item already merged writes no observed event');
 }
 
@@ -197,7 +200,7 @@ const p1 = plan(withMarker(H.emptyDoc()), { records: [a, b, c], openPrs: [101, 1
   ok(plan(H.emptyDoc(), { backfilling: true, scan: scanOf([{ ...mergedPr(301, -100), body: undefined }]) }).title_items === 1, 'H2: the plan counts the items named from a title');
   // the backfill: Renovate merges, a shared version, a group, a revert
   const list = [mergedPr(301, -3000), mergedPr(302, -2000), { ...mergedPr(303, -1000), title: 'feat(deps): update dev-env image toolchain group', body: 'no table here' },
-    { ...mergedPr(304, -900, { pkg: 'ghcr.io/example/app301' }) },
+    { ...mergedPr(304, -900, { pkg: 'ghcr.io/example/app301', app: 301 }) },
     { number: 311, title: `Revert "${mergedPr(302, 0).title}"`, author: { login: 'thaynes43' }, mergedAt: at(-500), mergedBy: { login: 'thaynes43' }, labels: [], mergeCommit: { oid: sha('8') } }];
   const titles = new Map([[302, mergedPr(302, 0).title]]);
   const p = plan(H.emptyDoc(), { backfilling: true, scan: scanOf(list), reverts: new Map([[311, { targets: [302], titles }]]) });
@@ -237,9 +240,10 @@ const p1 = plan(withMarker(H.emptyDoc()), { records: [a, b, c], openPrs: [101, 1
   const ev = (type, from, to, min, extra) => H.makeEvent({ item_id: id, type, from, to, at: at(min), actor: { kind: 'lane', login: null }, recorded_by: 'lane', attempt: 1, ...extra });
   d = { ...d, events: [...d.events, ev('merge-attempted', 'needed', 'in_progress', -59, { lane: 'A-night', carrier: { repo: REPO, pr: 501 } }), ev('merged', 'in_progress', 'merged_unverified', -58, { carrier: { repo: REPO, pr: 501 }, evidence: { merge_commit: sha('5') } }),
     ev('verification-failed', 'merged_unverified', 'failed', -50, { class: 'not-ready', reason: 'x' }), ev('revert-opened', 'failed', 'reverting', -49, { evidence: { revert_pr: 9001 } }), ev('revert-merged', 'reverting', 'reverted_unverified', -40, { evidence: { revert_commit: sha('6') } }), ev('recovery-verified', 'reverted_unverified', 'reverted', -30, {})] };
-  const rm = plan(d, { scan: scanOf([mergedPr(502, -5, { pkg: s.package })]) });
-  ok(rm.events.length === 0 && rm.notes.remembered_merges.some(x => x.pr === 502 && x.state === 'reverted') && rm.doc.meta.remembered_merges?.some(x => x.pr === 502), 'M4: a merge of a version remembered as reverted writes no event (no edge) and is kept in meta.remembered_merges');
-  ok(H.historyError({ write: 'written', remembered_merges: rm.doc.meta.remembered_merges }) && /MERGED WHILE REMEMBERED: #502 \(reverted\)/.test(H.historyLine({ write: 'written', events: 0, remembered_merges: rm.doc.meta.remembered_merges })), 'M4: and the tick logs it at ERROR level');
+  const rm = plan(d, { scan: scanOf([mergedPr(502, -5, { pkg: s.package, app: 501 })]) });
+  ok(types(rm).join() === 'merged:reverted>merged_unverified' && rm.events[0].actor.kind === 'renovate' && rm.notes.remembered_merges.some(x => x.pr === 502 && x.state === 'reverted') && !rm.doc.meta.remembered_merges, 'format point 7: a merge of a version remembered as reverted is recorded as an event (merged, from reverted), no meta workaround', JSON.stringify(types(rm)));
+  ok(H.historyError({ write: 'written', remembered_merges: rm.notes.remembered_merges }) && /MERGED WHILE REMEMBERED: #502 \(reverted\)/.test(H.historyLine({ write: 'written', events: 1, remembered_merges: rm.notes.remembered_merges })), 'format point 7: and the tick that sees it logs it at ERROR level');
+  ok(!H.forgettable(H.replay(rm.doc).items.get(id).item), 'format point 6/7: an item that was reverted is never forgotten, even after someone merged the version again');
   // M1: a list at the search limit is split; a list still cut after the splits is refused
   const calls = [];
   let seq = 1000;
@@ -285,7 +289,7 @@ const p1 = plan(withMarker(H.emptyDoc()), { records: [a, b, c], openPrs: [101, 1
   ok(!big.doc.events.some(e => e.item_id === lid) && big.doc.items[lid]?.base?.state === 'merged_unverified' && big.doc.items[lid].base.by === 'lane', 'M4: a merge the lane made, verification owed, keeps its place after its events rotated out', JSON.stringify(big.doc.items[lid]));
   ok(after.items.get(itemOf(o))?.item.state === 'needed', 'rotation: an open item keeps its place');
   ok(!big.doc.items[itemOf(cl)] && !after.items.has(itemOf(cl)), 'rotation: a closed item with no event left is forgotten');
-  const back = plan(big.doc, { records: [rec(503, { pkg: s.package })], openPrs: [503, 501], at: at(15) });
+  const back = plan(big.doc, { records: [rec(503, { pkg: s.package, app: 500 })], openPrs: [503, 501], at: at(15) });
   ok(back.events.length === 0 && back.notes.not_observed.some(x => x.pr === 503 && x.state === 'reverted'), 'rotation: a new PR for the reverted version is not observed as needed: the version stays remembered');
   ok(H.parseDoc({ metadata: { resourceVersion: '7' }, data: m.data }).ok, 'rotation: the rotated object parses back');
   console.log(`rotation: 5,000 merges; ${big.rotation.dropped} rotated out, ${big.doc.events.length} kept, ${Object.keys(big.doc.items).length} items; ${H.sizeOf(m)} of ${cfg.max_bytes} bytes; ${Math.round(Buffer.byteLength(m.data.events) / big.doc.events.length)} bytes per stored event line`);
@@ -468,7 +472,7 @@ const phase = (f, recs, o = {}) => H.historyPhase({ rules, run: f.run, env: {}, 
     'second review 2: with one read a tick, the stuck #9101 is read first, then #9102 on the next tick (least recently tried first)', JSON.stringify({ seen, t2: t2.summary.by_type, tried: JSON.parse(f.get().data.meta).tried }));
 
   // 3: closed against merged at the same instant: merged wins, also when the merged item had earlier events
-  const y = rec(9201, { to: '2.0.0', pkg: 'ghcr.io/example/app9202' });
+  const y = rec(9201, { to: '2.0.0', pkg: 'ghcr.io/example/app9202', app: 9202 });
   const x = rec(9202);
   const d0 = plan(withMarker(H.emptyDoc()), { records: [y, x], openPrs: [9201, 9202] }).doc;
   const d1 = plan(d0, { records: [y], openPrs: [9201], at: at(15), scan: scanOf([mergedPr(9202, 10, { to: '2.0.0' })]) });
@@ -542,6 +546,50 @@ const phase = (f, recs, o = {}) => H.historyPhase({ rules, run: f.run, env: {}, 
   const row = JSON.parse(readFileSync(join(RES, 'lane-v1-to-item-v1.json'), 'utf8')).fields.find(r => r.lane === 'terminal');
   const src = readFileSync(join(RES, 'upgrade-history.mjs'), 'utf8');
   ok(/type \(merged or closed\)/.test(row.note) && /const TERMINAL = \['merged', 'closed'\];/.test(src), 'second review 10: the terminal mapping row and the code agree: merged or closed');
+}
+
+// ── 11. the format round (the reader's points, decided in story 593) ──────────────────
+{
+  // point 6: the place in the id; a PR whose place changes while it is open (PR 4873 on
+  // 2026-11-12: two traefik targets, then one after the other half merged as PR 4876)
+  const two = rec(9701, { targets: ['kubernetes/main/apps/network/traefik', 'kubernetes/main/apps/network/traefik-internal'], files: ['kubernetes/main/apps/network/traefik/app/helmrelease.yaml', 'kubernetes/main/apps/network/traefik-internal/app/helmrelease.yaml'] });
+  const oneT = rec(9701, { targets: ['kubernetes/main/apps/network/traefik'], files: ['kubernetes/main/apps/network/traefik/app/helmrelease.yaml'] });
+  ok(itemOf(two) !== itemOf(oneT) && itemOf(rec(9701, { ...two, head: sha('9') })) === itemOf(two), 'point 6: the same update in other targets is another item; a rebase (same files) keeps it');
+  const m0 = plan(withMarker(H.emptyDoc()), { records: [two], openPrs: [9701] });
+  const m1 = plan(m0.doc, { records: [oneT], openPrs: [9701], at: at(15) });
+  ok(types(m1).join() === 'closed:needed>closed,observed:new>needed' && m1.events[0].item_id === itemOf(two) && m1.events[0].actor.kind === 'renovate' && /the same update in another place/.test(m1.events[0].reason) && m1.events[1].item_id === itemOf(oneT),
+    'point 6: a PR whose place changes while open closes the old item (replaced) and observes the new one (PR 4873)', JSON.stringify(types(m1)));
+  const m2 = plan(m0.doc, { records: [], openPrs: [], at: at(15), scan: scanOf([{ ...mergedPr(9701, 10, { pkg: two.package }), files: oneT.files.map(path => ({ path })) }]) });
+  ok(types(m2).join() === 'closed:needed>closed,merged:new>merged_unverified' && m2.events[1].item_id === itemOf(oneT), 'point 6: and when it merged in its new place before the lane saw it, the merge goes on the new place (the H1 path)');
+  // point 6: the memory across places, from the history's own items
+  const s = rec(9800, { app: 1 });
+  let d = plan(withMarker(H.emptyDoc()), { records: [s], openPrs: [9800], at: at(-60) }).doc;
+  const id = itemOf(s);
+  const ev = (type, from, to, min, extra) => H.makeEvent({ item_id: id, type, from, to, at: at(min), actor: { kind: 'lane', login: null }, recorded_by: 'lane', attempt: 1, ...extra });
+  d = { ...d, events: [...d.events, ev('merge-attempted', 'needed', 'in_progress', -59, { lane: 'A-night', carrier: { repo: REPO, pr: 9800 } }), ev('merged', 'in_progress', 'merged_unverified', -58, { carrier: { repo: REPO, pr: 9800 }, evidence: { merge_commit: sha('5') } }),
+    ev('verification-failed', 'merged_unverified', 'failed', -50, { class: 'not-ready', reason: 'x' }), ev('revert-opened', 'failed', 'reverting', -49, { evidence: { revert_pr: 9001 } }), ev('revert-merged', 'reverting', 'reverted_unverified', -40, { evidence: { revert_commit: sha('6') } }), ev('recovery-verified', 'reverted_unverified', 'reverted', -30, {})] };
+  const elsewhere = rec(9801, { pkg: s.package, app: 2 });
+  ok(itemOf(elsewhere) !== id && RF.rememberedReverted(H.historyItems(d), s.package, s.to).map(x => x.id).join() === id && RF.rememberedReverted(H.historyItems(d), s.package, '9.9.9').length === 0,
+    'point 6: the history\'s items answer rememberedReverted: the version reverted in app1 is found when asked from app2 (another item)');
+  // point 5: free text shaped like a secret is replaced before it is stored, and named
+  const fake = ['gh', 'p_', 'A'.repeat(36)].join('');
+  const x = rec(9901);
+  const xb = plan(withMarker(H.emptyDoc()), { records: [x], openPrs: [9901] });
+  const live = { pr: 9901, head: x.head, class: 'cluster-change', chosen: true, mode: 'live', verdict: 'merge-failed', pr_refusals: [], lane_refusals: [], merge_call: `gh pr merge 9901 failed: token ${fake}` };
+  const xr = plan(xb.doc, { records: [{ ...x, class: 'immediate-cluster-change', reason: 'reached upgrade-svc.default.svc.cluster.local' }], openPrs: [9901], at: at(15), verdict: live });
+  const stored = H.renderData(xr.doc).events;
+  ok(!stored.includes(fake) && !stored.includes('svc.cluster.local') && stored.includes(H.REDACTED) && xr.notes.redacted.some(r => r.field === 'evidence.merge_call' && r.shape === 'a GitHub token') && xr.notes.redacted.some(r => r.field === 'reason' && r.shape === 'an in-cluster name'),
+    'point 5: a token in a merge call and an in-cluster name in a reason are replaced by the fixed placeholder before they are stored, and named by field', JSON.stringify(xr.notes.redacted));
+  ok(H.historyError({ write: 'written', redacted: xr.notes.redacted }) && /REDACTED .*evidence\.merge_call of .* \(shaped like a GitHub token\)/.test(H.historyLine({ write: 'written', events: 1, redacted: xr.notes.redacted })) && !H.historyLine({ write: 'written', events: 1, redacted: xr.notes.redacted }).includes(fake), 'point 5: the tick logs an ERROR naming the field, never the text');
+  // point 3: a merge step's long refusals are cut to the bounds with a visible mark, not refused
+  const many = { ...live, verdict: 'refused', merge_call: 'not made', pr_refusals: Array.from({ length: 130 }, (_, i) => `refusal ${i} ${'r'.repeat(1100)}`) };
+  const xc = plan(xb.doc, { records: [x], openPrs: [9901], at: at(30), verdict: many });
+  const refused = xc.events.find(e => e.type === 'merge-refused');
+  ok(refused && refused.evidence.pr_refusals.length === 100 && refused.evidence.pr_refusals[99] === '… (+31 more)' && refused.evidence.pr_refusals[0].length === 1000 && refused.reason.length <= 1000 && RF.checkEvent(refused).length === 0 && xc.notes.cut.length > 0,
+    'point 3: a list of 130 long refusals is stored as 100, each cut to 1000 characters with a mark, and the cut is named');
+  // point 3: the attempt count survives rotation, so numbering carries on after attempts were dropped
+  const sk = H.skeleton('renovate-pr:' + 'c'.repeat(24), { state: 'needed', at: at(0), attempts: 25, by: 'lane', result: 'merge-refused' });
+  ok(RF.attemptCount(sk) === 25 && sk.attempts.length === 1 && sk.attempts_dropped === 24, 'point 3: an item\'s base keeps its attempt count (25) while holding one attempt, so the next is 26');
 }
 
 console.log(`\n${passes} passed, ${fails} failed`);

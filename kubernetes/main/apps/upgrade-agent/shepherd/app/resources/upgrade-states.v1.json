@@ -15,7 +15,7 @@
     "failed": { "phase": "attempt", "meaning": "Verification failed, or a drill asked for a revert; no revert is open yet." },
     "reverting": { "phase": "attempt", "meaning": "A revert pull request is open and not merged (story 753)." },
     "reverted_unverified": { "phase": "attempt", "meaning": "The revert merged; recovery is not yet verified." },
-    "reverted": { "phase": "settled", "meaning": "Reverted and recovery verified. Sticky: the version is never merged again; only drill-cleared (a drill) or resolved by a person leaves it. A new carrier for the version is classed BLOCKED 'reverted' by the lane and writes no event here." },
+    "reverted": { "phase": "settled", "meaning": "Reverted and recovery verified. Sticky: the lane never merges the version again; the lane leaves it only by drill-cleared (a drill), and a person by resolved. A merge by anyone but the lane is recorded as it happened (merged, to merged_unverified): the history says the version runs again, and the lane's promise is kept because the lane is not an actor on that edge. A new carrier for the version is classed BLOCKED 'reverted' by the lane and writes no event here." },
     "escalated": { "phase": "attempt", "meaning": "The lane's own moves are used up (recovery failed, a revert cannot be opened or merged, verification cannot be read); a person owns it (story 554)." },
     "approved": { "phase": "reserved", "meaning": "Reserved for piece 2 (dev-env v2 approval framework). Refused in piece 1." },
     "scheduled": { "phase": "reserved", "meaning": "Reserved for piece 2 (a planned time from schedule, e.g. Renovate's Awaiting Schedule items). Refused in piece 1." }
@@ -43,11 +43,11 @@
       ]
     },
     "closed": {
-      "meaning": "The carrier closed without a merge, or a newer version replaced it. actor is who closed it when known, else lane (the observer).",
+      "meaning": "The carrier closed without a merge, or a newer version replaced it. actor is who closed it; unknown when that could not be established. An item first seen at its close is not recorded: closed has no edge from first sight.",
       "used_by": ["593"],
       "requires": ["reason"],
       "edges": [
-        { "from": ["needed", "held", "blocked", "unknown"], "to": ["closed"], "actors": ["lane", "renovate", "hand", "person"] }
+        { "from": ["needed", "held", "blocked", "unknown"], "to": ["closed"], "actors": ["lane", "renovate", "shepherd", "hand", "person", "unknown"] }
       ]
     },
     "merge-attempted": {
@@ -85,12 +85,13 @@
       ]
     },
     "merged": {
-      "meaning": "The carrier merged. From in_progress by the lane's own merge step (verdict merged), or from merge_unknown when a later read finds it merged at that head; from an open state when someone else merged it (Renovate auto-merge, the shepherd, a hand run, a person), which opens a new attempt; from null when the first sight of the item is its merge (a backfill).",
+      "meaning": "The carrier merged. From in_progress by the lane's own merge step (verdict merged), or from merge_unknown when a later read finds it merged at that head; from an open state when someone else merged it (Renovate auto-merge, the shepherd, a hand run, a person, or an actor that could not be established: unknown), which opens a new attempt; from null when the first sight of the item is its merge (a backfill); from reverted when someone other than the lane merged a version remembered as reverted, so the history says the version runs again. In dry-run a merge by the haynes-ops-bot identity is the shepherd's, because the lane merges nothing; in live mode the lane's own merges are told apart by the change lock's last holder (story 556).",
       "used_by": ["752", "593"],
       "requires": ["attempt", "carrier", "evidence.merge_commit"],
       "edges": [
         { "from": ["in_progress", "merge_unknown"], "to": ["merged_unverified"], "actors": ["lane", "hand"], "attempt_result": "merged" },
-        { "from": [null, "needed", "held", "blocked", "unknown"], "to": ["merged_unverified"], "actors": ["renovate", "shepherd", "hand", "person"], "starts_attempt": true, "attempt_result": "merged" }
+        { "from": [null, "needed", "held", "blocked", "unknown"], "to": ["merged_unverified"], "actors": ["renovate", "shepherd", "hand", "person", "unknown"], "starts_attempt": true, "attempt_result": "merged" },
+        { "from": ["reverted"], "to": ["merged_unverified"], "actors": ["renovate", "shepherd", "hand", "person", "unknown"], "starts_attempt": true, "attempt_result": "merged" }
       ]
     },
     "awaiting-pin": {

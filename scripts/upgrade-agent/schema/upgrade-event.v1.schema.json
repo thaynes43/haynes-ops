@@ -11,9 +11,10 @@
     "id": {
       "description": "'ev:' plus the first 24 hex digits of sha256 over [item_id, type, at, attempt or null]. eventId() computes it, so a write retried after a failure carries the same id.",
       "type": "string",
-      "pattern": "^ev:[0-9a-f]{24}$"
+      "pattern": "^ev:[0-9a-f]{24}$",
+      "maxLength": 27
     },
-    "item_id": { "type": "string", "pattern": "^[a-z][a-z-]*:[0-9a-f]{24}$" },
+    "item_id": { "type": "string", "pattern": "^[a-z][a-z-]*:[0-9a-f]{24}$", "maxLength": 60 },
     "type": {
       "description": "approval-recorded and schedule-set are reserved for piece 2 and refused by the validator.",
       "enum": ["observed", "closed", "merge-attempted", "merge-refused", "merge-failed", "merge-unknown", "merged", "awaiting-pin", "verified", "verification-failed", "drill-requested", "revert-opened", "revert-merged", "recovery-verified", "recovery-failed", "escalated", "resolved", "drill-cleared", "approval-recorded", "schedule-set"]
@@ -31,32 +32,32 @@
     "drill": { "description": "True on every event of a revert drill (story 753).", "type": "boolean" },
     "lane": { "$ref": "haynes.upgrade-item/v1#/$defs/lane" },
     "class": { "description": "Machine-readable cause: the lane class for observed, the refusal for merge-refused, the failure mode for verification-failed.", "$ref": "haynes.upgrade-item/v1#/$defs/class" },
-    "reason": { "type": "string", "minLength": 1 },
+    "reason": { "$ref": "haynes.upgrade-item/v1#/$defs/text" },
     "carrier": {
       "type": "object",
       "additionalProperties": false,
       "required": ["repo", "pr"],
       "properties": {
-        "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+        "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", "maxLength": 200 },
         "pr": { "type": "integer", "minimum": 1 },
-        "head": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
-        "fingerprint": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" }
+        "head": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$", "maxLength": 40 },
+        "fingerprint": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71 }
       }
     },
     "evidence": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "url": { "type": "string", "pattern": "^https://" },
+        "url": { "type": "string", "pattern": "^https://", "maxLength": 1000 },
         "merge_commit": { "$ref": "haynes.upgrade-item/v1#/$defs/sha" },
         "revert_pr": { "type": "integer", "minimum": 1 },
-        "revert_branch": { "type": "string", "minLength": 1 },
+        "revert_branch": { "$ref": "haynes.upgrade-item/v1#/$defs/name" },
         "revert_commit": { "$ref": "haynes.upgrade-item/v1#/$defs/sha" },
-        "flux_revision": { "type": "string", "minLength": 1 },
-        "checks": { "description": "What the verifier checked, one 'name: result' line each.", "type": "array", "items": { "type": "string" } },
-        "merge_call": { "description": "The merge call as the merge step recorded it, with its exit status (story 752).", "type": "string", "minLength": 1 },
-        "pr_refusals": { "description": "The merge step's refusals about the PR, as written.", "type": "array", "items": { "type": "string" } },
-        "lane_refusals": { "description": "The merge step's refusals about the lane itself, as written.", "type": "array", "items": { "type": "string" } }
+        "flux_revision": { "$ref": "haynes.upgrade-item/v1#/$defs/name" },
+        "checks": { "description": "What the verifier checked, one 'name: result' line each.", "$ref": "haynes.upgrade-item/v1#/$defs/texts" },
+        "merge_call": { "description": "The merge call as the merge step recorded it, with its exit status (story 752).", "$ref": "haynes.upgrade-item/v1#/$defs/text" },
+        "pr_refusals": { "description": "The merge step's refusals about the PR, as written.", "$ref": "haynes.upgrade-item/v1#/$defs/texts" },
+        "lane_refusals": { "description": "The merge step's refusals about the lane itself, as written.", "$ref": "haynes.upgrade-item/v1#/$defs/texts" }
       }
     }
   }

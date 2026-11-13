@@ -7,7 +7,7 @@
   "record": {
     "item": {
       "schema": "haynes.upgrade-item/v1",
-      "id": "renovate-pr:1d7a362939cd391c85d1adb5",
+      "id": "renovate-pr:2d6a80cd7bb60e53196f8fea",
       "source": "renovate-pr",
       "item": {
         "name": "docker.io/alpine/kubectl",
@@ -73,8 +73,8 @@
     "events": [
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:15a131b5a2043ee4f23d4708",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:706d7ceca0b6c0628ae67f9f",
+        "item_id": "renovate-pr:2d6a80cd7bb60e53196f8fea",
         "type": "observed",
         "from": null,
         "to": "needed",
@@ -96,8 +96,8 @@
       },
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:96d216dd0c9630cfc479fd74",
-        "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+        "id": "ev:2166e627f1774c295cd1a312",
+        "item_id": "renovate-pr:2d6a80cd7bb60e53196f8fea",
         "type": "merged",
         "from": "blocked",
         "to": "merged_unverified",

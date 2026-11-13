@@ -10,6 +10,9 @@
 //   itemId(item), eventId(event)                      the derived ids the validator insists on
 //   fromLaneRecord(record, ctx) -> item               the mapping from haynes.upgrade-lane/v1
 //   eventsFromMergeStep(item, verdict, ctx) -> [event] what one merge-step verdict writes
+//   fit(schema, value)          -> { value, cuts }  a record cut to the schemas' bounds, visibly
+//   rememberedReverted(items, name, version) -> [item]  reverted items for a package at a
+//                                version, whatever the target (stories 753, 556 use it)
 //   validate(schema, value)     -> [error]   the JSON Schema subset below
 //   schemaProblems(schema)      -> [string]  keywords the subset lacks, $refs that do not resolve
 //
@@ -152,11 +155,17 @@ export function schemaProblems(schema) {
 
 // ── ids ──────────────────────────────────────────────────────────────────────
 const sha = s => createHash('sha256').update(s).digest('hex');
-// The update, not its carrier: equal across rebases and across a reopened PR for the
-// same version, which is what remembers a reverted version (story 753).
+// One update in one place, not its carrier: the source, the repository, the sorted
+// [package, version] pairs, and the place it lands: the sorted item.targets, or when the
+// update has no cluster target the sorted paths it changes (carrier.files). Equal across a
+// rebase (Renovate replays the same change on the same files, and the targets come from
+// those files) and across a reopened PR for the same version in the same place, which is
+// what remembers a reverted version (story 753). Only the writer derives it: a reader treats
+// it as opaque and never recomputes it.
+export const placeOf = it => { const t = [...(it.item?.targets || [])].sort(); return t.length ? t : [...(it.carrier?.files || [])].sort(); };
 export function itemId(it) {
   const pk = it.item?.packages?.length ? it.item.packages.map(p => [p.name, p.to ?? null]) : [[it.item?.name ?? null, it.available?.version ?? null]];
-  const key = JSON.stringify([it.source, it.item?.repo ?? null, pk.map(x => JSON.stringify(x)).sort()]);
+  const key = JSON.stringify([it.source, it.item?.repo ?? null, pk.map(x => JSON.stringify(x)).sort(), placeOf(it)]);
   return `${it.source}:${sha(key).slice(0, 24)}`;
 }
 export const eventId = ev => `ev:${sha(JSON.stringify([ev.item_id, ev.type, ev.at, ev.attempt ?? null])).slice(0, 24)}`;
@@ -209,10 +218,11 @@ export function checkItem(it) {
   const errs = validate(schemas.item, it);
   if (errs.length) return errs;
   const want = itemId(it);
-  if (it.id !== want) errs.push(`/id: is ${it.id}; the format derives ${want} from source, item.repo and the packages' target versions`);
+  if (it.id !== want) errs.push(`/id: is ${it.id}; the format derives ${want} from source, item.repo, the packages' target versions and the place (targets, else the changed files)`);
   if (RESERVED_STATES.has(it.state)) errs.push(`/state: ${it.state} is reserved for piece 2 and refused in piece 1`);
+  const dropped = it.attempts_dropped || 0;
   it.attempts.forEach((a, i) => {
-    if (a.n !== i + 1) errs.push(`/attempts/${i}/n: is ${a.n}, expected ${i + 1}`);
+    if (a.n !== dropped + i + 1) errs.push(`/attempts/${i}/n: is ${a.n}, expected ${dropped + i + 1}`);
     if (Date.parse(a.at) < Date.parse(a.started_at)) errs.push(`/attempts/${i}/at: before started_at`);
   });
   const phase = machine.states[it.state]?.phase;
@@ -220,6 +230,11 @@ export function checkItem(it) {
   if (Date.parse(it.observed_at) < Date.parse(it.first_seen)) errs.push('/observed_at: before first_seen');
   return errs;
 }
+
+// attempts[] keeps the newest MAX_ATTEMPTS (the schema's maxItems); attempts_dropped counts
+// the older ones, so the next attempt's number is their sum plus one.
+export const MAX_ATTEMPTS = schemas.item.properties.attempts.maxItems;
+export const attemptCount = it => (it.attempts_dropped || 0) + (it.attempts || []).length;
 
 // One event applied to the item it names. item.state null = the item has no event yet.
 export function applyEvent(item, ev) {
@@ -233,9 +248,12 @@ export function applyEvent(item, ev) {
   const next = structuredClone(item);
   let cur = next.attempts.at(-1);
   if (edge.starts_attempt) {
-    if (ev.attempt !== next.attempts.length + 1) return fail(`/attempt: ${ev.type} from ${st(ev.from)} opens attempt ${next.attempts.length + 1}, the event says ${ev.attempt}`);
+    const n = attemptCount(next) + 1;
+    if (ev.attempt !== n) return fail(`/attempt: ${ev.type} from ${st(ev.from)} opens attempt ${n}, the event says ${ev.attempt}`);
     cur = { n: ev.attempt, actor: ev.actor, started_at: ev.at, at: ev.at, result: edge.attempt_result, recovery: null, drill: ev.drill === true, evidence_url: ev.evidence?.url ?? null };
     next.attempts.push(cur);
+    // the newest MAX_ATTEMPTS are kept; the dropped are counted, the kept numbered after them
+    while (next.attempts.length > MAX_ATTEMPTS) { next.attempts.shift(); next.attempts_dropped = (next.attempts_dropped || 0) + 1; }
   } else if (ev.attempt != null) {
     if (!cur || ev.attempt !== cur.n) return fail(`/attempt: ${ev.type} names attempt ${ev.attempt}; the current attempt is ${cur?.n ?? 'none'}`);
     if ((ev.drill === true) !== cur.drill) return fail(`/drill: attempt ${cur.n} is ${cur.drill ? '' : 'not '}a drill, and the event says drill ${ev.drill === true}`);
@@ -258,7 +276,7 @@ export function applyEvent(item, ev) {
 export function replay(template, events) {
   let item = structuredClone(template);
   if (!events.length) return { item, errors: ['replay: no events'] };
-  if (events[0].from === null) { item.state = null; item.attempts = []; }
+  if (events[0].from === null) { item.state = null; item.attempts = []; delete item.attempts_dropped; }
   for (const [i, ev] of events.entries()) {
     const r = applyEvent(item, ev);
     if (r.errors.length) return { item, errors: r.errors.map(e => `event ${i} (${ev.type}): ${e}`) };
@@ -333,7 +351,7 @@ export function eventsFromMergeStep(item, v, ctx = {}) {
   if ((v.lane_refusals || []).length) return []; // the lane declined: no attempt on the item
   if (!ctx.repo || !ctx.at) throw new Error('eventsFromMergeStep: ctx.repo and ctx.at are required');
   if (item.carrier?.pr !== v.pr) throw new Error(`eventsFromMergeStep: the verdict is for PR ${v.pr}, the item's carrier is PR ${item.carrier?.pr}`);
-  const attempt = (item.attempts || []).length + 1;
+  const attempt = attemptCount(item) + 1;
   const carrier = { repo: ctx.repo, pr: v.pr, head: v.head ?? null };
   const after = Date.parse(v.merged?.merged_at || '') >= Date.parse(ctx.at) ? new Date(Date.parse(v.merged.merged_at)).toISOString() : ctx.at;
   const ev = (type, from, to, extra) => {
@@ -355,4 +373,50 @@ export function eventsFromMergeStep(item, v, ctx = {}) {
     out.push(ev('merge-unknown', 'in_progress', 'merge_unknown', { class: 'merge-outcome-unread', reason: v.verdict === 'merged' ? 'merged, but no merge commit was read' : call, carrier, evidence: { merge_call: call } }));
   }
   return out;
+}
+
+// ── bounds: a record cut to the schemas, with a visible mark (never refused for length) ──
+// A string over its maxLength keeps maxLength - 1 characters and ends in '…'. A list of
+// strings over its maxItems keeps maxItems - 1 entries and a last entry '… (+N more)'; a list
+// of objects keeps its first maxItems. cuts names each path that was cut, so the writer can
+// say so. The bounds are the schemas' own (one place): upgrade-item.v1.schema.json $defs
+// name, text, text_or_empty, names, texts, and the inline maxLength/maxItems.
+export function fit(schema, value) {
+  const cuts = [];
+  const nodes = (s, root) => { const out = []; let n = s, r = root; for (let i = 0; n && i < 8; i++) { out.push(n); if (!n.$ref) break; const x = resolve(n.$ref, r); if (!x) break; n = x.node; r = x.root; } return { list: out, root: r }; };
+  const go = (s, v, path, root) => {
+    if (!s || typeof s !== 'object') return v;
+    const { list, root: r } = nodes(s, root);
+    const pick = k => list.map(n => n[k]).find(x => x !== undefined);
+    if (typeof v === 'string') {
+      const max = pick('maxLength'), chars = [...v];
+      if (Number.isInteger(max) && chars.length > max) { cuts.push(path || '(root)'); return chars.slice(0, max - 1).join('') + '…'; }
+      return v;
+    }
+    if (Array.isArray(v)) {
+      const max = pick('maxItems'), items = pick('items');
+      let out = v.map((x, i) => go(items, x, `${path}/${i}`, r));
+      if (Number.isInteger(max) && out.length > max) {
+        cuts.push(path || '(root)');
+        out = out.every(x => typeof x === 'string') ? [...out.slice(0, max - 1), `… (+${out.length - max + 1} more)`] : out.slice(0, max);
+      }
+      return out;
+    }
+    if (v && typeof v === 'object') {
+      const props = Object.assign({}, ...list.map(n => n.properties || {}));
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, props[k] ? go(props[k], x, `${path}/${k}`, r) : x]));
+    }
+    return v;
+  };
+  return { value: go(schema, value, '', schema), cuts };
+}
+
+// ── the memory across places (stories 753, 556; nothing here decides a merge) ─────────
+// The items in state reverted that update the package to the version, whatever their target:
+// the id has the place in it, so a reverted version in one place is another item than the
+// same version in another place, and this is how a reader asks about the version itself.
+export function rememberedReverted(items, name, version) {
+  return (items || []).filter(it => it?.state === 'reverted' && (it.item?.packages?.length
+    ? it.item.packages.some(p => p.name === name && (p.to ?? null) === (version ?? null))
+    : it.item?.name === name && (it.available?.version ?? null) === (version ?? null)));
 }

@@ -6,7 +6,7 @@
   "record": {
     "item": {
       "schema": "haynes.upgrade-item/v1",
-      "id": "renovate-pr:78ee8938e12fead7783d26e9",
+      "id": "renovate-pr:2208e8983edf06daf0bdd04b",
       "source": "renovate-pr",
       "item": {
         "name": "ghcr.io/haraldkoch/rsync",
@@ -86,8 +86,8 @@
     "events": [
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:0deed9480dc6a7a639d1a345",
-        "item_id": "renovate-pr:78ee8938e12fead7783d26e9",
+        "id": "ev:032d9d0e266e18146b7daec5",
+        "item_id": "renovate-pr:2208e8983edf06daf0bdd04b",
         "type": "resolved",
         "from": "reverted",
         "to": "needed",

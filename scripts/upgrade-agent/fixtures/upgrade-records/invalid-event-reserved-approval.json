@@ -6,8 +6,8 @@
   },
   "record": {
     "schema": "haynes.upgrade-event/v1",
-    "id": "ev:eb6991e84b15bf526580ce53",
-    "item_id": "renovate-pr:1d7a362939cd391c85d1adb5",
+    "id": "ev:8f80b213e156adea001b2b9c",
+    "item_id": "renovate-pr:2d6a80cd7bb60e53196f8fea",
     "type": "approval-recorded",
     "from": "needed",
     "to": "approved",

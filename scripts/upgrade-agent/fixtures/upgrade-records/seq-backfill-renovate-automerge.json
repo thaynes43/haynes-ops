@@ -6,7 +6,7 @@
   "record": {
     "item": {
       "schema": "haynes.upgrade-item/v1",
-      "id": "renovate-pr:9fb8e67929834ecfbbafd7c9",
+      "id": "renovate-pr:3ea27ebc88e7cb32c5d95612",
       "source": "renovate-pr",
       "item": {
         "name": "ghcr.io/stakater/charts/reloader",
@@ -69,8 +69,8 @@
     "events": [
       {
         "schema": "haynes.upgrade-event/v1",
-        "id": "ev:2914356bada44957bbea009f",
-        "item_id": "renovate-pr:9fb8e67929834ecfbbafd7c9",
+        "id": "ev:3ac0230a4065e07d9a11b57c",
+        "item_id": "renovate-pr:3ea27ebc88e7cb32c5d95612",
         "type": "merged",
         "from": null,
         "to": "merged_unverified",

@@ -973,6 +973,13 @@ const SECRET_SHAPES = Object.freeze([
   [/\b(?:f[cd][0-9a-f]{2}|fe80):[0-9a-f]{0,4}:/i, 'a private network address'],
   [/[A-Za-z0-9-]\.svc\b|\.cluster\.local\b/i, 'an in-cluster name'],
 ]);
+// Story 593: the same shapes guard every free-text field the history stores. Returns what
+// the text is shaped like, or null.
+export function secretShape(text) {
+  const t = String(text ?? '');
+  for (const [re, what] of SECRET_SHAPES) if (re.test(t)) return what;
+  return null;
+}
 // F3/F4 (story 549 review): what a failed GitHub write publishes is a fixed vocabulary,
 // never gh's or GitHub's own text (a network error's last line can name the cluster's
 // resolver); the raw line goes to the Job log only. A denial (401, or a 403 that is not a

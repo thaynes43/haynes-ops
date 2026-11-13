@@ -1256,8 +1256,8 @@ each of these events once:
 | Event | When |
 |---|---|
 | `observed` | An open Renovate PR's item is seen for the first time, or its state (`needed`, `held`, `blocked`), lane or class changed. |
-| `closed` | The PR closed without a merge, by whoever GitHub says closed it. A close by the shepherd is recorded with actor `hand` (the format's `closed` edge has no shepherd actor), its login `haynes-ops-bot[bot]` and a reason that says it is the shepherd's identity. Also when Renovate replaced the item with a newer version on the same PR, whether the lane saw the newer version open or only at the merge (actor `renovate`). |
-| `merged` | Someone other than the lane merged it: Renovate's auto-merge, the shepherd, a session or a person. It goes on the item that was merged. When Renovate moved the PR to a newer version before it merged, the old item closes and the merge goes on the new one. A PR the lane never saw open is recorded with `recorded_by: backfill`. |
+| `closed` | The PR closed without a merge, by whoever GitHub says closed it: the shepherd as `shepherd`, a bot the lane does not know as `unknown` with its login. Also when Renovate replaced the item with a newer version on the same PR, whether the lane saw the newer version open or only at the merge (actor `renovate`). |
+| `merged` | Someone other than the lane merged it: Renovate's auto-merge, the shepherd, a session, a person, or `unknown` (another bot, its login kept). It goes on the item that was merged. A merge of a version the history remembers as `reverted` is recorded too (`merged`, from `reverted`; the lane is never an actor on that edge). When Renovate moved the PR to a newer version before it merged, the old item closes and the merge goes on the new one. A PR the lane never saw open is recorded with `recorded_by: backfill`. |
 | `revert-merged` | A merged PR titled `Revert "<title>"` whose body names (`Reverts #N`) a PR of exactly that title that the history holds as merged, merged by a session or a person. |
 
 In live mode the merge step's verdict also becomes events, through `eventsFromMergeStep()`.
@@ -1293,7 +1293,7 @@ same update while it is open.
 |---|---|
 | `upgrade-ledger` `data.events` | One event per line, oldest first. Each line is the format's event without the constant `schema` key, without `id` (that is `eventId()` over item, type, time and attempt) and without a null `actor.login`. `unpack()` restores all three. |
 | `upgrade-ledger` `data.items` | For each item, what the events cannot say: `name`, `from`, `to`, `type` (update type), `pr` and, for an item named from a title, `basis`. Also `base`, the item's state when its earlier events rotated out, and `mirrored`, the terminal event its PR record now carries. |
-| `upgrade-ledger` `data.meta` | `schema` `haynes.upgrade-ledger/v1`; the backfill marker (`backfill.at`, `window`, `query`, `events`, `compare`); the last rotation; `remembered_merges`; `mirror_halt`; `catch_up_mismatch` (a catch-up disagreement waiting for the next tick); and `tried` (`fate`, `mirror`: when each PR still waiting was last tried, for the fair order). |
+| `upgrade-ledger` `data.meta` | `schema` `haynes.upgrade-ledger/v1`; the backfill marker (`backfill.at`, `window`, `query`, `events`, `compare`); the last rotation; `mirror_halt`; `catch_up_mismatch` (a catch-up disagreement waiting for the next tick); and `tried` (`fate`, `mirror`: when each PR still waiting was last tried, for the fair order). |
 | `upgrade-ledger-marker` `data.marker` | `schema` `haynes.upgrade-ledger-marker/v1`, `created_at` and `backfilled_at`: that a history exists. |
 
 **Rotation.** `night.history.max_bytes` caps the bytes of `upgrade-ledger`'s data, which is
@@ -1308,10 +1308,26 @@ rotated out keeps its state in `items[id].base`:
   is forgotten once no event of it is left.
 
 **A merge of a remembered version.** If GitHub shows a merge of a version the history
-holds as `reverted`, the format has no edge to record it. The tick keeps it in
-`meta.remembered_merges` (the PR, the item, when), and every tick logs
+holds as `reverted`, it is recorded as an event (`merged`, from `reverted`, by whoever
+merged it; the lane is never an actor on that edge), and the tick that sees it logs
 `ERROR upgrade-night <mode>: HISTORY NEEDS A PERSON: … MERGED WHILE REMEMBERED: #<pr>
-(reverted)` until a person deals with it.
+(reverted)`. An item that was ever reverted is never forgotten by rotation.
+
+**Where an update lands is part of the item** (the format's item id has the place in it:
+the sorted targets, or the sorted changed paths when there is no cluster target). Two PRs
+for the same package and version in different places are two items. When a PR's place
+changes while it is open (Renovate rebased PR 4873 from two traefik targets to one after the
+other half merged as PR 4876), the old item closes as replaced and the new one is observed.
+Whether a version is remembered as reverted anywhere, whatever the place, is
+`rememberedReverted(historyItems(doc), name, version)`; nothing decides a merge with it yet
+(stories 753 and 556).
+
+**Free text is guarded and bounded before it is stored.** Every free-text field of an event
+(`reason`, `merge_call`, the refusal lines, `evidence.checks`) and each item's name passes
+the PR record's secret shapes (`secretShape()` in `night-merge.mjs`). A hit is replaced by
+a fixed placeholder, and the tick logs `REDACTED <field> of <item> (shaped like …)` at ERROR
+level: the field, never the text. Then `fit()` cuts the event to the format's bounds with a
+visible mark (`…`, `… (+N more)`).
 
 **Size** (measured in `lane-history-selftest.mjs`):
 
@@ -1461,7 +1477,7 @@ ERROR upgrade-night dryrun: HISTORY NOT WRITTEN: STUCK: …; the history was los
 
 ```bash
 kubectl -n upgrade-agent get cm upgrade-lane-state -o jsonpath='{.data.summary}' | jq .history
-kubectl -n upgrade-agent get cm upgrade-ledger -o jsonpath='{.data.meta}' | jq '{backfill: .backfill.compare, remembered_merges, mirror_halt}'
+kubectl -n upgrade-agent get cm upgrade-ledger -o jsonpath='{.data.meta}' | jq '{backfill: .backfill.compare, catch_up_mismatch, mirror_halt}'
 kubectl -n upgrade-agent get cm upgrade-ledger -o jsonpath='{.data.events}' | jq -c 'select(.type != "merged" or .recorded_by != "backfill")'
 kubectl -n upgrade-agent get cm upgrade-ledger -o jsonpath='{.data.items}' | jq 'to_entries[] | select(.value.base.state == "reverted" or .value.basis == "title")'
 kubectl -n upgrade-agent get cm upgrade-ledger-marker -o jsonpath='{.data.marker}' | jq .
@@ -1475,18 +1491,16 @@ upgrade-night dryrun: history: WRITTEN: 311 new events (observed 13, merged 298)
 
 **Known limits.**
 
-- **One item for two PRs.** The format's item is the package and version, not the target.
-  When two PRs update the same package to the same version in different places, they are
-  one item: on 2026-11-12 this was PRs 4376 and 4377, and 5 merged pairs in 30 days. The
-  history records the first PR. A revert of one would also remember the version for the
-  other. This is an open point for the format.
-- **A lane merge whose events are lost.** In live mode, if the history write fails on the
-  tick that merged, the next tick finds the PR merged by `haynes-ops-bot`. It would record
-  that as the shepherd's merge, because the lane and the shepherd share the identity. Story
-  556 should read the change lock's last holder before turning on the first live class.
-- **A shepherd's close.** The format's `closed` edge has no `shepherd` actor, so a PR the
-  shepherd closes is recorded with actor `hand`. Its login `haynes-ops-bot[bot]` and the
-  reason say whose identity it is. The event has no evidence field for a login.
+- **The lane and the shepherd share one identity.** In dry-run a merge by
+  `haynes-ops-bot` is the shepherd's, because the lane merges nothing. In live mode, if the
+  history write fails on the tick that merged, the next tick finds the PR merged by
+  `haynes-ops-bot` and would record it as the shepherd's. The lane's own merges are told
+  apart by the change lock's last holder, which story 556 builds before the first live
+  class.
+- **The place re-keys an open item when the lane's rules change.** The targets come from
+  the PR's files through the lane's rules (R8 maps a shared component to its consumers). A
+  rules change that maps a component to new consumers gives an open PR new targets, and so
+  a new item: the old one closes as replaced, once.
 - **A deferred revert.** A revert left unread by the budget is read on a later tick only
   while its merge time is inside the catch-up window. During the backfill, that is the whole
   window, because the marker waits.

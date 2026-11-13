@@ -31,7 +31,7 @@
 //     unpack() restores them), data.items (per item: name, from, to, type, pr, basis, base =
 //     its state once earlier events rotated out, mirrored = the terminal event its PR
 //     record carries), data.meta (schema, the backfill marker and its count comparison, the
-//     last rotation, merges seen on remembered items, the mirror halt).
+//     last rotation, the mirror halt, the fair order's tried times).
 //   upgrade-ledger-marker: data.marker, that a history exists (created_at, backfilled_at).
 //     A marker with upgrade-ledger absent or empty means the history was lost: the tick
 //     writes nothing and says so on every tick until a person restores it or clears the marker.
@@ -94,16 +94,47 @@ export function historyConfig(rules) {
 }
 
 // ── actors ──────────────────────────────────────────────────────────────────────
-// gh's GraphQL reads an app as app/<name>; REST, and the format, as <name>[bot]. The format
-// has five actor kinds; another bot is 'hand' (an automated session-like actor), its login kept.
+// gh's GraphQL reads an app as app/<name>; REST, and the format, as <name>[bot]. A bot that is
+// none of the configured ones is 'unknown' (who acted cannot be established), its login kept.
+// In dry-run a merge by the haynes-ops-bot identity is the shepherd's, because the lane merges
+// nothing; in live mode the lane's own merges are told apart by the change lock's last holder
+// (story 556).
 export const normLogin = l => (typeof l === 'string' && l ? (l.startsWith('app/') ? `${l.slice(4)}[bot]` : l) : null);
 export function actorOf(login, cfg) {
   const l = normLogin(login);
   if (!l) return null;
   for (const kind of ['renovate', 'shepherd', 'hand']) if ((cfg.actors?.[kind] || []).includes(l)) return { kind, login: l };
-  return { kind: /\[bot\]$/.test(l) ? 'hand' : 'person', login: l };
+  return { kind: /\[bot\]$/.test(l) ? 'unknown' : 'person', login: l };
 }
 const reasonOf = (s, cfg) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim() || 'no reason recorded'; return t.length > cfg.max_reason_chars ? `${t.slice(0, cfg.max_reason_chars - 1)}…` : t; };
+
+// ── what is stored: free text guarded, every field bounded ───────────────────────────
+// Every free-text field passes the PR record's secret shapes (night-merge.mjs secretShape:
+// credentials, private keys, tokens, private addresses, in-cluster names); a hit is replaced
+// by REDACTED and named in the notes (the field, never the text), and the tick logs an ERROR.
+// Then fit() cuts the event to the schema's bounds with a visible mark.
+export const REDACTED = '[redacted: the text was shaped like a credential, a private address or an in-cluster name]';
+const TEXT_FIELDS = [['reason'], ['evidence', 'merge_call'], ['evidence', 'revert_branch'], ['evidence', 'flux_revision']];
+const TEXT_LISTS = [['evidence', 'checks'], ['evidence', 'pr_refusals'], ['evidence', 'lane_refusals']];
+export function cleanEvent(ev, notes) {
+  const e = structuredClone(ev);
+  const hit = (field, text) => { const what = M.secretShape(text); if (what) notes?.redacted?.push({ item: e.item_id, type: e.type, field, shape: what }); return what; };
+  for (const p of TEXT_FIELDS) { const o = p.length === 2 ? e[p[0]] : e; const k = p.at(-1); if (o && typeof o[k] === 'string' && hit(p.join('.'), o[k])) o[k] = REDACTED; }
+  for (const p of TEXT_LISTS) { const o = e[p[0]]; const k = p[1]; if (o && Array.isArray(o[k])) o[k] = o[k].map((x, i) => (typeof x === 'string' && hit(`${p.join('.')}[${i}]`, x) ? REDACTED : x)); }
+  const f = RF.fit(RF.schemas.event, e);
+  if (f.cuts.length) notes?.cut?.push({ item: e.item_id, type: e.type, fields: f.cuts });
+  return f.value;
+}
+// the history's own item descriptions: the name guarded like free text, every field bounded
+const NAME_MAX = RF.schemas.item.$defs.name.maxLength;
+const clip = v => (typeof v === 'string' && [...v].length > NAME_MAX ? [...v].slice(0, NAME_MAX - 1).join('') + '…' : v);
+function cleanDesc(id, d, notes) {
+  const out = { ...d };
+  if (typeof out.name === 'string' && M.secretShape(out.name)) { notes?.redacted?.push({ item: id, field: 'items.name', shape: M.secretShape(out.name) }); out.name = REDACTED; }
+  for (const k of ['name', 'from', 'to', 'type']) out[k] = clip(out[k]);
+  if (Array.isArray(out.pk)) out.pk = out.pk.slice(0, RF.schemas.item.properties.item.properties.packages.maxItems).map(([n, t]) => [clip(n), clip(t)]);
+  return out;
+}
 
 // ── events ──────────────────────────────────────────────────────────────────────
 export function makeEvent(f) {
@@ -164,24 +195,39 @@ export const sizeOf = m => Object.values(m.data || {}).reduce((n, v) => n + Buff
 
 // ── replay ──────────────────────────────────────────────────────────────────────
 const blank = id => ({ id, state: null, observed_at: null, first_seen: null, lane: null, class: null, reason: null, attempts: [], carrier: { pr: null } });
+// the item as applyEvent needs it: the last attempt kept, the earlier ones counted
+// (attempts_dropped), so the next attempt number follows (record-format.mjs attemptCount)
 export function skeleton(id, base) {
   if (!base) return blank(id);
-  const attempts = Array.from({ length: base.attempts || 0 }, (_, i) => ({ n: i + 1, actor: { kind: null }, drill: false, result: null, at: base.at, started_at: base.at }));
-  if (attempts.length) Object.assign(attempts[attempts.length - 1], { drill: !!base.drill, result: base.result ?? null, actor: { kind: base.by ?? null } });
-  return { ...blank(id), state: base.state, observed_at: base.at, first_seen: base.seen ?? base.at, lane: base.lane ?? null, class: base.class ?? null, attempts, carrier: { pr: base.pr ?? null } };
+  const n = base.attempts || 0;
+  const attempts = n ? [{ n, actor: { kind: base.by ?? null }, drill: !!base.drill, result: base.result ?? null, at: base.at, started_at: base.at, recovery: null, evidence_url: null }] : [];
+  return { ...blank(id), state: base.state, observed_at: base.at, first_seen: base.seen ?? base.at, lane: base.lane ?? null, class: base.class ?? null, attempts, ...(n > 1 ? { attempts_dropped: n - 1 } : {}), carrier: { pr: base.pr ?? null }, ...(base.reverted ? { ever_reverted: true } : {}) };
 }
 export function baseOf(s) {
   const it = s.item, last = it.attempts.at(-1);
-  return { state: it.state, at: it.observed_at, seen: it.first_seen, lane: it.lane, class: it.class, pr: it.carrier?.pr ?? null, attempts: it.attempts.length, drill: !!last?.drill, result: last?.result ?? null, by: last?.actor?.kind ?? null, ...(s.refusal ? { refusal: s.refusal } : {}) };
+  return { state: it.state, at: it.observed_at, seen: it.first_seen, lane: it.lane, class: it.class, pr: it.carrier?.pr ?? null, attempts: RF.attemptCount(it), drill: !!last?.drill, result: last?.result ?? null, by: last?.actor?.kind ?? null, ...(it.ever_reverted ? { reverted: true } : {}), ...(s.refusal ? { refusal: s.refusal } : {}) };
 }
 // forgotten once no event is left: nothing owed, nothing to remember. merged_unverified
-// owes verification (story 553) only for a merge the lane made.
-export const forgettable = it => it.state === 'closed' || it.state === 'done' || (it.state === 'merged_unverified' && it.attempts.at(-1)?.actor?.kind !== 'lane');
+// owes verification (story 553) only for a merge the lane made. An item that was ever
+// reverted is never forgotten, even after someone merged the version again.
+export const forgettable = it => !it.ever_reverted && (it.state === 'closed' || it.state === 'done' || (it.state === 'merged_unverified' && it.attempts.at(-1)?.actor?.kind !== 'lane'));
 const refusalKey = list => JSON.stringify([...(list || [])].sort());
 const track = (s, ev) => {
   if (ev.type === 'merge-refused') s.refusal = { head: ev.carrier?.head ?? null, key: refusalKey(ev.evidence?.pr_refusals) };
   else if (ev.type !== 'merge-attempted') s.refusal = null;
+  if (ev.to === 'reverted' || ev.to === 'reverted_unverified') s.item.ever_reverted = true;
 };
+// The history's items in the format's shape, enough for record-format.mjs
+// rememberedReverted(): is a package at a version remembered as reverted anywhere, whatever
+// the target. Stories 753 and 556 use it; nothing here decides a merge.
+export function historyItems(doc) {
+  const st = replay(doc);
+  return [...st.items].map(([id, s]) => {
+    const d = doc.items[id] || {};
+    const packages = Array.isArray(d.pk) ? d.pk.map(([name, to]) => ({ name, update: null, from: null, to })) : d.name ? [{ name: d.name, update: null, from: d.from ?? null, to: d.to ?? null }] : [];
+    return { id, state: s.item.state, item: { name: d.name ?? null, packages, targets: [] }, available: { version: d.to ?? null }, carrier: { pr: s.item.carrier?.pr ?? d.pr ?? null } };
+  });
+}
 export function replay(doc) {
   const items = new Map(), ids = new Set(), errors = [];
   for (const [id, d] of Object.entries(doc.items || {})) items.set(id, { item: skeleton(id, d.base), desc: d, refusal: d.base?.refusal ?? null });
@@ -228,10 +274,10 @@ export function laneItem(e, repo, rules, at) {
   const types = L.updateTypes({ labels, packages, title: e.title || '' });
   const ce = files.length ? L.clusterEffect(files, rules) : { own_images: [], targets: [] };
   const pk = packages[0] || {};
-  const rec = { schema: RF.LANE_SCHEMA, pr: e.number, package: name, from: byTitle ? null : pk.from ?? null, to, packages, update_type: types.join('+') || 'unknown', own_images: ce.own_images, targets: ce.targets,
+  const rec = { schema: RF.LANE_SCHEMA, pr: e.number, package: name, from: byTitle ? null : pk.from ?? null, to, packages, update_type: types.join('+') || 'unknown', own_images: ce.own_images, targets: ce.targets, files,
     lane: 'LANE-A', class: 'merged', reason: 'merged', rules: [], findings: [], checks: {}, updated: at };
   const it = RF.fromLaneRecord(rec, { repo, observed_at: at });
-  return { id: it.id, basis: byTitle ? 'title' : 'package-table', desc: { name: it.item.name, from: it.installed.version, to: it.available.version, type: it.available.update_type, pr: e.number, ...(byTitle ? { basis: 'title' } : {}) } };
+  return { id: it.id, basis: byTitle ? 'title' : 'package-table', desc: { name: it.item.name, from: it.installed.version, to: it.available.version, type: it.available.update_type, pr: e.number, ...(packages.length > 1 ? { pk: packages.map(x => [x.name, x.to ?? null]) } : {}), ...(byTitle ? { basis: 'title' } : {}) } };
 }
 // Revert titles: GitHub's revert button writes 'Revert "<the reverted PR's title>"'.
 const REVERT = /^Revert "(.+)"$/;
@@ -334,11 +380,12 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
   const st = replay(doc);
   if (st.errors.length) return { ok: false, why: `the history does not replay (${st.errors.length} event(s) refused): ${st.errors[0]}` };
   const out = [];
-  const notes = { unread: [], deferred: [], not_observed: [], shared_item: [], unrecorded: [], still_open: [], collapsed: [], duplicate: 0, revert_unmatched: [], remembered_merges: [], superseded: [] };
+  const notes = { unread: [], deferred: [], not_observed: [], shared_item: [], unrecorded: [], still_open: [], collapsed: [], duplicate: 0, revert_unmatched: [], remembered_merges: [], superseded: [], redacted: [], cut: [] };
   const descs = new Map();
   const state = id => { let s = st.items.get(id); if (!s) { s = { item: blank(id), desc: null, refusal: null }; st.items.set(id, s); } return s; };
-  const add = (s, ev, pr) => {
-    if (st.ids.has(ev.id)) { notes.duplicate++; return false; }
+  const add = (s, ev0, pr) => {
+    if (st.ids.has(ev0.id)) { notes.duplicate++; return false; }
+    const ev = cleanEvent(ev0, notes); // guarded and bounded; the id does not change
     const r = RF.applyEvent(s.item, ev);
     if (r.errors.length) { notes.unrecorded.push({ pr: pr ?? null, item: ev.item_id, type: ev.type, why: r.errors[0] }); return false; }
     s.item = r.item; st.ids.add(ev.id); out.push(ev); track(s, ev);
@@ -363,10 +410,10 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
     try { item = RF.fromLaneRecord(r, { repo, observed_at: at }); } catch (e) { notes.unrecorded.push({ pr: r.pr, why: e.message }); continue; }
     if (seen.has(item.id) && seen.get(item.id) !== r.pr) { notes.shared_item.push({ pr: r.pr, item: item.id, with: seen.get(item.id) }); continue; }
     seen.set(item.id, r.pr);
-    const desc = { name: item.item.name, from: item.installed.version, to: item.available.version, type: item.available.update_type, pr: r.pr };
+    const desc = { name: item.item.name, from: item.installed.version, to: item.available.version, type: item.available.update_type, pr: r.pr, ...(item.item.packages.length > 1 ? { pk: item.item.packages.map(x => [x.name, x.to]) } : {}) };
     for (const [id, s] of st.items) {
       if (id === item.id || s.item.carrier?.pr !== r.pr || !OPEN.includes(s.item.state)) continue;
-      close(s, id, r.pr, at, renovate, `PR #${r.pr} now carries ${desc.name} ${desc.to ?? ''}: a newer version replaced this one`);
+      close(s, id, r.pr, at, renovate, `PR #${r.pr} now carries ${desc.name} ${desc.to ?? ''} (a newer version, or the same update in another place): it replaced this one`);
     }
     const s = state(item.id), cur = s.item;
     if (cur.state === null || (OBSERVABLE.includes(cur.state) && (cur.state !== item.state || cur.lane !== item.lane || cur.class !== item.class))) {
@@ -383,7 +430,7 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
     try { item = r && r.class !== 'facts-incomplete' ? RF.fromLaneRecord(r, { repo, observed_at: at }) : null; } catch { item = null; }
     const s = item ? st.items.get(item.id) : null;
     if (s) {
-      const evs = RF.eventsFromMergeStep({ id: item.id, lane: s.item.lane, attempts: s.item.attempts, carrier: { pr: verdict.pr } }, verdict, { repo, at });
+      const evs = RF.eventsFromMergeStep({ id: item.id, lane: s.item.lane, attempts: s.item.attempts, attempts_dropped: s.item.attempts_dropped, carrier: { pr: verdict.pr } }, verdict, { repo, at });
       if (evs[1]?.type === 'merge-refused' && s.refusal && s.refusal.head === (verdict.head ?? null) && s.refusal.key === refusalKey(verdict.pr_refusals)) notes.collapsed.push({ pr: verdict.pr, head: verdict.head, why: 'refused again at the same head for the same reasons; recorded once' });
       else for (const ev of evs) add(s, ev, verdict.pr);
     } else if (['refused', 'merged', 'merge-failed', 'merge-unknown'].includes(verdict.verdict)) notes.unrecorded.push({ pr: verdict.pr, why: 'the merge step ran on a PR whose item the history does not hold' });
@@ -392,11 +439,14 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
   // a merge on the item the lane's route names for what was merged
   const mergedOn = (id, e, recordedBy) => {
     const s = state(id);
-    if (s.item.state !== null && !OPEN.includes(s.item.state)) {
-      if (STICKY.includes(s.item.state)) notes.remembered_merges.push({ pr: e.number, item: id, state: s.item.state, at: iso(e.mergedAt), why: `PR #${e.number} merged a version the history remembers as ${s.item.state}; the format has no edge to record it` });
-      else notes.shared_item.push({ pr: e.number, item: id, with: s.item.carrier?.pr ?? null, state: s.item.state });
+    const sticky = STICKY.includes(s.item.state);
+    if (s.item.state !== null && !OPEN.includes(s.item.state) && !sticky) {
+      notes.shared_item.push({ pr: e.number, item: id, with: s.item.carrier?.pr ?? null, state: s.item.state });
       return false;
     }
+    // a merge of a version remembered as reverted is recorded as it happened (merged, from
+    // reverted; the lane is not an actor on that edge) and named at ERROR level this tick
+    if (sticky) notes.remembered_merges.push({ pr: e.number, item: id, state: s.item.state, at: iso(e.mergedAt), why: `PR #${e.number} merged a version the history remembers as ${s.item.state}` });
     const a = actorOf(e.mergedBy?.login ?? e.mergedBy, cfg);
     const mc = e.mergeCommit?.oid ?? e.mergeCommit;
     if (!a) { notes.unread.push({ pr: e.number, item: id, why: 'who merged it could not be read; nothing written' }); return false; }
@@ -404,7 +454,7 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
     const when = s.item.observed_at ? later(iso(e.mergedAt), s.item.observed_at) : iso(e.mergedAt);
     const labels = labelNames(e);
     return add(s, makeEvent({ item_id: id, type: 'merged', from: s.item.state, to: 'merged_unverified', at: when, actor: a, recorded_by: recordedBy,
-      recorded_at: Date.parse(at) > Date.parse(when) ? at : undefined, attempt: s.item.attempts.length + 1,
+      recorded_at: Date.parse(at) > Date.parse(when) ? at : undefined, attempt: RF.attemptCount(s.item) + 1,
       reason: labels.length ? reasonOf(`labels: ${labels.join(', ')}`, cfg) : undefined, carrier: { repo, pr: e.number }, evidence: { merge_commit: mc } }), e.number);
   };
 
@@ -437,8 +487,7 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
       const a = actorOf(f.closedBy, cfg);
       // the format's closed edge has no shepherd actor: the nearest it allows is hand (an
       // automated session-like actor), with the shepherd's login, and the reason says so
-      if (a.kind === 'shepherd') close(s, id, pr, when, { kind: 'hand', login: a.login }, `PR #${pr} was closed without a merge by ${a.login}, the shepherd's identity (recorded as hand: the format's closed edge has no shepherd actor)`, at);
-      else close(s, id, pr, when, a, `PR #${pr} was closed without a merge by ${a.login}`, at);
+      close(s, id, pr, when, a, `PR #${pr} was closed without a merge by ${a.login}`, at);
     }
   }
 
@@ -470,17 +519,14 @@ export function planHistory({ doc, records, openPrs, verdict, at, repo, cfg, rul
     if (!SHA.test(mc || '')) { notes.unread.push({ pr: e.number, item: id, why: 'no merge commit was read for the revert; nothing written' }); continue; }
     const when = later(iso(e.mergedAt), s.item.observed_at);
     add(s, makeEvent({ item_id: id, type: 'revert-merged', from: s.item.state, to: 'reverted_unverified', at: when, actor: a, recorded_by: 'backfill', recorded_at: Date.parse(at) > Date.parse(when) ? at : undefined,
-      attempt: s.item.attempts.length, reason: reasonOf(`reverted by #${e.number}: ${e.title}`, cfg), carrier: { repo, pr: target }, evidence: { revert_pr: e.number, revert_commit: mc } }), e.number);
+      attempt: RF.attemptCount(s.item), reason: reasonOf(`reverted by #${e.number}: ${e.title}`, cfg), carrier: { repo, pr: target }, evidence: { revert_pr: e.number, revert_commit: mc } }), e.number);
   }
 
   // the new document
   const next = { meta: structuredClone(doc.meta), items: structuredClone(doc.items), events: [...doc.events, ...out] };
-  for (const [id, d] of descs) next.items[id] = { ...Object.fromEntries(Object.entries(d).filter(([, v]) => v !== null && v !== undefined)), ...(next.items[id]?.base ? { base: next.items[id].base } : {}), ...(next.items[id]?.mirrored ? { mirrored: next.items[id].mirrored } : {}) };
+  for (const [id, d0] of descs) { const d = cleanDesc(id, d0, notes); next.items[id] = { ...Object.fromEntries(Object.entries(d).filter(([, v]) => v !== null && v !== undefined)), ...(next.items[id]?.base ? { base: next.items[id].base } : {}), ...(next.items[id]?.mirrored ? { mirrored: next.items[id].mirrored } : {}) }; }
   for (const ev of out) if (next.items[ev.item_id] && Number.isInteger(ev.carrier?.pr)) next.items[ev.item_id].pr = ev.carrier.pr;
-  // merges seen on a remembered item: kept, so every tick shows them until a person acts
-  const rem = [...(next.meta.remembered_merges || [])];
-  for (const x of notes.remembered_merges) if (!rem.some(y => y.pr === x.pr && y.item === x.item)) rem.push({ pr: x.pr, item: x.item, state: x.state, at: x.at, seen_at: at });
-  if (rem.length) next.meta.remembered_merges = rem.slice(-50);
+  delete next.meta.remembered_merges; // the event records such a merge now (merged, from reverted)
   const compare = scan?.ok ? compareCounts({ scan, st, events: next.events, renovateAuthors, rules, repo, at }) : null;
   const complete = scan?.ok && !notes.deferred.some(d => !Number.isInteger(d.item));
   if (backfilling && complete) next.meta.backfill = { at, window: scan.window, query: scan.query, events: out.filter(e => e.recorded_by === 'backfill').length, compare };
@@ -635,13 +681,13 @@ export function applyHistory(manifest, manager, env) {
 // ── the phase ───────────────────────────────────────────────────────────────────
 // write = false (a local run): plans and writes nothing. Returns { summary, terminals, ctx }:
 // ctx (the document and version written) lets commitMirrors() mark mirrored terminals.
-export function historyPhase({ rules, run, env, repo, at, records, openPrs, verdict, write, apply = applyHistory, clock = Date.now, startedAt = Date.parse(at) }) {
+export function historyPhase({ rules, run, env, repo, at, records, openPrs, verdict, write, apply = applyHistory, clock = Date.now, startedAt = null }) {
   const sum = { configmap: `${HISTORY.namespace}/${HISTORY.name}`, read: null, written: false, write: 'not-attempted', why_not: null, events: 0, derived: 0, by_type: {}, total: null, backfill: null, catch_up: null, rotation: null, notes: null, terminals: [], reads: null, elapsed_ms: null };
   const t0 = clock();
   const stuck = why => ({ summary: { ...sum, write: 'stuck', why_not: why, elapsed_ms: clock() - t0 }, terminals: [] });
   const cfg = historyConfig(rules);
   if (!cfg.ok) return stuck(cfg.why);
-  const budget = makeBudget(cfg, clock, startedAt);
+  const budget = makeBudget(cfg, clock, startedAt ?? t0); // run-night.mjs passes the tick's start
   // the marker first: a first writer writes the history, then the marker, so a marker read
   // before the history cannot meet a history that is not there yet
   const mread = M.readNamedConfigMap(MARKER.name, run);
@@ -698,7 +744,8 @@ export function historyPhase({ rules, run, env, repo, at, records, openPrs, verd
     : { state: 'done', at: p.doc.meta.backfill.at, window: p.doc.meta.backfill.window, compare: plan.doc.meta.backfill?.compare ?? p.doc.meta.backfill.compare };
   sum.catch_up = backfilling ? null : scan.ok ? { window: scan.window, ...pick(plan.compare, ['compared', 'github_count', 'listed', 'history_count', 'shared_item', 'missing', 'reverts', 'match']), ...(plan.compare?.match === false ? { repeated: plan.catch_up_repeated } : {}) } : { window: scan.window, why: scan.why };
   sum.notes = Object.fromEntries(Object.entries(plan.notes).filter(([, v]) => (Array.isArray(v) ? v.length : v)));
-  sum.remembered_merges = plan.doc.meta.remembered_merges || [];
+  sum.remembered_merges = plan.notes.remembered_merges;
+  sum.redacted = plan.notes.redacted;
   sum.mirror_halt = plan.doc.meta.mirror_halt ?? null;
   const owed = plan.terminals;
   const fin = extra => ({ ...sum, terminals: owed.map(t => t.pr), ...extra, elapsed_ms: clock() - t0 });
@@ -769,13 +816,14 @@ export function historyLine(h) {
   const cu = h.catch_up ? (h.catch_up.why ? `; catch-up unreadable: ${h.catch_up.why}` : `; catch-up since ${h.catch_up.window.since}: ${cmpLine(h.catch_up)}${h.catch_up.match === false ? (h.catch_up.repeated ? ' on two ticks in a row' : ' (first disagreement: GitHub\'s search index may lag; an ERROR if the next tick disagrees again)') : ''}`) : '';
   const tot = h.total ? `; ${h.write === 'written' ? 'holds' : 'would hold'} ${h.total.events} events, ${h.total.items} items (${h.total.title_items} named from a title), ${h.total.bytes} of ${h.total.cap} bytes` : '';
   const n = h.write === 'written' ? `${h.events} new event${h.events === 1 ? '' : 's'}${types ? ` (${types})` : ''}` : `${h.derived || 0} event${h.derived === 1 ? '' : 's'} derived${types ? ` (${types})` : ''}, none written`;
-  const rm = (h.remembered_merges || []).length ? `; MERGED WHILE REMEMBERED: ${h.remembered_merges.map(x => `#${x.pr} (${x.state})`).join(', ')}` : '';
+  const rm = ((h.remembered_merges || []).length ? `; MERGED WHILE REMEMBERED: ${h.remembered_merges.map(x => `#${x.pr} (${x.state})`).join(', ')}` : '')
+    + ((h.redacted || []).length ? `; REDACTED ${h.redacted.map(x => `${x.field} of ${x.item} (shaped like ${x.shape})`).join(', ')}` : '');
   return `${h.write.toUpperCase()}: ${n}${h.why_not ? `; ${h.why_not}` : ''}${bf}${cu}${tot}${h.rotation ? `; rotated out ${h.rotation.dropped} events, forgot ${h.rotation.forgotten} items` : ''}${h.reads?.stopped ? `; ${h.reads.stopped}` : ''}${rm}${h.marker_error ? `; marker ${h.marker_error}` : ''}${Number.isFinite(h.elapsed_ms) ? `; ${h.elapsed_ms} ms` : ''}`;
 }
 const cmpLine = c => (c ? `GitHub counts ${c.github_count ?? 'unread'} merged Renovate PRs, listed ${c.listed}, the history holds ${c.history_count} (${c.shared_item?.length || 0} through another PR's item), missing ${c.missing.length ? c.missing.map(x => `#${x}`).join(', ') : 'none'}${c.match === false ? ' (MISMATCH)' : c.match === null ? ' (GitHub count unread: not compared)' : ''}` : 'no comparison');
 // what the tick logs at ERROR level: anything that leaves the history unwritten or stuck,
 // and a merge seen on a remembered item
-export const historyError = h => !!h && !!(h.error || ['failed', 'conflict', 'stuck'].includes(h.write) || (h.remembered_merges || []).length > 0 || h.marker_error || h.backfill?.compare?.match === false || (h.catch_up?.match === false && h.catch_up.repeated));
+export const historyError = h => !!h && !!(h.error || ['failed', 'conflict', 'stuck'].includes(h.write) || (h.remembered_merges || []).length > 0 || (h.redacted || []).length > 0 || h.marker_error || h.backfill?.compare?.match === false || (h.catch_up?.match === false && h.catch_up.repeated));
 
 // The PR-record items owed a terminal (story 593 (d)): the lane's own record, with
 // terminal set; edit only, never a new comment on a closed PR. At most max_mirrors_per_tick.

@@ -9,9 +9,10 @@
   "properties": {
     "schema": { "const": "haynes.upgrade-item/v1" },
     "id": {
-      "description": "Stable key: '<source>:' plus the first 24 hex digits of sha256 over [source, item.repo, the sorted [name, to] pairs of item.packages] (or [[item.name, available.version]] when there are no packages). itemId() in record-format.mjs computes it; the validator refuses an id that does not match.",
+      "description": "Stable key: '<source>:' plus the first 24 hex digits of sha256 over [source, item.repo, the sorted [name, to] pairs of item.packages (or [[item.name, available.version]] when there are no packages), the place: the sorted item.targets, or when there are none the sorted carrier.files]. One update in one place. itemId() in record-format.mjs computes it; the validator refuses an id that does not match. Only the writer derives ids: a reader treats an id as opaque and never recomputes it.",
       "type": "string",
-      "pattern": "^[a-z][a-z-]*:[0-9a-f]{24}$"
+      "pattern": "^[a-z][a-z-]*:[0-9a-f]{24}$",
+      "maxLength": 60
     },
     "source": { "$ref": "#/$defs/source" },
     "item": {
@@ -20,11 +21,11 @@
       "additionalProperties": false,
       "required": ["name", "repo", "packages", "targets"],
       "properties": {
-        "name": { "type": "string", "minLength": 1 },
-        "repo": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
-        "packages": { "type": "array", "items": { "$ref": "#/$defs/package" } },
-        "targets": { "description": "Repository paths of the apps the update lands in (the lane's targets).", "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "own_images": { "description": "Ids from own_images in upgrade-rules.json whose source this update changes.", "type": "array", "items": { "type": "string", "minLength": 1 } }
+        "name": { "$ref": "#/$defs/name" },
+        "repo": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", "maxLength": 200 },
+        "packages": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/package" } },
+        "targets": { "description": "Repository paths of the apps the update lands in (the lane's targets). Part of the id.", "$ref": "#/$defs/names" },
+        "own_images": { "description": "Ids from own_images in upgrade-rules.json whose source this update changes.", "$ref": "#/$defs/names" }
       }
     },
     "installed": { "$ref": "#/$defs/version" },
@@ -32,12 +33,13 @@
       "type": "object",
       "required": ["version", "kind", "update_type"],
       "properties": {
-        "version": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"], "maxLength": 300 },
         "kind": { "$ref": "#/$defs/version_kind" },
         "update_type": {
           "description": "The lane's update_type: '+'-joined tokens such as patch, minor, major, digest, pin, pinDigest; or firmware, expiry, unknown.",
           "type": "string",
-          "pattern": "^[A-Za-z]+(\\+[A-Za-z]+)*$"
+          "pattern": "^[A-Za-z]+(\\+[A-Za-z]+)*$",
+          "maxLength": 100
         }
       },
       "additionalProperties": false
@@ -55,7 +57,7 @@
     },
     "lane": { "$ref": "#/$defs/lane" },
     "class": { "$ref": "#/$defs/class" },
-    "reason": { "type": "string" },
+    "reason": { "$ref": "#/$defs/text_or_empty" },
     "state": { "$ref": "#/$defs/state" },
     "approval": {
       "description": "RESERVED. Empty in piece 1: by Tom's ruling (saga 547 comment 6922) every approval goes through the dev-env v2 approval framework in piece 2, and piece 1 reads no approval. Piece 2 defines the fields. A GitHub review is not an approval.",
@@ -72,18 +74,20 @@
           "additionalProperties": false,
           "required": ["first", "last", "tz"],
           "properties": {
-            "first": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
-            "last": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
-            "tz": { "type": "string", "minLength": 1 }
+            "first": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$", "maxLength": 5 },
+            "last": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$", "maxLength": 5 },
+            "tz": { "type": "string", "minLength": 1, "maxLength": 100 }
           }
         }
       }
     },
     "attempts": {
-      "description": "One entry per attempt, built from the item's events (applyEvent() in record-format.mjs). Empty until story 593 writes events.",
+      "description": "One entry per attempt, built from the item's events (applyEvent() in record-format.mjs), the newest 20 at most: older ones are dropped and counted in attempts_dropped, so a PR refused on every tick cannot grow an item without limit.",
       "type": "array",
+      "maxItems": 20,
       "items": { "$ref": "#/$defs/attempt" }
     },
+    "attempts_dropped": { "description": "How many of the oldest attempts were dropped to keep attempts at 20. The kept ones are numbered after them.", "type": "integer", "minimum": 0 },
     "first_seen": { "$ref": "#/$defs/timestamp" },
     "observed_at": { "$ref": "#/$defs/timestamp" },
     "coverage": {
@@ -93,7 +97,7 @@
       "required": ["status"],
       "properties": {
         "status": { "enum": ["read", "partial", "unread"] },
-        "detail": { "type": "string" }
+        "detail": { "$ref": "#/$defs/text_or_empty" }
       }
     },
     "carrier": { "$ref": "#/$defs/carrier" },
@@ -104,30 +108,31 @@
       "required": ["from_schema"],
       "properties": {
         "from_schema": { "const": "haynes.upgrade-lane/v1" },
-        "rules": { "type": "array", "items": { "type": "string" } },
-        "findings": { "type": "array", "items": { "type": "string" } },
+        "rules": { "$ref": "#/$defs/names" },
+        "findings": { "$ref": "#/$defs/texts" },
         "checks": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "expected": { "type": "array", "items": { "type": "string" } },
-            "missing": { "type": "array", "items": { "type": "string" } },
-            "failing": { "type": "array", "items": { "type": "string" } },
-            "pending": { "type": "array", "items": { "type": "string" } },
-            "stale": { "type": "array", "items": { "type": "string" } },
+            "expected": { "$ref": "#/$defs/names" },
+            "missing": { "$ref": "#/$defs/names" },
+            "failing": { "$ref": "#/$defs/texts" },
+            "pending": { "$ref": "#/$defs/texts" },
+            "stale": { "$ref": "#/$defs/texts" },
             "ran_at": { "description": "When the head's checks ran: the earliest start of the counted attempts (R7, story 550).", "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
             "reference_time": { "description": "The earlier of the head commit's date and ran_at: what main is compared against.", "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
             "main_newer": {
               "description": "Set by the tick for lane-A records: main commits to the PR's files newer than reference_time.",
               "type": "array",
+              "maxItems": 100,
               "items": {
                 "type": "object",
                 "additionalProperties": false,
                 "required": ["path", "sha", "at"],
                 "properties": {
-                  "path": { "type": "string", "minLength": 1 },
-                  "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-                  "at": { "type": ["string", "null"] }
+                  "path": { "$ref": "#/$defs/name" },
+                  "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40 },
+                  "at": { "type": ["string", "null"], "maxLength": 100 }
                 }
               }
             }
@@ -135,8 +140,8 @@
         },
         "cluster_effect": { "enum": ["none", "delayed", "immediate", null] },
         "cluster_effect_wait": { "type": ["object", "null"] },
-        "via_components": { "description": "Shared components the PR changes and the consumer directories they reach ('<component> -> <consumer>', R8).", "type": "array", "items": { "type": "string" } },
-        "cluster_wide": { "description": "Ids of cluster_wide_targets the PR reaches (R5): a change that reaches every namespace.", "type": "array", "items": { "type": "string" } },
+        "via_components": { "description": "Shared components the PR changes and the consumer directories they reach ('<component> -> <consumer>', R8).", "$ref": "#/$defs/texts" },
+        "cluster_wide": { "description": "Ids of cluster_wide_targets the PR reaches (R5): a change that reaches every namespace.", "$ref": "#/$defs/names" },
         "gates": { "description": "Tonight's gates (lane-A records only): namespaces, blockers, alerts_not_blocking, would_be_eligible.", "type": ["object", "null"] },
         "backup": { "type": ["object", "null"] },
         "last_attempt": { "description": "The tick's merge-step verdict for this PR, as written (at, mode, chosen, verdict, pr_refusals, lane_refusals, merge_call); empty when the step did not run on it. Not the item's attempts: a live verdict becomes events (eventsFromMergeStep in record-format.mjs).", "type": ["object", "null"] },
@@ -155,9 +160,14 @@
     }
   ],
   "$defs": {
-    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
-    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "class": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$", "maxLength": 40 },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40 },
+    "class": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "maxLength": 100 },
+    "name": { "description": "BOUND: a name, a version, a path or an id: at most 300 characters. The writer cuts a longer one with a visible mark (fit() in record-format.mjs), never refuses it.", "type": "string", "minLength": 1, "maxLength": 300 },
+    "text": { "description": "BOUND: free text (a reason, a detail, a finding, a merge call, a refusal): at most 1000 characters, cut with a visible mark.", "type": "string", "minLength": 1, "maxLength": 1000 },
+    "text_or_empty": { "description": "BOUND: free text that may be empty: at most 1000 characters.", "type": "string", "maxLength": 1000 },
+    "names": { "description": "BOUND: a list of names: at most 100, cut with a visible last entry.", "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/name" } },
+    "texts": { "description": "BOUND: a list of free texts: at most 100, cut with a visible last entry.", "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/text" } },
     "source": {
       "description": "Written in piece 1 by the night lane: renovate-pr, image-pin, own-image. The others are named in ui.md section 3 and have no writer yet.",
       "enum": ["renovate-pr", "image-pin", "own-image", "renovate-pending", "platform", "ha-update", "unifi-firmware", "credential"]
@@ -176,7 +186,7 @@
       "additionalProperties": false,
       "required": ["version", "kind"],
       "properties": {
-        "version": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"], "maxLength": 300 },
         "kind": { "$ref": "#/$defs/version_kind" }
       }
     },
@@ -185,10 +195,10 @@
       "additionalProperties": false,
       "required": ["name", "update", "from", "to"],
       "properties": {
-        "name": { "type": "string", "minLength": 1 },
-        "update": { "type": ["string", "null"] },
-        "from": { "type": ["string", "null"] },
-        "to": { "type": ["string", "null"] }
+        "name": { "$ref": "#/$defs/name" },
+        "update": { "type": ["string", "null"], "maxLength": 100 },
+        "from": { "type": ["string", "null"], "maxLength": 300 },
+        "to": { "type": ["string", "null"], "maxLength": 300 }
       }
     },
     "actor": {
@@ -196,8 +206,8 @@
       "additionalProperties": false,
       "required": ["kind"],
       "properties": {
-        "kind": { "enum": ["lane", "renovate", "shepherd", "hand", "person"] },
-        "login": { "type": ["string", "null"] }
+        "kind": { "description": "unknown: who acted could not be established (another bot, say); login keeps what GitHub gave.", "enum": ["lane", "renovate", "shepherd", "hand", "person", "unknown"] },
+        "login": { "type": ["string", "null"], "maxLength": 100 }
       }
     },
     "carrier": {
@@ -207,15 +217,15 @@
       "required": ["kind", "repo", "pr"],
       "properties": {
         "kind": { "const": "github-pr" },
-        "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+        "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", "maxLength": 200 },
         "pr": { "type": "integer", "minimum": 1 },
-        "head": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
-        "title": { "type": ["string", "null"] },
-        "fingerprint": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
+        "head": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$", "maxLength": 40 },
+        "title": { "type": ["string", "null"], "maxLength": 1000 },
+        "fingerprint": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71 },
         "fingerprint_basis": { "enum": ["commit-diff", "binary", "multi-commit", "unavailable", null] },
         "commit_count": { "type": ["integer", "null"], "minimum": 0 },
-        "change_key": { "type": ["string", "null"], "pattern": "^[0-9a-f]{16}$" },
-        "files": { "description": "The PR's changed files.", "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "change_key": { "type": ["string", "null"], "pattern": "^[0-9a-f]{16}$", "maxLength": 16 },
+        "files": { "description": "The PR's changed files. With no item.targets, part of the id (the place).", "type": "array", "maxItems": 300, "items": { "$ref": "#/$defs/name" } },
         "head_committed_at": { "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] }
       }
     },
@@ -231,7 +241,7 @@
         "result": { "enum": ["in-progress", "merge-refused", "merge-failed", "merge-unknown", "merged", "awaiting-pin", "verified", "failed-verification", "drill", "reverted", "escalated"] },
         "recovery": { "description": "After a revert: whether recovery was verified.", "enum": ["verified", "failed", null] },
         "drill": { "type": "boolean" },
-        "evidence_url": { "type": ["string", "null"], "pattern": "^https://" }
+        "evidence_url": { "type": ["string", "null"], "pattern": "^https://", "maxLength": 1000 }
       }
     }
   }
