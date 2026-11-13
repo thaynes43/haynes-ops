@@ -117,17 +117,30 @@
 # host on 2.102.0 or newer stays usable for automatic selection after this pin; it needs no
 # suspend and resume.
 # Rollback image:2.104.0@sha256:6f432fed247ba96252df7a6f3a508eba062678a1af5df898f295c71461ec836c.
-image: ghcr.io/thaynes43/dev-env:2.105.0@sha256:1127ec6b4a31365b84031ac84f18a61d91a126649dda413df22af7812fcc7b70
+# v2.107.0 source 200e5f89 (release #1093). publish-agent.yml run 43351283076 built, smoke-tested,
+# signed and verified this digest. It carries 2.106.0 as well, which was released and never
+# pinned. What a session gains:
+# - Session titles (DESIGN-065 slice 1, dev-env#1104, OP785): agentd passes "<Family> | <title>"
+#   to the provider at launch and resume when the session has a title, and the session name
+#   when it has none, as before; agent-run create and rc take --title; agent-run show prints it.
+# - agent-run report for a summoned session's outcome (dev-env#1088, OP740), and agentd accepts
+#   a prompt on a summoned remote session (dev-env#1081, OP757). No summoned session can be
+#   created: the operator's --summon-create-kinds is unset.
+# No new env, mount or template field. Sessions on an older image keep running until their own
+# suspend and resume; their agentd ignores the title key. A paired Codex host on 2.102.0 or
+# newer stays usable for automatic selection after this pin.
+# Rollback image:2.105.0@sha256:1127ec6b4a31365b84031ac84f18a61d91a126649dda413df22af7812fcc7b70.
+image: ghcr.io/thaynes43/dev-env:2.107.0@sha256:bbb81c6e847f2fb0ef9824178d27323100fc99ece7fc188bf4ec1561a5d52875
 
 # New-sessions-only rollout for THIS image (DESIGN-001 5.2, dev-env#925; Q-03 option B, a
 # per-rollout deviation recorded in the PR that sets it). While this equals `image`, the
-# operator marks no session Draining: new sessions and resumes use the 2.105.0 revision and
+# operator marks no session Draining: new sessions and resumes use the 2.107.0 revision and
 # running sessions keep their pods until their own suspend and resume. It is not part of the
 # revision. It MUST equal `image` exactly: the Renovate rule bumps only the `image:` line, so
 # the next image bump PR must update this line to the new image or delete it (deleting it
 # resumes idle drain), otherwise the templates are invalid and new sessions wait.
 rollout:
-  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.105.0@sha256:1127ec6b4a31365b84031ac84f18a61d91a126649dda413df22af7812fcc7b70
+  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.107.0@sha256:bbb81c6e847f2fb0ef9824178d27323100fc99ece7fc188bf4ec1561a5d52875
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
