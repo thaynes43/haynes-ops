@@ -26,6 +26,31 @@ two changes. Nothing else of substance in his dated rules changed.
   or CRD contracts. Other behaviour changes are described in the PR body. An
   Accepted ADR is still never edited.
 
+## Added on 2026-11-13: summoned sessions
+
+The section "Summoned sessions" is new (OpenProject story #808, slice d of #746).
+It is not a ruling by Tom. dev-env DESIGN-064 5.6 asks for it: "One short paragraph
+... says what does not apply to a summoned session (the tracker, phone prompts, the
+worktree-per-story rule) and that its contract and `agent-run report` govern." That
+is the ops-profile coordinator's ruling Q-08 with its conditions (DESIGN-064 10.1),
+made inside gate T-1, which Tom answered on 2026-11-11 ("each automation gets a rule
+in git that fixes what it may start, and v2 writes what the session is told",
+DESIGN-064 8.1).
+
+- **Why it is needed.** An automation starts a summoned session (cigar curation
+  first, then remediation, escalation and upgrade work orders). Nobody opened a
+  tracker story for it, no coordinator waits for its messages, and a daily job must
+  not push a question to Tom's phone. Without the paragraph the common rules tell it
+  to do all three.
+- **Why the platform's mark defines it.** A summoned session reads text an attacker
+  can influence (alert annotations, release notes, catalog data). If a sentence in
+  that text could switch rules off, it would. So the test is a fact the session
+  cannot write: the Session's `caller`, which the operator's API sets from the
+  authenticated caller, and the report route, which answers only such a session.
+- **What stays.** Everything else: secrets, a denial is a stop, running sessions are
+  sacred, GitOps, the CPU budget, credentials and the MCP cautions. The contract may
+  ask for a PR; then the branch and PR rules apply to it.
+
 ## Incidents behind the hard rules
 
 - **2026-08-23, Fable credit wall.** The plan's Fable credits ran out. Sessions
