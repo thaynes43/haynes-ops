@@ -246,9 +246,10 @@ claude:
 cursor:
   apiKey: { name: dev-env-cursor-secret, key: CURSOR_API_KEY }
 
-# D-18. `full` and `dev` carry the cigar-journal MCP token as `ops` does (mcp.json's
-# ${CIGAR_JOURNAL_TOKEN}, from its own Secret dev-env-cigar-secret, not dev-env-mcp-secret),
-# so no profile that gets mcp.json renders a broken Authorization header.
+# D-18. `full`, `dev` and `workbench` carry the cigar-journal MCP token (mcp.json's
+# ${CIGAR_JOURNAL_TOKEN}, from its own Secret dev-env-cigar-secret, not dev-env-mcp-secret).
+# `ops` sets the same variable from the curation lane's own Secret (OP807), so no profile
+# that gets mcp.json renders a broken Authorization header.
 # MCP-Unifi uses its own Secret in `full`, `dev` and `workbench`; `ops` carries none
 # (DESIGN-064 6.3). Bounded rule canaries retain their credential-minimal profiles.
 # Platform egress already permits /mcp.
@@ -378,7 +379,11 @@ profiles:
   # pod follows the keeper's later ones while it runs; no refresh token).
   # Not here on purpose: UNIFI_MCP_AUTH_TOKEN (direct pod egress on this tier does not
   # reach mcp-unifi, and mcp-unifi can write to the network) and dev-env-mcp-secret.
-  # Kept: the cigar-journal token (curation), the optional Proxmox read token (D-18;
+  # The cigar-journal token here is the curation lane's own (Secret
+  # dev-env-cigar-curation-secret, OP807, Tom's ruling Q-26 of 2026-11-13), not the
+  # journal token of `full` and `dev`: an ops session can edit the shared catalog and
+  # cannot write the owner's journal, as a dev-env-ops session today.
+  # Kept: that token, the optional Proxmox read token (D-18;
   # direct pod egress does not reach Proxmox without a LAN grant, and every ops grant goes
   # to Tom) and /creds from the ops bot's token Secret. The egress tier limits what the
   # pod connects to directly; it is not a statement about every right the pod's
@@ -386,7 +391,7 @@ profiles:
   ops:
     env:
       - name: CIGAR_JOURNAL_TOKEN
-        valueFrom: { secretKeyRef: { name: dev-env-cigar-secret, key: CIGAR_JOURNAL_TOKEN } }
+        valueFrom: { secretKeyRef: { name: dev-env-cigar-curation-secret, key: CIGAR_JOURNAL_TOKEN } }
     envFrom:
       - secretRef: { name: dev-env-proxmox-secret, optional: true }
     mounts:
