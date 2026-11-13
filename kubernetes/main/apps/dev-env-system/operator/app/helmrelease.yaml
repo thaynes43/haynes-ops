@@ -493,7 +493,27 @@ spec:
               # (haynes-ops#4863). Rollback: that image AND remove the three usage flags in the
               # same change (all three or none: the operator refuses a line without a max age).
               # The CRD copy stays.
-              tag: sha-ff0c9e8@sha256:267ad631f54c787fd16665b63f50418670556f9ee7b5084cfe974c6b5d7195ab
+              # dev-env main 42552fa3 (publish 43367182880's operator job signed and verified this
+              # digest; CI run 43367183019 on that commit was green before this pin merged). Two
+              # code commits since sha-ff0c9e8, both of the ops-profile lane (OP751, DESIGN-064);
+              # the other six commits in the range are docs, release files and CI dependencies:
+              # - dev-env#1119 (OP790, DESIGN-064 6.9): a curation run held for quota closes with
+              #   reason quota-hold-expired at its hold bound, the hold message names the window,
+              #   the percentage, the line and the reading's time, and the usage ConfigMap is read
+              #   at most once per admission pass (it was a 30-second reuse). Only a session with
+              #   spec.caller reaches this code, and no session has one.
+              # - dev-env#1102 (OP782, DESIGN-064 6.8): the summoning create puts the label
+              #   dev-env.haynesops.com/summoned on the session it makes. No other create path
+              #   sets it. The keeper's pager for summoned sessions is in this image and is not
+              #   started by this pin: the keeper keeps its own image and flags.
+              # --summon-create-kinds stays unset, so no summoned session can be created.
+              # No AgentSession or other CRD change in the range, and no flag, permission,
+              # ConfigMap or Secret change for the image. The --inbox-projects line below changes
+              # in the same pull request (OP799); that is the only argument change.
+              # Previous pin sha-ff0c9e8@sha256:267ad631f54c787fd16665b63f50418670556f9ee7b5084cfe974c6b5d7195ab
+              # (haynes-ops#4866). Rollback: that image. The --inbox-projects value may stay or go
+              # back to dev-env on its own; neither image needs the other value.
+              tag: sha-42552fa@sha256:c4c55ed09901108e8ad8c6dd14b0131c151705d649b86649cfde97fd49c814c8
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
@@ -694,7 +714,14 @@ spec:
               # canary route is now off (T16), so this scope only keeps its retained result readable.
               - '--context-payload-read-projects=dev-env,sigo-alumni'
               - '--enable-durable-inbox=true'
-              - '--inbox-projects=dev-env'
+              # OP799 (2026-11-13): haynes-studio joins dev-env. The Studio epic coordinators start
+              # their workers as haynes-studio project tasks, and a worker's parent note was refused
+              # (404) because its project was not in this list. For a project-bound haynes-studio
+              # session this turns on the peer inbox, ask and reply, parent notes and coordinator
+              # instructions, under the same fences as dev-env. The coordinator-read, portal-question,
+              # task-claim and context-payload lists below and above are unchanged. No RBAC, route,
+              # Secret or egress change, and no code change.
+              - '--inbox-projects=dev-env,haynes-studio'
               - '--inbox-coordinator-read-projects=dev-env'
               # OP321 (dev-env#769, v2.76.0): turns on inbox ask and reply (kind question or reply, inReplyTo) and the thread view and sent
               # box. Same projects, ACLs and identities as the durable inbox above. No RBAC, route, Secret, egress, phone or Asks change.
