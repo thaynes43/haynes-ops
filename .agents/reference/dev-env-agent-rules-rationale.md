@@ -52,8 +52,8 @@ DESIGN-064 8.1).
 - **What replaces the phone question.** A summoned session has nobody to ask. A
   decision its contract does not settle ends the run with an `escalate` report,
   unless the contract names another report. The keeper's pager sends an escalated
-  close to Tom as a page (dev-env story 782; installed but not switched on when
-  this was written).
+  close to Tom as a page (dev-env story 782; merged, and neither installed in
+  the keeper nor switched on when this was written).
 - **Read by the coordinator who keeps the rules file** (OpenProject #501, comment
   7848, 2026-11-13): the default is said out loud for ordinary sessions, and the
   claim sentence was reworded so it reads one way.
