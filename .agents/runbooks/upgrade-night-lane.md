@@ -1907,7 +1907,7 @@ The responder can act on the same regression. It neither reads nor writes
 - A regression from a merge fires `FluxReconciliationFailure`, which is `severity: critical`
   after 15 minutes (`flux-system/addons/app/monitoring/prometheusrule.yaml`, lines 27 to 38).
 - The `rem-*` session may then fix it with runtime verbs or a git PR as the ops bot
-  (`dev-env-ops/app/resources/ops-claude.md`, contract step 4, lines 120 to 123). That could
+  (`dev-env-ops/app/resources/ops-claude.md`, contract step 4, lines 122 to 125). That could
   be a second revert.
 - Separately, `respond.sh` passes `ESCALATE_SIG`, but `remediate.sh` reads `REMEDIATE_SIG`
   (respond.sh line 528, remediate.sh line 77). So the `rem-*` key hashes the reason text
