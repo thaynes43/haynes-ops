@@ -63,6 +63,14 @@ spec:
       # never calls the Kubernetes API. The operator API token below is a separate
       # projected volume that the Kubernetes API does not accept.
       automountServiceAccountToken: false
+      # ndots 1: the client's one name (dev-env-operator.dev-env-system.svc.cluster.local)
+      # goes out as given on the first query, without the search suffixes first, so the
+      # network policy's exact DNS rule (networkpolicy.yaml) stays exact (dev-env's rule
+      # for an exact allowlist; story 805 review ruling 2).
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
