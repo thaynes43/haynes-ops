@@ -1,7 +1,11 @@
 ---
 # yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/policies.kyverno.io/validatingpolicy_v1.json
-# dev-env v2: no exec, attach, proxy or port-forward to a privileged pod by a dev-env
-# agent (DESIGN-001 6.11, D-19; DESIGN-064 5.8, OP859 rule 2).
+# dev-env v2: guard CONNECT pods/exec, pods/attach, pods/proxy and pods/portforward
+# to privileged pods (DESIGN-001 6.11, D-19; DESIGN-064 5.8, OP859 rule 2).
+# This policy does not match services/proxy. The identity guard refuses CONNECT
+# services/proxy in upgrade-agent for the same matched dev-agents identities.
+# Elsewhere, where the identity guard permits it, services/proxy still reaches a
+# pod behind a Service even when its account is listed below (DESIGN-064 5.8).
 # The agent keeps v1's exec everywhere else, as v1 has it (Tom, 2026-08-06): exec
 # reads the Secrets of the pod it enters, which is accepted. Exec into a pod that runs as
 # a powerful ServiceAccount is not: it hands the agent that identity (haynes-ops #3392;
@@ -10,11 +14,15 @@
 #
 # Kyverno, not the ValidatingAdmissionPolicy guards in apps/dev-env-system/rbac: the rule
 # needs the target pod, and only Kyverno's resource.Get can look it up at admission.
-# The VAP dev-env-identity-guard refuses all four CONNECT subresources in the dev-env
-# namespaces, and exec/attach in controller namespaces (kube-system, kyverno,
-# flux-system, external-secrets, ...). Kyverno never sees kube-system or kyverno (its
-# resourceFilters and webhook namespaceSelector skip them). This policy does not
-# extend the VAP's controller-namespace proxy/port-forward coverage.
+# The VAP dev-env-identity-guard refuses all four Pod CONNECT subresources in the
+# dev-env namespaces. Its controller-namespace rule 1b covers exec and attach only.
+# For the baseline dev-env-agent, this policy's target checks refuse Pod proxy and
+# port-forward in other controller namespaces only for a listed account, hostPID,
+# or a privileged regular/init container; lookup errors also refuse. Neither guard
+# covers that baseline identity's Pod proxy or port-forward in kube-system or kyverno:
+# Kyverno's resourceFilters and webhook namespaceSelector skip both namespaces.
+# Grant identities are separately refused by identity-guard rule 2 in flux-system,
+# external-secrets, kube-system and kyverno, including CONNECT (DESIGN-064 5.8).
 #
 # THE PRIVILEGED LIST below is the one place to add a new powerful ServiceAccount outside
 # those namespaces: any ServiceAccount bound cluster-wide to cluster-admin, a wildcard
@@ -24,9 +32,10 @@
 # identity guard's controllerNamespaces.
 #
 # Summoning callers are listed because their operator API tokens identify the caller
-# (dev-env DESIGN-064 5.8, OpenProject #811/#859). This policy refuses exec, attach,
-# proxy and port-forward by a matched dev-agents session identity to a pod running
-# as a listed account, or with hostPID or a privileged regular/init container.
+# (dev-env DESIGN-064 5.8, OpenProject #811/#859). This policy refuses pods/exec,
+# pods/attach, pods/proxy and pods/portforward by a matched dev-agents session identity
+# to a pod running as a listed account, or with hostPID or a privileged regular/init
+# container, where Kyverno receives the request.
 # The workbench identity and identities outside dev-agents, including v1's
 # upgrade-agent/dev-env-ops, are not matched. The operator API authenticates the
 # caller's ServiceAccount and CallerPolicy, not a CronJob; upgrade-shepherd's account
@@ -44,14 +53,22 @@ kind: ValidatingPolicy
 metadata:
   name: dev-env-exec-guard
   annotations:
-    policies.kyverno.io/title: dev-env agents may not exec, attach, proxy or port-forward to privileged pods
+    policies.kyverno.io/title: >-
+      dev-env Pod connections; services/proxy is not matched here, is refused in
+      upgrade-agent by the identity guard, and elsewhere can still reach a pod
+      behind a Service even when that pod's account is listed
     policies.kyverno.io/category: dev-env
     policies.kyverno.io/severity: high
     policies.kyverno.io/subject: Pod
     policies.kyverno.io/description: >-
-      Refuses exec, attach, proxy and port-forward by a matched dev-env v2 agent to a
-      pod that runs as a listed privileged ServiceAccount, has hostPID, or has a
-      privileged regular or init container (DESIGN-064 5.8).
+      Refuses CONNECT pods/exec, pods/attach, pods/proxy and pods/portforward by a
+      matched dev-agents identity to a pod that runs as a listed ServiceAccount,
+      has hostPID, or has a privileged regular or init container where Kyverno
+      receives the request. The workbench and identities outside dev-agents are
+      not matched. This policy does not match services/proxy; the identity guard
+      refuses it in upgrade-agent. Elsewhere, where that guard permits it, a
+      session can still reach a pod behind a Service even when its account is
+      listed here (DESIGN-064 5.8).
 spec:
   failurePolicy: Fail
   validationActions:
