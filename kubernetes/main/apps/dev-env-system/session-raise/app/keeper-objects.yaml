@@ -1,7 +1,7 @@
 ---
 # Install step 5, the keeper's half (dev-env DESIGN-066 section 11, 6.4, 6.6; ADR-028
 # decision 6). Three objects precreated EMPTY, the keeper's get/update on them by name,
-# get on the operator's ledger and public key, and list on AgentSessions in dev-agents.
+# and get on the operator's ledger and public key.
 #
 # Metadata-only precreation, like ../../rbac/app/keeper-ask-notifications.yaml and the
 # keeper's Secrets in ../../secrets/app/keeper-secrets.yaml. The keeper never creates them.
@@ -82,25 +82,7 @@ metadata:
   namespace: dev-env-system
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-keeper-session-raise}
 subjects: [{kind: ServiceAccount, name: dev-env-keeper, namespace: dev-env-system}]
----
-# The raise notifier lists the AgentSessions that carry the raise annotation every 30
-# seconds (DESIGN-066 6.4). The keeper already has get on agentsessions in dev-agents
-# (../../rbac/app/keeper-credentials.yaml) but no list; this adds list only. No watch:
-# the design names list only.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: dev-env-keeper-session-raise
-  namespace: dev-agents
-rules:
-  - apiGroups: [dev-env.haynesops.com]
-    resources: [agentsessions]
-    verbs: [list]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: dev-env-keeper-session-raise
-  namespace: dev-agents
-roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-keeper-session-raise}
-subjects: [{kind: ServiceAccount, name: dev-env-keeper, namespace: dev-env-system}]
+# No grant on AgentSessions is added. The raise notifier fetches a session by name and
+# never lists (the coordinator's ruling of 2026-11-14 on the second slice (a) review,
+# DESIGN-066 6.4). The keeper already has get on agentsessions in dev-agents
+# (../../rbac/app/keeper-credentials.yaml).
