@@ -977,6 +977,11 @@ spec:
               - tsx
               - /sync/src/scripts/sync.ts
               - --mode=space-policy
+            env:
+              # The Dynamic Pace's observe-only step (DESIGN-014 D-17) reads the free-space series
+              # from this job. Set explicitly so the job does not rest on a code default: this is
+              # the address the web pod reads for the Storage page. In-cluster, no credential.
+              PROMETHEUS_URL: http://prometheus-operated.observability.svc.cluster.local:9090
             envFrom:
               - secretRef:
                   name: haynesnetwork-secret
