@@ -21,6 +21,10 @@
 # or a privileged regular/init container; lookup errors also refuse. Neither guard
 # covers that baseline identity's Pod proxy or port-forward in kube-system or kyverno:
 # Kyverno's resourceFilters and webhook namespaceSelector skip both namespaces.
+# Kyverno's resourceFilters also skip kube-public and kube-node-lease, and neither is
+# in the identity guard's controllerNamespaces: there neither guard covers any of the
+# four Pod CONNECT subresources, exec and attach included. Neither namespace held a
+# pod on 2026-11-14.
 # Grant identities are separately refused by identity-guard rule 2 in flux-system,
 # external-secrets, kube-system and kyverno, including CONNECT (DESIGN-064 5.8).
 #
@@ -54,9 +58,8 @@ metadata:
   name: dev-env-exec-guard
   annotations:
     policies.kyverno.io/title: >-
-      dev-env Pod connections; services/proxy is not matched here, is refused in
-      upgrade-agent by the identity guard, and elsewhere can still reach a pod
-      behind a Service even when that pod's account is listed
+      dev-env agents may not exec, attach, proxy or port-forward to privileged
+      pods; services/proxy is not matched
     policies.kyverno.io/category: dev-env
     policies.kyverno.io/severity: high
     policies.kyverno.io/subject: Pod
