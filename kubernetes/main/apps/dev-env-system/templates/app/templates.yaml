@@ -381,8 +381,9 @@ profiles:
   # reach mcp-unifi, and mcp-unifi can write to the network) and dev-env-mcp-secret.
   # The cigar-journal token here is the curation lane's own (Secret
   # dev-env-cigar-curation-secret, OP807, Tom's ruling Q-26 of 2026-11-13), not the
-  # journal token of `full` and `dev`: an ops session can edit the shared catalog and
-  # cannot write the owner's journal, as a dev-env-ops session today.
+  # journal token of `full` and `dev`. As minted it carries the curation scopes and no
+  # journal-write scope, like the token a dev-env-ops session reads today. Every agent
+  # pod admitted on `ops` gets it, a summoned session or one started by hand.
   # Kept: that token, the optional Proxmox read token (D-18;
   # direct pod egress does not reach Proxmox without a LAN grant, and every ops grant goes
   # to Tom) and /creds from the ops bot's token Secret. The egress tier limits what the
