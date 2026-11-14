@@ -112,6 +112,7 @@ func controller(s string) string { return sa("kube-system/" + s) }
 type fixture struct {
 	version                                                               string
 	name, kind, resource, group, subresource, operation, actor, namespace string
+	emptyName                                                             bool // send an empty request.name instead of inferring one
 	new, old                                                              obj
 	parents                                                               []obj
 	fault                                                                 string
@@ -190,8 +191,9 @@ func (*mockContext) GenerateResources(string, []map[string]any) error {
 }
 
 type harness struct {
-	policy *compiler.Policy
-	mock   *mockContext
+	policy  *compiler.Policy
+	mock    *mockContext
+	request *admissionv1.AdmissionRequest
 }
 
 func compile(t *testing.T, p *policies.ValidatingPolicy) *harness {
@@ -241,7 +243,7 @@ func (h *harness) evaluate(t *testing.T, f fixture) (bool, *compiler.EvaluationR
 		namespace = ns
 	}
 	name := f.name
-	if name == "" {
+	if name == "" && !f.emptyName {
 		name = "fixture"
 		for _, o := range []obj{f.new, f.old} {
 			if meta, ok := o["metadata"].(obj); ok {
@@ -263,6 +265,7 @@ func (h *harness) evaluate(t *testing.T, f fixture) (bool, *compiler.EvaluationR
 		Namespace: namespace, Name: name, Operation: admissionv1.Operation(f.operation), SubResource: f.subresource,
 		UserInfo: authentication.UserInfo{Username: f.actor, Groups: []string{"system:authenticated"}},
 	}
+	h.request = &req
 	attr := admission.NewAttributesRecord(fixtureObject(f.new), fixtureObject(f.old), gvk, namespace, name, gvr,
 		f.subresource, admission.Operation(f.operation), nil, false, &user.DefaultInfo{Name: f.actor, Groups: req.UserInfo.Groups})
 	namespaceObject := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace, Labels: map[string]string{"kubernetes.io/metadata.name": namespace}}}

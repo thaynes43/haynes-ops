@@ -29,9 +29,20 @@
 #      The API server never sends admissionregistration.k8s.io objects (policies,
 #      bindings, webhook configurations) to admission policies or webhooks, so for those
 #      the rule is a statement only: RBAC is the control, and no v2 role may write them.
+#   7. CREATE, UPDATE (including patch/apply) or DELETE of every ConfigMap in
+#      upgrade-agent, including data, binaryData and metadata (DESIGN-064 5.8, OP859
+#      rule 1). The same dev-agents identity match covers baseline and grant accounts;
+#      the workbench, Flux controllers, caller accounts, v1's dev-env-ops and all other
+#      identities outside dev-agents are not matched. This grants them no RBAC rights.
+#   8. CONNECT services/proxy in upgrade-agent (DESIGN-064 5.8, OP859 service-proxy
+#      rule). The same identity match and exemptions apply. Service writes and other
+#      CONNECT subresources are unchanged; other namespaces keep their existing rules.
 #
-# Exec into privileged pods is the Kyverno policy dev-env-exec-guard (it looks the pod
-# up, which CEL here cannot).
+# The Kyverno policy dev-env-exec-guard checks pods/exec, pods/attach, pods/proxy and
+# pods/portforward against the target pod where Kyverno receives the request. It does
+# not match services/proxy. Outside the namespaces refused here, services/proxy can
+# still reach a pod behind a Service even when its account is listed by that policy
+# (DESIGN-064 5.8). See its header for controller-namespace and actor coverage.
 #
 # failurePolicy Fail, with no paramRef (see dev-env-agent-guard for why): the match
 # condition is a string compare that cannot fail, so an error refuses only a dev-agents
@@ -208,6 +219,26 @@ spec:
     - name: oldSpec
       expression: oldObject.?spec.orValue({})
   validations:
+    # 7. All ConfigMaps in the callers' namespace, regardless of name or labels.
+    # Only request metadata is used: DELETE has a null object; server-side apply
+    # arrives as UPDATE, or CREATE if the name is absent (DESIGN-064 5.8, OP859).
+    - expression: >-
+        !(variables.group == '' && variables.resource == 'configmaps' &&
+          variables.targetNamespace == 'upgrade-agent' && request.operation in ['CREATE', 'UPDATE', 'DELETE'])
+      message: >-
+        dev-env-identity-guard: session ConfigMap writes in upgrade-agent are refused
+        (CREATE, UPDATE and DELETE; DESIGN-064 5.8, OP859 rule 1)
+      reason: Forbidden
+    # 8. Service proxy is not matched by the Kyverno Pod CONNECT guard. Refuse it
+    # in the callers' namespace using only request metadata, regardless of the
+    # proxy name, options kind or backing pod (DESIGN-064 5.8, OP859 review LOW 1).
+    - expression: >-
+        !(request.operation == 'CONNECT' && variables.group == '' && variables.resource == 'services' &&
+          variables.subresource == 'proxy' && variables.targetNamespace == 'upgrade-agent')
+      message: >-
+        dev-env-identity-guard: session CONNECT services/proxy in upgrade-agent is refused
+        (DESIGN-064 5.8, OP859 service-proxy rule; identity guard rule 8)
+      reason: Forbidden
     # 1. The dev-env namespaces.
     - expression: "!(variables.targetNamespace in ['dev-env-system', 'dev-agents', 'dev-tools', 'dev-env-admin-issuance'])"
       messageExpression: >-
