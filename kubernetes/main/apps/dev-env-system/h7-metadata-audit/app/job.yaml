@@ -43,7 +43,7 @@ spec:
       containers:
         - name: metadata-audit
           # Immutable v2.15.1 source2da15bf installs /usr/bin/python3. No agent entrypoint.
-          image: ghcr.io/thaynes43/dev-env:2.15.1@sha256:b44f676305bab133b32e9d53d108a43a8da45379829024d3068e8dafc778c04d
+          image: ghcr.io/thaynes43/dev-env:2.109.0@sha256:8b2b51d5997c7406271128143734e08b885de4c3efb2dcc271d9c6c2389a0dca
           command: [/usr/bin/python3, -I, -B, /audit/collector.py]
           workingDir: /audit
           securityContext:
