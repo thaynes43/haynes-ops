@@ -4,9 +4,14 @@
 # until the keeper runs an image with it and --enable-summon-pages=true, which is a
 # separate change.
 #
-# The ledger. Key state.json holds only session UIDs and names, event kinds, UTC attempt
-# times, states and a schema version; key pages.json holds content-free page records (a
-# session name and an event kind; no title, body, URL, note text or person). No secret.
+# The ledger. Key state.json holds the dedupe (session UIDs and names, drill ids, event
+# kinds, states and UTC attempt times), the attempt times of the last 60 minutes that the
+# cap of six pages counts, the counters of capped events, the members of the daily digest
+# and the overflow page (dev-env stories 792 and 793; empty until a keeper with them
+# runs) and a schema version. Key pages.json holds one record per page: a generated title
+# (the event kind) and a generated summary body (a session name and its note's byte
+# count, a drill id, or a count of events), with the sender, source, priority, state,
+# attempt counts and times. Neither key holds note text, a URL, a person or a secret.
 #
 # Metadata-only precreation, like ./keeper-ask-notifications.yaml, which this ConfigMap
 # must differ from. The keeper never creates it: while it is missing the pager sends
@@ -14,8 +19,10 @@
 # never touch it again, so a reconcile cannot blank what the keeper wrote; `prune:
 # disabled` keeps it, and with it the dedupe that stops a repeat page, if this file is
 # removed. Keep it across upgrades and flag changes. Never delete it: Flux would recreate
-# it empty, which the keeper reads as a fresh ledger, so a page could be sent again
-# (within the hourly cap) and a used drill id would be forgotten.
+# it empty, which the keeper reads as a fresh ledger. The dedupe, the cap's record of the
+# last hour's attempts and the used drill ids are then all gone: a page could be sent
+# again, more than six pages could go in one real hour, and a drill id already used
+# would page again.
 apiVersion: v1
 kind: ConfigMap
 metadata:
