@@ -82,7 +82,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: epub-convert
-              image: ghcr.io/linuxserver/calibre:v9.18.0-ls431@sha256:5b5c0cba9fa70d65b5d92da73b8d486d4acf0d03ea648062586c4e3789700d89
+              image: ghcr.io/linuxserver/calibre:v9.18.0-ls432@sha256:fa5ae5f55859544ec026f82165b01bff913e812c7d67078744fcd119c1531ea3
               command:
                 - python3
                 - /scripts/epub_convert.py
