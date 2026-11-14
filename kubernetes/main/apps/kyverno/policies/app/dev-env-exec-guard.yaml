@@ -21,6 +21,16 @@
 # the cluster's ClusterRoleBindings on 2026-10-06. A new controller namespace goes in the
 # identity guard's controllerNamespaces.
 #
+# Summoning callers are listed because their operator API tokens identify the caller
+# (dev-env DESIGN-064 5.8, OpenProject #811). This policy refuses exec and attach
+# by a matched dev-agents session identity into any pod running as a listed account.
+# The workbench identity and identities outside dev-agents, including v1's
+# upgrade-agent/dev-env-ops, are not matched. The operator API authenticates the
+# caller's ServiceAccount and CallerPolicy, not a CronJob; upgrade-shepherd's account
+# is shared by three CronJobs. Summoned-session creates are currently disabled.
+# Add every new summoning caller here in the PR that adds its CallerPolicy.
+# TestSummoningCallerExecGuardCoverage fails if its account is missing.
+#
 # Matched by username to every dev-agents identity but the workbench (the same identities
 # as dev-env-identity-guard). failurePolicy Fail: Kyverno 1.19 copies a CEL policy's
 # matchConditions into its own fine-grained webhook, so the API server applies the
@@ -62,6 +72,8 @@ spec:
       expression: >-
         ['frontend/headlamp',
          'dev/dev-env', 'upgrade-agent/dev-env-ops',
+         'upgrade-agent/alert-responder', 'upgrade-agent/upgrade-shepherd',
+         'upgrade-agent/upgrade-health-gate', 'upgrade-agent/cigar-curation',
          'database/cloudnative-pg', 'database/dragonfly-operator-controller-manager',
          'network/multus', 'network/traefik-external', 'network/traefik-internal',
          'observability/grafana', 'observability/kube-prometheus-stack-operator',

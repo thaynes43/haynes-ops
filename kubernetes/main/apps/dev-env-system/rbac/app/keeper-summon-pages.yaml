@@ -1,0 +1,79 @@
+---
+# The keeper's pager for summoned sessions (dev-env DESIGN-064 6.8, dev-env#1102;
+# OpenProject #782, slice a of #742). Nothing uses these objects yet: the pager is off
+# until the keeper runs an image with it and --enable-summon-pages=true, which is a
+# separate change.
+#
+# The ledger. Key state.json holds the dedupe (session UIDs and names, drill ids, event
+# kinds, states and UTC attempt times), the attempt times of the last 60 minutes that the
+# cap of six pages counts, the counters of capped events, the members of the daily digest
+# and the overflow page (dev-env stories 792 and 793; empty until a keeper with them
+# runs) and a schema version. Key pages.json holds one record per page: a generated title
+# (the event kind) and a generated summary body (a session name and its note's byte
+# count, a drill id, or a count of events), with the sender, source, priority, state,
+# attempt counts and times. Neither key holds note text, a URL, a person or a secret.
+#
+# Metadata-only precreation, like ./keeper-ask-notifications.yaml, which this ConfigMap
+# must differ from. The keeper never creates it: while it is missing the pager sends
+# nothing and logs "state unavailable". `ssa: IfNotPresent` makes Flux create it once and
+# never touch it again, so a reconcile cannot blank what the keeper wrote; `prune:
+# disabled` keeps it, and with it the dedupe that stops a repeat page, if this file is
+# removed. Keep it across upgrades and flag changes. Never delete it: Flux would recreate
+# it empty, which the keeper reads as a fresh ledger. The dedupe, the cap's record of the
+# last hour's attempts and the used drill ids are then all gone: a page could be sent
+# again, more than six pages could go in one real hour, and a drill id already used
+# would page again.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dev-env-keeper-summon-pages
+  namespace: dev-env-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    kustomize.toolkit.fluxcd.io/prune: disabled
+---
+# By name only: get, then update with the resourceVersion as one compare-and-set before
+# any send. No create, list, watch, patch or delete, and no other ConfigMap. No other
+# principal is bound.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-keeper-summon-pages
+  namespace: dev-env-system
+rules:
+  - apiGroups: ['']
+    resources: [configmaps]
+    resourceNames: [dev-env-keeper-summon-pages]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-keeper-summon-pages
+  namespace: dev-env-system
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-keeper-summon-pages}
+subjects: [{kind: ServiceAccount, name: dev-env-keeper, namespace: dev-env-system}]
+---
+# The pager's scan: list AgentSessions in dev-agents, by the label the operator's API
+# sets on a summoning create (dev-env.haynesops.com/summoned=true), 500 a page and at most
+# 20 pages a tick. RBAC cannot narrow a list by label, so this is list on every
+# AgentSession of the namespace: read only, no watch, no write. The keeper already holds
+# get on them (./keeper-credentials.yaml), which the pager also uses to prove a session
+# gone before it forgets its entries.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-keeper-summon-sessions
+  namespace: dev-agents
+rules:
+  - apiGroups: [dev-env.haynesops.com]
+    resources: [agentsessions]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-keeper-summon-sessions
+  namespace: dev-agents
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-keeper-summon-sessions}
+subjects: [{kind: ServiceAccount, name: dev-env-keeper, namespace: dev-env-system}]
