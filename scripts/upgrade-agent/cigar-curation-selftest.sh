@@ -8,13 +8,15 @@
 # wrong answer to an API reply starts a second curation run on the shared catalog, or
 # reads a refusal as "already started" and silently skips a day. So each reply has to
 # lead where the script's header says:
-#   201 or 200 naming a session  -> exit 0, no retry;
+#   201 or 200 with exact name   -> exit 0, no retry;
+#   201 or 200 with another name -> exit 4, duplicate start, no retry;
 #   a session of today exists    -> exit 0 before any create;
 #   403, 409, 422, 429           -> exit 2, one create, no retry that day;
 #   503 (unconfirmed)            -> re-read the list, then retry with the same key;
 #   still unconfirmed            -> exit 3 after three attempts;
 #   no connection at all         -> exit 3 after three attempts, no create;
 #   the list refused (401, 403)  -> exit 2, no create.
+# A malformed list entry stops with exit 3, without a create or another attempt.
 # The token must never reach a log, and the worst case must fit the Job's
 # activeDeadlineSeconds.
 #
@@ -34,7 +36,8 @@ APPS="$REPO_ROOT/kubernetes/main/apps/upgrade-agent"
 SUMMON="$APPS/cigar-curation/app/resources/summon.sh"
 CLIENT="$APPS/health-gate/app/resources/dev-env-api.sh"
 HELMRELEASE="$APPS/cigar-curation/app/helmrelease.yaml"
-for f in "$SUMMON" "$CLIENT" "$HELMRELEASE"; do
+CONTRACT="$REPO_ROOT/.agents/runbooks/ops/cigar-curation.md"
+for f in "$SUMMON" "$CLIENT" "$HELMRELEASE" "$CONTRACT"; do
   [ -r "$f" ] || { echo "FATAL: cannot read $f"; exit 1; }
 done
 for t in curl jq openssl python3; do
@@ -62,29 +65,61 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 
 # reply, and the last reply repeats. It records every request as one JSON line in
 # $WORK/requests (method, path, whether Authorization carried the token, the body).
 cat > "$WORK/server.py" <<'PY'
-import http.server, json, os, ssl, sys
+import http.server, json, os, ssl, sys, threading
 work = sys.argv[1]
 token = open(os.path.join(work, "token")).read().strip()
+request_lock = threading.Lock()
+race_lists = threading.Barrier(2, timeout=5)
+race_session = None
+
+def race_event(event):
+    with open(os.path.join(work, "race-events"), "a") as f:
+        f.write(event + "\n")
 
 class H(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
     def handle_any(self):
+        global race_session
         n = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(n).decode() if n else ""
         auth = self.headers.get("Authorization", "")
         path = os.path.join(work, "requests")
-        seen = 0
-        if os.path.exists(path):
-            with open(path) as f:
-                seen = sum(1 for line in f if json.loads(line)["method"] == self.command)
-        with open(path, "a") as f:
-            f.write(json.dumps({"method": self.command, "path": self.path,
-                                "auth_ok": auth == "Bearer " + token, "body": body}) + "\n")
         with open(os.path.join(work, "script.json")) as f:
-            replies = json.load(f).get(self.command) or [{"status": 500, "body": {}}]
-        r = replies[min(seen, len(replies) - 1)]
+            script = json.load(f)
+        with request_lock:
+            seen = 0
+            if os.path.exists(path):
+                with open(path) as f:
+                    seen = sum(1 for line in f if json.loads(line)["method"] == self.command)
+            with open(path, "a") as f:
+                f.write(json.dumps({"method": self.command, "path": self.path,
+                                    "auth_ok": auth == "Bearer " + token, "body": body}) + "\n")
+            replies = script.get(self.command) or [{"status": 500, "body": {}}]
+            r = replies[min(seen, len(replies) - 1)]
+            if script.get("race"):
+                if self.command == "GET":
+                    r = {"status": 200, "body": {"sessions": [] if race_session is None else [race_session]}}
+                    race_event("list-empty" if race_session is None else "list-present")
+                elif self.command == "POST":
+                    req = json.loads(body)
+                    if race_session is None:
+                        r = {"status": 201, "body": {"name": req["name"], "phase": "Pending"}}
+                        race_event("create")
+                        # Model A finishing before B's POST is handled. This is the
+                        # terminal-key re-fire behavior in dev-env summon_create.go;
+                        # it is a fake dispatch, not an operator integration test.
+                        race_session = {"name": req["name"], "idempotencyKey": req["idempotencyKey"],
+                                        "outcome": {"state": "done"}}
+                        race_event("terminal")
+                    elif race_session["outcome"]["state"] == "done" and req["idempotencyKey"] == race_session["idempotencyKey"]:
+                        r = {"status": 201, "body": {"name": req["name"] + "-2", "phase": "Pending"}}
+                        race_event("refire")
+        if script.get("race") and self.command == "GET" and seen < 2:
+            # Both empty snapshots are taken before either client can POST. No
+            # scheduling sleeps or busy loop; a broken test fails within 5 seconds.
+            race_lists.wait()
         out = json.dumps(r.get("body", {})).encode()
         self.send_response(r["status"])
         self.send_header("Content-Type", "application/json")
@@ -185,11 +220,15 @@ scenario() {
   : > "$WORK/sleeps"
   CASE="$1"
 }
-# run_summon EXPECTED_EXIT: the shipped summon.sh under bash -x, with xtrace also set
-# through SHELLOPTS and a verbose .curlrc in CURL_HOME; stdout and stderr together.
-run_summon() {
+# The shipped summon.sh under bash -x, with xtrace also set through SHELLOPTS and a
+# verbose .curlrc in CURL_HOME; stdout and stderr together.
+invoke_summon() {
   env PATH="$WORK/shim:$PATH" HOSTNAME="$POD" SHELLOPTS=xtrace CURL_HOME="$WORK/curlhome" \
     bash -x "${SCRIPT:-$WORK/bin/summon.sh}" > "$OUT" 2>&1
+}
+# run_summon EXPECTED_EXIT
+run_summon() {
+  invoke_summon
   RC=$?
   cat "$OUT" >> "$ALL_OUT"
   if [ "$RC" -eq "$1" ]; then ok "$CASE: exit $RC"; else bad "$CASE: exit $RC, want $1 ($(tail -n 3 "$OUT" | tr '\n' ' '))"; fi
@@ -232,6 +271,58 @@ scenario "200" "$EMPTY" "$REUSED"
 run_summon 0
 n_posts 1; pauses ""
 says "logs the session it was given" "cigar-curation: session $NAME running"
+
+# ── 2a. two Jobs list empty; A finishes; B re-fires the now-terminal key ────────────
+scenario "two Jobs, terminal-key race" "$EMPTY" "$CREATED"
+jq '.race = true' "$WORK/script.json" > "$WORK/race.json"
+mv "$WORK/race.json" "$WORK/script.json"
+race_job() {
+  OUT="$WORK/race-$1.out" POD="cigar-curation-29400615-job$1" invoke_summon
+  printf '%s\n' "$?" > "$WORK/race-$1.rc"
+}
+race_job 1 & job1=$!
+race_job 2 & job2=$!
+wait "$job1"; wait "$job2"
+n_posts 2; n_gets 2; order GGPP; pauses ""
+if [ "$(tr '\n' ' ' < "$WORK/race-events")" = "list-empty list-empty create terminal refire " ]; then
+  ok "$CASE: both list snapshots are empty, A creates and finishes before B re-fires"
+else bad "$CASE: the fake did not exercise the intended interleaving"; fi
+first_run="$(jq -sr '[.[] | select(.method == "POST")][0].body | fromjson | .data.run' "$WORK/requests")"
+for job in 1 2; do
+  OUT="$WORK/race-$job.out"
+  cat "$OUT" >> "$ALL_OUT"
+  if [ "$first_run" = "cigar-curation-29400615-job$job" ]; then
+    expected=0
+    says_line "A logs the exact requested name" "cigar-curation: session $NAME Pending"
+  else
+    expected=4
+    says_line "B logs the duplicate name" "cigar-curation: duplicate start for ${DAY}: got ${NAME}-2; no retry"
+    says_not "B does not log success" "cigar-curation: session "
+  fi
+  rc="$(cat "$WORK/race-$job.rc")"
+  if [ "$rc" = "$expected" ]; then ok "$CASE: job $job exits $expected"; else bad "$CASE: job $job exits $rc, want $expected"; fi
+done
+OUT="$WORK/out"
+if jq -se --arg n "$NAME" --arg k "$KEY" '
+    [.[] | select(.method == "POST") | .body | fromjson] as $p
+    | ($p | all(.name == $n and .idempotencyKey == $k))
+      and ($p | group_by(.data.run) | length == 2 and all(length == 1))' "$WORK/requests" >/dev/null; then
+  ok "$CASE: each Job POSTs exactly once with the same name and key"
+else bad "$CASE: a Job changed the name/key or sent another POST"; fi
+
+# The successful replay path must reject a different name too, not just HTTP 201.
+scenario "200 with a different name" "$EMPTY" "$(jq --arg n "$NAME-2" '.body.name = $n' <<<"$REUSED")"
+run_summon 4
+n_posts 1; n_gets 1; order GP; pauses ""
+says_line "logs the duplicate name" "cigar-curation: duplicate start for ${DAY}: got ${NAME}-2; no retry"
+says_not "does not log success" "cigar-curation: session "
+
+# This is a text check of the agent contract, not a claim of model execution.
+if grep -qF 'full name must equal exactly `wo-cigar-curate-<date>`' "$CONTRACT" \
+    && grep -qF 'does no catalog read or write' "$CONTRACT" \
+    && grep -qF 'agent-run report done --note "duplicate start for <date>"' "$CONTRACT"; then
+  ok "contract: only the exact dated name may work; any other name reports duplicate done"
+else bad "contract: missing exact-name/no-catalog-work/duplicate-done rule"; fi
 
 # ── 3. a session of today exists before the create ──────────────────────────────────
 scenario "exists by name and key" "$TODAY_RUNNING" "$CREATED"
@@ -287,6 +378,13 @@ says "says nothing was confirmed" "no session for $DAY confirmed after 3 attempt
 scenario "503 three times, then the last read finds it" "$EMPTY,$EMPTY,$EMPTY,$TODAY_RUNNING" "$R503"
 run_summon 0
 n_posts 3; order GPGPGPG
+for refused in "$R401_LIST" "$R403_LIST"; do
+  scenario "three unconfirmed creates, final list $(jq -r .status <<<"$refused")" "$EMPTY,$EMPTY,$EMPTY,$refused" "$R503"
+  run_summon 2
+  n_posts 3; n_gets 4; order GPGPGPG; pauses "60 60"
+  says "final refusal is explicit" "refused reading this caller's sessions"
+  says_not "final refusal is not logged as unconfirmed" "no session for $DAY confirmed"
+done
 scenario "a 201 that names no session is unconfirmed" "$EMPTY" "$NAMELESS,$CREATED"
 run_summon 0
 n_posts 2; order GPGP; pauses "60"
@@ -310,6 +408,23 @@ says "no create on the unreadable attempt" "could not read this caller's session
 scenario "a 200 without a sessions list is unreadable" "$NO_LIST" "$CREATED"
 run_summon 3
 n_posts 0; pauses "60 60"
+for entry in '{}' 'null' "{\"idempotencyKey\":\"$KEY\"}" \
+    "{\"name\":\"$NAME\",\"idempotencyKey\":17}" \
+    "{\"name\":\"$NAME\",\"phase\":false}" \
+    "{\"name\":\"$NAME\",\"outcome\":[]}" \
+    "{\"name\":\"$NAME\",\"outcome\":{\"state\":17}}"; do
+  scenario "malformed list entry $entry" "{\"status\":200,\"body\":{\"sessions\":[$entry]}},$EMPTY" "$CREATED"
+  run_summon 3
+  n_posts 0; n_gets 1; order G; pauses ""
+  says "stops on malformed entries" "session list has malformed entries; no create for $DAY"
+  says_not "is not success" "nothing to do"
+done
+scenario "valid matching entry followed by a malformed entry" \
+  "$(jq '.body.sessions += [{}]' <<<"$TODAY_RUNNING"),$EMPTY" "$CREATED"
+run_summon 3
+n_posts 0; n_gets 1; order G; pauses ""
+says "validates every entry before finding a match" "session list has malformed entries; no create for $DAY"
+says_not "does not stop validation at the matching entry" "nothing to do"
 
 # ── 7. refused before sending ───────────────────────────────────────────────────────
 scenario "no client" "$EMPTY" "$CREATED"

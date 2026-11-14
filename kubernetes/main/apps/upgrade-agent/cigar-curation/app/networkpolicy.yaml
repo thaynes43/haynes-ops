@@ -6,8 +6,9 @@
 #   2. the dev-env v2 operator pods in dev-env-system on TCP 8443 (the API), with the
 #      pinned CA and a projected token for this account's CallerPolicy. The
 #      operator's own policy admits this pod by its app label.
-# No Kubernetes API, no internet, no other namespace. No ingress rules: all ingress is
-# denied (the pod serves nothing).
+# No Kubernetes API, no internet, no other namespace. Ingress default deny is
+# explicit below, with no ingress allow rules (the pod serves nothing). Runtime
+# enforcement is an installation check; rendering this policy does not prove it.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -17,6 +18,8 @@ spec:
   endpointSelector:
     matchLabels:
       app.kubernetes.io/name: cigar-curation
+  enableDefaultDeny:
+    ingress: true
   egress:
     - toEndpoints:
         - matchLabels:

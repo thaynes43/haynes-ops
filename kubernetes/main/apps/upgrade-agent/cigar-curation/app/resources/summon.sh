@@ -11,13 +11,19 @@
 #   data            date (the UTC date) and run (this Job pod's name)
 # The CallerPolicy dev-env-system/upgrade-agent.cigar-curation fixes everything else:
 # repo, profile, model, effort, timeout, and the brief, which the platform renders.
+# The API authenticates this ServiceAccount and its CallerPolicy, not this CronJob
+# or a pod-bound token. Any holder of an operator-audience token for the account,
+# with a network path to the API, can choose the name/date/run and choose or omit
+# idempotencyKey, re-fire a terminal key and use up the caller's creates. The
+# one-hour, pod-bound projection describes this manifest's token only.
 #
 # What it does:
 #   1. Reads its own sessions (GET /v1/sessions). A session of today's date, by name or
-#      by key, in any state, means there is nothing to do: exit 0. There is no
-#      same-day re-run (coordinator ruling D-7, item 746 comment 7709).
-#   2. Creates, with today's key. An answer that names a session (201 created, or 200
-#      for a live session under the key) is exit 0.
+#      by key, in any state, means there is nothing to do: exit 0. Every list entry
+#      must be well-formed; a malformed entry stops the run with exit 3, no retry.
+#   2. Creates, with today's key. An answer with exactly the requested name (201
+#      created, or 200 for a live session under the key) is exit 0. Another name is
+#      a duplicate start: exit 4, no retry and no further POST.
 #   3. A refusal (any 4xx: 403 not switched on or no policy, 409, 422, 429) is exit 2
 #      with no retry that day. A 409 is not "already started" (item 746 comment 7428):
 #      only an answer that names a session means the work is under way. Tomorrow's key
@@ -27,13 +33,24 @@
 #      apart. Every attempt reads the list first and creates only when that read
 #      answered and showed no session of today: the key keeps a retry from making a
 #      second session only while the first is live (a key re-fired after its session
-#      ended gets a -2 name), so the list is the check that holds after that.
+#      ended gets a -2 name). The list check is not atomic with the create.
 #   5. After the last unconfirmed attempt it reads the list once more: a session of
-#      today is exit 0, else exit 3.
+#      today is exit 0, a refusal is exit 2, else exit 3.
 #
-# Exit codes, as the client's: 0 a session of today exists or was created; 2 refused
-# (a 4xx, or refused here or by the client before sending: a missing client, token or
-# CA); 3 unconfirmed.
+# Coordinator ruling D-7 (item 746 comment 7709), restated for OP805 review round 2:
+# at most one session a day does catalog work. Two Jobs can both list empty, then
+# A creates and finishes before B POSTs. B can still start a duplicate Session,
+# costing one create charge and one model start. The contract requires the full
+# exact dated name before any catalog read or write; a suffixed session reports
+# duplicate done and does no catalog work. Exit 4 makes this Job fail visibly but
+# cannot undo that start. This is no atomic daily lock: it relies on retaining the
+# original dated Session record, so deleting that record can allow the name again.
+#
+# Exit codes: 0 a session of today exists or the exact requested name was created;
+# 2 refused (a 4xx, or refused here or by the client before sending: missing client, token or
+# CA); 3 unconfirmed (including a malformed list); 4 duplicate start (a create
+# answered with a different name). Codes 0, 2 and 3 follow the client's convention;
+# 4 belongs to this script.
 #
 # Time: the client allows a read 30 seconds and a create 130 seconds. The worst case
 # is three attempts of one read and one create, two 60-second pauses and one last read:
@@ -69,6 +86,7 @@ fi
 # today: reads this caller's own sessions. Returns 0 when one of today's date exists
 # (by name or by key, any state) and prints its name and state; 1 when the read
 # answered and none exists; 2 when the read was refused; 3 when it is unconfirmed.
+# Internal return 4 means malformed list entries: the caller exits 3 without retry.
 today() {
   local out rc
   out="$("$CLIENT" list)"
@@ -78,20 +96,23 @@ today() {
     2) return 2 ;;
     *) return 3 ;;
   esac
-  printf '%s' "$out" | jq -e --arg n "$name" --arg k "$key" '
-    (.sessions | type == "array") and
-    ([.sessions[] | select(.name == $n or .idempotencyKey == $k)] | length > 0)' >/dev/null 2>&1
+  printf '%s' "$out" | jq -e 'type == "object" and (.sessions | type == "array")' >/dev/null 2>&1 || return 3
+  # Session.name is required. The other fields read below are omitempty in the
+  # API's Session/Outcome wire types; when present, their types must be usable.
+  # Validate EVERY entry before either finding today's session or claiming absence.
+  printf '%s' "$out" | jq -e '
+    def optional_string($field): (has($field) | not) or (.[$field] | type == "string");
+    .sessions | all(.[];
+      type == "object" and (.name | type == "string" and length > 0)
+      and optional_string("idempotencyKey") and optional_string("phase")
+      and ((has("outcome") | not) or (.outcome | type == "object" and optional_string("state"))))' >/dev/null 2>&1 || return 4
+  printf '%s' "$out" | jq -er --arg n "$name" --arg k "$key" '
+    [.sessions[] | select(.name == $n or .idempotencyKey == $k)][0]
+    | select(. != null) | "\(.name) \(.outcome.state // .phase // "pending")"' 2>/dev/null
   rc=$?
   case "$rc" in
-    0)
-      printf '%s' "$out" | jq -r --arg n "$name" --arg k "$key" '
-        [.sessions[] | select(.name == $n or .idempotencyKey == $k)][0]
-        | "\(.name) \(.outcome.state // .phase // "pending")"'
-      return 0 ;;
-    1)
-      # false: either no session of today, or a body without a sessions list.
-      printf '%s' "$out" | jq -e '.sessions | type == "array"' >/dev/null 2>&1 && return 1
-      return 3 ;;
+    0) return 0 ;;
+    4) return 1 ;; # jq -e: no matching entry, in the validated list
     *) return 3 ;;
   esac
 }
@@ -117,11 +138,19 @@ while :; do
     2)
       say "refused reading this caller's sessions (the client's line above); no create for ${day}"
       exit 2 ;;
+    4)
+      say "session list has malformed entries; no create for ${day}"
+      exit 3 ;;
     1)
       out="$(printf '%s' "$req" | "$CLIENT" create)"
       rc=$?
       case "$rc" in
         0)
+          created_name="$(printf '%s' "$out" | jq -r 'if (.name | type) == "string" then .name else empty end' 2>/dev/null)"
+          if [ -n "$created_name" ] && [ "$created_name" != "$name" ]; then
+            say "duplicate start for ${day}: got ${created_name}; no retry"
+            exit 4
+          fi
           created="$(printf '%s' "$out" | jq -r 'if (.name | type) == "string" and .name != "" then "\(.name) \(.outcome.state // .phase // "pending")" else empty end' 2>/dev/null)"
           if [ -n "$created" ]; then
             say "session ${created}"
@@ -143,9 +172,17 @@ while :; do
 done
 
 found="$(today)"
-if [ $? -eq 0 ]; then
-  say "a session for ${day} exists after an unconfirmed attempt (${found})"
-  exit 0
-fi
+t=$?
+case "$t" in
+  0)
+    say "a session for ${day} exists after an unconfirmed attempt (${found})"
+    exit 0 ;;
+  2)
+    say "refused reading this caller's sessions (the client's line above); no further create for ${day}"
+    exit 2 ;;
+  4)
+    say "session list has malformed entries; no create for ${day}"
+    exit 3 ;;
+esac
 say "no session for ${day} confirmed after ${ATTEMPTS} attempts"
 exit 3

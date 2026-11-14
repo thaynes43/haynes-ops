@@ -7,6 +7,10 @@
 # names the contract .agents/runbooks/ops/cigar-curation.md. This pod holds no
 # Kubernetes API token, no Secret and no LLM: it reaches the operator API and nothing
 # else (networkpolicy.yaml).
+# The API authenticates the ServiceAccount and its CallerPolicy, not this CronJob
+# or a pod-bound token. Any holder of this account's operator-audience token with
+# an allowed network path can choose the name's date and data date/run, choose or
+# omit idempotencyKey, re-fire a terminal key and use up the caller's creates.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -130,8 +134,10 @@ spec:
                 readOnly: true
       # A projected ServiceAccount token for the operator API's audience, as the front
       # door and the health gate have. It is not the Kubernetes API token, and the
-      # Kubernetes API does not accept it. The kubelet rotates it; it expires after an
-      # hour and when the pod is deleted.
+      # Kubernetes API does not accept it. This manifest requests a one-hour,
+      # pod-bound projection, rotated by the kubelet. That describes this projection
+      # only; the operator does not require every token for this ServiceAccount to
+      # be pod-bound or issued for this CronJob.
       dev-env-api-token:
         type: custom
         volumeSpec:

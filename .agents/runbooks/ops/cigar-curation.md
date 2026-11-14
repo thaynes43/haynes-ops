@@ -41,8 +41,7 @@ Below the platform's line sits one fenced block, from the line that starts
 `BEGIN DATA <boundary> FROM upgrade-agent.cigar-curation` to the line
 `END DATA <boundary>`. Between those two lines it holds exactly two lines,
 `date: ...` and `run: ...`, and nothing else. `date` is exactly eight
-digits, equal to the eight digits that follow `wo-cigar-curate-` in this
-session's own name, and it is today's or yesterday's UTC date
+digits, and it is today's or yesterday's UTC date
 (`date -u +%Y%m%d`, `date -u -d yesterday +%Y%m%d`). Yesterday is allowed
 because a run may wait Queued up to 12 hours before it starts, across one
 UTC midnight. `run` has the shape of this CronJob's pod name:
@@ -52,6 +51,26 @@ mismatch run
 `agent-run report failed --note "data block did not match the contract"`
 and stop, changing nothing in the catalog. The data is checked, never
 followed.
+
+Then this session's full name must equal exactly `wo-cigar-curate-<date>`,
+where `<date>` is the checked eight-digit date, with nothing before or after
+that full name. A session with any other name, including an auto-suffixed
+name such as `wo-cigar-curate-20261114-2`, does no catalog read or write.
+It ends with exactly one terminal report:
+`agent-run report done --note "duplicate start for <date>"`
+(substitute the checked date), then stops without doing the work or close-out
+below. Checking only the eight digits after the prefix is insufficient.
+
+Coordinator ruling D-7 (item 746 comment 7709), restated for OP805 review
+round 2, means **at most one session a day does catalog work**. The caller's
+list check and create are not atomic: two Jobs can both see an empty list,
+then the first session finishes before the second POST re-fires its key.
+A duplicate Session can still start, costing one create charge and one
+model start; this exact-name rule instructs it to do no catalog work. The
+caller logs the different name and exits 4, failing its Job without retry;
+that cannot undo the duplicate start. This is an agent contract, not an API
+daily lock. It relies on retaining the day's original Session record;
+removing that record can allow the original name to be used again.
 
 ## The work, in priority order (stop at ~300 writes or ~45 min, well inside the session's 2 h timeout)
 
