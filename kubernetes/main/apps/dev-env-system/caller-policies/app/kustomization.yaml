@@ -5,6 +5,9 @@ kind: Kustomization
 # One CallerPolicy per summoning ServiceAccount (DESIGN-064 6.4). Each name is also
 # in Role dev-env-operator-caller-policy (rbac app); a policy whose name is not there
 # cannot be read by the operator, and its caller gets 403.
+# Add each new summoning caller's account to privilegedServiceAccounts in
+# kubernetes/main/apps/kyverno/policies/app/dev-env-exec-guard.yaml in the same PR.
+# TestSummoningCallerExecGuardCoverage fails until that account is listed.
 resources:
   - ./upgrade-agent.alert-responder.yaml
   - ./upgrade-agent.upgrade-shepherd.yaml

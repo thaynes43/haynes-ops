@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -50,13 +52,58 @@ var trusted = []string{
 	"volsync-system/volsync", "kube-system/reloader",
 }
 
-// summonCallers are the summoning callers (dev-env DESIGN-064 5.8, OP811). They
-// are not trusted actors: each one's pod holds a token the dev-env operator's API
-// accepts as that caller, so a session must not borrow one by a workload, a
-// token request or exec into its pod.
-var summonCallers = []string{
-	"upgrade-agent/alert-responder", "upgrade-agent/upgrade-shepherd",
-	"upgrade-agent/upgrade-health-gate", "upgrade-agent/cigar-curation",
+// summonCallers reads summoning accounts from CallerPolicies (dev-env DESIGN-064
+// 5.8, OP811). These are borrowing targets, not archive-guard trusted actors. The
+// borrowing test also covers predeclared cigar-curation before its policy lands.
+func summonCallers(t *testing.T) []string {
+	t.Helper()
+	var callers []string
+	err := filepath.WalkDir(repoPath("kubernetes/main/apps/dev-env-system/caller-policies/app"), func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || entry.Name() == "kustomization.yaml" {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		decoder := utilyaml.NewYAMLOrJSONDecoder(bytes.NewReader(data), 4096)
+		for {
+			var policy struct {
+				Kind string `json:"kind"`
+				Spec struct {
+					Summon *struct {
+						ServiceAccount string `json:"serviceAccount"`
+					} `json:"summon"`
+				} `json:"spec"`
+			}
+			if err := decoder.Decode(&policy); err != nil {
+				if err == io.EOF {
+					return nil
+				}
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			if policy.Kind != "CallerPolicy" || policy.Spec.Summon == nil {
+				continue
+			}
+			account := policy.Spec.Summon.ServiceAccount
+			namespace, name, ok := strings.Cut(account, "/")
+			if !ok || namespace == "" || name == "" || strings.Contains(name, "/") {
+				return fmt.Errorf("%s: spec.summon.serviceAccount %q must be namespace/name", path, account)
+			}
+			callers = append(callers, account)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(callers) == 0 {
+		t.Fatal("no summoning CallerPolicy accounts found")
+	}
+	slices.Sort(callers)
+	return slices.Compact(callers)
 }
 
 func sa(s string) string         { return "system:serviceaccount:" + strings.ReplaceAll(s, "/", ":") }
@@ -1029,11 +1076,36 @@ func TestNativePolicyDocumentLoading(t *testing.T) {
 	}
 }
 
+func TestSummoningCallerExecGuardCoverage(t *testing.T) {
+	p := load(t, "kubernetes/main/apps/kyverno/policies/app/dev-env-exec-guard.yaml")
+	var privileged []string
+	for _, variable := range p.Spec.Variables {
+		if variable.Name == "privilegedServiceAccounts" {
+			// The policy's CEL string-list literal is also valid YAML.
+			if err := yaml.Unmarshal([]byte(variable.Expression), &privileged); err != nil {
+				t.Fatalf("decode privilegedServiceAccounts list: %v", err)
+			}
+		}
+	}
+	if len(privileged) == 0 {
+		t.Fatal("exec guard has no privilegedServiceAccounts list")
+	}
+	for _, caller := range summonCallers(t) {
+		if !slices.Contains(privileged, caller) {
+			t.Errorf("summoning caller %s is missing from dev-env-exec-guard privilegedServiceAccounts", caller)
+		}
+	}
+}
+
 func TestComplementaryAgentGrantBorrowing(t *testing.T) {
 	identity := compile(t, loadVAP(t, "kubernetes/main/apps/dev-env-system/rbac/app/identity-guard.yaml"))
 	execPolicy := compile(t, load(t, "kubernetes/main/apps/kyverno/policies/app/dev-env-exec-guard.yaml"))
+	targets := append(append([]string{}, trusted...), summonCallers(t)...)
+	if !slices.Contains(targets, "upgrade-agent/cigar-curation") {
+		targets = append(targets, "upgrade-agent/cigar-curation") // CallerPolicy arrives in PR 4884.
+	}
 	for _, who := range []string{agent, grant} {
-		for _, target := range append(append([]string{}, trusted...), summonCallers...) {
+		for _, target := range targets {
 			parts := strings.Split(target, "/")
 			for _, kind := range []string{"Pod", "Job", "CronJob", "ReplicationController", "Deployment", "ReplicaSet", "StatefulSet", "DaemonSet"} {
 				o := workload(kind, "fixture", "")
@@ -1053,16 +1125,21 @@ func TestComplementaryAgentGrantBorrowing(t *testing.T) {
 			pod := workload("Pod", "fixture", "")
 			pod["metadata"].(obj)["namespace"] = parts[0]
 			pod["spec"].(obj)["serviceAccountName"] = parts[1]
-			f = request(pod, who, "CONNECT", false)
-			f.namespace = parts[0]
-			f.subresource = "exec"
-			f.parents = []obj{pod}
-			f.wantCalls = -1
-			allowed, _ := identity.evaluate(t, f)
-			if allowed {
-				run(t, execPolicy, "borrow/exec/"+who+"/"+target, f)
-			} else {
-				run(t, identity, "borrow/namespace-exec/"+who+"/"+target, f)
+			for _, connect := range []struct{ subresource, kind string }{{"exec", "PodExecOptions"}, {"attach", "PodAttachOptions"}} {
+				options := obj{"apiVersion": "v1", "kind": connect.kind, "container": "main", "stdin": false, "stdout": true, "stderr": true, "tty": false}
+				if connect.subresource == "exec" {
+					options["command"] = []any{"true"}
+				}
+				f := request(options, who, "CONNECT", false)
+				f.namespace = parts[0]
+				f.subresource = connect.subresource
+				f.parents = []obj{pod}
+				allowed, _ := identity.evaluate(t, f)
+				if allowed {
+					run(t, execPolicy, "borrow/"+connect.subresource+"/"+who+"/"+target, f)
+				} else {
+					run(t, identity, "borrow/namespace-"+connect.subresource+"/"+who+"/"+target, f)
+				}
 			}
 		}
 	}
