@@ -1,0 +1,47 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# Raising a running session (dev-env DESIGN-066 slice (a), ADR-028 decision 6,
+# OpenProject #830): install steps 1 to 5, before any flag. Six admission rules
+# (ValidatingAdmissionPolicy with a binding in Deny mode, the shape of
+# rbac/app/maintenance-annotations.yaml; failurePolicy Fail on five, Ignore on the bind
+# path, see app/label-guards.yaml), the two empty private-key Secrets and the four empty
+# ConfigMaps, and get/update by name for each object's owner.
+#
+# Nothing here is read until the operator runs with a session-raise flag; no flag is set
+# by this Kustomization. It changes no Deployment, HelmRelease, image or CRD, so no pod
+# restarts.
+#
+# Why its own app and not dev-env-rbac: dev-env-operator, -keeper, -broker, -frontdoor,
+# -caller-policies, -h7-metadata-reader and -native-lifecycle all depend on dev-env-rbac,
+# so a policy that failed to apply there would stall all of them. Nothing depends on this
+# Kustomization: a failed apply stalls only these objects, and objects applied earlier
+# stay in force. The task-budgets app keeps its ledger guard apart the same way.
+#
+# dependsOn, and why each one:
+# - dev-env-crds: the AgentSession CRD the first two policies type-check against.
+# - dev-env-rbac: the dev-env-operator and dev-env-keeper ServiceAccounts the bindings name.
+#
+# No targetNamespace: the objects live in dev-env-system and cluster-wide (the
+# policies), and each names its own.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app dev-env-session-raise
+  namespace: dev-env-system
+spec:
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: dev-env-crds
+    - name: dev-env-rbac
+  path: ./kubernetes/main/apps/dev-env-system/session-raise/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m
+  # NO postBuild.substitute: the CEL in the policies must reach the API server as written.
