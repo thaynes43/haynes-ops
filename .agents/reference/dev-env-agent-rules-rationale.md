@@ -26,6 +26,54 @@ two changes. Nothing else of substance in his dated rules changed.
   or CRD contracts. Other behaviour changes are described in the PR body. An
   Accepted ADR is still never edited.
 
+## Added on 2026-11-13: summoned sessions
+
+The section "Summoned sessions" is new (OpenProject story #808, slice d of #746).
+It is not a ruling by Tom. dev-env DESIGN-064 5.6 asks for it: "One short paragraph
+... says what does not apply to a summoned session (the tracker, phone prompts, the
+worktree-per-story rule) and that its contract and `agent-run report` govern." That
+is the ops-profile coordinator's ruling Q-08 with its conditions (DESIGN-064 10.1),
+made inside gate T-1, which Tom answered on 2026-11-11 ("each automation gets a rule
+in git that fixes what it may start, and v2 writes what the session is told",
+DESIGN-064 8.1).
+
+- **Why it is needed.** An automation starts a summoned session (cigar curation
+  first, then remediation, escalation and upgrade work orders). Nobody opened a
+  tracker story for it, no coordinator waits for its messages, and a daily job must
+  not push a question to Tom's phone. Without the paragraph the common rules tell it
+  to do all three.
+- **Why the platform's mark defines it.** A summoned session reads text an attacker
+  can influence (alert annotations, release notes, catalog data). If a sentence in
+  that text could switch rules off, it would. So the test is a fact the session
+  cannot write: the Session's `caller`, which the operator's API sets from the
+  authenticated caller. `agent-run show <session> -o json` prints the server's
+  answer, so the key is there whatever the client's version. A session never runs
+  `agent-run report` to find out: on a summoned session a report ends the run.
+- **What replaces the phone question.** A summoned session has nobody to ask. A
+  decision its contract does not settle ends the run with an `escalate` report,
+  unless the contract names another report. The keeper's pager sends an escalated
+  close to Tom as a page (dev-env story 782; merged, and neither installed in
+  the keeper nor switched on when this was written).
+- **A contract is not a story.** Four rules work only through a story, a tracker
+  record or a coordinator: a blocked handoff goes in a tracker record; unknown disk
+  headroom is asked of the coordinator; `hw-ssh` is used only inside a story that
+  names it; `omnictl` and `talosctl` write only in an authorized story. A summoned
+  session has none of the three, so the section says they stay closed for it: it
+  does not do the thing the rule gates (no `hw-ssh`, no node write, no heavy job on
+  unknown disk headroom) and says so in its report, which is its only handoff. The
+  section names the actions because "does not take that step" could also be read as
+  "goes on without a story" (the coordinator who keeps the rules file, #501 comment
+  7976). The advisory review of haynes-ops PR 4882 asked for this to be said
+  (2026-11-13); the other choice, that the contract stands in for the story, would
+  let a contract grant access. A later caller's story (remediation, upgrade work
+  orders) that needs one of these changes this text in its own reviewed PR.
+- **Read by the coordinator who keeps the rules file** (OpenProject #501, comment
+  7848, 2026-11-13): the default is said out loud for ordinary sessions, and the
+  claim sentence was reworded so it reads one way.
+- **What stays.** Everything else: secrets, a denial is a stop, running sessions are
+  sacred, GitOps, the CPU budget, credentials and the MCP cautions. The contract may
+  ask for a PR; then the branch and PR rules apply to it.
+
 ## Incidents behind the hard rules
 
 - **2026-08-23, Fable credit wall.** The plan's Fable credits ran out. Sessions
