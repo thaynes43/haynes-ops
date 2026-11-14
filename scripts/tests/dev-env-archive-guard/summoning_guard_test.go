@@ -293,3 +293,159 @@ func TestSummoningPodLookupFailure(t *testing.T) {
 		}
 	}
 }
+
+// Service proxy uses the identity guard's existing wildcard resource match and
+// actor condition. Grant-shaped usernames cover each catalog role; these are
+// admission fixtures, not assertions that any role grants proxy permission.
+func TestSummoningServiceProxy(t *testing.T) {
+	identity := compile(t, loadVAP(t, identityGuardPath))
+	execPolicy := compile(t, load(t, execGuardPath))
+	actors := []struct {
+		name   string
+		exempt bool
+	}{
+		{agent, false}, {grant, false},
+		{sa("dev-agents/grant-workloads-fixture"), false},
+		{sa("dev-agents/grant-storage-fixture"), false},
+		{sa("dev-agents/grant-secrets-read-fixture"), false},
+		{sa("dev-agents/grant-nodes-fixture"), false},
+		{sa("dev-agents/grant-breakglass-fixture"), false},
+		{sa("dev-agents/another-session"), false},
+		{sa("dev-agents/dev-env-workbench-lookalike"), false},
+		{sa("dev-agents/dev-env-workbench"), true},
+		{sa("outside/dev-env-agent"), true},
+	}
+	for _, namespace := range []string{"upgrade-agent", "ordinary", "observability"} {
+		names := []string{"svc", "svc:8080", "http:svc:8080"}
+		if namespace == "observability" {
+			// .agents/runbooks/kyverno-enforce-verify.md:100 uses this Service
+			// endpoint, not pods/proxy. Its admission decision stays unchanged.
+			names = append(names, "http:kube-prometheus-stack-prometheus:9090")
+		}
+		for _, actor := range actors {
+			for _, name := range names {
+				// ServiceProxyOptions is the actual Service envelope. Also send
+				// the option kinds used by the Pod harness: the rule must depend
+				// on the requested resource, never on the options object's kind.
+				for _, kind := range []string{"ServiceProxyOptions", "PodProxyOptions", "PodExecOptions", "PodAttachOptions", "PodPortForwardOptions"} {
+					for _, method := range []string{"GET", "POST"} {
+						t.Run(namespace+"/"+actor.name+"/"+name+"/"+kind+"/"+method, func(t *testing.T) {
+							f := fixture{name: name, kind: kind, resource: "services", subresource: "proxy",
+								namespace: namespace, actor: actor.name, operation: "CONNECT",
+								new:   obj{"apiVersion": "v1", "kind": kind, "path": "api/v1"},
+								allow: actor.exempt || namespace != "upgrade-agent"}
+							checkSummoningDecision(t, identity, f, "OP859 service-proxy rule")
+							// The exec guard must remain outside this request's match.
+							allowed, result := execPolicy.evaluate(t, f)
+							if !allowed || result != nil || len(execPolicy.mock.calls) != 0 {
+								t.Fatalf("services/proxy unexpectedly matched exec guard: allow=%v result=%+v lookups=%v", allowed, result, execPolicy.mock.calls)
+							}
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestSummoningServiceProxyScope(t *testing.T) {
+	h := compile(t, loadVAP(t, identityGuardPath))
+	for _, actor := range []string{agent, grant} {
+		for _, operation := range []string{"CREATE", "UPDATE", "DELETE"} {
+			t.Run("service-write/"+actor+"/"+operation, func(t *testing.T) {
+				service := obj{"apiVersion": "v1", "kind": "Service",
+					"metadata": obj{"name": "svc", "namespace": "upgrade-agent"},
+					"spec":     obj{"selector": obj{"app": "fixture"}, "ports": []any{obj{"port": int64(8080)}}}}
+				f := fixture{name: "svc", kind: "Service", resource: "services", namespace: "upgrade-agent",
+					actor: actor, operation: operation, new: service, allow: true}
+				if operation != "CREATE" {
+					f.old = clone(service)
+				}
+				if operation == "DELETE" {
+					f.new = nil
+				}
+				checkSummoningDecision(t, h, f, "")
+			})
+		}
+		for _, tc := range summoningConnectCases() {
+			t.Run("pod-connect/"+actor+"/"+tc.name, func(t *testing.T) {
+				// The identity guard adds no Pod CONNECT refusal in this
+				// namespace; those targets remain the exec guard's concern.
+				f := connectFixture(tc, "upgrade-agent", actor, nil, true)
+				f.wantCalls = 0
+				checkSummoningDecision(t, h, f, "")
+			})
+		}
+	}
+}
+
+func TestSummoningConfigMapGenerateName(t *testing.T) {
+	h := compile(t, loadVAP(t, identityGuardPath))
+	for _, namespace := range []string{"upgrade-agent", "ordinary"} {
+		for _, actor := range []string{agent, grant, sa("dev-agents/dev-env-workbench"), sa("outside/dev-env-agent")} {
+			t.Run(namespace+"/"+actor, func(t *testing.T) {
+				allow := namespace != "upgrade-agent" || (actor != agent && actor != grant)
+				f := configMapFixture("", namespace, actor, "create-data", allow)
+				f.emptyName = true
+				delete(f.new["metadata"].(obj), "name")
+				f.new["metadata"].(obj)["generateName"] = "caller-code-"
+				checkSummoningDecision(t, h, f, "OP859 rule 1")
+				if h.request.Name != "" {
+					t.Fatalf("generateName fixture sent request.name=%q, want empty", h.request.Name)
+				}
+			})
+		}
+	}
+}
+
+func TestSummoningPodProxyNameEdges(t *testing.T) {
+	h := compile(t, load(t, execGuardPath))
+	cases := []struct {
+		name, requestName, lookupName string
+		lookupError                   bool
+	}{
+		{"four-parts", "a:b:c:d", "a:b:c:d", true},
+		{"five-parts", "a:b:c:d:e", "a:b:c:d:e", true},
+		{"ipv6-bracketed", "[fd00::1]:80", "[fd00::1]:80", true},
+		{"empty-pod-two-parts", ":8080", "", true},
+		{"empty-pod-three-parts", "http::80", "", true},
+		{"ipv6-unbracketed", "::1", "", true},
+		{"unknown-scheme", "x:pod:80", "pod", false},
+	}
+	for _, account := range []string{"default", "alert-responder"} {
+		pod := workload("Pod", "pod", "")
+		pod["metadata"].(obj)["namespace"] = "upgrade-agent"
+		pod["spec"].(obj)["serviceAccountName"] = account
+		for _, actor := range []string{agent, grant, sa("dev-agents/dev-env-workbench"), sa("outside/dev-env-agent")} {
+			for _, method := range []string{"GET", "POST"} {
+				for _, tc := range cases {
+					t.Run(account+"/"+actor+"/"+method+"/"+tc.name, func(t *testing.T) {
+						exempt := actor != agent && actor != grant
+						f := connectFixture(summoningConnectCase{tc.name, "proxy", tc.requestName,
+							obj{"apiVersion": "v1", "kind": "PodProxyOptions", "path": "healthz"}},
+							"upgrade-agent", actor, pod, exempt || (!tc.lookupError && account == "default"))
+						if exempt {
+							f.wantCalls = 0
+						}
+						if tc.lookupError && !exempt {
+							allowed, result := h.evaluate(t, f)
+							if allowed || result == nil || result.Error == nil || len(h.mock.calls) != 1 {
+								t.Fatalf("expected a fail-closed lookup error: allow=%v result=%+v lookups=%v", allowed, result, h.mock.calls)
+							}
+						} else {
+							// An unknown scheme still resolves 'pod' in this policy:
+							// ordinary target allows, listed account refuses. This
+							// is not a claim that the API server accepts the scheme.
+							checkSummoningDecision(t, h, f, "dev-env-exec-guard")
+						}
+						// The fake records the attempted empty-name lookup and
+						// returns NotFound; it does not run dclient's path check.
+						if !exempt && h.mock.calls[0] != key("v1", "pods", "upgrade-agent", tc.lookupName) {
+							t.Fatalf("lookups=%v, want Pod name %q", h.mock.calls, tc.lookupName)
+						}
+					})
+				}
+			}
+		}
+	}
+}
