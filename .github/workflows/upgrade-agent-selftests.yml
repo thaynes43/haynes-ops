@@ -9,8 +9,8 @@
 # events (OP592, which maps the lane's records), the PR records and stalled-check retry
 # (story 549), the seven shell selftests of the shepherd (its stand-aside for the night
 # lane, story 551, and its vet-marker author check, story 549, included), triage, gate and
-# responder helpers, and the delivery helper's offline suite. Before this workflow nothing
-# ran them in CI.
+# responder helpers, the callers' API client and the curation caller (stories 739, 805),
+# and the delivery helper's offline suite. Before this workflow nothing ran them in CI.
 #
 # Paths: the lane's own code and the sources the selftests execute, scripts/upgrade-agent,
 # every workflow file (the drift test compares them with upgrade-rules.json) and the
@@ -31,6 +31,7 @@ on:
       - kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/dev-env-api.sh
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/gate.sh
+      - kubernetes/main/apps/upgrade-agent/cigar-curation/app/**
       - scripts/upgrade-agent/**
       - .github/workflows/**
       - .renovate/**
@@ -42,6 +43,7 @@ on:
       - kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/dev-env-api.sh
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/gate.sh
+      - kubernetes/main/apps/upgrade-agent/cigar-curation/app/**
       - scripts/upgrade-agent/**
       - .github/workflows/**
       - .renovate/**
@@ -110,6 +112,13 @@ jobs:
       # gate.sh. Its own step, after the loop above.
       - name: Caller API client against a fake server (OP739)
         run: nice -n 19 bash scripts/upgrade-agent/dev-env-api-selftest.sh
+      # The daily cigar curation's v2 caller (dev-env DESIGN-064 6.11, OpenProject #746
+      # slice a, story 805): summon.sh with the shipped client against a scripted fake
+      # HTTPS server: 201, 200, a session that exists before the create, 403, 409, 422,
+      # 429, 503 then 201, 503 then the session exists, that the token is in no output,
+      # and that its worst case fits the Job's activeDeadlineSeconds.
+      - name: Curation caller against a fake server (OP805)
+        run: nice -n 19 bash scripts/upgrade-agent/cigar-curation-selftest.sh
 
   deliver:
     name: Upgrade Agent Selftests - Delivery helper

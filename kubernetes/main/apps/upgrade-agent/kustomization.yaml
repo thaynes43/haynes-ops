@@ -10,3 +10,4 @@ resources:
   - ./shepherd/ks.yaml
   - ./alert-responder/ks.yaml
   - ./dev-env-ops/ks.yaml
+  - ./cigar-curation/ks.yaml

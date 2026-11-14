@@ -12,9 +12,10 @@
 # entry's kind; reads of the caller's own sessions still work. A later haynes-ops PR
 # switches a kind on: task not before story 741 is installed; remote not before
 # stories 741 and 745 are installed and the pinned agent image accepts a summoned
-# remote session. A create that sends any data member is refused (no entry has
-# brief.fields); an empty data is accepted. A task entry's brief is delivered to the
-# session; a remote entry's brief is stored and is not delivered until story 745.
+# remote session. A create may send only the data members its entry's brief.fields
+# names (only the curation entry names any: date and run); an empty data is accepted.
+# A task entry's brief is delivered to the session; a remote entry's brief is stored
+# and is not delivered until story 745.
 #
 # Why its own app, in dev-env-system: a CallerPolicy must live in dev-env-system,
 # and the callers' own Kustomizations set targetNamespace: upgrade-agent. The

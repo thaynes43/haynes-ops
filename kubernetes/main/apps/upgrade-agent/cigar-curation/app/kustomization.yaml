@@ -1,0 +1,21 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+components:
+  - ../../../../../shared/components/common/repos/app-template
+resources:
+  - ./networkpolicy.yaml
+  - ./helmrelease.yaml
+configMapGenerator:
+  # summon.sh, the only script this pod runs. Its own ConfigMap: dev-env-ops does not
+  # mount it, so changing it rolls nothing. Selftest:
+  # scripts/upgrade-agent/cigar-curation-selftest.sh.
+  - name: cigar-curation-scripts
+    files:
+      - resources/summon.sh
+generatorOptions:
+  # Stable name so the HelmRelease can mount it by name.
+  disableNameSuffixHash: true
+  labels:
+    app.kubernetes.io/name: cigar-curation
