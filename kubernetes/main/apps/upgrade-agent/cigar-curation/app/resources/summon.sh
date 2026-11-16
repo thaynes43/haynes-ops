@@ -86,6 +86,8 @@ fi
 # today: reads this caller's own sessions. Returns 0 when one of today's date exists
 # (by name or by key, any state) and prints its name and state; 1 when the read
 # answered and none exists; 2 when the read was refused; 3 when it is unconfirmed.
+# An explicit sessions:null is empty: the operator encodes an empty list as null
+# until its fix is installed. A missing member or any other type is unconfirmed.
 # Internal return 4 means malformed list entries: the caller exits 3 without retry.
 today() {
   local out rc
@@ -96,7 +98,9 @@ today() {
     2) return 2 ;;
     *) return 3 ;;
   esac
-  printf '%s' "$out" | jq -e 'type == "object" and (.sessions | type == "array")' >/dev/null 2>&1 || return 3
+  out="$(printf '%s' "$out" | jq -ce '
+    select(type == "object" and has("sessions") and (.sessions | type == "array" or type == "null"))
+    | if .sessions == null then .sessions = [] else . end' 2>/dev/null)" || return 3
   # Session.name is required. The other fields read below are omitempty in the
   # API's Session/Outcome wire types; when present, their types must be usable.
   # Validate EVERY entry before either finding today's session or claiming absence.
