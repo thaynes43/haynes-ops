@@ -178,6 +178,19 @@ world "$(base "$TEXT" "$D2")"; send FAKE_MORNING_NIGHT="$D2" FAKE_PUSHOVER_FAIL=
 advance "$D1"; send FAKE_MORNING_NIGHT="$D1" FAKE_PUSHOVER_FAIL=1
 advance "$NIGHT"; send
 [ "$(field message | head -1)" = "No delivery was recorded for the nights from $D2 to $D1, so their summaries may not have arrived." ] && [ "$(first_stamp)" = "$D2" ] && ok "days one and two fail, day three delivers: range starts at first attempt" || bad "first failed range" "$(field message | head -1)"
+world "$(base "$TEXT" "$D1")"; send FAKE_MORNING_NIGHT="$D1" FAKE_KUBE_REPLACE_CONFLICTS=2
+[ "$(first_stamp)" = "$D1" ] && [ -z "$(stamp)" ] && [ "$(posts)" = 1 ] && [ "$(cat "$W/rc")" = 0 ] && ok "Q-01 4a: delivered, combined stamp conflicted twice, coverage-only fallback records the first attempt" || bad "coverage fallback"
+[ "$(jq -s '[.[] | select(index("get"))] | length' "$W/kube.log")" = 4 ] && [ "$(jq -s '[.[] | select(index("replace"))] | length' "$W/kube.log")" = 3 ] && ok "Q-01 4a: fallback is exactly one fresh read and one replace, with no retry" || bad "fallback call bounds"
+grep -q 'ERROR morning summary:.*morning_sent_night was not recorded; morning_first_attempt_night is recorded' "$W/err" && ok "Q-01 4a: log names the delivery fact that was not recorded" || bad "fallback log"
+advance "$NIGHT"; send
+[ "$(field message | head -1)" = "No delivery was recorded for the night of $D1, so its summary may not have arrived." ] && ok "Q-01 4a: day two names day one after coverage alone survived" || bad "day two after unstamped success"
+world "$(base "$TEXT" "$D1")"; send FAKE_MORNING_NIGHT="$D1" FAKE_KUBE_REPLACE_CONFLICTS=always
+[ -z "$(first_stamp)" ] && [ -z "$(stamp)" ] && [ "$(cat "$W/rc")" = 0 ] && [ "$(posts)" = 1 ] && [ "$(jq -s '[.[] | select(index("replace"))] | length' "$W/kube.log")" = 3 ] && ok "Q-01 4b: no report write lands, three bounded writes, Job still succeeds" || bad "all writes failed"
+[ "$(grep -c 'ERROR' "$W/err")" = 1 ] && grep -q 'neither morning_sent_night nor morning_first_attempt_night could be recorded' "$W/err" && ok "Q-01 4b: one ERROR names both missing facts" || bad "both missing facts log"
+advance "$NIGHT"; send
+[ "$(field message)" = "$TEXT" ] && ok "Q-01 4b: no surviving fact, day two names no prior attempt (the documented limit)" || bad "invented prior attempt"
+world "$(base "$TEXT" "$NIGHT" 20 05:45 "$D1" | jq --arg first "$D4" '.morning_first_attempt_night = $first')"; send FAKE_KUBE_REPLACE_CONFLICTS=2
+[ "$(first_stamp)" = "$D4" ] && [ "$(stamp)" = "$D1" ] && [ "$(cat "$W/rc")" = 0 ] && ok "Q-01: fallback preserves a valid first attempt and never advances the delivery stamp" || bad "fallback overwrote a valid fact"
 world "$(base "$TEXT" "$NIGHT" 20 05:45 "$D1" | jq --arg first "$D4" '.morning_first_attempt_night = $first')"; send
 [ "$(field message)" = "$TEXT" ] && [ "$(first_stamp)" = "$D4" ] && ok "valid delivery stamp takes precedence over the older first attempt" || bad "delivery precedence"
 for key in morning_sent_night morning_first_attempt_night; do

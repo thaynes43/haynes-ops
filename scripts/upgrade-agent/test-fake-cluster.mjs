@@ -139,6 +139,13 @@ if (['create', 'replace', 'apply'].includes(verb) && file === '-') {
   const bns = body.metadata?.namespace || ns;
   const key = `${bns}/${body.metadata.name}`;
   const cur = st.configmaps[key];
+  // Morning sender Q-01: fail the combined stamp's two writes, then let the single
+  // coverage-only fallback land; "always" models an entirely unwritable report.
+  if (verb === 'replace' && key === 'upgrade-agent/upgrade-orphan-report' && env.FAKE_KUBE_REPLACE_CONFLICTS) {
+    const cf = `${stateFile}.replaces`, n = Number(existsSync(cf) ? readFileSync(cf, 'utf8') : 0) + 1;
+    writeFileSync(cf, String(n));
+    if (env.FAKE_KUBE_REPLACE_CONFLICTS === 'always' || n <= Number(env.FAKE_KUBE_REPLACE_CONFLICTS)) fail('Error from server (Conflict): injected report write conflict');
+  }
   if (verb === 'create' && cur) fail(`Error from server (AlreadyExists): configmaps "${body.metadata.name}" already exists`);
   if (verb === 'replace') {
     if (!cur) fail(`Error from server (NotFound): configmaps "${body.metadata.name}" not found`);

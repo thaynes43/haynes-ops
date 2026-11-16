@@ -133,19 +133,24 @@ morning_date_valid() {
   case "$1" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) return 1 ;; esac
   [ "$(date -u -d "$1" +%F 2>/dev/null)" = "$1" ]
 }
-# morning_stamp <ns> <night> <delivered> — record the first attempt and, if delivered, a
+# morning_stamp <ns> <night> <delivered> [tries] — record the first attempt and, if delivered, a
 # delivery: a fresh read after the send, the keys set, a
 # replace at that version; one retry on a conflict (the gate's own run writes this ConfigMap too)
 morning_stamp() {
-  local ns="$1" night="$2" delivered="$3" try cur first
-  for try in 1 2; do
+  local ns="$1" night="$2" delivered="$3" tries="${4:-2}" try cur first
+  for (( try = 1; try <= tries; try++ )); do
     cur="$(kubectl -n "$ns" get configmap "$MORNING_CM" -o json 2>/dev/null)" || cur=""
     if [ -z "$cur" ]; then
       log "morning summary: attempted for the night of $night; could not record it (ConfigMap $MORNING_CM missing or unreadable)"
-      return 0
+      return 1
     fi
     first="$(printf '%s' "$cur" | jq -r '.data.morning_first_attempt_night // ""' 2>/dev/null)"
-    morning_date_valid "$first" || first="$night"
+    if morning_date_valid "$first"; then
+      if [ "$delivered" = 0 ]; then
+        log "morning summary: first attempt already recorded for the night of $first"
+        return 0
+      fi
+    else first="$night"; fi
     if printf '%s' "$cur" | jq --arg n "$night" --arg first "$first" --arg delivered "$delivered" '
          .data = (.data // {}) | .data.morning_first_attempt_night = $first
          | if $delivered == "1" then .data.morning_sent_night = $n else . end' 2>/dev/null \
@@ -155,7 +160,8 @@ morning_stamp() {
       return 0
     fi
   done
-  log "morning summary: attempted for the night of $night; WARN could not record it (a conflict twice, or RBAC)"
+  log "morning summary: attempted for the night of $night; WARN could not record it after $tries write(s)"
+  return 1
 }
 send_morning_summary() {
   local ns="${UPGRADE_AGENT_NAMESPACE:-upgrade-agent}" night before rep text mnight sent first sent_present first_present ticks last expected msg rc=1 try sends=0 missed=""
@@ -215,7 +221,19 @@ send_morning_summary() {
     [ "$rc" -eq 2 ] || break   # retry only when it certainly did not go
     [ "$try" -lt "$MORNING_ATTEMPTS" ] && sleep "$MORNING_RETRY_SECONDS"
   done
-  if [ "$rc" = 0 ]; then morning_stamp "$ns" "$night" 1; else morning_stamp "$ns" "$night" 0; fi
+  if [ "$rc" = 0 ]; then
+    if ! morning_stamp "$ns" "$night" 1; then
+      # Q-01, story 554 comment 8699: one further fresh read/replace, coverage only.
+      # Never stamp a delivery here; this attempt has no retry of its own.
+      if morning_stamp "$ns" "$night" 0 1; then
+        log "ERROR morning summary: sent for the night of $night but morning_sent_night was not recorded; morning_first_attempt_night is recorded (this Job still succeeds)."
+      else
+        log "ERROR morning summary: sent for the night of $night but neither morning_sent_night nor morning_first_attempt_night could be recorded; no fact of this attempt survives for a later morning (this Job still succeeds)."
+      fi
+    fi
+  else
+    morning_stamp "$ns" "$night" 0 || log "ERROR morning summary: morning_first_attempt_night could not be recorded for the night of $night; a later morning may have no fact of this attempt (this Job still succeeds)."
+  fi
   case "$rc" in
     0) log "morning summary: delivered on attempt $sends" ;;
     3) log "ERROR morning summary: the send for the night of $night timed out after connecting: it may have been delivered; not retried (a second copy) and delivery not recorded; a later morning reports the gap if an attempt or earlier delivery was recorded (this Job still succeeds: a Failed pod would page at priority 1)." ;;

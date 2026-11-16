@@ -2107,13 +2107,21 @@ absence proves nothing. A failed send logs one `ERROR morning summary: …` line
 is left unrecorded, and the Job still succeeds: a Failed pod of this CronJob would enter the
 coordination set and page at priority 1 for a missed quiet note.
 
+**Q-01 ruling, 2026-11-16 (story 554 comment 8699).** When a successful send's combined
+stamp cannot land after that retry, the sender makes at most one more fresh read and one
+replace to record only `morning_first_attempt_night`. This fallback never sets
+`morning_sent_night`, never overwrites a valid first-attempt date and has no retry. An ERROR
+names which facts could not be recorded; the Job still succeeds. The next morning can name
+the first night when coverage alone survived, without claiming the message did not arrive.
+
 **Known limits of the summary.**
 
 - A failed send is not retried after the run. The next morning's message says that no delivery
   was recorded for that night, so it may not have arrived. That is all that is known: a timeout
   after connecting may have delivered it.
 - If no post-send report write can land on the first morning, neither the delivery nor its
-  first-attempt fact can survive. A later sender cannot infer that attempt from no record.
+  first-attempt fact can survive. A later sender cannot infer that attempt from no record;
+  the ERROR log names both missing facts (Q-01 outcome 4b).
 - The lane composes the text, so it is as of the night's last completed run. The sender adds
   only its own first lines.
 

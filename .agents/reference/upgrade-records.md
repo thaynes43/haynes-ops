@@ -534,8 +534,11 @@ and the gate agree who acts meanwhile. See
 - **The delivery copy:** the `morning_*` keys of `upgrade-orphan-report`.
 - **The sender's facts on that report:** `morning_sent_night` is the last recorded delivery;
   `morning_first_attempt_night` is the first night it tried, recorded after the attempts
-  regardless of outcome and never replacing a valid date. A successful send records both
-  from one fresh read/write. The lane's delivery apply and shepherd's orphan-report apply
+  regardless of outcome and never replacing a valid date. A successful send first tries to
+  record both from one fresh read/write. If that stamp fails its conflict retry, one further
+  fresh read/replace may record first-attempt coverage alone, never delivery and never with
+  another retry (Q-01 ruling, 2026-11-16, story 554 comment 8699).
+  The lane's delivery apply and shepherd's orphan-report apply
   never own these keys. Without a delivery key, the next sender's missing-delivery range
   starts at the first-attempt date. Present junk gives no range; all three date keys
   (`morning_night` included) require parsing and round-trip equality.
