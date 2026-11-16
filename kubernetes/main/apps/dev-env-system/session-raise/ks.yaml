@@ -7,9 +7,13 @@
 # path, see app/label-guards.yaml), the two empty private-key Secrets and the four empty
 # ConfigMaps, and get/update by name for each object's owner.
 #
-# Nothing here is read until the operator runs with a session-raise flag; no flag is set
-# by this Kustomization. It changes no Deployment, HelmRelease, image or CRD, so no pod
-# restarts.
+# On first start, an operator or keeper image containing the raise code makes its key
+# in its empty Secret and publishes its public key, whatever the raise flags say. The
+# flags govern raising, not key initialization. Check who can read and write the key
+# Secrets (DESIGN-066 section 11, install rule 6) before pinning either image with that
+# code, even with the flags off. Today's operator sha-e28fbd8 and keeper sha-1ae9c7c
+# contain no raise code, so this install alone triggers nothing. This Kustomization
+# sets no flag and changes no Deployment, HelmRelease, image or CRD, so no pod restarts.
 #
 # Why its own app and not dev-env-rbac: dev-env-operator, -keeper, -broker, -frontdoor,
 # -caller-policies, -h7-metadata-reader and -native-lifecycle all depend on dev-env-rbac,
