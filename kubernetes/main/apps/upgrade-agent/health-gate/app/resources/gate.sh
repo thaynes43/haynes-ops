@@ -228,7 +228,7 @@ send_morning_summary() {
       if morning_stamp "$ns" "$night" 0 1; then
         log "ERROR morning summary: sent for the night of $night but morning_sent_night was not recorded; morning_first_attempt_night is recorded (this Job still succeeds)."
       else
-        log "ERROR morning summary: sent for the night of $night but neither morning_sent_night nor morning_first_attempt_night could be recorded; no fact of this attempt survives for a later morning (this Job still succeeds)."
+        log "ERROR morning summary: sent for the night of $night but neither morning_sent_night nor morning_first_attempt_night could be recorded; a later morning may have no fact of this attempt (this Job still succeeds)."
       fi
     fi
   else
