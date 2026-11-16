@@ -245,6 +245,9 @@ remediation_phase() {
 # lane_phase <entry> — the night lane's claim (story 554), read from its own fields; prints
 # "<phase>|<page note>" or NOTHING when the entry is not the lane's or is not understood. The
 # gate decides on its OWN clock: a working claim keeps it silent only while all of these hold
+#   - schema haynes.upgrade-claim/v1, class upgrade, attempted 1, nonempty ids list;
+#   - result matches lane_state (working/reverting: inprogress, reverted: fixed,
+#     revert-failed: failed);
 #   - pr, claimed_at and until are plain numbers (no sign, no leading zero, at most 12 digits);
 #   - claimed_at is not ahead of NOW by more than CLOCK_SKEW_SECONDS (300: clock difference
 #     between pods; a claim from the future is not believed);
@@ -262,6 +265,11 @@ LANE_CLAIM_MAX_SECONDS="${LANE_CLAIM_MAX_SECONDS:-21600}"
 lane_phase() {
   local e="$1" st pr claimed until at n
   [ "$(jget "$e" holder)" = "lane" ] || return 0
+  printf '%s' "$e" | jq -e '
+    .schema == "haynes.upgrade-claim/v1" and .class == "upgrade"
+    and (.attempted | tostring) == "1" and (.ids | type == "array" and length > 0)
+    and (.result == ({working:"inprogress", reverting:"inprogress", reverted:"fixed", "revert-failed":"failed"}[.lane_state]) and .result != null)
+  ' >/dev/null 2>&1 || return 0
   st="$(jget "$e" lane_state)"; pr="$(jget "$e" pr)"; claimed="$(jget "$e" claimed_at)"; until="$(jget "$e" until)"
   for n in "$pr" "$claimed" "$until"; do
     case "$n" in ''|0*|*[!0-9]*|?????????????*) return 0 ;; esac

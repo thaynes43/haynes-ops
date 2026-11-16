@@ -247,7 +247,7 @@ try {
   }
 
   // the shipped gate.sh and page.sh against the fake cluster, its clock pinned to nowS
-  const gate = (stateData, nowS = NOW_S) => {
+  const gate = (stateData, nowS = NOW_S, main = false) => {
     const w = world({ cms: stateData === undefined ? {} : { 'upgrade-remediation-state': stateData } });
     const curlLog = join(w.dir, 'curl.log');
     writeFileSync(curlLog, '');
@@ -259,7 +259,7 @@ try {
     chmodSync(join(fakeDate, 'date'), 0o755);
     // the ConfigMap mounts the scripts 0555; git does not carry the mode, so copy them
     const gd = join(w.dir, 'gate'); mkdirSync(gd);
-    for (const f of ['gate.sh', 'page.sh']) { writeFileSync(join(gd, f), readFileSync(join(GATE_RES, f))); chmodSync(join(gd, f), 0o755); }
+    for (const f of ['gate.sh', 'page.sh']) { writeFileSync(join(gd, f), readFileSync(main && f === 'gate.sh' ? join(ROOT, 'scripts/upgrade-agent/fixtures/gate-main-10f4eddf.sh') : join(GATE_RES, f))); chmodSync(join(gd, f), 0o755); }
     const r = spawnSync('bash', [join(gd, 'gate.sh')], { env: { ...w.env, PATH: `${fakeDate}:${w.env.PATH}`, COORD_LIB: LIB, PUSHOVER_TOKEN: 'test-token', PUSHOVER_USER_KEY: 'test-user', FAKE_CURL_LOG: curlLog, PROMETHEUS_URL: 'http://prometheus.test:9090' }, encoding: 'utf8' });
     const pages = readFileSync(curlLog, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
     return { r, pages, w, flux: pages.filter(p => p.some(a => /^title=.*critical flux/.test(a))), podsP: pages.filter(p => p.some(a => /^title=.*critical pods/.test(a))) };
@@ -292,6 +292,33 @@ try {
     ok(g7.flux.length === 1 && g7.flux[0].some(a => /verified recovery, but the signal persists/.test(a)), 'reverted but still failing: pages as today\'s "fixed"');
     const gsh = readFileSync(join(GATE_RES, 'gate.sh'), 'utf8');
     ok(/LANE_CLAIM_MAX_SECONDS="\$\{LANE_CLAIM_MAX_SECONDS:-21600\}"/.test(gsh), 'gate.sh caps a lane bound at 6 hours');
+  }
+
+  section('7b. incomplete and contradictory lane claims: full gate runs compared with pinned main 10f4eddf (review H1)');
+  {
+    const entry = { ...C.laneEntry({ pr: 4869, mine: MINE, now: NOW - 600e3, workSeconds: 10800 }), first_seen: String(NOW_S - 3600) };
+    const partial = Object.fromEntries(['holder', 'lane_state', 'pr', 'claimed_at', 'until'].map(k => [k, entry[k]]));
+    const cases = [
+      ['lane fields only', partial],
+      ['working with explicit failed result', { ...entry, result: 'failed' }],
+      ['nonupgrade with attempted 0', { ...entry, class: 'nonupgrade', attempted: '0' }],
+      ['nonupgrade alone', { ...entry, class: 'nonupgrade' }],
+      ['attempted 0 alone', { ...entry, attempted: '0' }],
+      ['wrong schema', { ...entry, schema: 'haynes.upgrade-claim/v0' }],
+      ['empty ids', { ...entry, ids: [] }],
+      ['ids is a string', { ...entry, ids: 'flux/Kustomization/media/seerr' }],
+      ...['schema', 'class', 'attempted', 'ids', 'result'].map(k => { const e = { ...entry }; delete e[k]; return [`missing ${k}`, e]; }),
+      ...Object.entries(C.LANE_RESULT).flatMap(([lane_state, expected]) => ['inprogress', 'fixed', 'failed', 'pending', 'unknown', ''].filter(result => result !== expected)
+        .map(result => [`${lane_state} with result ${JSON.stringify(result)}`, { ...entry, lane_state, result }])),
+    ];
+    for (const [name, e] of cases) {
+      const data = { [SIG.sig]: JSON.stringify(e) };
+      const current = gate(data), main = gate(data, NOW_S, true);
+      // first_seen is past main's grace. Pin the pages main sends, including priority;
+      // the new gate may add its existing moved-signature context to the body.
+      ok(current.r.status === 0 && main.r.status === 0 && main.flux.length === 1
+        && JSON.stringify(current.pages.map(p => p.filter(a => /^(title|priority)=/.test(a)))) === JSON.stringify(main.pages.map(p => p.filter(a => /^(title|priority)=/.test(a)))), `${name}: pages exactly as main`, `${current.flux.length}/${current.podsP.length} vs main ${main.flux.length}/${main.podsP.length}`);
+    }
   }
 
   // ── 8. dry-run and practice write nothing ──────────────────────────────────────────

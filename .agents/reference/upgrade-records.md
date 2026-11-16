@@ -505,6 +505,10 @@ signature (12 hex) in ConfigMap `upgrade-agent/upgrade-remediation-state`.
 - **Fields triage adds since this story:** `holder` (`triage`) and `ids`.
 - **`result` follows the lane's state:** `working` and `reverting` set `inprogress`, `reverted`
   sets `fixed`, and `revert-failed` sets `failed`.
+- **Gate recognition:** it requires schema `haynes.upgrade-claim/v1`, class `upgrade`,
+  attempted `1`, a nonempty `ids` list, the state/result mapping above, and valid PR/time
+  fields within its clock and duration bounds. Otherwise it uses the existing
+  `class`/`result`/`first_seen` fallback. Triage still stands down for any `holder=lane`.
 
 The item's own record does not change. A `verification-failed` event followed by
 `revert-opened` (story 753) is what the history says, and the claim is how the lane, triage

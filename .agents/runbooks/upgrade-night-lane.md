@@ -1883,6 +1883,10 @@ The gate's 40-minute grace measures the age of `first_seen`.
 
   The gate decides on its own clock. A working claim keeps it silent only while all of these
   hold:
+  - `schema` is `haynes.upgrade-claim/v1`, `class` is `upgrade`, `attempted` is `1`,
+    and `ids` is a nonempty list;
+  - `result` matches `lane_state`: `working` and `reverting` use `inprogress`,
+    `reverted` uses `fixed`, and `revert-failed` uses `failed`;
   - `pr`, `claimed_at` and `until` are plain numbers: no sign, no leading zero, at most 12
     digits;
   - `claimed_at` is not ahead of the gate's clock by more than `CLOCK_SKEW_SECONDS` (300, the
@@ -1913,6 +1917,8 @@ target)` (or `no failed verdict this tick`).
 
 **Known limits.**
 
+- Triage stands down for any entry with `holder=lane`; the gate speaks for claims it does
+  not understand, using the existing `class`/`result`/`first_seen` fallback.
 - A regression only the verifier sees has no shared signature: a critical alert, a wrong
   image, a failed Job or restart growth with nothing NotReady. Nothing is claimed for it.
   Triage and the gate do not act on it either.
