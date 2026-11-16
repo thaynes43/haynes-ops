@@ -532,6 +532,16 @@ and the gate agree who acts meanwhile. See
   null), `waits` (`needs_person`, `awaiting_pin`,
   `blocked`, `owner`, `history`), `claims[]` and `unreadable[]`.
 - **The delivery copy:** the `morning_*` keys of `upgrade-orphan-report`.
+- **The sender's facts on that report:** `morning_sent_night` is the last recorded delivery;
+  `morning_first_attempt_night` is the first night it tried, recorded after the attempts
+  regardless of outcome and never replacing a valid date. A successful send records both
+  from one fresh read/write. The lane's delivery apply and shepherd's orphan-report apply
+  never own these keys. Without a delivery key, the next sender's missing-delivery range
+  starts at the first-attempt date. Present junk gives no range; all three date keys
+  (`morning_night` included) require parsing and round-trip equality.
+- **Waiting counts:** distinct PRs across the waiting categories, plus a separate history
+  issue; one waiting line combines the reasons when an update both needs a person and
+  awaits its image pin. The categorized facts still retain both reasons.
 
 ### Open points for the format (story 553, the verifier)
 

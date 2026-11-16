@@ -2074,8 +2074,11 @@ The sender reads the copy at the moment it acts:
 - **A ConfigMap it cannot read:** it says it could not read the summary.
 - **Nights with no delivery recorded:** it puts first `No delivery was recorded for the night
   of <date>, so its summary may not have arrived.` (or the range of nights). It does this when
-  `morning_sent_night` is older than the night before the one it sends. A value that is not a
-  date gives no line and is logged.
+  `morning_sent_night` is older than the night before the one it sends. Only if that key is
+  absent, it uses `morning_first_attempt_night`, starting the range at the first attempt.
+  The first-ever run has no past-delivery line. These keys and `morning_night` must parse
+  and round-trip to the same calendar date; junk such as `2026-02-31` is ignored and logged.
+  A present junk delivery stamp does not fall back to the first-attempt key.
 
 It fits the message to 1000 bytes by whole lines, counted in bytes, ending `and N more
 lines`. When even the first line and that do not fit, it cuts the first line by characters,
@@ -2092,12 +2095,16 @@ ignores it, as before, and the stderr lines start as before (`paged: …`, `PAGE
 | 3 | A timeout or a broken answer after connecting: it may have been delivered | does not retry (a second copy) and does not record |
 | 1 | Any other HTTP answer (a 4xx) | does not retry and does not record |
 
-The delivery is recorded in `morning_sent_night` from a fresh read after the send: get, set the
-key, replace at that version, with one retry on a conflict. The gate's own half-hourly run
+The sender records `morning_first_attempt_night` after its send attempts, whatever their
+outcome, from a fresh read. It never overwrites a valid first-attempt date. On success the
+same write records `morning_sent_night`: get, set the keys, replace at that version, with one
+retry on a conflict. All other keys are carried through. The lane's delivery apply owns only
+its seven copy keys, and the shepherd's client-side apply never owns either sender stamp,
+so neither drops `morning_first_attempt_night`. The gate's own half-hourly run
 writes the same ConfigMap. The send is recorded also after the "could not be read" message,
 once the ConfigMap can be read. The record is what stops a second run the same morning; its
-absence proves nothing. Any failure is one `ERROR morning summary: …` line. The night is left
-unrecorded, and the Job still succeeds: a Failed pod of this CronJob would enter the
+absence proves nothing. A failed send logs one `ERROR morning summary: …` line. Its delivery
+is left unrecorded, and the Job still succeeds: a Failed pod of this CronJob would enter the
 coordination set and page at priority 1 for a missed quiet note.
 
 **Known limits of the summary.**
@@ -2105,6 +2112,8 @@ coordination set and page at priority 1 for a missed quiet note.
 - A failed send is not retried after the run. The next morning's message says that no delivery
   was recorded for that night, so it may not have arrived. That is all that is known: a timeout
   after connecting may have delivered it.
+- If no post-send report write can land on the first morning, neither the delivery nor its
+  first-attempt fact can survive. A later sender cannot infer that attempt from no record.
 - The lane composes the text, so it is as of the night's last completed run. The sender adds
   only its own first lines.
 

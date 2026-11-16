@@ -24,6 +24,11 @@ for t in jq node python3; do command -v "$t" >/dev/null 2>&1 || { echo "FATAL: $
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/bin" "$TMP/gate"
 for t in kubectl curl; do printf '#!/usr/bin/env bash\nexec node %q %s "$@"\n' "$FAKE" "$t" > "$TMP/bin/$t"; chmod +x "$TMP/bin/$t"; done
+# Advance only the sender's notion of the current local night; all date arithmetic
+# still runs GNU date. Sequential mornings need no real wait.
+REAL_DATE="$(command -v date)"
+printf '#!/usr/bin/env bash\nif [ "${FAKE_MORNING_NIGHT:-}" != "" ] && [ "$#" = 1 ] && [ "$1" = "+%%F" ]; then printf "%%s\\n" "$FAKE_MORNING_NIGHT"; else exec %q "$@"; fi\n' "$REAL_DATE" > "$TMP/bin/date"
+chmod +x "$TMP/bin/date"
 # the ConfigMap mounts the scripts 0555; git does not carry the mode
 cp "$GATE_RES/gate.sh" "$GATE_RES/page.sh" "$TMP/gate/"; chmod +x "$TMP/gate/"*.sh
 UTF8="$(locale -a 2>/dev/null | grep -iE '^c\.utf-?8$' | head -1)"; UTF8="${UTF8:-C.UTF-8}"
@@ -137,8 +142,8 @@ grep -q 'PAGE FAILED: low summary/morning (curl exit 7, no connection made)' "$W
 echo "== the record of a delivery (second review C)"
 # the gate's own half-hourly run writes the ConfigMap between the sender's read and its record
 world "$(base "$TEXT" "$NIGHT" 20 05:45 "$D1")"
-send FAKE_KUBE_HOOK='["node","-e","const f=process.env.FAKE_KUBE_STATE,fs=require(\"fs\"),s=JSON.parse(fs.readFileSync(f));const c=s.configmaps[\"upgrade-agent/upgrade-orphan-report\"];c.data.last_paged=\"1794600000\";s.rv++;c.metadata.resourceVersion=String(s.rv);fs.writeFileSync(f,JSON.stringify(s))"]' FAKE_KUBE_HOOK_ONCE="$W/hook.once"
-[ "$(stamp)" = "$NIGHT" ] && [ "$(jq -r '.configmaps["upgrade-agent/upgrade-orphan-report"].data.last_paged' "$W/state.json")" = 1794600000 ] && grep -q 'recorded: morning_sent_night' "$W/err" \
+send FAKE_KUBE_HOOK='["node","-e","const f=process.env.FAKE_KUBE_STATE,fs=require(\"fs\"),s=JSON.parse(fs.readFileSync(f));const c=s.configmaps[\"upgrade-agent/upgrade-orphan-report\"];c.data.last_paged=\"1794600000\";c.data.morning_first_attempt_night=process.env.FAKE_FIRST_ATTEMPT;s.rv++;c.metadata.resourceVersion=String(s.rv);fs.writeFileSync(f,JSON.stringify(s))"]' FAKE_KUBE_HOOK_ONCE="$W/hook.once" FAKE_FIRST_ATTEMPT="$D4"
+[ "$(jq -r '.configmaps["upgrade-agent/upgrade-orphan-report"].data.morning_first_attempt_night' "$W/state.json")" = "$D4" ] && [ "$(stamp)" = "$NIGHT" ] && [ "$(jq -r '.configmaps["upgrade-agent/upgrade-orphan-report"].data.last_paged' "$W/state.json")" = 1794600000 ] && grep -q 'recorded: morning_sent_night' "$W/err" \
   && ok "a write between the read and the record: the record is a fresh read after the send, retried once on the conflict; the other write is kept" || bad "conflict" "stamp $(stamp); $(grep 'morning summary' "$W/err" | tail -1)"
 world "$(base "$TEXT" "$NIGHT" 20 05:45 "$D1")"; send FAKE_KUBE_UNREADABLE_TIMES=1
 case "$(field message)" in *"could not be read"*) ok "the ConfigMap unreadable when the sender read it: its own message" ;; *) bad "unreadable first" "$(field message)" ;; esac
@@ -155,6 +160,36 @@ world "$(base "$TEXT" "$NIGHT" 7 02:30 "$D2")"; send
 [ "$(field message | head -1)" = "No delivery was recorded for the night of $D1, so its summary may not have arrived." ] && [ "$(field message | sed -n 2p | cut -c1-40)" = "The night lane did not finish the night:" ] && ok "both: the unrecorded night first, then the unfinished night" || bad "both" "$(field message | head -2)"
 world "$(base "$TEXT" "$NIGHT" 20 05:45 "yesterday; rm -rf /")"; send
 [ "$(field message)" = "$TEXT" ] && grep -q 'morning_sent_night is not a date; no line about past deliveries' "$W/err" && ok "a junk record: no line, and it is logged" || bad "junk record" "$(field message | head -1)"
+
+echo "== first attempted night survives failed deliveries (L1); calendar validation (L2)"
+first_stamp() { jq -r '.configmaps["upgrade-agent/upgrade-orphan-report"].data.morning_first_attempt_night // ""' "$W/state.json"; }
+advance() {  # keep the sender's facts; the lane composes this next night's copy
+  jq --arg night "$1" '.configmaps["upgrade-agent/upgrade-orphan-report"].data.morning_night = $night' "$W/state.json" > "$W/next.json"
+  mv "$W/next.json" "$W/state.json"
+  : > "$W/curl.log"; rm -f "$W/curl.log.n"
+}
+world "$(base "$TEXT")"; send
+[ "$(field message)" = "$TEXT" ] && [ "$(first_stamp)" = "$NIGHT" ] && [ "$(stamp)" = "$NIGHT" ] && ok "first-ever run: no notice; successful send records first attempt and delivery together" || bad "first run"
+world "$(base "$TEXT" "$D1")"; send FAKE_MORNING_NIGHT="$D1" FAKE_PUSHOVER_FAIL=1
+[ "$(first_stamp)" = "$D1" ] && [ -z "$(stamp)" ] && [ "$(posts)" = 3 ] && ok "day one fails every attempt: first night recorded, no delivery stamp" || bad "first failed night"
+advance "$NIGHT"; send
+[ "$(field message | head -1)" = "No delivery was recorded for the night of $D1, so its summary may not have arrived." ] && [ "$(first_stamp)" = "$D1" ] && ok "day two delivers: names the failed first night and preserves first attempt" || bad "day two after first failure" "$(field message | head -1)"
+world "$(base "$TEXT" "$D2")"; send FAKE_MORNING_NIGHT="$D2" FAKE_PUSHOVER_FAIL=1
+advance "$D1"; send FAKE_MORNING_NIGHT="$D1" FAKE_PUSHOVER_FAIL=1
+advance "$NIGHT"; send
+[ "$(field message | head -1)" = "No delivery was recorded for the nights from $D2 to $D1, so their summaries may not have arrived." ] && [ "$(first_stamp)" = "$D2" ] && ok "days one and two fail, day three delivers: range starts at first attempt" || bad "first failed range" "$(field message | head -1)"
+world "$(base "$TEXT" "$NIGHT" 20 05:45 "$D1" | jq --arg first "$D4" '.morning_first_attempt_night = $first')"; send
+[ "$(field message)" = "$TEXT" ] && [ "$(first_stamp)" = "$D4" ] && ok "valid delivery stamp takes precedence over the older first attempt" || bad "delivery precedence"
+for key in morning_sent_night morning_first_attempt_night; do
+  for junk in 'not-a-date' '2026-02-31'; do
+    world "$(base "$TEXT" | jq --arg k "$key" --arg v "$junk" '.[$k] = $v')"; send
+    [ "$(field message)" = "$TEXT" ] && grep -q "$key is not a date; no line about past deliveries" "$W/err" && ok "$key=$junk: no notice, logged (no invented range)" || bad "$key=$junk" "$(field message | head -1)"
+  done
+done
+world "$(base "$TEXT" 2026-02-31)"; send
+field message | grep -q 'Its last summary is for no night.' && grep -q 'morning_night is not a date' "$W/err" && ok "impossible summary night: ignored and logged" || bad "impossible summary night"
+world "$(base "$TEXT" "$NIGHT" 20 05:45 2026-02-31 | jq --arg first "$D2" '.morning_first_attempt_night=$first')"; send
+[ "$(field message)" = "$TEXT" ] && ok "present junk delivery stamp never falls back to the first-attempt key" || bad "junk stamp fallback"
 
 echo "== page.sh and the CronJob"
 grep -q '\[ "\$SEV" = "low" \] && prio=-1' "$GATE_RES/page.sh" && ok "page.sh: severity low is priority -1; critical stays 1, others 0" || bad "page.sh low"

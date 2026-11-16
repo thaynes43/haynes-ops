@@ -128,40 +128,58 @@ fit_lines() {
   tail=$'\n'"$(more_lines $(( total - 1 )))"
   printf '%s%s' "$(cut_bytes "${lines[0]}" "$(( max - ${#tail} ))")" "$tail"
 }
-# morning_stamp <ns> <night> — record a delivery: a fresh read after the send, the key set, a
+# Date-shaped strings may still name impossible days. Parse and round-trip before using one.
+morning_date_valid() {
+  case "$1" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) return 1 ;; esac
+  [ "$(date -u -d "$1" +%F 2>/dev/null)" = "$1" ]
+}
+# morning_stamp <ns> <night> <delivered> — record the first attempt and, if delivered, a
+# delivery: a fresh read after the send, the keys set, a
 # replace at that version; one retry on a conflict (the gate's own run writes this ConfigMap too)
 morning_stamp() {
-  local ns="$1" night="$2" try cur
+  local ns="$1" night="$2" delivered="$3" try cur first
   for try in 1 2; do
     cur="$(kubectl -n "$ns" get configmap "$MORNING_CM" -o json 2>/dev/null)" || cur=""
     if [ -z "$cur" ]; then
-      log "morning summary: sent for the night of $night; could not record it (ConfigMap $MORNING_CM missing or unreadable)"
+      log "morning summary: attempted for the night of $night; could not record it (ConfigMap $MORNING_CM missing or unreadable)"
       return 0
     fi
-    if printf '%s' "$cur" | jq --arg n "$night" '.data = (.data // {}) | .data.morning_sent_night = $n' 2>/dev/null \
+    first="$(printf '%s' "$cur" | jq -r '.data.morning_first_attempt_night // ""' 2>/dev/null)"
+    morning_date_valid "$first" || first="$night"
+    if printf '%s' "$cur" | jq --arg n "$night" --arg first "$first" --arg delivered "$delivered" '
+         .data = (.data // {}) | .data.morning_first_attempt_night = $first
+         | if $delivered == "1" then .data.morning_sent_night = $n else . end' 2>/dev/null \
          | kubectl -n "$ns" replace -f - >/dev/null 2>&1; then
-      log "morning summary: sent for the night of $night (recorded: morning_sent_night)"
+      if [ "$delivered" = 1 ]; then log "morning summary: sent for the night of $night (recorded: morning_sent_night, morning_first_attempt_night)"
+      else log "morning summary: attempted for the night of $night (recorded: morning_first_attempt_night)"; fi
       return 0
     fi
   done
-  log "morning summary: sent for the night of $night; WARN could not record it (a conflict twice, or RBAC)"
+  log "morning summary: attempted for the night of $night; WARN could not record it (a conflict twice, or RBAC)"
 }
 send_morning_summary() {
-  local ns="${UPGRADE_AGENT_NAMESPACE:-upgrade-agent}" night before rep text mnight sent ticks last expected msg rc=1 try sends=0 missed
+  local ns="${UPGRADE_AGENT_NAMESPACE:-upgrade-agent}" night before rep text mnight sent first sent_present first_present ticks last expected msg rc=1 try sends=0 missed=""
   night="$(TZ="$MORNING_TZ" date +%F)"   # the night that just ended: its ticks (01:00-05:45) carry this date
   before="$(date -u -d "$night -1 day" +%F 2>/dev/null)"
   rep="$(kubectl -n "$ns" get configmap "$MORNING_CM" -o json 2>/dev/null)" || rep=""
   text="$(printf '%s' "$rep" | jq -r '.data.morning_text // ""' 2>/dev/null)"
   mnight="$(printf '%s' "$rep" | jq -r '.data.morning_night // ""' 2>/dev/null)"
   sent="$(printf '%s' "$rep" | jq -r '.data.morning_sent_night // ""' 2>/dev/null)"
+  sent_present="$(printf '%s' "$rep" | jq -r '(.data // {}) | has("morning_sent_night")' 2>/dev/null)"
+  first="$(printf '%s' "$rep" | jq -r '.data.morning_first_attempt_night // ""' 2>/dev/null)"
+  first_present="$(printf '%s' "$rep" | jq -r '(.data // {}) | has("morning_first_attempt_night")' 2>/dev/null)"
   ticks="$(printf '%s' "$rep" | jq -r '.data.morning_ticks // ""' 2>/dev/null | tr -cd '0-9' | cut -c1-3)"
   last="$(printf '%s' "$rep" | jq -r '.data.morning_last_tick // ""' 2>/dev/null)"
   expected="$(printf '%s' "$rep" | jq -r '.data.morning_last_tick_expected // ""' 2>/dev/null)"
-  case "$mnight" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) mnight="" ;; esac
-  case "$sent" in
-    ''|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
-    *) log "morning summary: morning_sent_night is not a date; no line about past deliveries"; sent="" ;;
-  esac
+  if [ -n "$mnight" ] && ! morning_date_valid "$mnight"; then
+    log "morning summary: morning_night is not a date; ignoring it"; mnight=""
+  fi
+  if [ "$sent_present" = true ] && ! morning_date_valid "$sent"; then
+    log "morning summary: morning_sent_night is not a date; no line about past deliveries"; sent=""
+  fi
+  if [ "$first_present" = true ] && ! morning_date_valid "$first"; then
+    log "morning summary: morning_first_attempt_night is not a date; no line about past deliveries"; first=""
+  fi
   case "$last" in [0-2][0-9]:[0-5][0-9]) ;; *) last="" ;; esac
   case "$expected" in [0-2][0-9]:[0-5][0-9]) ;; *) expected="" ;; esac
   if [ "$sent" = "$night" ]; then
@@ -183,8 +201,12 @@ send_morning_summary() {
   # and a missing record does not prove the message did not arrive)
   if [ -n "$sent" ] && [ -n "$before" ] && [[ "$sent" < "$before" ]]; then
     missed="$(date -u -d "$sent +1 day" +%F 2>/dev/null)"
+  elif [ "$sent_present" = false ] && [ -n "$first" ] && [[ "$first" < "$night" ]]; then
+    missed="$first"
+  fi
+  if [ -n "$missed" ] && [ -n "$before" ]; then
     if [ "$missed" = "$before" ]; then msg="No delivery was recorded for the night of ${missed}, so its summary may not have arrived."$'\n'"$msg"
-    else msg="No delivery was recorded for the nights from ${missed:-?} to ${before}, so their summaries may not have arrived."$'\n'"$msg"; fi
+    else msg="No delivery was recorded for the nights from ${missed} to ${before}, so their summaries may not have arrived."$'\n'"$msg"; fi
   fi
   msg="$(fit_lines "$msg" "$MORNING_MAX_BYTES")"
   for (( try = 1; try <= MORNING_ATTEMPTS; try++ )); do
@@ -193,11 +215,12 @@ send_morning_summary() {
     [ "$rc" -eq 2 ] || break   # retry only when it certainly did not go
     [ "$try" -lt "$MORNING_ATTEMPTS" ] && sleep "$MORNING_RETRY_SECONDS"
   done
+  if [ "$rc" = 0 ]; then morning_stamp "$ns" "$night" 1; else morning_stamp "$ns" "$night" 0; fi
   case "$rc" in
-    0) morning_stamp "$ns" "$night"; log "morning summary: delivered on attempt $sends" ;;
-    3) log "ERROR morning summary: the send for the night of $night timed out after connecting: it may have been delivered; not retried (a second copy) and not recorded, so the next morning says no delivery was recorded (this Job still succeeds: a Failed pod would page at priority 1)." ;;
+    0) log "morning summary: delivered on attempt $sends" ;;
+    3) log "ERROR morning summary: the send for the night of $night timed out after connecting: it may have been delivered; not retried (a second copy) and delivery not recorded; a later morning reports the gap if an attempt or earlier delivery was recorded (this Job still succeeds: a Failed pod would page at priority 1)." ;;
     1) log "ERROR morning summary: Pushover refused the message for the night of $night; not retried and not recorded (this Job still succeeds: a Failed pod would page at priority 1)." ;;
-    *) log "ERROR morning summary: NOT delivered for the night of $night after $sends attempt(s); not recorded, and the next morning says so (this Job still succeeds: a Failed pod would page at priority 1)." ;;
+    *) log "ERROR morning summary: NOT delivered for the night of $night after $sends attempt(s); delivery not recorded; a later morning reports the gap if an attempt or earlier delivery was recorded (this Job still succeeds: a Failed pod would page at priority 1)." ;;
   esac
   return 0
 }
