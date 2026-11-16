@@ -509,6 +509,11 @@ signature (12 hex) in ConfigMap `upgrade-agent/upgrade-remediation-state`.
   attempted `1`, a nonempty `ids` list, the state/result mapping above, and valid PR/time
   fields within its clock and duration bounds. Otherwise it uses the existing
   `class`/`result`/`first_seen` fallback. Triage still stands down for any `holder=lane`.
+- **Claim-phase budget:** `night.claim.time_budget_seconds` (180, validated 30..240) counts
+  elapsed seconds from the tick's start, across all records and subprocesses. Read-only
+  records share one state snapshot; live decisions use fresh reads. `summary.claims` keeps
+  `budget-exhausted` outcomes with the reason and `revert_allowed=false`, and later phases
+  still run. This leaves 420 seconds of the 600-second Job for those phases.
 
 The item's own record does not change. A `verification-failed` event followed by
 `revert-opened` (story 753) is what the history says, and the claim is how the lane, triage

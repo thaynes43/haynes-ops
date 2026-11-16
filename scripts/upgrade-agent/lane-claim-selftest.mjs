@@ -135,9 +135,53 @@ try {
     ok(e.class === 'upgrade' && e.attempted === '1' && e.result === 'inprogress' && e.holder === 'lane' && e.lane_state === 'working', 'class upgrade, attempted 1, result inprogress, holder lane, working');
     ok(e.last_paged === '1794560000' && e.first_seen === String(NOW_S) && e.claimed_at === String(NOW_S) && e.until === String(NOW_S + 10800), 'keeps last_paged; first_seen and claimed_at are the claim; until is its own bound');
     ok(!/[\u0000-\u001f]/.test(e.note), 'the note carries no control characters');
-    ok(C.claimConfig({ night: { claim: { max_work_seconds: 10800, write: false } } }).ok && !C.claimConfig({ night: { claim: { max_work_seconds: 10800 } } }).ok && !C.claimConfig({ night: { claim: { max_work_seconds: 99999, write: true } } }).ok && !C.claimConfig({}).ok, 'night.claim is checked: write true or false, and max_work_seconds (1800..21600)');
+    ok(C.claimConfig({ night: { claim: { max_work_seconds: 10800, time_budget_seconds: 180, write: false } } }).ok && !C.claimConfig({ night: { claim: { max_work_seconds: 10800 } } }).ok && !C.claimConfig({ night: { claim: { max_work_seconds: 99999, write: true } } }).ok && !C.claimConfig({}).ok, 'night.claim is checked: write true or false, and max_work_seconds (1800..21600)');
     const rules = JSON.parse(readFileSync(join(RES, 'upgrade-rules.json'), 'utf8'));
     ok(C.claimConfig(rules).ok && rules.night.claim.max_work_seconds === 10800 && rules.night.claim.write === false && C.claimConfig(rules).write === false, 'git ships a valid bound (10800 s) and write false (story 753 turns it on with the revert)');
+  }
+
+  section('2b. claim phase aggregate budget and one read-only snapshot (review M1)');
+  {
+    const rules = JSON.parse(readFileSync(join(RES, 'upgrade-rules.json'), 'utf8'));
+    const work = C.claimConfig(rules);
+    ok(work.ok && work.time_budget_seconds === 180, 'git ships the 180 s elapsed-tick cutoff (420 s remain of 600)');
+    for (const bad of [undefined, 0, 29, 241, 1.5, '180']) {
+      ok(!C.claimConfig({ night: { claim: { ...rules.night.claim, time_budget_seconds: bad } } }).ok, `invalid claim time budget ${bad}: refused`);
+    }
+    const records = Array.from({ length: 12 }, (_, i) => ({ ...REC, pr: 6000 + i, practice: true }));
+    const signature = { status: 0, stdout: `PODS ok\nSIG ${SIG.sig}\n${SIG.ids.map(i => `ID ${i}`).join('\n')}\n` };
+    // Each state read consumes its entire supplied limit, no waiting. The first gets
+    // 30 s (the verifier used 150); no second read/process may start.
+    let elapsed = 150e3, reads = 0, spawns = 0;
+    const deps = C.liveDeps({ work, now: NOW, startedAt: NOW, clock: () => NOW + elapsed, env: {},
+      run: (cmd, argv, o) => { reads++; ok(o.timeoutMs === 30e3, 'state read limited by the 30 s left, not 120 s'); elapsed += o.timeoutMs; return null; },
+      spawn: (cmd, argv, o) => { spawns++; ok(cmd === 'bash' && o.timeout === 30e3, 'signature limited by the same 30 s left'); return signature; } });
+    const outcomes = records.map(rec => C.claimStep({ rec, live: false, now: NOW, work, deps }));
+    ok(elapsed === 180e3 && reads === 1 && spawns === 1 && outcomes.length === 12, '12 failed records with full-limit reads finish inside one budget');
+    ok(outcomes.every(o => o.outcome === 'budget-exhausted' && !o.revert_allowed && !o.wrote && /time budget.*used/.test(o.why)), 'each remaining record states the spent budget and denies a revert');
+    ok(/time budget.*used/.test(C.claimLine(outcomes)) && !/revert allowed/.test(C.claimLine(outcomes)), 'the log line says why, without granting a revert');
+    const live = C.claimStep({ rec: REC, live: true, now: NOW, work, deps });
+    ok(live.outcome === 'budget-exhausted' && !live.revert_allowed && !live.wrote && reads === 1 && spawns === 1, 'a live record after exhaustion neither reads nor claims nor reverts');
+    // Successful and unreadable read-only snapshots are each cached once across all
+    // failed records. A later live decision still uses a fresh resourceVersion.
+    for (const unreadable of [false, true]) {
+      let count = 0;
+      const d = C.liveDeps({ work, now: NOW, clock: () => NOW, env: {}, spawn: () => signature,
+        run: () => { count++; return unreadable ? null : JSON.stringify({ items: [] }); } });
+      const out = records.map(rec => C.claimStep({ rec, live: false, now: NOW, work, deps: d }));
+      ok(count === 1 && out.every(o => o.outcome === (unreadable ? 'unreadable' : 'would-claim')), `read-only tick: one ${unreadable ? 'unreadable' : 'readable'} state snapshot for 12 failed records`);
+      d.read({ live: true }); d.read({ live: true });
+      ok(count === 3, 'live reads are fresh, independent of the read-only snapshot');
+    }
+    // Budget applies to writes and conflict rereads too; a write may have landed
+    // at the deadline, but this tick is still forbidden to revert after it.
+    let t = 170e3, calls = [];
+    const d = C.liveDeps({ work, now: NOW, clock: () => NOW + t, env: {},
+      run: (cmd, argv, o) => { calls.push(['read', o.timeoutMs]); t += 2e3; return JSON.stringify({ items: [] }); },
+      spawn: (cmd, argv, o) => { calls.push([cmd, o.timeout]); if (cmd === 'bash') { t += 2e3; return signature; } t += o.timeout; return { status: null, error: { message: 'timeout' } }; } });
+    const timedWrite = C.claimStep({ rec: REC, live: true, now: NOW, work, deps: d });
+    ok(JSON.stringify(calls) === JSON.stringify([['bash', 10000], ['read', 8000], ['kubectl', 6000]]) && t === 180e3, 'signature, state read and write share a shrinking budget');
+    ok(timedWrite.outcome === 'budget-exhausted' && !timedWrite.revert_allowed && calls.length === 3, 'a timed-out write at the budget starts no readback or revert');
   }
 
   // ── 3. triage claims first: the lane stops ─────────────────────────────────────────

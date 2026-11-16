@@ -1911,6 +1911,16 @@ The gate's 40-minute grace measures the age of `first_seen`.
   signature it would claim and whether triage holds it (`would-claim`, `triage-holds`,
   `not-in-set`). Only a live tick with `--write-state`, for the lane's own merge, with a valid
   `night.claim` and `night.claim.write` on, may write.
+- **The claim phase's running time.** `night.claim.time_budget_seconds` is an elapsed-tick
+  cutoff, validated as an integer from 30 to 240 seconds (git: 180). Like the verifier, it
+  counts from the tick's start, across all failed records. Each signature process, state
+  read and claim write is capped by the time left. A read-only tick shares one state
+  snapshot, including an unreadable result; each live decision reads a fresh version.
+  When time runs out, remaining records say `budget-exhausted`, deny reverts, and the tick
+  continues to history and persistence. The log and morning text say it ran out of time.
+  The 180-second cutoff leaves 420 seconds of the Job's 600-second deadline for history,
+  PR writes and final state writes. This reserve does not add a total bound to those older
+  phases: many slow PR operations or an unbounded final state apply can still exhaust it.
 
 Log line: `upgrade-night dryrun: claims: #4869 would-claim sig=ae85955b9204 (3 id(s) of its
 target)` (or `no failed verdict this tick`).

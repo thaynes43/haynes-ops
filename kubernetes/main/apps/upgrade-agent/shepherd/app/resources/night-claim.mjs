@@ -65,8 +65,16 @@ const sec = ms => Math.floor(ms / 1000);
 // revert). Off, a live failed verdict on the lane's own merge reads only, as practice does.
 export function claimConfig(rules) {
   const c = rules?.night?.claim || {};
-  const ok = Number.isInteger(c.max_work_seconds) && c.max_work_seconds >= 1800 && c.max_work_seconds <= 21600 && typeof c.write === 'boolean';
-  return { ok, max_work_seconds: ok ? c.max_work_seconds : null, write: ok && c.write === true, why: ok ? null : 'night.claim in upgrade-rules.json is invalid (max_work_seconds an integer from 1800 to 21600; write true or false)' };
+  const ok = Number.isInteger(c.max_work_seconds) && c.max_work_seconds >= 1800 && c.max_work_seconds <= 21600 && typeof c.write === 'boolean'
+    && Number.isInteger(c.time_budget_seconds) && c.time_budget_seconds >= 30 && c.time_budget_seconds <= 240;
+  return { ok, max_work_seconds: ok ? c.max_work_seconds : null, time_budget_seconds: ok ? c.time_budget_seconds : 0, write: ok && c.write === true, why: ok ? null : 'night.claim in upgrade-rules.json is invalid (max_work_seconds an integer from 1800 to 21600; time_budget_seconds an integer from 30 to 240 of the tick; write true or false)' };
+}
+
+// Like the verifier, count from the tick's start, never afresh per failed record. Git's
+// 180 s cutoff leaves 420 s of the Job's 600 s for history, PR writes and final persistence.
+export function claimBudget({ work, clock = Date.now, startedAt = clock() }) {
+  return { left: () => Math.max(0, Math.floor(work.time_budget_seconds * 1000 - (clock() - startedAt))),
+    why: `the claim phase's time budget (${work.time_budget_seconds} s of the tick) is used; the lane does not revert this tick` };
 }
 
 // ── the signature: the library itself ───────────────────────────────────────────────
@@ -184,13 +192,13 @@ const manifestOf = (read, data) => ({ apiVersion: 'v1', kind: 'ConfigMap',
 
 // THE ONE CLUSTER WRITE OF THIS FILE: create or replace ConfigMap upgrade-remediation-state at
 // the resourceVersion that was read. Conflict or AlreadyExists when anyone wrote in between.
-export function writeState(verb, manifest, env, spawn = spawnSync) {
+export function writeState(verb, manifest, env, spawn = spawnSync, { timeoutMs = KUBECTL_TIMEOUT_MS } = {}) {
   const m = manifest?.metadata || {};
   if (!['create', 'replace'].includes(verb) || manifest?.kind !== 'ConfigMap' || m.name !== STATE.name || m.namespace !== STATE.namespace
     || Object.keys(manifest).some(k => !['apiVersion', 'kind', 'metadata', 'data'].includes(k)) || (verb === 'replace' && !m.resourceVersion) || (verb === 'create' && m.resourceVersion)) {
     throw new Error('writeState: refused (only ConfigMap upgrade-agent/upgrade-remediation-state, by create or by replace at a resourceVersion)');
   }
-  const r = spawn('kubectl', [verb, '-f', '-', '-o', 'json'], { input: JSON.stringify(manifest), encoding: 'utf8', env, timeout: KUBECTL_TIMEOUT_MS });
+  const r = spawn('kubectl', [verb, '-f', '-', '-o', 'json'], { input: JSON.stringify(manifest), encoding: 'utf8', env, timeout: timeoutMs, killSignal: 'SIGKILL' });
   if (r.status !== 0) return { ok: false, conflict: /conflict|already exists|has been modified/i.test(String(r.stderr || '')), detail: M.publicDetail(r.stderr || r.error?.message) };
   return { ok: true, rv: parse(r.stdout)?.metadata?.resourceVersion || null };
 }
@@ -206,8 +214,12 @@ export function writeState(verb, manifest, env, spawn = spawnSync) {
 export function claimStep({ rec, live, now, work, deps, readOnlyWhy = null }) {
   const out = { pr: rec.pr, item: rec.item ?? null, practice: !!rec.practice, attribution: rec.attribution ?? null, live: !!live, sig: null, ids: [], mine: [], pods: null, outcome: null, holder: null, lane_state: null, revert_allowed: false, wrote: false, why: null };
   const done = (outcome, why, extra = {}) => Object.assign(out, { outcome, why, ...extra });
+  const spent = () => deps.budget && deps.budget.left() <= 0;
+  const deferred = () => done('budget-exhausted', deps.budget.why, { revert_allowed: false });
   if (rec.verdict !== 'failed') return done('not-own-regression', `verdict ${rec.verdict}: nothing to claim`);
+  if (spent()) return deferred();
   const s = deps.signature();
+  if (spent()) return deferred();
   if (!s?.ok) return done('unreadable', `the signature could not be computed: ${s?.why || 'no result'}; the lane does not revert`);
   out.ids = s.ids; out.pods = s.pods; out.sig = s.sig;
   out.mine = targetIds(s.ids, rec);
@@ -217,7 +229,8 @@ export function claimStep({ rec, live, now, work, deps, readOnlyWhy = null }) {
       { revert_allowed: live && rec.attribution === 'own-regression' });
   }
   // the decision and the write use the same read: a replace carries its resourceVersion
-  let read = deps.read();
+  let read = deps.read({ live });
+  if (spent()) return deferred();
   const st = claimStatus(read, s.sig, { pr: rec.pr, mine: out.mine, now });
   out.holder = st.holder ?? null;
   if (st.state === 'unreadable') return done('unreadable', `${st.why}; the lane does not revert`);
@@ -236,10 +249,15 @@ export function claimStep({ rec, live, now, work, deps, readOnlyWhy = null }) {
     data[s.sig] = JSON.stringify(laneEntry({ prev: status.entry, pr: rec.pr, item: rec.item, mine: out.mine, now, workSeconds: work.max_work_seconds,
       note: `night lane: #${rec.pr} ${rec.name ?? ''} ${rec.from ?? '?'} -> ${rec.to ?? '?'} failed its verification (${(rec.failing || []).map(f => `${f.fact} ${f.class}`).join(', ')}); the lane reverts it` }));
     deps.beforeWrite?.();
+    if (spent()) return deferred();
     const w = deps.write(read?.found ? 'replace' : 'create', manifestOf(read, data));
+    if (w.ok) { out.wrote = true; out.holder = 'lane'; out.lane_state = 'working'; }
+    if (spent()) return deferred();
     if (w.ok) return done('claimed', `claimed signature ${s.sig} for #${rec.pr} (${read?.found ? 'replace at resourceVersion ' + read.cm.metadata.resourceVersion : 'create'}); bound ${work.max_work_seconds} s`, { wrote: true, holder: 'lane', lane_state: 'working', revert_allowed: true });
     // the loser reads the winner and stands down; a write that failed for another reason too
-    read = deps.read(); status = claimStatus(read, s.sig, { pr: rec.pr, mine: out.mine, now });
+    read = deps.read({ live });
+    if (spent()) return deferred();
+    status = claimStatus(read, s.sig, { pr: rec.pr, mine: out.mine, now });
     if (status.state === 'lane-ours') return done('claimed', `the claim of ${s.sig} landed (read back after: ${w.detail})`, { wrote: true, holder: 'lane', lane_state: status.entry?.lane_state ?? 'working', revert_allowed: true });
     if (status.state !== 'free' || !w.conflict) {
       return done(status.state === 'triage' ? 'lost' : status.state === 'unreadable' ? 'unreadable' : status.state === 'lane-other' ? 'lane-holds' : 'lost',
@@ -263,17 +281,32 @@ export function updateClaim({ sig, pr, laneState, note = '', now, deps }) {
 }
 
 // The tick's wiring: the deps of claimStep over the real runner and spawn sites.
-export function liveDeps({ run, env, now, prom, lib = process.env.COORD_LIB || DEFAULT_LIB }) {
-  let sig = null;
+export function liveDeps({ run, env, now, prom, work, clock = Date.now, startedAt = now, spawn = spawnSync, lib = process.env.COORD_LIB || DEFAULT_LIB }) {
+  const budget = claimBudget({ work, clock, startedAt });
+  let sig = null, readOnce = false, snapshot = null;
+  const timed = (cmd, argv, o = {}) => {
+    const left = budget.left();
+    if (left <= 0) return null;
+    return run(cmd, argv, { ...o, timeoutMs: Math.min(o.timeoutMs ?? 120e3, left) });
+  };
   return {
-    signature: () => (sig ??= coordinationSignature({ now, prom, env, lib })),
-    read: () => M.readNamedConfigMap(STATE.name, run),
-    write: (verb, manifest) => writeState(verb, manifest, env),
+    budget,
+    signature: () => {
+      if (budget.left() <= 0) return { ok: false, why: budget.why };
+      return sig ??= coordinationSignature({ now, prom, env, lib, spawn, timeoutMs: Math.min(SIG_TIMEOUT_MS, budget.left()) });
+    },
+    read: ({ live = true } = {}) => {
+      if (live) return M.readNamedConfigMap(STATE.name, timed); // each live decision needs its own version
+      if (!readOnce) { snapshot = M.readNamedConfigMap(STATE.name, timed); readOnce = true; }
+      return snapshot; // null (an unreadable snapshot) is cached too
+    },
+    write: (verb, manifest) => budget.left() <= 0 ? { ok: false, detail: budget.why }
+      : writeState(verb, manifest, env, spawn, { timeoutMs: Math.min(KUBECTL_TIMEOUT_MS, budget.left()) }),
   };
 }
 
 // The tick's log line.
 export function claimLine(claims) {
   if (!claims?.length) return 'no failed verdict this tick';
-  return claims.map(c => `#${c.pr} ${c.outcome}${c.sig ? ` sig=${c.sig}` : ''}${c.mine?.length ? ` (${c.mine.length} id(s) of its target)` : ''}${c.revert_allowed ? '; revert allowed' : ''}`).join('; ');
+  return claims.map(c => `#${c.pr} ${c.outcome}${c.sig ? ` sig=${c.sig}` : ''}${c.mine?.length ? ` (${c.mine.length} id(s) of its target)` : ''}${c.revert_allowed ? '; revert allowed' : ''}${c.outcome === 'budget-exhausted' ? `; ${c.why}` : ''}`).join('; ');
 }
