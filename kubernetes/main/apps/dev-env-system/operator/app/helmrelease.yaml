@@ -538,7 +538,61 @@ spec:
               # (haynes-ops#4877). Rollback: that image AND remove --title-rename-sessions in the
               # same change (sha-42552fa does not know the flag and would refuse to start). The
               # CRD copy stays.
-              tag: sha-e28fbd8@sha256:21594e113dd0bfd59f9c3544f8aaae0f4794f49f7e713749883e889fdb8558a5
+              # dev-env main e8f81846 (publish 43884520270's operator job signed and verified this
+              # digest; CI run 43884520318 on that commit is green). In the running operator since
+              # sha-e28fbd8, with every argument kept as it is:
+              # - dev-env#1145 (OP830, DESIGN-066 slice a): even with both raise flags off, the
+              #   leader fills the empty Secret dev-env-session-raise-operator-key at first start
+              #   and publishes its one public key in ConfigMap dev-env-session-raise-operator-public
+              #   as publicKey and keyId. It keeps checking the key on its quiet retry interval.
+              #   POST /v1/sessions/{name}/raise is refused, no activation loop is added, and no
+              #   depth exemption applies. GET and DELETE remain available for reading and taking
+              #   back records; pending or active records are ignored while both flags are off.
+              #   A session without a raise annotation gains no view field; its client and pod
+              #   keep their behaviour. No raise, profile change or session restart is enabled.
+              # - dev-env#1156 (OP858, DESIGN-067 slice a): the API refuses every create of a Codex
+              #   remote host on the workbench account. Pod construction and resume require its
+              #   exact name in --codex-workbench-hosts and its declared GitOps shape. Empty
+              #   permits none and the flag is unset here. The workbench-profile
+              #   host haynes-ops-1023-041051 is Suspended (status Archived) and can no longer be
+              #   resumed. Ordinary hosts keep their behaviour; a failed templates read refuses
+              #   new host admission, while an existing ordinary-account pod keeps reconciling.
+              #   A running workbench-account host is preserved, not drained or replaced.
+              # - dev-env#1168 (OP805): an empty session list is sessions: [], not null, including
+              #   the older-client response shapes. Clients can iterate it; no session changes.
+              # - dev-env#1132 (OP794): the leader settles a summoned remote escalation's
+              #   registration once and records escalation-started in the same status write.
+              #   It is behind --enable-summoned-lanes, which is already on, and spec.caller.
+              # - dev-env#1152 (OP797): only a summoned remote session's detail with a stored
+              #   registration gains summonRegistration; lists and ordinary clients are unchanged.
+              #   The new agent-run display needs a later agent image; this pin does not ship it.
+              # - dev-env#1150 (OP798): a summoned close record's time, source and reason cannot
+              #   be rewritten. Its CRD validation is already installed; this has no separate flag
+              #   and changes no ordinary session or view.
+              # - dev-env#1133 (OP800): shared ledger and brief helpers retain a Pending filing's
+              #   charge while its child is absent. Only summoned ledger writes use the change;
+              #   their create route is refused while --summon-create-kinds is unset.
+              # - dev-env#1120 (OP791): the operator records a summoned task's typed model-start
+              #   evidence once, passes its fallback model in its session document and closes
+              #   no-usable-model through the summoned outcome path. These require spec.caller;
+              #   the model pre-flight itself needs the later agent image, not this operator pin.
+              # - dev-env#1158 (OP801): the leader files one remote escalation for a Pending
+              #   remediation, preserving its charge and recovering a prior create on retry.
+              #   The pass needs --enable-summoned-lanes; a create also needs remote in
+              #   --summon-create-kinds. With remote unset a Pending filing records remote-off.
+              #   No session has spec.caller, so OP794/797/798/800/791/801 act on none today and
+              #   no ordinary running session or client gains a summoned field or pod change.
+              # - dev-env#1169 (OP867): an interrupted Cursor collector poll retries within its
+              #   original deadline instead of ending a live collection. The already-enabled
+              #   collector can return its reading; session pods and their clients do not change.
+              # Keeper, agent-run and agentd changes in the range need their separate image pins.
+              # AgentSession's changed schema is already copied (haynes-ops#4900); the other
+              # schemas introduce no drift. GrantPolicy's pre-existing mismatch stays held in
+              # OP503, unchanged between these operator sources; no CRD is copied here.
+              # Previous pin sha-e28fbd8@sha256:21594e113dd0bfd59f9c3544f8aaae0f4794f49f7e713749883e889fdb8558a5
+              # (haynes-ops#4879); rollback target for the operator alone, with all current args.
+              # Its code ignores the retained raise key Secret and public-key ConfigMap.
+              tag: sha-e8f8184@sha256:8f2e0d6e02e9585d746340960e97ccec7ba148e49d337eb2c73483de15e853a8
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
