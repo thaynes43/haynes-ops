@@ -1921,6 +1921,10 @@ The gate's 40-minute grace measures the age of `first_seen`.
   The 180-second cutoff leaves 420 seconds of the Job's 600-second deadline for history,
   PR writes and final state writes. This reserve does not add a total bound to those older
   phases: many slow PR operations or an unbounded final state apply can still exhaust it.
+  Earlier merge and verification work counts too: the verifier's 150-second cutoff can
+  leave only 30 seconds for claims, and an already-running read can leave none. Then claims
+  fail closed, without a revert; triage and the gate retain their normal paths. If earlier
+  work already overran 180 seconds, only the Job's actual remaining time is left afterward.
 
 Log line: `upgrade-night dryrun: claims: #4869 would-claim sig=ae85955b9204 (3 id(s) of its
 target)` (or `no failed verdict this tick`).
