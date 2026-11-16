@@ -796,7 +796,7 @@ have not finished (no Complete or Failed condition) count as follows:
 |---|---|
 | a Job of CronJob `upgrade-shepherd`, or carrying its controller label (a summon) | yes |
 | a Job of `upgrade-shepherd-triage` | only while `upgrade-remediation-state` holds a claimed, unfinished remediation (`attempted` 1, `result` none), because remediate runs inside the triage Job; an unreadable state counts as yes |
-| the lane's own Jobs, `alert-responder` (its LLM has read-only Bash: `kubectl get` and `describe`, `flux get`, `grep`, `cat`, `git log` and `show`, and its query scripts; no `gh`), `upgrade-health-gate`, `dev-env-ops-curation-order` | no |
+| the lane's own Jobs, `alert-responder` (its LLM has read-only Bash: `kubectl get` and `describe`, `flux get`, `grep`, `cat`, `git log` and `show`, and its query scripts; no `gh`), `upgrade-health-gate`, `upgrade-health-gate-morning-summary`, `dev-env-ops-curation-order`, `cigar-curation` (only summons a catalog-curation session; no PR merge or cluster desired-state change) | no |
 | any other unfinished Job | yes (unknown, fail closed) |
 
 The order makes the handshake safe:

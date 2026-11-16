@@ -798,13 +798,14 @@ export const settleBrief = s => ({ applicable: s.applicable, settled: s.settled,
 // none). The lane's own Jobs and the other upgrade-agent CronJobs cannot merge: the
 // alert-responder's LLM has read-only Bash (kubectl get/describe, flux get, grep, cat, git
 // log/show and its query scripts, no gh), the health gate, its morning summary (story 554: it
-// sends one Pushover message) and dev-env-ops-curation-order. Any other
+// sends one Pushover message), dev-env-ops-curation-order and cigar-curation (it only
+// summons a catalog-curation session; no PR merge or cluster desired-state change). Any other
 // unfinished Job is unknown and counts as one that can (fail closed).
 export const SHEPHERD_JOBS = Object.freeze({
   namespace: 'upgrade-agent',
   merging: Object.freeze([{ cronjob: 'upgrade-shepherd', controller: 'upgrade-shepherd' }]),
   remediating: Object.freeze([{ cronjob: 'upgrade-shepherd-triage', controller: 'triage' }]),
-  never: Object.freeze([{ cronjob: 'upgrade-shepherd-upgrade-night', controller: 'upgrade-night' }, { cronjob: 'alert-responder', controller: 'alert-responder' }, { cronjob: 'upgrade-health-gate', controller: 'upgrade-health-gate' }, { cronjob: 'upgrade-health-gate-morning-summary', controller: 'morning-summary' }, { cronjob: 'dev-env-ops-curation-order', controller: 'curation-order' }]),
+  never: Object.freeze([{ cronjob: 'upgrade-shepherd-upgrade-night', controller: 'upgrade-night' }, { cronjob: 'alert-responder', controller: 'alert-responder' }, { cronjob: 'upgrade-health-gate', controller: 'upgrade-health-gate' }, { cronjob: 'upgrade-health-gate-morning-summary', controller: 'morning-summary' }, { cronjob: 'dev-env-ops-curation-order', controller: 'curation-order' }, { cronjob: 'cigar-curation', controller: 'cigar-curation' }]),
   remediation_state: 'upgrade-remediation-state',
 });
 const jobFinished = j => (j?.status?.conditions || []).some(c => ['Complete', 'Failed'].includes(c?.type) && c.status === 'True') || !!j?.status?.completionTime;

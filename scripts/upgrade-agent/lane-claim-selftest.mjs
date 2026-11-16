@@ -378,6 +378,10 @@ try {
     const job = (meta, done = false) => ({ metadata: { name: 'x-1', ...meta }, status: done ? { completionTime: 't' } : {} });
     const mj = M.mergingJobs({ items: [job({ ownerReferences: [{ kind: 'CronJob', name: 'upgrade-health-gate-morning-summary' }] }), job({ name: 'manual', labels: { 'app.kubernetes.io/controller': 'morning-summary' } })] }, { found: true, cm: { data: {} } });
     ok(mj.readable && mj.active.length === 0, 'F4: a running morning-summary Job (by its CronJob, or by its controller label) is not one that can merge', JSON.stringify(mj));
+    const curationJob = M.mergingJobs({ items: [job({ ownerReferences: [{ kind: 'CronJob', name: 'cigar-curation' }] })] }, { found: true, cm: { data: {} } });
+    ok(curationJob.readable && curationJob.active.length === 0, 'F4: a running cigar-curation Job by its CronJob cannot merge', JSON.stringify(curationJob));
+    const curationSummon = M.mergingJobs({ items: [job({ name: 'manual-curation', labels: { 'app.kubernetes.io/controller': 'cigar-curation' } })] }, { found: true, cm: { data: {} } });
+    ok(curationSummon.readable && curationSummon.active.length === 0, 'F4: a running cigar-curation Job by its controller label cannot merge', JSON.stringify(curationSummon));
     ok(M.mergingJobs({ items: [job({ ownerReferences: [{ kind: 'CronJob', name: 'something-new' }] })] }, { found: true, cm: { data: {} } }).active.length === 1, 'an unknown Job still counts (fail closed: the control)');
     // surviving mutation: triage's create counted as claimed on AlreadyExists (losing a create race to the lane)
     const w3 = world();
