@@ -29,6 +29,10 @@ resources:
   # keeper's precreated ledger ConfigMap with its by-name Role.
   - ./asks.yaml
   - ./keeper-ask-notifications.yaml
+  # Pages for summoned sessions (dev-env DESIGN-064 6.8, OpenProject #782): the keeper's
+  # precreated ledger ConfigMap with its by-name Role, and list on AgentSessions in
+  # dev-agents. Unused until the pager is switched on.
+  - ./keeper-summon-pages.yaml
   - ./broker.yaml
   - ./broker-credentials.yaml
   - ./broker-guard.yaml

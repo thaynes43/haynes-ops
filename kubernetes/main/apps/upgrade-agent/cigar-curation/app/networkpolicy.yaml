@@ -1,0 +1,42 @@
+---
+# CiliumNetworkPolicy for the curation caller (dev-env DESIGN-064 5.5 and 6.5,
+# OpenProject #746 slice a, story 805). Selecting this pod makes its egress
+# default-deny; it may reach two things only:
+#   1. DNS on kube-dns, for the operator's one name and nothing else;
+#   2. the dev-env v2 operator pods in dev-env-system on TCP 8443 (the API), with the
+#      pinned CA and a projected token for this account's CallerPolicy. The
+#      operator's own policy admits this pod by its app label.
+# No Kubernetes API, no internet, no other namespace. Ingress default deny is
+# explicit below, with no ingress allow rules (the pod serves nothing). Runtime
+# enforcement is an installation check; rendering this policy does not prove it.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: cigar-curation
+  namespace: upgrade-agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: cigar-curation
+  enableDefaultDeny:
+    ingress: true
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: "dev-env-operator.dev-env-system.svc.cluster.local"
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: dev-env-system
+            app.kubernetes.io/name: dev-env-operator
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
