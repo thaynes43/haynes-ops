@@ -42,3 +42,7 @@ resources:
   - ./frontdoor/ks.yaml
   # The owner's Fable 5.2 coordinator session (OpenProject #501). Nothing depends on it.
   - ./coordinator-session/ks.yaml
+  # Raising a running session (DESIGN-066 slice (a) install steps 1 to 5, OpenProject
+  # #830): admission rules and the empty key and ledger objects. Its own Kustomization
+  # states the dependsOn. Nothing depends on it.
+  - ./session-raise/ks.yaml

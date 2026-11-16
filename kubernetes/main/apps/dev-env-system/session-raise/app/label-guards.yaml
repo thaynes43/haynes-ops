@@ -1,0 +1,194 @@
+---
+# Install step 2, first half (dev-env DESIGN-066 section 11 and 8.5): nobody, the
+# operator included, may change or remove the label dev-env.haynesops.com/depth on an
+# AgentSession after create. The operator writes it only at create (dev-env
+# internal/apiserver/validate.go and summon.go), so the rule costs nothing.
+#
+# Why every other writer passes:
+# - Matches UPDATE of agentsessions only. CREATE is not matched, so the label is set
+#   freely at create; DELETE is not matched, so deletes are never refused here.
+# - No subresource is matched; agentsessions/status cannot change metadata (the API
+#   server keeps the old object and takes only the new status).
+# - A write that leaves the label as it was passes, whoever sends it: the operator's
+#   finalizer and annotation writes, the garbage collector's ownerReference changes, and
+#   Flux re-applying an unchanged object keep both presence and value equal.
+# - A missing labels map, on object or oldObject, reads as "not present" and ''. An
+#   UPDATE always has an oldObject.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-session-depth-label
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [dev-env.haynesops.com]
+        apiVersions: ["*"]
+        operations: [UPDATE]
+        resources: [agentsessions]
+  variables:
+    - name: present
+      expression: "'dev-env.haynesops.com/depth' in object.metadata.?labels.orValue({})"
+    - name: priorPresent
+      expression: "'dev-env.haynesops.com/depth' in oldObject.metadata.?labels.orValue({})"
+    - name: depth
+      expression: "object.metadata.?labels['dev-env.haynesops.com/depth'].orValue('')"
+    - name: priorDepth
+      expression: "oldObject.metadata.?labels['dev-env.haynesops.com/depth'].orValue('')"
+  validations:
+    - expression: "variables.present == variables.priorPresent && variables.depth == variables.priorDepth"
+      message: nobody may change or remove the dev-env.haynesops.com/depth label after create
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-session-depth-label
+spec:
+  policyName: dev-env-session-depth-label
+  validationActions: [Deny]
+---
+# Install step 2, second half (dev-env DESIGN-066 section 11 and 7.5): only the
+# operator's account may change the label dev-env.haynesops.com/profile on a session pod,
+# a pod in dev-agents labelled app.kubernetes.io/name: dev-env-session (dev-env
+# api/v1alpha1/labels.go). The operator sets both labels when it builds the pod.
+#
+# Anyone but the operator must also leave app.kubernetes.io/name as it was. Otherwise a
+# writer could drop the selector label in one update (the profile unchanged, so allowed)
+# and change the profile in a second update that no longer matches the object selector.
+# With this, no writer but the operator can take a session pod out of the selector.
+#
+# pods/status is matched as well as pods. The API server keeps label changes sent through
+# pods/status (pkg/registry/core/pod/strategy.go, podStatusStrategy.PrepareForUpdate
+# resets only spec, deletionTimestamp and ownerReferences), and accounts that are not
+# nodes (multus, the scheduler, controllers, cluster-admin subjects) may write it.
+# Admission judges the stored object after the patch, so a status write that leaves both
+# labels as they were passes for every caller; the fixtures prove that for the kubelet,
+# the scheduler and multus, and prove that a status write changing the profile or
+# dropping the name label is refused. NodeRestriction already refuses a kubelet's label
+# change through pods/status.
+#
+# Why every other writer passes:
+# - The namespace and object selectors are decided by the API server before any CEL
+#   runs, so no pod outside dev-agents, and no dev-agents pod without the session label
+#   on either its old or its new object, ever reaches the expression.
+# - Matches UPDATE of pods and pods/status only. CREATE is not matched, so the operator
+#   builds pods as today; DELETE is not matched, so deletes and graceful termination are
+#   never refused.
+# - pods/binding is not matched here, because a Binding is a CREATE with no old object to
+#   compare. On Kubernetes 1.35 a first bind does copy the Binding's labels onto the pod
+#   (BindingREST.setPodNodeAndMetadata, feature gate PodTopologyLabelsAdmission), with no
+#   admission on the Pod; dev-env-session-pod-bind-labels below refuses a Binding that
+#   carries either label.
+# - pods/eviction, pods/exec, pods/ephemeralcontainers and pods/resize are not matched:
+#   eviction does not store a Pod, exec stores nothing, and ephemeralcontainers and resize
+#   reset metadata, so none can store a label change.
+# - A write that leaves both labels as they were passes, whoever sends it: status writes,
+#   and finalizer and ownerReference changes by the operator or the garbage collector,
+#   keep presence and value equal.
+# - A missing labels map, on object or oldObject, reads as "not present" and ''. An
+#   UPDATE always has an oldObject.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-session-pod-profile-label
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: dev-agents
+    objectSelector:
+      matchLabels:
+        app.kubernetes.io/name: dev-env-session
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [UPDATE]
+        resources: [pods, pods/status]
+  variables:
+    - name: present
+      expression: "'dev-env.haynesops.com/profile' in object.metadata.?labels.orValue({})"
+    - name: priorPresent
+      expression: "'dev-env.haynesops.com/profile' in oldObject.metadata.?labels.orValue({})"
+    - name: profile
+      expression: "object.metadata.?labels['dev-env.haynesops.com/profile'].orValue('')"
+    - name: priorProfile
+      expression: "oldObject.metadata.?labels['dev-env.haynesops.com/profile'].orValue('')"
+    - name: appPresent
+      expression: "'app.kubernetes.io/name' in object.metadata.?labels.orValue({})"
+    - name: priorAppPresent
+      expression: "'app.kubernetes.io/name' in oldObject.metadata.?labels.orValue({})"
+    - name: app
+      expression: "object.metadata.?labels['app.kubernetes.io/name'].orValue('')"
+    - name: priorApp
+      expression: "oldObject.metadata.?labels['app.kubernetes.io/name'].orValue('')"
+  validations:
+    - expression: >-
+        (variables.present == variables.priorPresent && variables.profile == variables.priorProfile &&
+        variables.appPresent == variables.priorAppPresent && variables.app == variables.priorApp) ||
+        request.userInfo.username == 'system:serviceaccount:dev-env-system:dev-env-operator'
+      message: only the dev-env operator may change the dev-env.haynesops.com/profile or app.kubernetes.io/name label on a session pod
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-session-pod-profile-label
+spec:
+  policyName: dev-env-session-pod-profile-label
+  validationActions: [Deny]
+---
+# Install step 2, the bind path (coordinator ruling R-5 on the second review of haynes-ops
+# PR 4888). On Kubernetes 1.35 the first bind of a pod copies every label on the Binding
+# onto the Pod (pkg/registry/core/pod/storage/storage.go,
+# BindingREST.setPodNodeAndMetadata, while spec.nodeName is empty; feature gate
+# PodTopologyLabelsAdmission, default on). That write goes through GuaranteedUpdate with no
+# admission on the Pod, so dev-env-session-pod-profile-label never sees it. This policy
+# refuses a Binding in dev-agents, through pods/binding or the legacy bindings resource,
+# whose labels contain dev-env.haynesops.com/profile or app.kubernetes.io/name.
+#
+# No account is exempt. The operator never binds. The scheduler's DefaultBinder sends a
+# Binding with no labels, and the PodTopologyLabels admission plugin adds only
+# topology.kubernetes.io/zone and topology.kubernetes.io/region, so an ordinary schedule
+# passes.
+#
+# failurePolicy Ignore, deliberately, on this one policy. Every start and resume of a
+# session pod passes through it, and an evaluation error must never stop a session from
+# being scheduled. The writers it stops are the control plane's own and cluster admins:
+# by the coordinator's read of the live bindings (2026-11-13) only system:masters, the
+# cluster-admin ServiceAccounts, kube-system/daemon-set-controller and the user
+# system:kube-scheduler can create a binding in dev-agents. The expression reads only the
+# Binding's own metadata, which every Binding has; a missing labels map reads as empty, so
+# it has no error path a caller can trigger.
+#
+# Why every other request passes:
+# - Matches CREATE of pods/binding and bindings in dev-agents only; nothing else reaches it.
+# - A Binding with no labels map, an empty one, or only other labels (the topology keys)
+#   passes.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dev-env-session-pod-bind-labels
+spec:
+  failurePolicy: Ignore
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: dev-agents
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods/binding, bindings]
+  validations:
+    - expression: >-
+        !('dev-env.haynesops.com/profile' in object.metadata.?labels.orValue({})) &&
+        !('app.kubernetes.io/name' in object.metadata.?labels.orValue({}))
+      message: a Binding in dev-agents may not carry the dev-env.haynesops.com/profile or app.kubernetes.io/name label
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dev-env-session-pod-bind-labels
+spec:
+  policyName: dev-env-session-pod-bind-labels
+  validationActions: [Deny]
