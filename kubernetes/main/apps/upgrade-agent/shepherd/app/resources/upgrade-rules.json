@@ -315,6 +315,7 @@
           "kubernetes/main/apps/dev-env-system/rbac/app/identity-guard.yaml",
           "kubernetes/main/apps/dev-env-system/rbac/app/maintenance-annotations.yaml",
           "kubernetes/main/apps/kyverno/policies/app/dev-env-exec-guard.yaml",
+          "kubernetes/main/apps/dev-env-system/caller-policies/**",
           "scripts/tests/dev-env-archive-guard/**",
           ".github/workflows/dev-env-archive-guard-test.yml"
         ],
@@ -597,6 +598,7 @@
           "kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh",
           "kubernetes/main/apps/upgrade-agent/health-gate/app/resources/dev-env-api.sh",
           "kubernetes/main/apps/upgrade-agent/health-gate/app/resources/gate.sh",
+          "kubernetes/main/apps/upgrade-agent/cigar-curation/app/**",
           "scripts/upgrade-agent/**",
           ".github/workflows/**",
           ".renovate/**"
@@ -1396,6 +1398,7 @@
           "kubernetes/main/apps/photos/immich/server",
           "kubernetes/main/apps/storage/storage-util",
           "kubernetes/main/apps/upgrade-agent/alert-responder/app",
+          "kubernetes/main/apps/upgrade-agent/cigar-curation/app",
           "kubernetes/main/apps/upgrade-agent/dev-env-ops/app",
           "kubernetes/main/apps/upgrade-agent/health-gate/app",
           "kubernetes/main/apps/upgrade-agent/shepherd/app"

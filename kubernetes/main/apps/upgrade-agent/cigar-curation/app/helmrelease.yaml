@@ -1,0 +1,154 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bjw-s/helm-charts/main/charts/other/app-template/schemas/helmrelease-helm-v2.schema.json
+# The daily cigar-catalog curation's v2 caller (dev-env DESIGN-064 6.11, OpenProject
+# #746 slice a, story 805). Once a day summon.sh asks the operator API for one task
+# session, wo-cigar-curate-<UTC date>, under CallerPolicy
+# dev-env-system/upgrade-agent.cigar-curation; the platform renders its brief, which
+# names the contract .agents/runbooks/ops/cigar-curation.md. This pod holds no
+# Kubernetes API token, no Secret and no LLM: it reaches the operator API and nothing
+# else (networkpolicy.yaml).
+# The API authenticates the ServiceAccount and its CallerPolicy, not this CronJob
+# or a pod-bound token. Any holder of this account's operator-audience token with
+# an allowed network path can choose the name's date and data date/run, choose or
+# omit idempotencyKey, re-fire a terminal key and use up the caller's creates.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cigar-curation
+spec:
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  interval: 30m
+  values:
+    controllers:
+      cigar-curation:
+        type: cronjob
+        pod:
+          restartPolicy: Never
+        cronjob:
+          schedule: "15 10 * * *"       # v1's time (curation-order in dev-env-ops)
+          # Written out, not left to the k8tz webhook, so the render says what runs.
+          timeZone: America/New_York
+          concurrencyPolicy: Forbid
+          # A run missed by up to an hour (a controller restart, a node drain) still
+          # starts; a later one waits for the next day.
+          startingDeadlineSeconds: 3600
+          # No Job retries: summon.sh checks for today's session first and retries
+          # inside its own run with the same idempotency key.
+          backoffLimit: 0
+          # The Job ends within 15 minutes, finished or not, so no curation Job exists
+          # unfinished in the night lane's window (coordinator ruling D-6, item 746
+          # comment 7709). summon.sh's own worst case is about 11 minutes.
+          activeDeadlineSeconds: 900
+          successfulJobsHistory: 3
+          failedJobsHistory: 3
+        containers:
+          app:
+            image:
+              # The health gate's image and digest: bash, curl, jq, coreutils.
+              repository: ghcr.io/thaynes43/upgrade-agent
+              tag: 0.1.0@sha256:300bc6124d28dbee9819b4ce38dd42e5116e65154ae6b64c4f680e618c77c875
+            command: ["/bin/bash", "/opt/cigar-curation/summon.sh"]
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+    defaultPodOptions:
+      # No Kubernetes API token: this account has no Role and no binding, and the pod
+      # never calls the Kubernetes API. The operator API token below is a separate
+      # projected volume that the Kubernetes API does not accept.
+      automountServiceAccountToken: false
+      # ndots 1: the client's one name (dev-env-operator.dev-env-system.svc.cluster.local)
+      # goes out as given on the first query, without the search suffixes first, so the
+      # network policy's exact DNS rule (networkpolicy.yaml) stays exact (dev-env's rule
+      # for an exact allowlist; story 805 review ruling 2).
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+    serviceAccount:
+      # A new account, with no Role and no binding (DESIGN-064 6.5). Its CallerPolicy
+      # is dev-env-system/upgrade-agent.cigar-curation.
+      cigar-curation: {}
+    persistence:
+      scripts:
+        type: configMap
+        name: cigar-curation-scripts
+        defaultMode: 0555
+        globalMounts:
+          - path: /opt/cigar-curation
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
+      # ── dev-env v2 operator API transport (dev-env DESIGN-064 6.5), as the health gate
+      # mounts it (health-gate/app/helmrelease.yaml) ──
+      # The client (ConfigMap dev-env-api-client, built by the health gate's
+      # kustomization). optional, here and for the CA: a missing ConfigMap leaves the
+      # directory empty instead of holding the pod in ContainerCreating, which with
+      # concurrencyPolicy Forbid would block every later run. Without the client
+      # summon.sh logs so and exits 2; without the CA the client refuses before
+      # sending (exit 2). (app-template's configMap type has no optional, hence custom.)
+      dev-env-api-client:
+        type: custom
+        volumeSpec:
+          configMap:
+            name: dev-env-api-client
+            defaultMode: 0555
+            optional: true
+        advancedMounts:
+          cigar-curation:
+            app:
+              - path: /opt/dev-env-api
+                readOnly: true
+      # The pinned dev-env CA (public), published into upgrade-agent by dev-env-pki.
+      dev-env-api-ca:
+        type: custom
+        volumeSpec:
+          configMap:
+            name: dev-env-api-ca
+            defaultMode: 0444
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt
+        advancedMounts:
+          cigar-curation:
+            app:
+              - path: /etc/dev-env
+                readOnly: true
+      # A projected ServiceAccount token for the operator API's audience, as the front
+      # door and the health gate have. It is not the Kubernetes API token, and the
+      # Kubernetes API does not accept it. This manifest requests a one-hour,
+      # pod-bound projection, rotated by the kubelet. That describes this projection
+      # only; the operator does not require every token for this ServiceAccount to
+      # be pod-bound or issued for this CronJob.
+      dev-env-api-token:
+        type: custom
+        volumeSpec:
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: dev-env-operator
+                  expirationSeconds: 3600
+        advancedMounts:
+          cigar-curation:
+            app:
+              - path: /var/run/secrets/dev-env
+                readOnly: true

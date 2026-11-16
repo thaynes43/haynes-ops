@@ -1,0 +1,49 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+# The daily cigar-catalog curation's v2 caller (dev-env DESIGN-064 6.11, OpenProject
+# #746 slice a, story 805). A CronJob asks the dev-env v2 operator API for one
+# summoned task session a day, as its own ServiceAccount, under CallerPolicy
+# dev-env-system/upgrade-agent.cigar-curation. Its own app, not a controller inside
+# the dev-env-ops HelmRelease: nothing here is mounted by dev-env-ops, so applying,
+# changing or pruning it rolls nothing there.
+#
+# Creates are off when this lands: the operator's --summon-create-kinds does not name
+# task, so every run is refused with 403 "not switched on" and starts nothing. v1's
+# curation-order controller in dev-env-ops keeps curating until slice 746b switches
+# task on and removes it in one PR.
+#
+# dependsOn, and why each one:
+# - upgrade-health-gate: it builds ConfigMap dev-env-api-client (the callers' client),
+#   which this pod mounts.
+# - dev-env-pki: it publishes ConfigMap dev-env-api-ca (the pinned CA) into
+#   upgrade-agent, which this pod mounts.
+# Both mounts are optional, so a missing ConfigMap leaves a run that logs and exits
+# instead of a pod stuck in ContainerCreating.
+#
+# Nothing depends on this Kustomization.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: &app cigar-curation
+  namespace: upgrade-agent
+spec:
+  targetNamespace: upgrade-agent
+  commonMetadata:
+    labels:
+      app.kubernetes.io/name: *app
+  dependsOn:
+    - name: upgrade-health-gate
+      namespace: upgrade-agent
+    - name: dev-env-pki
+      namespace: dev-env-system
+  path: ./kubernetes/main/apps/upgrade-agent/cigar-curation/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 30m
+  timeout: 5m
+  # NO postBuild.substitute: Flux envsubst would rewrite the shell `${VAR:-default}`
+  # forms in summon.sh (the same trap as the gate, the shepherd and the responder).

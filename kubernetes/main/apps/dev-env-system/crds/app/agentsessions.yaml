@@ -4,9 +4,39 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main 96d4fcd77de437c6a8d5b1aaed97a7dd2efe90f8 (merge of PR #1127),
-# verified byte for byte (SHA-256 90ba82e5d98b966e31b11676fae2cac6687e86f41be3326481d7d770da350c32
-# below this header). One change since the copy from ff0c9e8e:
+# Source: dev-env main dc824832d8cfd1a96fc5dc5c65622ad5ebe2ec37 (merge of PR #1158),
+# verified byte for byte (SHA-256 8771cc255e6524623a48eb83a48da87063e2839decdf1998506262712c7812fe
+# below this header). Four changes since the copy from 96d4fcd7, all of DESIGN-064 (summoned
+# sessions). Each adds fields and rules that only a summoned session carries; no pinned
+# operator or agent writes them before the pins that follow this copy, and summoning
+# creates stay switched off (the operator's --summon-create-kinds is unset):
+# - dev-env 4f1c4114, PR #1132, DESIGN-064 6.10, OpenProject #794 (the leader settles a
+#   remote escalation's registration): status.summon.registration ({agentSeenAt, result,
+#   reason, at}; result registered or unavailable; each member set once), the rule that
+#   the record cannot be removed, and the page event escalation-started with the rules
+#   that tie it to a settled registration and allow it once.
+# - dev-env bb7209f8, PR #1150, DESIGN-064 5.9, OpenProject #798: three rules on
+#   status.summon.closed. Its time, source and reason never change once set.
+# - dev-env c55f894b, PR #1120, DESIGN-064 6.9, OpenProject #791 (a summoned task checks
+#   its model before it starts): status.agent.start ({model, fallbackCause} or {failure},
+#   closed sets), with the rules that it names a model or a failure, never both, and
+#   that it never changes once recorded. It must be here before the operator pin that
+#   stores it: with an older schema the API server would drop it, and a session with no
+#   usable model would close as interrupted instead.
+# - dev-env dc824832, PR #1158, DESIGN-064 6.6, OpenProject #801 (the leader files one
+#   escalation for a Pending remediation): spec.summon.filedFor ({name, uid}) with the
+#   rules that bind it to a keyless remote escalation and to a filing dispatch id;
+#   status.summon.escalation gains uid, chargedAt and a closed set of reason words, with
+#   the rules that a filing never changes once it is not Pending, that uid is present
+#   exactly when Filed, and that chargedAt is set once; the page events
+#   escalation-pending and escalation-abandoned, each allowed once. Do not pin the
+#   operator back to a version before this once a filing charge exists: its full status
+#   updates drop uid and chargedAt, and this schema refuses them.
+#   Install precondition, read in the cluster on 2026-11-14 before this copy merged: of
+#   525 AgentSessions none has spec.caller, spec.summon, status.summon or
+#   status.agent.start, so no stored object meets a new rule.
+# The copy before this one was from dev-env main 96d4fcd77de437c6a8d5b1aaed97a7dd2efe90f8
+# (merge of PR #1127). Its one change since ff0c9e8e, still in force:
 # - dev-env 96d4fcd77de4, PR #1127, DESIGN-065 slice 3 and ADR-027, OpenProject #787 (an
 #   agent renames a running session by a guarded typed rename):
 #   * status.remoteControl.providerTitle (the CLI record's name after a rename) and
@@ -674,6 +704,24 @@ spec:
                     minLength: 1
                     pattern: ^claude-[a-z]+(-[0-9]+)+$
                     type: string
+                  filedFor:
+                    description: |-
+                      FiledFor identifies the remediation for which the operator leader filed
+                      this escalation (DESIGN-064 6.6, OP801). No HTTP create accepts it.
+                    properties:
+                      name:
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                      uid:
+                        maxLength: 36
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    - uid
+                    type: object
                   maxHold:
                     description: MaxHold is set for remediation and curation only,
                       at most 24h.
@@ -850,6 +898,14 @@ spec:
             - message: summon.priority is urgent for lanes remediation and escalation
               rule: '!has(self.summon) || !(self.lane == ''remediation'' || self.lane
                 == ''escalation'') || self.summon.priority == ''urgent'''
+            - message: filedFor is a keyless remote escalation whose dispatchID names
+                the remediation UID
+              rule: '!has(self.summon) || !has(self.summon.filedFor) || (self.lane
+                == ''escalation'' && self.mode == ''remote'' && !has(self.idempotencyKey)
+                && self.summon.dispatchID == ''filing:'' + self.summon.filedFor.uid)'
+            - message: a filing dispatchID requires filedFor
+              rule: '!has(self.summon) || !self.summon.dispatchID.startsWith(''filing:'')
+                || has(self.summon.filedFor)'
             - message: 'immutable after create: no spec field may be added or removed,
                 except operatingMode and lifecycle'
               rule: has(self.base) == has(oldSelf.base) && has(self.effort) == has(oldSelf.effort)
@@ -1150,6 +1206,58 @@ spec:
                     required:
                     - state
                     type: object
+                  start:
+                    description: |-
+                      Start is how a summoned task's start went after its model pre-flight
+                      (DESIGN-064 6.9, OP791): the model it started on, or why no model was
+                      usable. The API copies it from the session's own heartbeat once, for a
+                      summoned task only and only with spec.model or
+                      spec.summon.fallbackModel, and keeps it on every later heartbeat; it
+                      never changes once recorded. The schema bounds its shape and refuses a
+                      change; the binding to spec is the API's, since a root rule that reads
+                      spec.summon does not compile against an installed spec schema that
+                      predates it (TestPrivatePilotPreflightRealSchemaAdmission).
+                    properties:
+                      failure:
+                        description: |-
+                          Failure is why nothing started, the cause of the last model tried: a
+                          refused model, a quota refusal, a rejected login (the fallback is not
+                          tried) or no answer in time. A start the start deadline refused is not
+                          recorded here.
+                        enum:
+                        - ModelRefused
+                        - QuotaRefused
+                        - LoginRejected
+                        - NoAnswer
+                        maxLength: 32
+                        type: string
+                      fallbackCause:
+                        description: |-
+                          FallbackCause is set only beside a model that is
+                          spec.summon.fallbackModel: why spec.model did not answer. A rejected
+                          login tries no fallback, so it is never a fallback's cause.
+                        enum:
+                        - ModelRefused
+                        - QuotaRefused
+                        - NoAnswer
+                        maxLength: 32
+                        type: string
+                      model:
+                        description: |-
+                          Model is the full model id the task started on: spec.model, or
+                          spec.summon.fallbackModel when spec.model did not answer.
+                        maxLength: 128
+                        minLength: 1
+                        pattern: ^\S+$
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: a start record names either the model the task started
+                        on or why no model was usable
+                      rule: has(self.model) != has(self.failure)
+                    - message: a fallback's cause goes only beside the model the task
+                        started on
+                      rule: '!has(self.fallbackCause) || has(self.model)'
                   status:
                     description: |-
                       Status is the agent's state, agentd's: pending, busy, idle, waiting,
@@ -3486,28 +3594,84 @@ spec:
                     - source
                     type: object
                     x-kubernetes-validations:
+                    - message: the close time never changes
+                      rule: self.at == oldSelf.at
+                    - message: the close source never changes
+                      rule: self.source == oldSelf.source
+                    - message: the close reason never changes
+                      rule: self.reason == oldSelf.reason
                     - message: released is never reversed
                       rule: '!has(oldSelf.released) || !oldSelf.released || (has(self.released)
                         && self.released)'
                   escalation:
                     description: |-
-                      Escalation is the pending filing for a remediation ending escalated.
-                      OP768 adds filing, blocked and abandoned transitions; this slice files nothing.
+                      Escalation is the platform's filing for a remediation ending escalated.
+                      OP801 files it; OP802 owns abandonment and the reap hold.
                     properties:
+                      chargedAt:
+                        description: ChargedAt is the original ledger charge's time,
+                          never a retry time.
+                        format: date-time
+                        type: string
                       name:
                         maxLength: 63
                         minLength: 1
                         pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                         type: string
+                      reason:
+                        description: |-
+                          Reason is the last blocked word while Pending, required (or not-filed)
+                          on abandonment, and absent once Filed.
+                        enum:
+                        - policy-gone
+                        - policy-no-escalations
+                        - hour-full
+                        - queue-full
+                        - remote-off
+                        - ledger-unavailable
+                        - no-free-name
+                        - entry-full
+                        - child-invalid
+                        - create-refused
+                        - not-filed
+                        maxLength: 32
+                        type: string
                       state:
+                        description: SummonEscalationState is the filing's durable
+                          state (DESIGN-064 6.6).
                         enum:
                         - Pending
+                        - Filed
+                        - Abandoned
                         maxLength: 16
+                        type: string
+                      uid:
+                        description: UID is the escalation child's UID, recorded with
+                          Filed.
+                        maxLength: 36
+                        minLength: 1
                         type: string
                     required:
                     - name
                     - state
                     type: object
+                    x-kubernetes-validations:
+                    - message: a filing never changes once it is not Pending
+                      rule: oldSelf.state == 'Pending' || self == oldSelf
+                    - message: a filing UID is present exactly when Filed
+                      rule: has(self.uid) == (self.state == 'Filed')
+                    - message: an Abandoned filing requires a reason
+                      rule: self.state != 'Abandoned' || has(self.reason)
+                    - message: a Filed filing has no reason
+                      rule: self.state != 'Filed' || !has(self.reason)
+                    - message: a Pending filing's reason is never not-filed
+                      rule: self.state != 'Pending' || !has(self.reason) || self.reason
+                        != 'not-filed'
+                    - message: chargedAt is set once and never changes
+                      rule: '!has(oldSelf.chargedAt) || (has(self.chargedAt) && self.chargedAt
+                        == oldSelf.chargedAt)'
+                    - message: a Filed escalation requires chargedAt
+                      rule: self.state != 'Filed' || has(self.chargedAt)
                   executor:
                     description: |-
                       Executor is a summoned remote session's executor latch (DESIGN-064 5.9,
@@ -3578,13 +3742,17 @@ spec:
                         event:
                           description: |-
                             SummonPageEvent is a lifecycle page event of DESIGN-064 6.8 recorded on a
-                            session. This slice writes the two lifecycle events it decides; story 742
-                            adds the rest of 6.8's lifecycle events. A terminal event is never a page
-                            event here: the keeper derives it from the close record (ruling Q1 on item
-                            742, built in PR 1102).
+                            session. Story 779 writes escalation-held and escalation-reminder; story
+                            794 writes escalation-started, only with status.summon.registration's
+                            result (6.10); story 742 adds the rest of 6.8's lifecycle events. A
+                            terminal event is never a page event here: the keeper derives it from the
+                            close record (ruling Q1 on item 742, built in PR 1102).
                           enum:
                           - escalation-held
                           - escalation-reminder
+                          - escalation-started
+                          - escalation-pending
+                          - escalation-abandoned
                           maxLength: 32
                           type: string
                       required:
@@ -3594,6 +3762,62 @@ spec:
                     maxItems: 8
                     type: array
                     x-kubernetes-list-type: atomic
+                  registration:
+                    description: |-
+                      Registration is a remote escalation's settled Remote Control
+                      registration (DESIGN-064 6.10; story 794, coordinator rulings O1, O2,
+                      O3 and O13 on item 745 comments 7680 and 7685, not rulings by Tom).
+                      The operator leader writes it, and appends escalation-started to
+                      pages in the same write as its result; pages hold at most one
+                      escalation-started (story 794 fix round 1, ruling 4). Each field is set
+                      once; the record is never removed.
+                    properties:
+                      agentSeenAt:
+                        description: AgentSeenAt is when the leader first saw the
+                          agent started.
+                        format: date-time
+                        type: string
+                      at:
+                        description: At is when the leader settled the registration.
+                        format: date-time
+                        type: string
+                      reason:
+                        description: Reason is set exactly when Result is unavailable.
+                        enum:
+                        - starting
+                        - offline
+                        - login-required
+                        - link-unverified
+                        - name-mismatch
+                        - not-reported
+                        maxLength: 32
+                        type: string
+                      result:
+                        description: Result is the settlement.
+                        enum:
+                        - registered
+                        - unavailable
+                        maxLength: 16
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: agentSeenAt is set once and never changes
+                      rule: '!has(oldSelf.agentSeenAt) || (has(self.agentSeenAt) &&
+                        self.agentSeenAt == oldSelf.agentSeenAt)'
+                    - message: the registration result is set once and never changes
+                      rule: '!has(oldSelf.result) || (has(self.result) && self.result
+                        == oldSelf.result)'
+                    - message: the registration reason is set once and never changes
+                      rule: '!has(oldSelf.reason) || (has(self.reason) && self.reason
+                        == oldSelf.reason)'
+                    - message: the registration time is set once and never changes
+                      rule: '!has(oldSelf.at) || (has(self.at) && self.at == oldSelf.at)'
+                    - message: the registration result and its time are set together
+                      rule: has(self.result) == has(self.at)
+                    - message: a registration reason is set exactly when the result
+                        is unavailable
+                      rule: has(self.reason) == (has(self.result) && self.result ==
+                        'unavailable')
                 type: object
                 x-kubernetes-validations:
                 - message: admittedAt is set once and never changes
@@ -3606,6 +3830,29 @@ spec:
                     p in self.pages))'
                 - message: the executor latch cannot be removed
                   rule: '!has(oldSelf.executor) || has(self.executor)'
+                - message: the registration record cannot be removed
+                  rule: '!has(oldSelf.registration) || has(self.registration)'
+                - message: pages hold escalation-started exactly when the registration
+                    has a result
+                  rule: (has(self.registration) && has(self.registration.result))
+                    == (has(self.pages) && self.pages.exists(p, p.event == 'escalation-started'))
+                - message: pages hold at most one escalation-started
+                  rule: '!has(self.pages) || self.pages.filter(p, p.event == ''escalation-started'').size()
+                    <= 1'
+                - message: the escalation filing cannot be removed
+                  rule: '!has(oldSelf.escalation) || has(self.escalation)'
+                - message: an escalation filing requires a closed record
+                  rule: '!has(self.escalation) || has(self.closed)'
+                - message: pages hold escalation-abandoned exactly when the filing
+                    is Abandoned
+                  rule: (has(self.escalation) && self.escalation.state == 'Abandoned')
+                    == (has(self.pages) && self.pages.exists(p, p.event == 'escalation-abandoned'))
+                - message: pages hold at most one escalation-pending
+                  rule: '!has(self.pages) || self.pages.filter(p, p.event == ''escalation-pending'').size()
+                    <= 1'
+                - message: pages hold at most one escalation-abandoned
+                  rule: '!has(self.pages) || self.pages.filter(p, p.event == ''escalation-abandoned'').size()
+                    <= 1'
               suspendedAt:
                 description: |-
                   SuspendedAt is when the operator first saw the session suspended with
@@ -4226,6 +4473,10 @@ spec:
         - message: the summon record cannot be removed, including with status
           rule: '!has(oldSelf.status) || !has(oldSelf.status.summon) || (has(self.status)
             && has(self.status.summon))'
+        - message: a summoned task's start record never changes once recorded
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.agent) || !has(oldSelf.status.agent.start)
+            || (has(self.status) && has(self.status.agent) && has(self.status.agent.start)
+            && self.status.agent.start == oldSelf.status.agent.start)'
     served: true
     storage: true
     subresources:
