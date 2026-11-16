@@ -297,7 +297,7 @@ because only that one carries the merge commit.
 | `merged` | `merge-attempted`, then `merged` (merge commit and time from the verdict). With no merge commit read, `merge-unknown` instead. |
 | `merge-failed` | `merge-attempted`, then `merge-failed` (class `merge-call-failed`, to `needed`) |
 | `merge-unknown` | `merge-attempted`, then `merge-unknown` (class `merge-outcome-unread`) |
-| `merging`, `would-merge` from the hand run (`night-merge.mjs --merge`) | written by the hand run itself, actor `hand` (story 712) |
+| `merging`, `would-merge` from the hand run (`night-merge.mjs --merge`) | no hand-run merge-step events: a session cannot write `upgrade-ledger`. The history gets only the `merged` event the lane reads from GitHub; see [story 712's procedure](../runbooks/upgrade-approved-by-prompt.md) |
 
 A refused verdict goes to `needed`, not `blocked`: the open states follow the lane's own
 reading of the PR on the next tick, and the refusal stays in the attempt. Event ids

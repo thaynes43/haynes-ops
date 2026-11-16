@@ -460,7 +460,7 @@ Nothing is re-read just before the merge call: the call is pinned with
 | `GitHub reads it … not MERGEABLE`, `merge state …` | `CLEAN`, `HAS_HOOKS` and `UNSTABLE` pass; the check scan below decides on non-required checks. `UNKNOWN` here means GitHub had still not answered after 4 reads |
 | `head moved between reads of the pull request (… on read 1, … on read n); not judging the new head in this tick` | the PR moved while the step waited for GitHub's answer (story 773) |
 | `unreadable: the pull request (gh pr view, read n of 4, while GitHub had not yet computed its mergeability)` | a re-read failed. Read 1 failing keeps the old text, `unreadable: the pull request (gh pr view)` |
-| `commit status <context> is pending (PENDING)` or `(EXPECTED)` | **gap 1.** The handoff preflight read a pending status as complete |
+| `commit status <context> is pending (PENDING)` or `(EXPECTED)` | **gap 1, fixed in story 712.** `hand_run_preflight.py` now refuses a pending or expected commit status too; see [the approved hand-run procedure](upgrade-approved-by-prompt.md) |
 | `check still running: …`, `check failed: …` | any check run on the head, newest attempt counted. `Claude Review (advisory)` is never a gate |
 | `required check not SUCCESS: …` | `Flux Local - Success` and `Diff Scope - Success`, literals as in `deliver_reviewed_pr.py` |
 | `expected check …` | every check the check map expects for the files, as in the classifier |
@@ -573,7 +573,8 @@ The outcome of the call:
 ### The hand run (rehearsal)
 
 `night-merge.mjs` is also a CLI for one named PR. **A real `--merge` needs the owner's
-yes for that PR**; the CLI reads no approval.
+yes for that PR**; the CLI reads no approval. For updates that need Tom's yes, follow
+[the approved hand-run procedure](upgrade-approved-by-prompt.md) (story 712).
 
 What it checks:
 
@@ -596,9 +597,10 @@ What it skips, because only the tick knows it:
 It also differs from the lane in three ways:
 
 - It does not take the lock: a session pod cannot write ConfigMaps in `upgrade-agent`.
-  So the lane and the shepherd cannot see a hand run. Keep hand runs out of the lane's
-  window, and do not run one while the shepherd is running (`kubectl -n upgrade-agent get
-  jobs`).
+  So the lane and the shepherd cannot see a hand run. Follow
+  [the approved hand-run procedure](upgrade-approved-by-prompt.md), which runs inside the
+  merge window and reads the lock, Jobs and settle facts when it acts (story 712;
+  Tom's ruling Q-548-04).
 - It uses the caller's own `gh` identity and reads no token file.
 - `--merge` refuses any test clock (exit 2): `UPGRADE_NIGHT_NOW` set, `FAKE_NOW` set, or
   a `Date.now` that is not the native one.
