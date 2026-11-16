@@ -158,6 +158,22 @@ world "$(base "$TEXT" "$NIGHT" 20 05:45 "yesterday; rm -rf /")"; send
 
 echo "== page.sh and the CronJob"
 grep -q '\[ "\$SEV" = "low" \] && prio=-1' "$GATE_RES/page.sh" && ok "page.sh: severity low is priority -1; critical stays 1, others 0" || bad "page.sh low"
+# Existing callers: assert curl's actual argv, including field transport and deadlines.
+# No real request is made: the fake records one JSON array per invocation.
+for sev in critical warning low; do
+  rm -f "$TMP/args.log" "$TMP/args.log.n"
+  env PATH="$TMP/bin:$PATH" FAKE_CURL_LOG="$TMP/args.log" PUSHOVER_TOKEN=t PUSHOVER_USER_KEY=u \
+    bash "$TMP/gate/page.sh" "$sev" flux x 'body @literal & value' > /dev/null 2>&1
+  case "$sev" in critical) priority=1 ;; low) priority=-1 ;; *) priority=0 ;; esac
+  if jq -e --arg priority "$priority" --arg title "[upgrade-gate] $sev flux/x" '
+    . == ["-s", "-o", "/dev/null", "-w", "%{http_code} %{time_connect}", "--max-time", "10",
+      "https://api.pushover.net/1/messages.json", "--form-string", "token=t", "--form-string", "user=u",
+      "--form-string", ("title=" + $title), "--form-string", "message=body @literal & value", "--form-string", ("priority=" + $priority)]
+    and ([.[] | select(. == "--max-time")] | length) == 1
+    and (index("--connect-timeout") == null)
+  ' "$TMP/args.log" > /dev/null; then ok "existing $sev page: priority $priority, unchanged form fields, exactly one --max-time 10 and no --connect-timeout"
+  else bad "existing $sev page curl arguments"; fi
+done
 # page.sh for its existing caller (gate.sh page(), which ignores the exit code): the same lines
 grep -q 'page() { "$GATE_DIR/page.sh" "$@"; REGRESSIONS=$((REGRESSIONS+1)); }' "$GATE_RES/gate.sh" && ok "gate.sh's page() still ignores page.sh's exit code" || bad "page() unchanged"
 for c in ok 500 connect timeout; do
