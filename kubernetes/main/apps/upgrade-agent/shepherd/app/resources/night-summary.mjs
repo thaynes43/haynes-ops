@@ -149,6 +149,7 @@ export function claimWords(c) {
   if (c.outcome === 'claimed') return c.lane_state === 'reverting' ? 'the night lane is reverting it' : 'the night lane has taken it';
   if (c.outcome === 'triage-holds' || (c.outcome === 'lost' && c.holder === 'triage')) return 'the automatic remediation (triage) has taken it';
   if (c.outcome === 'lane-holds') return 'the night lane has already taken it with another update';
+  if (c.outcome === 'budget-exhausted') return 'the claim step ran out of time; the lane will not revert on this run';
   if (c.outcome === 'unreadable') return 'who has taken it could not be read';
   return 'no automatic fix has taken it yet';
 }
@@ -158,7 +159,20 @@ export function composeText(facts, { now, cfg, tz, ticks, finished }) {
   const historyKnown = !facts.unreadable.some(u => u.startsWith('the history'));
   const checksKnown = !facts.unreadable.some(u => u.startsWith('the verifier'));
   const w = facts.waits;
-  const waitCount = w.needs_person.length + w.awaiting_pin.length + w.blocked.length + w.owner.length + (w.history ? 1 : 0);
+  const waiting = new Map();
+  const wait = (x, reason) => {
+    const key = String(x.pr);
+    if (!waiting.has(key)) waiting.set(key, { ...x, reasons: [] });
+    const reasons = waiting.get(key).reasons;
+    if (!reasons.includes(reason)) reasons.push(reason);
+  };
+  for (const x of w.needs_person) wait(x, `needs a person: its check has stayed open ${plural(x.nights, 'night')}${x.given_up ? ' and was given up' : ''}: ${x.why}`);
+  for (const x of w.awaiting_pin) wait(x, `waiting for the update that pins its new image: ${x.why}`);
+  for (const x of w.blocked) wait(x, `blocked, ${BLOCKED_WORDS[x.class] || x.class}: ${x.why}`);
+  const owners = [...new Map(w.owner.map(x => [String(x.pr), x])).values()];
+  const ownerOnly = owners.filter(x => !waiting.has(String(x.pr)));
+  for (const x of owners.filter(x => waiting.has(String(x.pr)))) wait(x, `your decision on an update the lane may not make (${x.class})`);
+  const waitCount = waiting.size + ownerOnly.length + (w.history ? 1 : 0);
   const judged = [...facts.verified, ...facts.checking, ...facts.failed];
   const practice = facts.mode !== 'live' || (judged.length > 0 && judged.every(x => x.practice));
   const by = new Map();
@@ -180,10 +194,8 @@ export function composeText(facts, { now, cfg, tz, ticks, finished }) {
     return `- ${prName(x)}${x.practice ? ' (practice)' : ''}: ${x.why}; ${x.attribution === 'own-regression' ? 'caused by this update (no other change reached the app)' : 'cannot tell which change caused it'}${who ? `; ${who}` : ''}`;
   }));
   group('Waiting for you:', [
-    ...w.needs_person.map(x => `- ${prName(x)}: needs a person: its check has stayed open ${plural(x.nights, 'night')}${x.given_up ? ' and was given up' : ''}: ${x.why}`),
-    ...w.awaiting_pin.map(x => `- ${prName(x)}: waiting for the update that pins its new image: ${x.why}`),
-    ...w.blocked.map(x => `- ${prName(x)}: blocked, ${BLOCKED_WORDS[x.class] || x.class}: ${x.why}`),
-    ...(w.owner.length ? [`- your decision on ${plural(w.owner.length, 'update')} the lane may not make (${list([...new Set(w.owner.map(x => x.class))], x => x, 3)}): ${list(w.owner, x => `#${x.pr} ${x.name}`, max)}`] : []),
+    ...[...waiting.values()].map(x => `- ${prName(x)}: ${x.reasons.join('; ')}`),
+    ...(ownerOnly.length ? [`- your decision on ${plural(ownerOnly.length, 'update')} the lane may not make (${list([...new Set(ownerOnly.map(x => x.class))], x => x, 3)}): ${list(ownerOnly, x => `#${x.pr} ${x.name}`, max)}`] : []),
     ...(w.history ? [`- the update history needs a person: ${w.history}`] : []),
   ]);
   group('Reverted:', [

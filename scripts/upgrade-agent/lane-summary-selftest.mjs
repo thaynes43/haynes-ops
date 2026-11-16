@@ -136,7 +136,19 @@ section('3. items that wait for Tom, counted in items; failed verdicts in plain 
   ok(/\nFailed health checks:\n- #1 pkg-1 \(practice\): /.test(ft), 'the failures sit under their own heading "Failed health checks:"', ft);
   ok(/: 0 passed, 0 still being checked, 7 failed\./.test(lines(ft)[2]), 'the failures are counted');
   ok(S.claimWords({ outcome: 'unreadable' }) === 'who has taken it could not be read' && S.claimWords({ outcome: 'lane-holds' }) === 'the night lane has already taken it with another update' && S.claimWords({ outcome: 'not-in-set' }) === 'no automatic fix has taken it yet' && S.claimWords(null) === '', 'the rest of the words');
+  ok(/the claim step ran out of time; the lane will not revert on this run/.test(compose({ verify: { x: verify2.a }, claims: [{ pr: 1, outcome: 'budget-exhausted' }] }).morning.text), 'M1: morning summary states the spent claim budget and no revert');
   ok(/\nWaiting for you:\n- #4810 /.test(t) && lines(t).filter(l => l === 'Waiting for you:').length === 1, 'the waiting items under one "Waiting for you:" heading', t);
+}
+
+section('3b. one waiting own-image update, both reasons (review L3)');
+{
+  const r = vrec(4811, 'upgrade-shepherd', { practice: false, verdict: 'not-yet', final: false, needs_person: true, nights: ['2026-11-12', '2026-11-13'], why: 'build needs attention', pin: { state: 'awaiting' }, facts: [{ fact: 'pin', detail: 'pin PR is blocked' }] });
+  const m = compose({ mode: 'live', verify: { own: r } }).morning;
+  const waits = m.text.split('Waiting for you:\n')[1] || '';
+  ok(/Waiting for you: 1 item\.$/.test(lines(m.text)[2]), 'one update counted once in the first lines', m.text);
+  ok(lines(waits).filter(l => l.startsWith('- #4811 ')).length === 1 && /needs a person:.*; waiting for the update that pins its new image: pin PR is blocked/.test(waits), 'one waiting line gives both reasons', waits);
+  const h = compose({ verify: { own: r }, historyNote: { needs_person: true, line: 'history needs attention' } }).morning.text;
+  ok(/Waiting for you: 2 items\.$/.test(lines(h)[2]), 'the history remains a separate item');
 }
 
 // ── 4. reverts ──────────────────────────────────────────────────────────────────────
@@ -228,6 +240,18 @@ section('8. the window: from the last night\'s record, each boundary once');
   ok(/Health checks after merging: not known/.test(compose({ verify: null }).morning.text), 'the verifier\'s records unreadable: said');
 }
 
+section('8b. surviving review mutations 07, 08 and 12');
+{
+  const doc = { events: [ev('merged', '2026-11-14T07:00:00Z', 'future', 9999, { actor: { kind: 'lane' } })], items: { future: { name: 'future' } } };
+  const future = compose({ doc }).morning;
+  ok(future.facts.merged.length === 0 && !future.text.includes('#9999'), '07: a future-dated history event is left out');
+  const old = compose({ verify: { old: vrec(9998, 'old', { verdict_at: '2026-11-11T10:00:00Z' }) } }).morning;
+  ok(old.facts.checking.length === 0 && /0 still being checked/.test(old.text) && !old.text.includes('#9998'), '12: an old final verdict is not still being checked');
+  const login = 'actor\n\u001b[31m\u202eghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const actor = compose({ doc: { events: [ev('merged', '2026-11-13T07:00:00Z', 'actor', 9997, { actor: { kind: 'person', login } })], items: {} } }).morning;
+  ok(actor.facts.merged[0].by_login === S.clean(login, 40) && !/[\p{Cc}\p{Cf}]/u.test(actor.facts.merged[0].by_login) && !actor.facts.merged[0].by_login.includes('ghp_'), '08: the actor login is sanitized in the stored facts too');
+}
+
 // ── 9. the writes ───────────────────────────────────────────────────────────────────
 section('9. the writes: data.morning and the delivery copy');
 {
@@ -241,6 +265,7 @@ section('9. the writes: data.morning and the delivery copy');
   ok(/if \(ok && morning\?\.ok\) \{/.test(rn) && rn.indexOf('writeLaneState(morningManifest(') > rn.indexOf("writeLaneState(stateManifest({ mode: MODE, updated: summary.at"), 'the summary is written after the tick\'s own state landed (a refused tick did not complete)');
   ok(/const DELIVERY = \{ name: 'upgrade-orphan-report', namespace: 'upgrade-agent' \};/.test(rn) && /writeLaneState\(deliveryManifest\(morning\.delivery\), SUMMARY_MANAGER\)/.test(rn), 'the delivery copy: server-side apply (writeLaneState, the one spawn) to upgrade-orphan-report under the summary\'s field manager');
   ok(!S.DELIVERY_KEYS.includes('morning_sent_night') && /every\(\(\[k, v\]\) => DELIVERY_KEYS\.includes\(k\) && typeof v === 'string'\)/.test(rn), 'the lane never writes morning_sent_night (the sender\'s stamp): writeLaneState refuses any other key of upgrade-orphan-report');
+  ok(!S.DELIVERY_KEYS.includes('morning_first_attempt_night'), 'the lane never owns or drops the sender\'s first-attempt key');
   const idx = rn.indexOf('S.composeMorning(');
   ok(idx > rn.indexOf('H.historyPhase(') && idx > rn.indexOf('M.writePrRecords('), 'composed after the history and the PR records: from what the tick holds');
   const src = readFileSync(join(RES, 'night-summary.mjs'), 'utf8');
