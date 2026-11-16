@@ -16,6 +16,7 @@
 #   still unconfirmed            -> exit 3 after three attempts;
 #   no connection at all         -> exit 3 after three attempts, no create;
 #   the list refused (401, 403)  -> exit 2, no create.
+# An explicit sessions:null is empty; a missing member or another type is unconfirmed.
 # A malformed list entry stops with exit 3, without a create or another attempt.
 # The token must never reach a log, and the worst case must fit the Job's
 # activeDeadlineSeconds.
@@ -341,6 +342,11 @@ run_summon 0
 n_posts 1
 
 # ── 4. refusals: exit 2, one create, no retry, no pause ─────────────────────────────
+scenario "explicit null list, create refused" '{"status":200,"body":{"sessions":null}}' "$R403"
+run_summon 2
+n_posts 1; n_gets 1; order GP; pauses ""
+says "the client logs the create refusal" "dev-env-api: POST /v1/sessions HTTP 403"
+says "the create outcome decides the exit" "create refused (the client's line above); no retry for $DAY"
 scenario "403 not switched on" "$EMPTY" "$R403"
 run_summon 2
 n_posts 1; n_gets 1; pauses ""
@@ -405,9 +411,15 @@ scenario "list 503 then empty" "$R503,$EMPTY" "$CREATED"
 run_summon 0
 n_posts 1; order GGP; pauses "60"
 says "no create on the unreadable attempt" "could not read this caller's sessions; no create on this attempt (attempt 1 of 3)"
-scenario "a 200 without a sessions list is unreadable" "$NO_LIST" "$CREATED"
+scenario "a 200 without a sessions member is unreadable" "$NO_LIST" "$CREATED"
 run_summon 3
-n_posts 0; pauses "60 60"
+n_posts 0; n_gets 4; order GGGG; pauses "60 60"
+scenario "a 200 with a string sessions member is unreadable" '{"status":200,"body":{"sessions":"x"}}' "$CREATED"
+run_summon 3
+n_posts 0; n_gets 4; order GGGG; pauses "60 60"
+scenario "a 200 with a non-object body is unreadable" '{"status":200,"body":[]}' "$CREATED"
+run_summon 3
+n_posts 0; n_gets 4; order GGGG; pauses "60 60"
 for entry in '{}' 'null' "{\"idempotencyKey\":\"$KEY\"}" \
     "{\"name\":\"$NAME\",\"idempotencyKey\":17}" \
     "{\"name\":\"$NAME\",\"phase\":false}" \
