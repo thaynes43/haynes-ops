@@ -27,6 +27,9 @@ spec:
         pod:
           restartPolicy: Never
         cronjob:
+          # Suspended since 2026-11-16 until dev-env story 806 switches summoning
+          # creates of kind task on; unsuspend in the PR that does that.
+          suspend: true
           schedule: "15 10 * * *"       # v1's time (curation-order in dev-env-ops)
           # Written out, not left to the k8tz webhook, so the render says what runs.
           timeZone: America/New_York
