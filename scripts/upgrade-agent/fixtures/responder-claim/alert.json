@@ -1,0 +1,12 @@
+{
+  "labels": {
+    "alertname": "FluxReconciliationFailure",
+    "severity": "critical",
+    "customresource_kind": "HelmRelease",
+    "exported_namespace": "media",
+    "name": "plex"
+  },
+  "fingerprint": "abc",
+  "startsAt": "2026-11-17T17:30:00Z",
+  "annotations": {}
+}

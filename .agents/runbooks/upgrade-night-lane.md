@@ -1956,6 +1956,28 @@ The gate's 40-minute grace measures the age of `first_seen`.
   entry stayed silent. An unreadable ConfigMap pages as today. No claim silences anyone for
   ever: the lane's bound ends its silence on the gate's own clock, and the 24-hour age-out ends
   the entry.
+- **The alert responder (story 848)** reads `upgrade-agent/upgrade-remediation-state`
+  once immediately before an urgent diagnosis would file a `rem-*` order. It stays silent
+  only for an exact match between the alert's object labels and a working holder's `ids`:
+  `flux/<kind>/<namespace>/<name>` from `FluxReconciliationFailure` labels
+  `customresource_kind`, `exported_namespace`, `name`, or `pod/<namespace>/<pod>`
+  from pod labels. Namespace-only matches and missing object labels do not hold it.
+  For a storm, every member must be held. It logs the alert, claim key, holder, object
+  and bound and files no order or responder page.
+  - Lane entries need the understood schema, upgrade class, attempted marker, PR and
+    valid claim times described above, `working|reverting`, and `result=inprogress`.
+    The responder's current clock must not be after `until` (including equality).
+  - Triage entries need `holder=triage`, `class=upgrade`, `attempted=1` and the
+    gate's `remediation_phase` inflight rule: `none|pending|inprogress` or empty result,
+    less than 40 minutes since `first_seen`, with the same 300-second future tolerance.
+  - Everything unclear fails open: missing/empty/unreadable/malformed state, a failed
+    `kubectl` or `jq`, unknown fields used in the decision, failure or terminal results,
+    expired bounds and unmatched objects all take the existing order/page path.
+    The responder never writes this state. Its existing incident ledger/cooldown still
+    governs later diagnosis; this read adds no retry schedule.
+  - It now passes `REMEDIATE_SIG=alertname@namespace`; counts cannot change the order key.
+    An old reason-keyed order is not migrated or cancelled. It continues its normal
+    lifecycle, so a later firing can create an additional order under the corrected key.
 - **A moved signature.** A set can change after the lane claimed part of it, so that the new
   signature has no entry of its own while a working lane claim names some of its ids. Triage
   then stands down for the whole set, and the gate pages it at once (as today). The page says

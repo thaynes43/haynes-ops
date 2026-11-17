@@ -521,19 +521,83 @@ while [ "$u" -lt "${u_count:-0}" ] && [ "$handled" -lt "$MAX_PER_RUN" ]; do
       # ACTION: investigate still pages (a human should look, but nothing is on fire).
       handed_off=0
       if [ "$REMEDIATION_ENABLED" = "1" ] && [ "$ACTION" = "urgent" ] && [ -x "$REMEDIATE_SH" ]; then
-        # The full diagnosis rides REMEDIATE_DIAGNOSIS (1400 chars) and the alert
-        # labels ride REMEDIATE_ALERT (900) — NOT the reason field, which clamps at
-        # 400 and would truncate the FIX section mid-sentence (caught live by the
-        # 2026-08-23 synthetic run, which lost its final constraint that way).
-        if ESCALATE_SIG="${aname}@${ans}" \
-           REMEDIATE_DIAGNOSIS="$REPORT" \
-           REMEDIATE_ALERT="$(printf '%s' "$alert" | jq -c '{labels, annotations, startsAt}' 2>/dev/null)" \
-           bash "$REMEDIATE_SH" responder "job:${HOSTNAME:-unknown}" \
-             "${aname}${ans:+@${ans}} (${utype} n=${n}) FIRING; read-only diagnosis says ACTION: urgent. Fix inside your containment, verify, close silently; escalate only if you cannot fix or tried and failed."; then
-          handed_off=1
-          log "HANDED OFF ($aname): ACTION=urgent -> rem-* lane (autonomous remediation); NOT paging (it pages only if it cannot fix)."
+        # Story 848: read at the handoff, after the diagnosis, never a cached claim.
+        # Only a known, still-working holder of the EXACT object earns silence.
+        # A storm needs a holder for every member; one held representative cannot
+        # hide an unrelated failure. The gate's triage clock is first_seen + 40m
+        # (remediation_phase), with its same 300s future-clock tolerance.
+        held_by=""
+        if remediation_state="$(kubectl -n upgrade-agent get configmap upgrade-remediation-state -o json --request-timeout=10s 2>/dev/null)"; then
+          log "remediation-state ($aname): read upgrade-agent/upgrade-remediation-state at handoff."
+          held_by="$(printf '%s' "$remediation_state" | jq -er \
+            --argjson unit "$unit" --argjson now "$(date -u +%s)" \
+            --argjson grace "$(( ${REMEDIATE_GRACE_MINUTES:-40} * 60 ))" \
+            --argjson skew "${CLOCK_SKEW_SECONDS:-300}" '
+            def epoch: tostring | test("^[1-9][0-9]{0,11}$");
+            def name: type == "string" and test("^[a-z0-9][a-z0-9.-]*$");
+            def object_id:
+              .labels | if .alertname == "FluxReconciliationFailure" then
+                if ((.customresource_kind == "Kustomization" or .customresource_kind == "HelmRelease")
+                    and (.exported_namespace | name) and (.name | name))
+                then "flux/\(.customresource_kind)/\(.exported_namespace)/\(.name)" else null end
+              elif (.namespace | name) and (.pod | name) then "pod/\(.namespace)/\(.pod)"
+              else null end;
+            def bound:
+              if .class != "upgrade" or (.attempted | tostring) != "1" then null
+              elif .holder == "lane" then
+                if .schema == "haynes.upgrade-claim/v1"
+                    and (.lane_state == "working" or .lane_state == "reverting") and .result == "inprogress"
+                    and (.pr | epoch) and (.claimed_at | epoch) and (.until | epoch)
+                then (.claimed_at | tonumber) as $at | (.until | tonumber) as $deadline
+                  | if $at <= ($now + $skew) and $deadline >= $at and ($deadline - $at) <= 21600 and $now <= $deadline
+                    then $deadline else null end
+                else null end
+              elif .holder == "triage" then
+                if ((if .result == null then "" else .result end) as $r
+                    | ($r | type) == "string" and (["none", "pending", "inprogress", ""] | index($r) != null))
+                    and (.first_seen | epoch)
+                then (.first_seen | tonumber) as $at
+                  | if $at <= ($now + $skew) and ($now - $at) < $grace then ($at + $grace) else null end
+                else null end
+              else null end;
+            # Parse the whole snapshot before selecting: a failed jq or malformed
+            # value must not leave a partial match that would suppress a page.
+            (.data // {}) | if type != "object" then error("bad state") else . end
+            | [to_entries[] | .key as $key | (.value | fromjson) as $e
+                | if ($e | type) != "object" then error("bad entry") else {key:$key, entry:$e} end] as $entries
+            | [$unit.members[].alert | object_id as $id
+                | if $id == null then null else
+                  ([$entries[] | .key as $key | .entry | bound as $deadline
+                    | select($deadline != null and (.ids | type) == "array")
+                    | select(.ids | all(.[]; type == "string") and index($id) != null)
+                    | "\($key) holder=\(.holder) until=\($deadline) object=\($id)"] | first // null)
+                  end] as $holds
+            | if ($holds | length) > 0 and ($holds | all(.[]; . != null))
+              then $holds | unique | .[] else empty end' 2>/dev/null)" || held_by=""
         else
-          log "handoff FAILED ($aname) — falling back to paging (fail-open)."
+          log "remediation-state ($aname): unreadable; proceeding with handoff (fail-open)."
+        fi
+        if [ -n "$held_by" ]; then
+          handed_off=1
+          while IFS= read -r hold; do
+            log "HELD ($aname): $hold; no rem-* order and no responder page."
+          done <<< "$held_by"
+        else
+          log "remediation-state ($aname): no understood working holder for every alert object; proceeding (fail-open)."
+          # The full diagnosis rides REMEDIATE_DIAGNOSIS (1400 chars) and the alert
+          # labels ride REMEDIATE_ALERT (900) — NOT the reason field, which clamps at
+          # 400 and would truncate the FIX section mid-sentence (caught live by the
+          # 2026-08-23 synthetic run, which lost its final constraint that way).
+          if REMEDIATE_SIG="${aname}@${ans}" \
+             REMEDIATE_DIAGNOSIS="$REPORT" \
+             REMEDIATE_ALERT="$(printf '%s' "$alert" | jq -c '{labels, annotations, startsAt}' 2>/dev/null)" \
+             bash "$REMEDIATE_SH" responder "job:${HOSTNAME:-unknown}" \
+               "${aname}${ans:+@${ans}} (${utype} n=${n}) FIRING; read-only diagnosis says ACTION: urgent. Fix inside your containment, verify, close silently; escalate only if you cannot fix or tried and failed."; then
+            handed_off=1
+            log "HANDED OFF ($aname): ACTION=urgent -> rem-* lane (autonomous remediation); NOT paging (it pages only if it cannot fix)."
+          else
+            log "handoff FAILED ($aname) — falling back to paging (fail-open)."
+          fi
         fi
       fi
       [ "$handed_off" = "1" ] || page "$title" "${REPORT} [auto-diagnosis — verify before acting]"

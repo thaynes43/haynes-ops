@@ -10,6 +10,35 @@ verifies against the live condition, and closes silently into the quiet digest
 failed — and then with a joinable `esc-rem-<sig8>` session, not a summary.
 North star (Tom, 2026-08-23): **page only when there is a problem he must solve.**
 
+Before filing an urgent order, the responder reads ConfigMap
+`upgrade-agent/upgrade-remediation-state` once, after diagnosis (story 848). It files
+no order and sends no follow-up page when an understood working lane or triage
+claim names the alert's exact object. Flux alerts use `customresource_kind`,
+`exported_namespace` and `name`; pod alerts use `namespace` and `pod`. These map to
+the coordination library's `flux/<kind>/<namespace>/<name>` and
+`pod/<namespace>/<pod>` IDs. A namespace alone earns no silence. Every member of a
+collapsed storm must have a working holder. Each hold log names the alert, claim
+key, holder, object and bound.
+
+A lane hold needs `holder=lane`, the known claim schema, `class=upgrade`,
+`attempted=1`, `lane_state=working|reverting`, `result=inprogress`, and valid PR and
+claim times. Its `until` must not have passed; the claim must be no more than six
+hours long or five minutes ahead of the responder's clock. A triage hold needs
+`holder=triage`, `class=upgrade`, `attempted=1` and an inflight result according to
+the gate's `remediation_phase`: `none`, `pending`, `inprogress` or empty, within
+40 minutes of `first_seen`, allowing the gate's same five-minute clock difference.
+These are the gate's `REMEDIATE_GRACE_MINUTES` and `CLOCK_SKEW_SECONDS` defaults.
+Failed, finished, expired, unknown or unmatched entries, and an absent, empty,
+unreadable or malformed snapshot, **fail open** to the existing order/page path.
+The responder only reads this state; it does not extend or write a claim. Its
+existing incident claims and cooldowns still apply; a hold does not schedule a retry.
+
+The responder passes `REMEDIATE_SIG=alertname@namespace`, so the order key stays
+stable across counts and re-firings. Orders already open under the old
+reason-derived key remain there and keep their existing executor/watchdog
+lifecycle. They are neither migrated nor cancelled; a later firing can create
+one additional order under the corrected key.
+
 **Wiring** (all GitOps-managed under `kubernetes/main/apps/upgrade-agent/`):
 
 | step | where |
