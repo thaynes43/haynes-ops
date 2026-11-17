@@ -283,7 +283,7 @@ installed or enabled runner. The source map applies to the named fields; the
     "freshness_and_wake_and_driver_and_power_cycle": "epic 640 comment 8832 findings 2-6; comment 8834",
     "wake_bounds_and_stops_and_receipt": "story 642 comments 8829, 8831; epic 640 comment 8832 findings 4, 7",
     "midnight": "epic 640 comment 8818",
-    "app_checks_and_replacement_exception": "epic 640 comments 8834, 8840 (Q-640-01, Q-640-02)"
+    "app_checks_and_replacement_exception": "epic 640 comments 8834, 8840 (Q-640-01, Q-640-02); story 642 comment 8842; story 643 comment 8843"
   }
 }
 ```
