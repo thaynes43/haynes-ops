@@ -175,17 +175,68 @@ ramp_prompt_token() {  # the substring that must appear in the LLM prompt for th
 # check, missed allowlist, dashboard-approval nobody ticked). Written to the
 # upgrade-orphan-report ConfigMap; the GATE (the Pushover owner) pages a weekly digest
 # and stamps last_paged/last_mismatch_paged back — preserve those fields here.
+#
+# STORY 554: an orphan is a PR with NO LANE. A PR the night lane classified on its last
+# tick, into any class (blocked, excluded and the owner's lane included), has a lane and
+# is on the lane's record (upgrade-lane-state data.records, the morning summary's list).
+# Only the PRs missing from that record count, and only while the lane is acting: when
+# the lane is paused (data.pause), when its last tick (data.updated) is more than
+# ORPHAN_LANE_MAX_AGE_HOURS (36: it ticks every night) old, or when the record cannot be
+# read, every aging PR counts, as before, and count_basis says why. The record is read as
+# it is now, and reaches jq through a file descriptor, never an argument (Linux refuses an
+# argument over 128 KiB: the record passed it near 53 open PRs; story 508 counted 63).
+# Comment 6154 on story 508: the old count read 63. Pure counting: orphan_count (tested
+# by scripts/upgrade-agent/orphan-count-selftest.sh).
 # $1 = ramp-mismatch detail ("" when consistent). Best-effort: failures only log.
+ORPHAN_LANE_MAX_AGE_HOURS="${ORPHAN_LANE_MAX_AGE_HOURS:-36}"
+# orphan_count <prs-json> <upgrade-lane-state as JSON, or ""> <cutoff ISO> <now epoch>
+#   -> "<count>\t<basis>\t<summary>"; the count is a number whenever the PR list parses
+orphan_count() {
+  local prs="$1" lane="$2" cutoff="$3" now="$4" why="" pause updated n out
+  if [ -z "$lane" ]; then
+    why="the night lane's record (upgrade-lane-state) could not be read"
+  else
+    pause="$(printf '%s' "$lane" | jq -r '.data.pause // ""' 2>/dev/null)"
+    # TZ=UTC for jq: jq 1.6 parses fromdateiso8601 in local time (see coordination-lib.sh)
+    updated="$(printf '%s' "$lane" | TZ=UTC jq -r '(.data.updated // "") | sub("\\.[0-9]+"; "") | (fromdateiso8601? // 0)' 2>/dev/null)"
+    n="$(printf '%s' "$lane" | jq -r '(.data.records // "") | (fromjson? // null) | if type == "array" then length else "none" end' 2>/dev/null)"
+    if [ -n "$pause" ]; then
+      why="the night lane is paused (data.pause), so no PR has a lane"
+    elif ! [ "${updated:-0}" -gt 0 ] 2>/dev/null; then
+      why="the night lane's record has no readable time (data.updated)"
+    elif [ "$(( now - updated ))" -gt "$(( ORPHAN_LANE_MAX_AGE_HOURS * 3600 ))" ]; then
+      why="the night lane's last tick is $(( (now - updated) / 3600 ))h old (over ${ORPHAN_LANE_MAX_AGE_HOURS}h: suspended or not running), so no PR has a lane"
+    elif ! [ "${n:-x}" -ge 0 ] 2>/dev/null; then
+      why="the night lane's record (upgrade-lane-state data.records) could not be read"
+    fi
+  fi
+  if [ -z "$why" ]; then
+    out="$(printf '%s' "$prs" | jq -r --arg c "$cutoff" --slurpfile lane <(printf '%s' "$lane") '
+      ([ ($lane[0].data.records | fromjson)[] | select(.lane != null and .lane != "") | .pr ]) as $laned
+      | [ .[] | select((.author.login | test("renovate")) and (.createdAt < $c))
+              | select(.number as $n | ($laned | index($n)) == null) ] as $o
+      | "\($o | length)\tPRs with no lane: missing from the night lane'"'"'s last record (\($laned | length) classified)\t\($o | sort_by(.number) | .[:6] | map("#\(.number) \((.title // "")[:55] | gsub("[[:cntrl:]]"; " "))") | join(" | "))"' 2>/dev/null)"
+    case "${out%%$'\t'*}" in ''|*[!0-9]*) why="the PRs could not be counted against the night lane's record"; out="" ;; esac
+  fi
+  if [ -n "$why" ]; then
+    out="$(printf '%s' "$prs" | jq -r --arg c "$cutoff" --arg why "$why" '
+      [ .[] | select((.author.login | test("renovate")) and (.createdAt < $c)) ] as $o
+      | "\($o | length)\tevery aging Renovate PR: \($why)\t\($o | sort_by(.number) | .[:6] | map("#\(.number) \((.title // "")[:55] | gsub("[[:cntrl:]]"; " "))") | join(" | "))"' 2>/dev/null)"
+  fi
+  printf '%s' "$out"
+}
 write_orphan_report() {
-  local mm="$1" days="${ORPHAN_AGE_DAYS:-7}" cutoff prs count=0 summary=""
+  local mm="$1" days="${ORPHAN_AGE_DAYS:-7}" cutoff prs count=0 summary="" basis="" lane out
   cutoff="$(date -u -d "-${days} days" +%FT%TZ 2>/dev/null)" || cutoff=""
   if [ -n "$cutoff" ]; then
     prs="$(gh pr list -R "$REPO" --state open --limit 200 --json number,title,author,createdAt 2>/dev/null)" || prs=""
     if [ -n "$prs" ]; then
-      count="$(printf '%s' "$prs" | jq --arg c "$cutoff" \
-        '[.[] | select((.author.login|test("renovate")) and (.createdAt < $c))] | length' 2>/dev/null)" || count=0
-      summary="$(printf '%s' "$prs" | jq -r --arg c "$cutoff" \
-        '[.[] | select((.author.login|test("renovate")) and (.createdAt < $c))] | sort_by(.number) | .[:6] | map("#\(.number) \(.title[:55])") | join(" | ")' 2>/dev/null)" || summary=""
+      lane="$(kubectl -n "$SPEND_NS" get configmap upgrade-lane-state -o json 2>/dev/null)" || lane=""
+      out="$(orphan_count "$prs" "$lane" "$cutoff" "$(date -u +%s)")"
+      case "${out%%$'\t'*}" in
+        ''|*[!0-9]*) basis="not counted: the open PR list could not be parsed" ;;
+        *) count="${out%%$'\t'*}"; out="${out#*$'\t'}"; basis="${out%%$'\t'*}"; summary="${out#*$'\t'}" ;;
+      esac
     fi
   fi
   local existing lp lmp
@@ -193,11 +244,11 @@ write_orphan_report() {
   lp="$(printf '%s' "$existing" | jq -r '.data.last_paged // "0"' 2>/dev/null)"; [ -n "$lp" ] || lp="0"
   lmp="$(printf '%s' "$existing" | jq -r '.data.last_mismatch_paged // "0"' 2>/dev/null)"; [ -n "$lmp" ] || lmp="0"
   if kubectl -n "$SPEND_NS" create configmap upgrade-orphan-report \
-       --from-literal=count="${count:-0}" --from-literal=summary="$summary" \
+       --from-literal=count="${count:-0}" --from-literal=summary="$summary" --from-literal=count_basis="$basis" \
        --from-literal=ramp_mismatch="$mm" --from-literal=updated="$(date -u +%s)" \
        --from-literal=last_paged="$lp" --from-literal=last_mismatch_paged="$lmp" \
        --dry-run=client -o yaml | kubectl -n "$SPEND_NS" apply -f - >/dev/null 2>&1; then
-    log "orphan-report: aging(>${days}d)=${count:-0} ramp_mismatch='${mm}'"
+    log "orphan-report: no lane and aging(>${days}d)=${count:-0} (${basis:-not counted}) ramp_mismatch='${mm}'"
   else
     log "orphan-report: WARN could not write the ConfigMap (RBAC?)."
   fi

@@ -1,0 +1,195 @@
+{
+ "captured_at": "2026-11-13T19:10:00Z",
+ "note": "Story 554: the night of 2026-11-13 as the lane held it, read-only. records: upgrade-lane-state data.records of the last tick (10:45:05Z, dry-run), trimmed to the fields the morning summary reads. The merges are verify-20261113.json prs (Renovate merged #4869, #4870, #4871 and #4874; the shepherd merged #4873). The history (upgrade-ledger) and the verifier were not installed that night (stories 593 and 553 merged later), so the sample builds the history document from those PRs (night-verify.mjs docOf) and takes the verdicts of the hand runs of 2026-11-13 recorded in the runbook (all five verified by 14:31Z).",
+ "last_tick": "2026-11-13T10:45:05.419Z",
+ "prev_composed_at": "2026-11-12T10:45:00.000Z",
+ "records": [
+  {
+   "pr": 4349,
+   "title": "feat(github-release): update comfy-org/comfyui to v0.45.0",
+   "package": "Comfy-Org/ComfyUI",
+   "from": "v0.44.0",
+   "to": "v0.45.0",
+   "update_type": "minor",
+   "lane": "LANE-B-AGENT",
+   "class": "rule-agent",
+   "reason": "comfyui-image-tag: a ComfyUI version change needs IMAGE_TAG moved in comfyui-build.yml in the same change, or the merge overwrites the old tag"
+  },
+  {
+   "pr": 4376,
+   "title": "feat(container)!: Update image node to v26",
+   "package": "node",
+   "from": "24-slim",
+   "to": "26-slim",
+   "update_type": "major",
+   "lane": "LANE-B-OWNER",
+   "class": "major",
+   "reason": "update type major"
+  },
+  {
+   "pr": 4377,
+   "title": "feat(container)!: Update image node to v26",
+   "package": "node",
+   "from": "24-slim",
+   "to": "26-slim",
+   "update_type": "major",
+   "lane": "EXCLUDED",
+   "class": "merger-own-path",
+   "reason": "the merger's own code, image or pins (scripts/upgrade-shepherd/Dockerfile)"
+  },
+  {
+   "pr": 4378,
+   "title": "feat(github-action)!: Update node to v26.13.1",
+   "package": "node",
+   "from": "24.22.3",
+   "to": "26.13.1",
+   "update_type": "major",
+   "lane": "EXCLUDED",
+   "class": "workflow-file",
+   "reason": "GitHub workflow file (.github/workflows/book-reading-list-stage-test.yml +1)"
+  },
+  {
+   "pr": 4521,
+   "title": "fix(container): update image docker.io/kometateam/kometa to v2.5.5",
+   "package": "docker.io/kometateam/kometa",
+   "from": "v2.5.4",
+   "to": "v2.5.5",
+   "update_type": "patch",
+   "lane": "LANE-B-AGENT",
+   "class": "rule-agent",
+   "reason": "kometa-probe: exact-image probe of the guarded IMDb path, an idle window, and a run that logs \"Finished Run\" (Kometa exits 0 after a startup abort)"
+  },
+  {
+   "pr": 4752,
+   "title": "feat(deps): update dev-env image toolchain group",
+   "package": "@anthropic-ai/claude-code",
+   "from": "2.1.321",
+   "to": "2.1.323",
+   "update_type": "patch+minor",
+   "lane": "LANE-A",
+   "class": "no-cluster-effect",
+   "reason": "3 expected checks SUCCESS on 9a89230; Renovate-only commits; no-cluster-effect via own image dev-env-v1"
+  },
+  {
+   "pr": 4757,
+   "title": "chore(deps): update controlfoley python requirements group",
+   "package": "antlr4-python3-runtime",
+   "from": "==4.9.3",
+   "to": "==4.13.2",
+   "update_type": "patch+minor",
+   "lane": "BLOCKED",
+   "class": "check-failing-after-retry",
+   "reason": "failed again on 39141c56 after one retry on 162b35d8 at 2026-11-13T06:15:42.086Z: Build and Push ControlFoley Image / validate (FAILURE)"
+  },
+  {
+   "pr": 4762,
+   "title": "feat(container): update image ghcr.io/thaynes43/dev-env to v2.108.0",
+   "package": "ghcr.io/thaynes43/dev-env",
+   "from": "2.107.0",
+   "to": "2.108.0",
+   "update_type": "minor",
+   "lane": "EXCLUDED",
+   "class": "v2-coordinator",
+   "reason": "dev-env v2 area, owned by the v2 coordinator (kubernetes/main/apps/dev-env-system/h7-metadata-audit/app/job.yaml +3)"
+  },
+  {
+   "pr": 4764,
+   "title": "chore(deps): update controlfoley python requirements group (major)",
+   "package": "av",
+   "from": "==14.0.1",
+   "to": "==19.0.2",
+   "update_type": "major",
+   "lane": "LANE-B-OWNER",
+   "class": "major",
+   "reason": "update type major"
+  },
+  {
+   "pr": 4838,
+   "title": "chore(container): update image docker.io/library/python to 0f9552b",
+   "package": "docker.io/library/python",
+   "from": "a0f2e26",
+   "to": "0f9552b",
+   "update_type": "digest",
+   "lane": "LANE-A",
+   "class": "cluster-change",
+   "reason": "5 expected checks SUCCESS on 74fda78; Renovate-only commits; cluster-change (kubernetes/main/apps/dev/openproject-agent)"
+  },
+  {
+   "pr": 4839,
+   "title": "chore(container): update image ghcr.io/actions/actions-runner to 6d0b2d8",
+   "package": "ghcr.io/actions/actions-runner",
+   "from": "759a1d9",
+   "to": "6d0b2d8",
+   "update_type": "digest",
+   "lane": "LANE-B-AGENT",
+   "class": "rule-agent",
+   "reason": "actions-runner-version: a runner Dockerfile change needs a new scripts/actions-runner/VERSION (the build refuses without it)"
+  },
+  {
+   "pr": 4841,
+   "title": "fix(container): update image ghcr.io/linuxserver/calibre to v9.18.0-ls432",
+   "package": "ghcr.io/linuxserver/calibre",
+   "from": "v9.18.0-ls431",
+   "to": "v9.18.0-ls432",
+   "update_type": "patch",
+   "lane": "LANE-A",
+   "class": "cluster-change",
+   "reason": "7 expected checks SUCCESS on a10b574; Renovate-only commits; cluster-change (kubernetes/main/apps/downloads/lazylibrarian)"
+  },
+  {
+   "pr": 4847,
+   "title": "feat(container): update image ghcr.io/kyverno/charts/kyverno to v3.10.0",
+   "package": "ghcr.io/kyverno/charts/kyverno",
+   "from": "3.9.2",
+   "to": "3.10.0",
+   "update_type": "minor",
+   "lane": "LANE-A",
+   "class": "cluster-change",
+   "reason": "5 expected checks SUCCESS on 7cf651e; Renovate-only commits; cluster-change (kubernetes/main/apps/kyverno/kyverno)"
+  },
+  {
+   "pr": 4848,
+   "title": "fix(deps): update module github.com/kyverno/kyverno to v1.20.0",
+   "package": "github.com/kyverno/kyverno",
+   "from": "v1.19.2",
+   "to": "v1.20.0",
+   "update_type": "minor",
+   "lane": "BLOCKED",
+   "class": "check-failing-after-retry",
+   "reason": "failed again on e681ff36 after one retry on 11bddcab at 2026-11-13T06:30:46.416Z: dev-env archive guard source tests / Archive Guard Source - Success (FAILURE)"
+  },
+  {
+   "pr": 4867,
+   "title": "chore(container): update image postgres to 846a7dd",
+   "package": "postgres",
+   "from": "ff87138",
+   "to": "846a7dd",
+   "update_type": "digest",
+   "lane": "EXCLUDED",
+   "class": "workflow-file",
+   "reason": "GitHub workflow file (.github/workflows/portal-infra-test.yml)"
+  },
+  {
+   "pr": 4868,
+   "title": "feat(deps): update upgrade-agent image toolchains group",
+   "package": "@anthropic-ai/claude-code",
+   "from": "2.1.322",
+   "to": "2.1.323",
+   "update_type": "patch+minor",
+   "lane": "EXCLUDED",
+   "class": "merger-own-path",
+   "reason": "the merger's own code, image or pins (scripts/upgrade-shepherd/Dockerfile)"
+  },
+  {
+   "pr": 4872,
+   "title": "feat(container): update image ghcr.io/home-operations/postgres-init",
+   "package": "ghcr.io/home-operations/postgres-init",
+   "from": "18.6",
+   "to": "18.7",
+   "update_type": "minor",
+   "lane": "EXCLUDED",
+   "class": "shepherd-ramp",
+   "reason": "on the shepherd's ramp (UPGRADE_AGENT_RAMP and ramp_globs_for in run-shepherd.sh): the shepherd owns it and the lane never merges it (story 551) (kubernetes/main/apps/network/authentik/app/helmrelease.yaml +1)"
+  }
+ ]
+}

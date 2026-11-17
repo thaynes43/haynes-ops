@@ -297,7 +297,7 @@ because only that one carries the merge commit.
 | `merged` | `merge-attempted`, then `merged` (merge commit and time from the verdict). With no merge commit read, `merge-unknown` instead. |
 | `merge-failed` | `merge-attempted`, then `merge-failed` (class `merge-call-failed`, to `needed`) |
 | `merge-unknown` | `merge-attempted`, then `merge-unknown` (class `merge-outcome-unread`) |
-| `merging`, `would-merge` from the hand run (`night-merge.mjs --merge`) | written by the hand run itself, actor `hand` (story 712) |
+| `merging`, `would-merge` from the hand run (`night-merge.mjs --merge`) | no hand-run merge-step events: a session cannot write `upgrade-ledger`. The history gets only the `merged` event the lane reads from GitHub; see [story 712's procedure](../runbooks/upgrade-approved-by-prompt.md) |
 
 A refused verdict goes to `needed`, not `blocked`: the open states follow the lane's own
 reading of the PR on the next tick, and the refusal stays in the attempt. Event ids
@@ -485,6 +485,66 @@ node scripts/upgrade-agent/record-format-selftest.mjs     # offline; Node 24
   stories may need more fields.
 - `kind` is inferred from the version text. `semver` means the version starts with dotted
   numbers. Nothing infers `date` yet.
+
+### Records outside the history (story 554)
+
+Two records sit beside the history, not in it. Neither is an item or an event.
+
+**The claim on a regression** (`haynes.upgrade-claim/v1`): one JSON value under a regression
+signature (12 hex) in ConfigMap `upgrade-agent/upgrade-remediation-state`.
+
+- **Fields every writer keeps:** `class`, `attempted`, `result`, `note`, `first_seen` and
+  `last_paged`. These are what triage and the health gate read, all strings.
+- **Fields the lane adds:** `holder` (`lane`), `schema`, `pr`, `item`, `lane_state`
+  (`working`, `reverting` (story 753: a revert pull request is open), `reverted` or
+  `revert-failed`), `claimed_at`, `until` (epoch seconds, the lane's bound on its own action)
+  and `ids` (the coordination ids that belong to the target).
+- **Who writes it:** the lane writes a claim only with `night.claim.write` on. Git ships it
+  `false`, and story 753 turns it on together with the revert. Until then a live failed verdict
+  reads only, and triage and the gate act as on main.
+- **Fields triage adds since this story:** `holder` (`triage`) and `ids`.
+- **`result` follows the lane's state:** `working` and `reverting` set `inprogress`, `reverted`
+  sets `fixed`, and `revert-failed` sets `failed`.
+- **Gate recognition:** it requires schema `haynes.upgrade-claim/v1`, class `upgrade`,
+  attempted `1`, a nonempty `ids` list, the state/result mapping above, and valid PR/time
+  fields within its clock and duration bounds. Otherwise it uses the existing
+  `class`/`result`/`first_seen` fallback. Triage still stands down for any `holder=lane`.
+- **Claim-phase budget:** `night.claim.time_budget_seconds` (180, validated 30..240) counts
+  elapsed seconds from the tick's start, across all records and subprocesses. Read-only
+  records share one state snapshot; live decisions use fresh reads. `summary.claims` keeps
+  `budget-exhausted` outcomes with the reason and `revert_allowed=false`, and later phases
+  still run. This leaves 420 seconds of the 600-second Job for those phases.
+
+The item's own record does not change. A `verification-failed` event followed by
+`revert-opened` (story 753) is what the history says, and the claim is how the lane, triage
+and the gate agree who acts meanwhile. See
+`.agents/runbooks/upgrade-night-lane.md`, "Who handles a regression (story 554)".
+
+**The morning summary** (`haynes.upgrade-morning/v1`): ConfigMap `upgrade-lane-state`
+`data.morning`, field manager `upgrade-night-summary`.
+
+- **What it holds:** `night` (New York date), `composed_at`, `window_from`,
+  `ticks_completed`, `finished` (the last run is the night's last, 05:45), `last_tick_local`,
+  `expected_last_tick_local`, `mode`, `bytes`, `lines_cut`, `text` and `facts`.
+- **The facts:** `merged[]` (from the history's `merged` events in the window, with the
+  actor), `verified[]`, `checking[]`, `failed[]`, `reverted[]` (`revert-merged`,
+  `recovery-verified`, `recovery-failed`; one entry per item, with `recovered` true, false or
+  null), `waits` (`needs_person`, `awaiting_pin`,
+  `blocked`, `owner`, `history`), `claims[]` and `unreadable[]`.
+- **The delivery copy:** the `morning_*` keys of `upgrade-orphan-report`.
+- **The sender's facts on that report:** `morning_sent_night` is the last recorded delivery;
+  `morning_first_attempt_night` is the first night it tried, recorded after the attempts
+  regardless of outcome and never replacing a valid date. A successful send first tries to
+  record both from one fresh read/write. If that stamp fails its conflict retry, one further
+  fresh read/replace may record first-attempt coverage alone, never delivery and never with
+  another retry (Q-01 ruling, 2026-11-16, story 554 comment 8699).
+  The lane's delivery apply and shepherd's orphan-report apply
+  never own these keys. Without a delivery key, the next sender's missing-delivery range
+  starts at the first-attempt date. Present junk gives no range; all three date keys
+  (`morning_night` included) require parsing and round-trip equality.
+- **Waiting counts:** distinct PRs across the waiting categories, plus a separate history
+  issue; one waiting line combines the reasons when an update both needs a person and
+  awaits its image pin. The categorized facts still retain both reasons.
 
 ### Open points for the format (story 553, the verifier)
 

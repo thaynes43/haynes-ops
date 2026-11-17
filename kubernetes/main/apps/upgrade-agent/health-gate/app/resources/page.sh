@@ -12,16 +12,40 @@ SEV="${1:?severity}"; CHECK="${2:?check}"; COMP="${3:-unknown}"; SUM="${4:?summa
 # Clamp here so EVERY caller is covered (found by adversarial review 2026-07-06).
 SUM="${SUM:0:1000}"
 
-# critical -> priority 1 (breaks through quiet hours); else 0.
-prio=0; [ "$SEV" = "critical" ] && prio=1
+# critical -> priority 1 (breaks through quiet hours); low -> -1 (no sound or vibration, still
+# shown as a notification: the morning summary, story 554); else 0.
+prio=0; [ "$SEV" = "critical" ] && prio=1; [ "$SEV" = "low" ] && prio=-1
+# PAGE_TITLE overrides the title (the morning summary: "Night upgrades <date>").
+TITLE="${PAGE_TITLE:-[upgrade-gate] ${SEV} ${CHECK}/${COMP}}"
 
-if curl -sf --max-time 10 https://api.pushover.net/1/messages.json \
+# Exit status (story 554, the morning sender reads it; gate.sh's page() ignores it, as before):
+#   0  sent: HTTP 2xx;
+#   2  certainly not sent, safe to retry: the host could not be resolved or connected to (no
+#      connection was made), or Pushover answered HTTP 5xx or 429;
+#   3  may have been sent: the request timed out or broke after connecting; a retry could
+#      deliver a second copy, so do not retry;
+#   1  refused: any other HTTP answer (a 4xx: a retry would be refused too).
+out="$(curl -s -o /dev/null -w '%{http_code} %{time_connect}' --max-time 10 \
+     https://api.pushover.net/1/messages.json \
      --form-string "token=${PUSHOVER_TOKEN}" \
      --form-string "user=${PUSHOVER_USER_KEY}" \
-     --form-string "title=[upgrade-gate] ${SEV} ${CHECK}/${COMP}" \
+     --form-string "title=${TITLE}" \
      --form-string "message=${SUM}" \
-     --form-string "priority=${prio}" >/dev/null; then
+     --form-string "priority=${prio}" 2>/dev/null)"
+rc=$?
+code="${out%% *}"; tconn="${out#* }"
+case "$code" in [0-9][0-9][0-9]) ;; *) code=000 ;; esac
+if [ "$rc" -eq 0 ] && [ "${code:0:1}" = 2 ]; then
   printf 'paged: %s %s/%s — %s\n' "$SEV" "$CHECK" "$COMP" "$SUM" >&2
-else
-  printf 'PAGE FAILED: %s %s/%s\n' "$SEV" "$CHECK" "$COMP" >&2
+  exit 0
 fi
+connected=1; awk -v t="${tconn:-0}" 'BEGIN { exit !(t + 0 == 0) }' && connected=0
+if [ "$rc" -eq 0 ]; then
+  case "$code" in 5??|429) why="HTTP $code, not accepted"; st=2 ;; *) why="HTTP $code, refused"; st=1 ;; esac
+elif [ "$rc" -eq 6 ] || [ "$rc" -eq 7 ] || [ "$connected" = 0 ]; then
+  why="curl exit $rc, no connection made"; st=2
+else
+  why="curl exit $rc after connecting: it may have been delivered"; st=3
+fi
+printf 'PAGE FAILED: %s %s/%s (%s)\n' "$SEV" "$CHECK" "$COMP" "$why" >&2
+exit "$st"
