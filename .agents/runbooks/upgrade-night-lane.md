@@ -142,7 +142,8 @@ The selftest fails when a workflow's filter and the check map drift apart.
 Every gate **fails closed**. If a read errors or returns nothing parseable, that gate is a
 blocker named `unreadable: <what>` and never a pass. This covers the ConfigMaps in
 `upgrade-agent`, Kustomizations, HelmReleases, ReplicationSources, CNPG Backups and
-ScheduledBackups, the target namespace's pods, Jobs and CronJobs, CephClusters, the
+ScheduledBackups, the target namespace's pods, Jobs, CronJobs, Deployments, StatefulSets,
+DaemonSets and PersistentVolumeClaims, CephClusters, the
 critical alerts from Prometheus, main's commits to the PR's files and each work order.
 
 - **Checks:** if any expected check is older than 7 days, the tick asks for a Renovate
@@ -160,10 +161,18 @@ critical alerts from Prometheus, main's commits to the PR's files and each work 
   - that Kustomization substitutes `VOLSYNC_*`, includes a volsync component, or depends
     on `volsync`;
   - a pod or CronJob of the app in the target namespace mounts a PVC or an ephemeral claim;
+  - a Deployment or StatefulSet of the target, **at any replica count, including zero**,
+    mounts a PVC or an ephemeral claim in its pod template, or has a `volumeClaimTemplates`
+    entry;
+  - a PVC in the target namespace belongs to it: Flux/Helm/app labels, inventory, a
+    controller owner reference, a mounted claim name or a StatefulSet claim-template name.
+    A retained PVC counts even with no controller or pod;
   - the target is a CNPG client listed under `cnpg_clients`.
 
   A target with state and no ReplicationSource of its own gets the blocker
-  `backup-unmatched`.
+  `backup-unmatched` and remains recorded as stateful. An unreadable PVC, StatefulSet or
+  Deployment list blocks as `unreadable: <kind> in <namespace>`; an empty readable list is
+  different from a failed read.
 - **Backup freshness, per source:** the newest successful sync or backup must be at or
   after that source's most recent scheduled run, and no older than 24 hours at merge time.
   - VolSync: the source's most recent run is `status.nextSyncTime` if that time has
@@ -188,7 +197,8 @@ critical alerts from Prometheus, main's commits to the PR's files and each work 
   alert that did not block is listed under `records[].gates.alerts_not_blocking`.
 - **Work orders:** none may be `claimed`.
 - **Settle gate (story 551):** facts about the candidate's target (F1 to F3), for a
-  candidate with an immediate cluster effect. The blocker starts `settle gate:`. See
+  candidate with an immediate cluster effect, including T's own controllers' observed
+  generation and desired/updated/Ready replica counts. The blocker starts `settle gate:`. See
   [The settle gate](#the-settle-gate).
 - **Merge window:** 01:30 to 04:45 New York.
 - **Change lock (`upgrade-change-lock`):** taken by the merge step after the gates, not a
@@ -770,6 +780,10 @@ The facts:
   - So has each applier, and it is settled. A failing applier holds T too: it has not
     applied the revision, and no baseline gate watches it (S1).
   - Each HelmRelease of T's namespaces is settled.
+  - T's own Deployment, StatefulSet and DaemonSet controllers have observed their current
+    generation with every desired replica updated and Ready (available too for Deployments
+    and DaemonSets; StatefulSet current/update revisions match). A missing list or inventoried
+    controller is unreadable. This uses the verifier's same controller read (story 755).
   - A suspended Kustomization of T, of its chain or among its appliers, or a suspended
     HelmRelease of T, holds T: a merge would not apply until someone resumes it. The
     blocker names the object (S2). A suspended object elsewhere holds nothing.
@@ -940,13 +954,24 @@ kubectl -n upgrade-agent logs job/<latest upgrade-shepherd job> | grep -i 'stand
 
 ### Known limits of story 551
 
-- **Workload rollouts.** Flux can report Ready before T's workloads have finished rolling,
-  when a Kustomization does not wait and a HelmRelease's chart does not either. The lane's
-  ServiceAccount (ClusterRole `upgrade-health-gate`) reads pods, but nothing in `apps`, so
-  the gate cannot compare a Deployment's, StatefulSet's or DaemonSet's generation and
-  updated replicas. The missing rule: `apiGroups: ["apps"]`, `resources: ["deployments",
-  "statefulsets", "daemonsets"]`, `verbs: ["get", "list"]` (story 755). No RBAC is added
-  here.
+- **Workload rollouts (closed by story 755, first slice).** F2 reads T's own Deployments,
+  StatefulSets and DaemonSets by inventory or Flux/Helm ownership. It requires observed
+  generation and desired, updated and Ready counts (available too for Deployments and
+  DaemonSets); StatefulSets also require matching current/update revisions. Missing lists
+  or inventoried controllers block as unreadable. The same `controllerRollout` function is
+  used by the verifier. Partitioned StatefulSets and OnDelete workloads wait until all
+  desired replicas are updated. ReplicaSets are still not read; the gate cannot prove a
+  Deployment pod's hash belongs to the controller's current template.
+- **Unhealthy controllers also hold F2.** Replica counters cannot distinguish a rollout
+  from a Deployment already in a crash loop. An unavailable controller keeps the gate
+  closed, even if the candidate update might fix it; F2 does not treat a progress deadline
+  or a lack of progress across ticks as permission to proceed. The Flux retry/failing split
+  above applies to Flux objects, not these controller counters.
+- **DaemonSets during node maintenance.** When a desired DaemonSet replica is unavailable
+  because a node is NotReady or undergoing maintenance, that target waits until its
+  desired/updated/Ready/available counts agree again. Cordoning alone need not reduce
+  those counts. F2 has no maintenance exception or node-based reduction of the desired
+  count; unrelated targets are unaffected.
 - **Late merges.** A merge that lands after the lane's merge call is invisible to the
   gate. The verifier (stories 553 and 753) finds it with `otherChanges`.
 - **Broken dependencies.** A Kustomization of T's chain that waits on a broken dependency
@@ -1595,7 +1620,7 @@ on the tick's own clock; on the first read the fact waits and says since when.
 | `alerts` | Prometheus `/api/v1/alerts`, critical and firing, traced by R5's `alertSubject`; new means `activeAt` at or after the merge; Prometheus's start from `/api/v1/status/runtimeinfo` | `critical-alert`: a new alert whose subject belongs to the target or its chain | Prometheus or its start unreadable; a new alert within `prometheus_restart_slack_seconds` (300) of a Prometheus restart after the merge (a rule with no `for:` restarts its clock); a new alert in a target namespace that cannot be traced, or names no workload; for a cluster-wide target, a new alert with no namespace |
 | `image` | each package: the update's containers run the new version (digest or tag decided by the update type the history recorded, never by the characters); else a CronJob template names it; else the HelmRelease whose last release is that chart | `wrong-image`: the old version with nothing rolling; a CronJob template naming another version; a HelmRelease settled on another chart while its chart source is settled; `not-applied`: the chart source failing on two reads | no container, CronJob or chart of the target is the package; a version cannot be read (in a pod or a CronJob template) |
 | `exercised` | a CronJob whose template names the update: the newest finished Job from the new template made since the merge (a newer one still running does not hide it) | `job-failed`: that Job failed, the last finished old-template Job did not fail too, and the last kept run created before the merge is from the old template, completed by the merge, matches `status.lastSuccessfulTime`, and has no later scheduled run before the merge (schedule and time zone read with `nextCron`); `lastScheduleTime` must not name a later pre-merge run | Jobs unreadable; the CronJob suspended; the last old-template Job failed too; the last pre-merge run is missing, unfinished at the merge, or lacks the timestamp and schedule evidence. The detail names the last kept success and its completion time, plus `lastSuccessfulTime` (or their absence). None yet waits for the first run, with its schedule, last run and next run |
-| `rollout` | each Deployment, StatefulSet and DaemonSet in the inventories: its pods (by owner) are of one template, none terminating, all Ready | (waits) | a workload has no running pod |
+| `rollout` | each inventoried Deployment, StatefulSet and DaemonSet: controller generation observed; desired replicas updated and Ready (available too for Deployments and DaemonSets; StatefulSet revisions match); that many pods by owner, of one template, none terminating, all Ready. Zero desired replicas are distinguishable from replicas not yet created | (waits for incomplete generation/counts or pods) | the controller list, controller object, generation, desired count or pods cannot be read |
 | `stable` | two reads (below) | `restart-growth` or `not-ready` of an update's container on a node that did not reboot; `churn` | pods or nodes unreadable; the same in another container; a pod on a node that is not Ready |
 | `pin` | own images only (below) | never: before the pin has merged nothing of the update runs, so the item stays awaiting | when a pin candidate was made cannot be read |
 
@@ -1741,18 +1766,29 @@ selftest's fixture is that night, captured read-only
 
 ### What pods alone cannot tell (story 755)
 
-The lane's ServiceAccount (ClusterRole `upgrade-health-gate`) reads pods but nothing in
-`apps`. So:
+The first slice adds `upgrade-shepherd-workload-read`, bound only to ServiceAccount
+`upgrade-agent/upgrade-shepherd`: `get` and `list` on `apps` Deployments, StatefulSets and
+DaemonSets, and core PersistentVolumeClaims. It does not change `upgrade-health-gate`.
+Both the verifier's `rollout` fact and F2 use `night-merge.mjs`'s `controllerRollout`:
 
-- a Deployment, StatefulSet or DaemonSet with no running pod (scaled to zero, or not created
-  yet) is `cannot-tell`;
-- a controller that has not created all its replicas yet cannot be told from a finished one:
-  the pods read one template, all Ready, and the desired count is unknown;
-- a pod's template cannot be matched to the workload's current revision, so "the new
-  template" is read through the image, not through the ReplicaSet.
+- current generation must be observed; all desired replicas must exist, be updated and
+  Ready (and available for Deployments and DaemonSets); StatefulSet revisions must match;
+- a controller with one of three replicas waits even if its single pod is Ready;
+- zero replicas can pass `rollout` when the observed controller confirms zero and no pod
+  remains. Image/exercise/stability facts still decide whether the update can be verified;
+- unreadable lists and missing inventoried controllers are unreadable, never a pass.
 
-The missing rule: `apiGroups: ["apps"]`, `resources: ["deployments", "statefulsets",
-"daemonsets", "replicasets"]`, `verbs: ["get", "list"]`. No RBAC is added here.
+ReplicaSets remain outside the read grant. A Deployment pod's hash cannot be matched to
+its controller's current revision through the ReplicaSet; the image and pod revision
+labels still supply that part of the proof. The verifier uses inventories; the settle
+check also recognizes Flux/Helm labels. Objects missing both ownership evidence and an
+inventory entry cannot be associated with a target. A partitioned StatefulSet or an
+OnDelete workload waits until all replicas are updated; partial rollouts do not pass.
+
+Controller counters follow the Kubernetes API definitions for
+[Deployments](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/deployment-v1/),
+[StatefulSets](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/stateful-set-v1/)
+and [DaemonSets](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/daemon-set-v1/).
 
 ### Known limits of story 553
 
@@ -1760,8 +1796,9 @@ The missing rule: `apiGroups: ["apps"]`, `resources: ["deployments", "statefulse
   so #4873's target holds both traefik Kustomizations, and #4870's every wyoming app.
 - A merge more than `max_range_commits` (60) commits back loses its other changes and its pin
   lookup: both read `unreadable`, and the record says why (L2 of the review, not changed).
-- Without get and list on deployments, statefulsets, daemonsets and replicasets, a controller
-  that has not yet created all its replicas looks finished (story 755).
+- Story 755 closes the missing replica-count read with Deployment, StatefulSet and DaemonSet
+  status. ReplicaSets remain unreadable, so the image and pod labels still identify the
+  template; its hash cannot be checked against the Deployment through its ReplicaSet.
 - A package the target names only outside a container image, a CronJob template or a chart
   (a CRD URL, a kustomize remote resource) is `cannot-tell`.
 - A failed new-template CronJob run is the update's regression only with positive evidence
@@ -2376,10 +2413,12 @@ dev-env-ops, so merge such a change only when no work order is claimed.
 
 ## Known limits
 
-- State evidence reads pods and CronJobs only, because the read-only role cannot read
-  PVCs, StatefulSets or Deployments. A stateful app that is scaled to zero and has no
-  ReplicationSource could therefore look stateless. The live step must close this gap
-  before it merges stateful targets.
+- **Scaled-to-zero state (closed by story 755, first slice).** State evidence also reads
+  Deployment/StatefulSet templates and PVCs, including retained claims and zero replicas.
+  All three lists must be readable. Ownership follows inventories, Flux/Helm/app labels,
+  controller references and claim names; a claim carrying none of those links cannot be
+  attributed. Backups that run inside the current window and the Gatus app check remain
+  the second slice of story 755; this slice changes neither.
 - R8's map can lag the repository. The selftest workflow runs on changes to the lane,
   `scripts/upgrade-agent/**`, workflows and `.renovate/**`, not on every
   `kustomization.yaml`. A PR that adds a new consumer of a component without touching
@@ -2393,7 +2432,7 @@ dev-env-ops, so merge such a change only when no work order is claimed.
   list the merge commit itself. The repository allows merge commits, but none of the 500
   newest commits on main (read 2026-11-11) is one: all are squash merges by `web-flow`.
   If merge commits come into use, R7 needs a comparison by ancestry instead.
-- R5 resolves a `deployment` through its pods, because the lane cannot read Deployments.
+- R5 still resolves a `deployment` alert through its pods (unchanged by story 755).
   A Deployment scaled to zero cannot be traced, so its alert blocks its namespace (fail
   closed).
 

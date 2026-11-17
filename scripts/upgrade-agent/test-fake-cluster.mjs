@@ -109,6 +109,11 @@ if (verb === 'get') {
     process.exit(0);
   }
   if (/kustomizations|helmreleases/.test(kind || '')) { out(fx.flux ?? { items: [] }); process.exit(0); }
+  if (['deployments.apps', 'statefulsets.apps', 'daemonsets.apps', 'persistentvolumeclaims'].includes(kind)) {
+    const list = fx[kind] ?? { items: [] };
+    if (list === 'unreadable') fail(`injected unreadable: ${kind}`);
+    out({ ...list, items: list.items.filter(o => all || o.metadata?.namespace === ns) }); process.exit(0);
+  }
   if (kind === 'pod' || kind === 'pods') {
     if (name) { const p = fx.pods?.[`${ns}/${name}`]; if (!p) fail(`Error from server (NotFound): pods "${name}" not found`); if (o === 'json') out(p); else if (o?.startsWith('jsonpath=')) out(''); process.exit(0); }
     out({ items: Object.entries(fx.pods || {}).filter(([k]) => all || k.startsWith(`${ns}/`)).map(([, v]) => v) }); process.exit(0);

@@ -40,7 +40,8 @@
 //                 last run before the merge; otherwise cannot-tell; none yet: not-yet).
 //   rollout       each Deployment, StatefulSet and DaemonSet of the target (from the
 //                 Kustomization and HelmRelease inventories) has pods of one template only,
-//                 none terminating, all Ready.
+//                 none terminating, all Ready; its controller observed the current generation
+//                 and reports every desired replica updated and Ready.
 //   stable        two ticks at least min_stable_seconds apart on the tick's own clock: when the
 //                 rollout is complete the pods are recorded (uid, node, restarts per container);
 //                 later the same pods are Ready with no more restarts of the update's
@@ -78,12 +79,8 @@
 // keeps its two-tick memory in a local file. No read starts once the tick has run
 // time_budget_seconds: the verifier then stops for the tick and says so.
 //
-// WHAT PODS ALONE CANNOT TELL. The lane's ServiceAccount (ClusterRole upgrade-health-gate)
-// reads pods but nothing in apps: no Deployment, StatefulSet, DaemonSet or ReplicaSet. So a
-// workload with no running pod (scaled to zero, or not created yet) is unreadable, and a
-// controller that has not created all its replicas yet cannot be told from a finished one.
-// The missing rule is get and list on apps deployments, statefulsets, daemonsets and
-// replicasets (story 755).
+// Controller generation and replica counters are read as well as pods (story 755).
+// ReplicaSets remain unreadable: the pod template is checked through the image and labels.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import * as L from './lane-classify.mjs';
 import * as M from './night-merge.mjs';
@@ -548,7 +545,8 @@ export function factExercised(u, mergedAt, kind, ctx) {
   return fold('exercised', parts);
 }
 
-// Per workload: pods of one template, none terminating, all Ready. Returns the fact and a
+// Per workload: controller generation observed, desired replicas updated and Ready;
+// pods of one template, none terminating, all Ready. Returns the fact and a
 // map workload -> its own result (factImage reads whether a workload is still rolling).
 export function factRollout(wl, ctx) {
   const parts = [], per = new Map();
@@ -560,16 +558,19 @@ export function factRollout(wl, ctx) {
     const all = podsOf(w, f.pods.items), cur = current(all), term = all.filter(p => p.metadata?.deletionTimestamp);
     const revs = uniq(cur.map(p => revisionOf(p, w.kind)));
     const notReady = cur.filter(p => !podReady(p));
+    const controller = M.controllerRollout(w, ctx.controllers(w.ns));
     let r, d;
-    if (!cur.length) { r = 'unreadable'; d = `${key} has no running pod (scaled to zero, or not created yet): pods alone cannot tell its desired replicas; needs get on apps ${w.kind.toLowerCase()}s (story 755)`; }
+    if (controller.result !== 'pass') { r = controller.result; d = controller.detail; }
+    else if (term.length) { r = 'waiting'; d = `${key}: ${term.length} pod(s) terminating`; }
+    else if (!cur.length && controller.desired === 0) { r = 'pass'; d = `${key}: controller observed at zero replicas`; }
     else if (revs.some(x => x === null)) { r = 'unreadable'; d = `${key}: a pod carries no template revision label`; }
     else if (revs.length > 1) { r = 'waiting'; d = `${key} has pods of ${revs.length} templates (${revs.join(', ')})`; }
-    else if (term.length) { r = 'waiting'; d = `${key}: ${term.length} pod(s) terminating`; }
+    else if (cur.length !== controller.desired) { r = 'waiting'; d = `${key}: ${cur.length}/${controller.desired} running pods`; }
     else if (notReady.length) { r = 'waiting'; d = `${key}: ${notReady.length} of ${cur.length} pod(s) not Ready (${notReady.slice(0, 2).map(p => p.metadata.name).join(', ')})`; }
     else { r = 'pass'; d = `${key}: ${cur.length} pod(s) of template ${revs[0]}, all Ready`; }
     parts.push({ r, d }); per.set(key, r);
   }
-  return { fact: fold('rollout', parts, parts.map(p => p.d).join('; ') + '; pods alone cannot tell a controller that has not created all its replicas yet (story 755)'), per };
+  return { fact: fold('rollout', parts, parts.map(p => p.d).join('; ')), per };
 }
 
 // Two ticks at least min_stable_seconds apart, on the tick's own clock (M2). prior (the record):
@@ -1047,6 +1048,8 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
     const nsCache = new Map();
     const own = ns => { if (!nsCache.has(ns)) nsCache.set(ns, { pods: kList(timed, ['pods', '-n', ns]), cronjobs: kList(timed, ['cronjobs', '-n', ns]), jobs: kList(timed, ['jobs', '-n', ns]) }); return nsCache.get(ns); };
     const pods = ns => { if (left() <= 0) { budgetHit = true; return { pods: null, cronjobs: null, jobs: null }; } return (deps.nsFacts || own)(ns); };
+    const controllerCache = new Map();
+    const controllers = ns => { if (!controllerCache.has(ns)) controllerCache.set(ns, M.readControllers(timed, ns)); return controllerCache.get(ns); };
     let nodeList;
     const nodes = () => { if (nodeList === undefined) nodeList = kList(timed, ['nodes']); return nodeList; };
     const prom = deps.prom || 'http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090';
@@ -1082,7 +1085,7 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
       const prev = mem.items?.[c.id] || null;
       budgetHit = false;
       const files = filesOf(c);
-      const rec = judge({ ...c, files }, { rules, cfg, now, repo, range, ks, hr, st, sourceRev, contains, pods, nodes, alerts, promStart, alertSubject: deps.alertSubject, alertScope: rules.alert_scope || {}, chartSource, builds, prHeadDate, itemByPr,
+      const rec = judge({ ...c, files }, { rules, cfg, now, repo, range, ks, hr, st, sourceRev, contains, pods, controllers, nodes, alerts, promStart, alertSubject: deps.alertSubject, alertScope: rules.alert_scope || {}, chartSource, builds, prHeadDate, itemByPr,
         openRecords: deps.records || [], earlier: earlierOf(c), prior: prev });
       // a record judged while the budget ran out is not kept: its reads failed for want of time
       if (budgetHit) { sum.deferred.push(c.pr); sum.stopped = `the time budget (${cfg.time_budget_seconds} s of the tick) ran out while #${c.pr} was judged; its last record is kept, the rest is judged next tick`; break; }

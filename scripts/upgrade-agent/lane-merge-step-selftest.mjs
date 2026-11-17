@@ -295,6 +295,8 @@ const evalSeq = (views, w = {}) => { const s = seqReader(views, w), p = pauser()
 // to all three merges (plex-hw-canary), one #4767 changed (ytdl-sub), one in multus's
 // dependents (home-assistant).
 const sx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/settle-20261110.json'), 'utf8'));
+const controllers755 = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/controllers-755.json'), 'utf8'));
+const emptyControllers = () => ({ deployments: { items: [] }, statefulsets: { items: [] }, daemonsets: { items: [] } });
 const fxRun = (inst, over = {}) => (cmd, argv) => {
   const api = argv.find(a => String(a).startsWith('repos/')) || '';
   if (over[cmd + ' ' + (argv[1] || '')] !== undefined) return over[cmd + ' ' + (argv[1] || '')];
@@ -302,6 +304,7 @@ const fxRun = (inst, over = {}) => (cmd, argv) => {
   if (cmd === 'gh' && /\/commits\/[0-9a-f]{40}$/.test(api)) { if (over.commit !== undefined) return over.commit; const c = sx.commits[api.split('/').pop()]; return c ? JSON.stringify(c) : null; }
   if (cmd === 'kubectl' && argv[1] === 'kustomizations.kustomize.toolkit.fluxcd.io') return JSON.stringify({ items: inst.flux.kustomizations });
   if (cmd === 'kubectl' && argv[1] === 'helmreleases.helm.toolkit.fluxcd.io') return JSON.stringify({ items: inst.flux.helmreleases });
+  if (cmd === 'kubectl' && ['deployments.apps', 'statefulsets.apps', 'daemonsets.apps'].includes(argv[1])) return JSON.stringify({ items: [] });
   if (cmd === 'kubectl' && argv[1] === 'gitrepositories.source.toolkit.fluxcd.io') return JSON.stringify({ items: [inst.flux.gitrepository] });
   return null;
 };
@@ -346,7 +349,7 @@ const inst = id => sx.instants.find(i => i.id === id);
   const K = items => ({ items });
   const kso = (name, deps, conds, extra = {}) => ({ metadata: { namespace: 'n', name, generation: 1 }, spec: { path: `./kubernetes/main/apps/n/${name}/app`, sourceRef: { kind: 'GitRepository', name: 'haynes-ops', namespace: 'flux-system' }, ...(deps.length ? { dependsOn: deps.map(d => ({ name: d, namespace: 'n' })) } : {}) }, status: { observedGeneration: 1, lastAttemptedRevision: REVX, lastAppliedRevision: REVX, conditions: conds, ...extra } });
   const srcO = { metadata: { namespace: 'flux-system', name: 'haynes-ops', generation: 1 }, status: { observedGeneration: 1, artifact: { revision: REVX }, conditions: [R('True')] } };
-  const r3 = { cfg: sc, source: srcO, range: { complete: true, commits: [] },
+  const r3 = { controllers: emptyControllers(), cfg: sc, source: srcO, range: { complete: true, commits: [] },
     ks: K([kso('broken', [], [R('False', 'HealthCheckFailed'), Rc('ProgressingWithRetry')]), kso('waiter', ['broken'], [R('False', 'DependencyNotReady')], { lastAttemptedRevision: `main@sha1:${'c'.repeat(40)}`, lastAppliedRevision: `main@sha1:${'c'.repeat(40)}` }), kso('target', ['waiter'], [R('True')])]), hr: K([]) };
   const v3 = M.settleVerdict(r3, M.settleScope({ cluster_effect: 'immediate', targets: ['kubernetes/main/apps/n/target'] }, r3.ks, r3.hr), rules);
   ok(v3.settled && v3.failing_not_settling.some(x => /Kustomization n\/waiter: NotReady \(DependencyNotReady\), waiting on n\/broken, which is failing/.test(x)) && v3.failing_not_settling.some(x => /n\/broken/.test(x)), "R3: a chain waiting on a broken dependency is the baseline gate's business, not a settle hold", JSON.stringify(v3));
@@ -464,7 +467,7 @@ const inst = id => sx.instants.find(i => i.id === id);
     const src1 = { metadata: { namespace: 'flux-system', name: 'haynes-ops', generation: 1 }, status: { observedGeneration: 1, artifact: { revision: REV1 }, conditions: [{ type: 'Ready', status: 'True' }] } };
     const C2 = 'e'.repeat(40);
     const range1 = files => ({ base: base1, head: 'main', complete: true, commits: files ? [{ sha: C2, parents: [base1], at: '2026-11-11T15:00:00.000Z', subject: 'chore: a namespace-level change (#4900)', pr: 4900, author: 'haynes-dev-bot[bot]', committer: 'web-flow', files }] : [] });
-    const facts1 = (files, ksOver = {}, hrOver = {}) => ({ cfg: sc, source: src1, ks: world1(ksOver), hr: hr1(hrOver), range: range1(files) });
+    const facts1 = (files, ksOver = {}, hrOver = {}) => ({ controllers: emptyControllers(), cfg: sc, source: src1, ks: world1(ksOver), hr: hr1(hrOver), range: range1(files) });
     const T_IN = { cluster_effect: 'immediate', targets: ['kubernetes/main/apps/network/traefik'] }, T_OUT = { cluster_effect: 'immediate', targets: ['kubernetes/main/apps/media/plex-hw-canary'] };
     const v1 = (rec, f) => M.settleVerdict(f, M.settleScope(rec, f.ks, f.hr), rules);
     const sIn = M.settleScope(T_IN, world1(), hr1());
@@ -514,6 +517,38 @@ const inst = id => sx.instants.find(i => i.id === id);
     const s = M.lockStatus(read, Date.parse(ls.now));
     ok(s.state === c.want_lane, `lock state '${c.id}': the lane reads ${c.want_lane}`, s.state);
   }
+}
+
+// Story 755: controller facts hold a Ready Flux target until every replica rolls.
+{
+  const base = () => M.readSettleFacts(M.REPO, rules, fxRun(inst('settled-counterfactual')));
+  const target = sx.targets.unrelated.record;
+  const check = f => M.settleVerdict(f, M.settleScope(target, f.ks, f.hr), rules);
+  for (const [kind, o] of Object.entries(controllers755)) {
+    const field = M.CONTROLLERS[kind], fresh = () => { const f = base(); f.controllers[field].items = [structuredClone(o)]; return f; };
+    ok(check(fresh()).settled, `755 settle: healthy ${kind} passes`);
+    for (const count of (kind === 'DaemonSet' ? ['currentNumberScheduled', 'updatedNumberScheduled', 'numberReady', 'numberAvailable'] : kind === 'Deployment' ? ['replicas', 'updatedReplicas', 'readyReplicas', 'availableReplicas'] : ['replicas', 'updatedReplicas', 'readyReplicas'])) {
+      const f = fresh(); f.controllers[field].items[0].status[count] = 1;
+      ok(!check(f).settled && check(f).blockers.some(b => b.includes(`${count} 1/3`)), `755 settle: ${kind} ${count} 1/3 waits even if its existing pod is Ready`);
+    }
+    const f = fresh(); f.controllers[field].items[0].status.observedGeneration = 1;
+    ok(!check(f).settled && check(f).blockers.some(b => /generation 2 not observed/.test(b)), `755 settle: ${kind} unobserved generation waits`);
+    const other = fresh(); other.controllers[field].items[0].metadata.labels['kustomize.toolkit.fluxcd.io/name'] = 'other';
+    ok(check(other).settled, `755 settle: unrelated ${kind} is outside the target`);
+    const u = base(); u.controllers[field] = null;
+    ok(!check(u).settled && check(u).blockers.includes(`unreadable: ${field} (settle gate)`), `755 settle: unreadable ${field} blocks`);
+  }
+  {
+    const f = base(), c = structuredClone(controllers755.StatefulSet); c.status.currentRevision = 'target-old'; f.controllers.statefulsets.items = [c];
+    ok(!check(f).settled && check(f).blockers.some(b => /currentRevision does not match/.test(b)), '755 settle: StatefulSet old revision still waits');
+  }
+  {
+    const f = base(), c = structuredClone(controllers755.Deployment); delete c.status.observedGeneration; f.controllers.deployments.items = [c];
+    ok(!check(f).settled && check(f).blockers.some(b => /generation or observedGeneration missing/.test(b)), '755 settle: missing observed generation is unreadable');
+  }
+  const f = base(), k = f.ks.items.find(k => k.metadata.name === 'plex-hw-canary');
+  k.status.inventory = { entries: [{ id: 'media_target_apps_Deployment' }] };
+  ok(!check(f).settled && check(f).blockers.some(b => /controller not listed/.test(b)), '755 settle: an inventoried controller absent from a readable list blocks');
 }
 
 // ── 4. the lock and the merge call against stub kubectl and gh ─────────────────────────
@@ -594,6 +629,7 @@ fail('stub: unexpected call ' + cmd + ' ' + argv.join(' '));
     'kustomizations.kustomize.toolkit.fluxcd.io': { items: [{ metadata: { namespace: 'network', name: 'multus', generation: 2 }, spec: { sourceRef: SRC, path: './kubernetes/main/apps/network/multus/app' }, status: { observedGeneration: 2, lastAttemptedRevision: `main@sha1:${rev}`, lastAppliedRevision: `main@sha1:${rev}`, conditions: fluxReady('2026-11-01T00:00:00Z') } },
       { metadata: { namespace: 'media', name: 'plex-hw-canary', generation: 1 }, spec: { sourceRef: SRC, path: './kubernetes/main/apps/media/plex-hw-canary/app' }, status: { observedGeneration: 1, lastAttemptedRevision: `main@sha1:${rev}`, lastAppliedRevision: `main@sha1:${rev}`, conditions: fluxReady('2026-11-01T00:00:00Z') } }] },
     'helmreleases.helm.toolkit.fluxcd.io': { items: [{ metadata: { namespace: 'network', name: 'multus', generation: 4, labels: { 'kustomize.toolkit.fluxcd.io/name': 'multus', 'kustomize.toolkit.fluxcd.io/namespace': 'network' } }, spec: {}, status: { observedGeneration: 4, conditions: fluxReady('2026-11-01T00:00:00Z') } }] },
+    'deployments.apps': { items: [] }, 'statefulsets.apps': { items: [] }, 'daemonsets.apps': { items: [] },
     jobs: { items: [] },
   });
   const world = (w = {}) => {

@@ -494,7 +494,7 @@ export function holdAfterMerge(held, { now, env, leaseSeconds, merged, phase = '
 //       no commit changes T's paths, a path of its chain, or a cluster-wide part;
 //   F2  T has applied the source's revision and is settled: each Kustomization of its chain
 //       has applied (not only attempted) the revision, is Ready at its generation and not
-//       reconciling; the HelmReleases of its namespaces are settled;
+//       reconciling; its namespaces' HelmReleases and its own workload controllers settled;
 //   F3  no Flux object of a cluster-wide part (nor the source) is mid-change.
 // An object in Flux's retry loop, or waiting on a failing dependency, is failing, not
 // settling: the baseline gate judges it by scope. F4 (no shepherd Job that can merge is
@@ -692,8 +692,69 @@ export function fluxStates(f) {
   return { rev, byId, ofSource, ksState: id => ksState(id), hrState, source: f?.source ? fluxSettleState(f.source) : null };
 }
 
+// Story 755: the same controller facts gate both settle and verification. Missing lists
+// or objects are unreadable; incomplete generations or replica counts wait, never pass.
+export const CONTROLLERS = Object.freeze({ Deployment: 'deployments', StatefulSet: 'statefulsets', DaemonSet: 'daemonsets' });
+export function readControllers(run, namespace) {
+  return Object.fromEntries(Object.values(CONTROLLERS).map(kind => {
+    const j = parse(tryRun(run, 'kubectl', ['get', `${kind}.apps`, ...(namespace ? ['-n', namespace] : ['-A']), '-o', 'json']));
+    return [kind, Array.isArray(j?.items) ? j : null];
+  }));
+}
+export function controllerRollout(w, lists) {
+  const key = `${w.kind}/${w.ns}/${w.name}`, kind = CONTROLLERS[w.kind];
+  const result = (r, detail, desired = null) => ({ result: r, detail: `${key}: ${detail}`, desired });
+  if (!Array.isArray(lists?.[kind]?.items)) return result('unreadable', `unreadable: ${kind} in ${w.ns}`);
+  const o = lists[kind].items.find(x => x.metadata?.namespace === w.ns && x.metadata?.name === w.name);
+  if (!o) return result('unreadable', 'controller not listed');
+  const st = o.status || {}, generation = o.metadata?.generation;
+  if (!Number.isInteger(generation) || !Number.isInteger(st.observedGeneration)) return result('unreadable', 'generation or observedGeneration missing');
+  if (st.observedGeneration < generation) return result('waiting', `generation ${generation} not observed yet (observed ${st.observedGeneration})`);
+  const desired = w.kind === 'DaemonSet' ? st.desiredNumberScheduled : (o.spec?.replicas ?? 1);
+  if (!Number.isInteger(desired) || desired < 0) return result('unreadable', 'desired replicas missing or invalid');
+  if (o.metadata?.deletionTimestamp || o.spec?.paused === true) return result('waiting', 'controller terminating or paused', desired);
+  const fields = w.kind === 'Deployment' ? ['replicas', 'updatedReplicas', 'readyReplicas', 'availableReplicas']
+    : w.kind === 'StatefulSet' ? ['replicas', 'updatedReplicas', 'readyReplicas']
+      : ['currentNumberScheduled', 'updatedNumberScheduled', 'numberReady', 'numberAvailable'];
+  for (const field of fields) {
+    const n = st[field] ?? 0; // Kubernetes omits zero-valued counters.
+    if (!Number.isInteger(n) || n < 0) return result('unreadable', `${field} invalid`, desired);
+    if (n !== desired) return result('waiting', `${field} ${n}/${desired}`, desired);
+  }
+  if ((st.terminatingReplicas ?? 0) > 0 || (st.numberMisscheduled ?? 0) > 0 || (st.numberUnavailable ?? 0) > 0) return result('waiting', 'replicas terminating, misscheduled or unavailable', desired);
+  if (w.kind === 'StatefulSet' && desired > 0 && (!st.currentRevision || !st.updateRevision || st.currentRevision !== st.updateRevision)) return result('waiting', 'currentRevision does not match updateRevision', desired);
+  return result('pass', `generation ${generation} observed; ${desired} updated and Ready`, desired);
+}
+// Select T's own controllers by inventory or Flux/Helm ownership, never by namespace alone.
+// Inventoried objects missing from a readable list are still checked and fail closed.
+export function scopeControllers(scope, ks, hr, lists) {
+  const ids = new Set(scope.own || []), hrs = new Set(scope.own_hr || []), found = new Map();
+  const put = w => found.set(`${w.kind}/${w.ns}/${w.name}`, w);
+  const fluxId = o => { const l = o.metadata?.labels || {}; return `${l['kustomize.toolkit.fluxcd.io/namespace'] || o.metadata?.namespace}/${l['kustomize.toolkit.fluxcd.io/name']}`; };
+  const ownKs = (ks?.items || []).filter(k => ids.has(L.ksId(k)));
+  for (const k of ownKs) for (const e of k.status?.inventory?.entries || []) {
+    const [ns, name, group, kind] = String(e.id || '').split('_');
+    if (group === 'helm.toolkit.fluxcd.io' && kind === 'HelmRelease') hrs.add(`${ns}/${name}`);
+  }
+  const ownHr = (hr?.items || []).filter(h => hrs.has(`${h.metadata.namespace}/${h.metadata.name}`) || ids.has(fluxId(h)));
+  for (const o of [...ownKs, ...ownHr]) for (const e of o.status?.inventory?.entries || []) {
+    const [ns, name, group, kind] = String(e.id || '').split('_');
+    if (group === 'apps' && CONTROLLERS[kind]) put({ kind, ns, name });
+  }
+  for (const [kind, plural] of Object.entries(CONTROLLERS)) for (const o of lists?.[plural]?.items || []) {
+    const l = o.metadata?.labels || {}, a = o.metadata?.annotations || {}, ns = o.metadata?.namespace;
+    const helmOwned = ownHr.some(h => {
+      const releaseNs = h.spec?.targetNamespace || h.metadata.namespace;
+      const release = h.spec?.releaseName || (h.spec?.targetNamespace ? `${h.spec.targetNamespace}-${h.metadata.name}` : h.metadata.name);
+      return ns === releaseNs && (l['app.kubernetes.io/instance'] === release || (a['meta.helm.sh/release-name'] === release && a['meta.helm.sh/release-namespace'] === (h.spec?.storageNamespace || h.metadata.namespace)));
+    });
+    if (ids.has(fluxId(o)) || helmOwned) put({ kind, ns, name: o.metadata.name });
+  }
+  return [...found.values()];
+}
+
 // READ-ONLY (gh api GET and kubectl get through `run`), once per tick: the source, every
-// Kustomization and HelmRelease, and main's commits the source has not fetched yet.
+// Kustomization and HelmRelease, the workload controllers, and main's unfetched commits.
 // undefined = the read failed; source null = the GitRepository does not exist.
 export function readSettleFacts(repo, rules, run) {
   const cfg = settleConfig(rules);
@@ -705,7 +766,7 @@ export function readSettleFacts(repo, rules, run) {
   const source = sl ? (sl.items.find(g => g?.metadata?.name === cfg.source.name && g?.metadata?.namespace === cfg.source.namespace) || null) : undefined;
   const srcSha = revisionSha(source?.status?.artifact?.revision);
   const range = srcSha ? readCommitRange(repo, srcSha, 'main', run, cfg.max_unapplied_commits) : null;
-  return { cfg, ks, hr, source, range };
+  return { cfg, ks, hr, source, range, controllers: readControllers(run) };
 }
 
 // PURE: the verdict for one target scope on facts from readSettleFacts.
@@ -756,6 +817,11 @@ export function settleVerdict(f, scope, rules) {
     else if (s.state === 'progressing') out.unsettled.push(`HelmRelease ${id}: ${s.why}`);
   }
   if (out.unsettled.length) add(`F2 the target is not settled: ${out.unsettled.slice(0, 4).join('; ')}${out.unsettled.length > 4 ? ` (+${out.unsettled.length - 4} more)` : ''}`);
+  for (const kind of Object.values(CONTROLLERS)) if (!Array.isArray(f.controllers?.[kind]?.items)) add(`unreadable: ${kind} (settle gate)`);
+  for (const w of scopeControllers(scope, f.ks, f.hr, f.controllers)) {
+    const r = controllerRollout(w, f.controllers);
+    if (r.result !== 'pass') add(`F2 ${r.result === 'unreadable' ? 'unreadable: ' : ''}${r.detail}`);
+  }
   // F3: no cluster-wide part (nor the source) mid-change
   if (st.source?.state === 'progressing') out.cluster_wide_unsettled.push(`flux: GitRepository ${src}: ${st.source.why}`);
   if (st.source?.state === 'failing') add(`F3 GitRepository ${src} is ${st.source.why}; nothing it serves can be judged settled`);

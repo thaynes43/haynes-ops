@@ -360,12 +360,12 @@ export function alertGate(alerts, scope, clusterWideIds, facts, ks, hr, alertSco
 
 // ── durable state for a target: stateless only on positive evidence ─────────────
 const mountsPvc = spec => (spec?.volumes || []).filter(v => v.persistentVolumeClaim || v.ephemeral).map(v => v.persistentVolumeClaim?.claimName || `${v.name} (ephemeral)`);
-export function stateEvidence(k, hr, rs, pods, cronjobs) {
+export function stateEvidence(k, hr, rs, pods, cronjobs, controllers, pvcs) {
   const ns = k.spec?.targetNamespace || k.metadata.namespace;
   const lbl = o => o.metadata?.labels || {};
   const fluxOwned = o => lbl(o)['kustomize.toolkit.fluxcd.io/name'] === k.metadata.name && lbl(o)['kustomize.toolkit.fluxcd.io/namespace'] === k.metadata.namespace;
   const app = k.spec?.postBuild?.substitute?.APP || k.metadata.name;
-  const hrNames = new Set((hr?.items || []).filter(fluxOwned).map(h => h.metadata.name));
+  const hrNames = new Set((hr?.items || []).filter(fluxOwned).flatMap(h => [h.metadata.name, h.spec?.releaseName || (h.spec?.targetNamespace ? `${h.spec.targetNamespace}-${h.metadata.name}` : h.metadata.name)]));
   const owned = o => o.metadata.namespace === ns && (fluxOwned(o) || hrNames.has(lbl(o)['app.kubernetes.io/instance']) || [app, k.metadata.name].includes(lbl(o)['app.kubernetes.io/name']));
   const evidence = [];
   if (Object.keys(k.spec?.postBuild?.substitute || {}).some(x => x.startsWith('VOLSYNC_'))) evidence.push('VOLSYNC_* substitutions');
@@ -373,6 +373,27 @@ export function stateEvidence(k, hr, rs, pods, cronjobs) {
   if ((k.spec?.components || []).some(c => /volsync/.test(c))) evidence.push('volsync component');
   for (const p of (pods?.items || []).filter(owned)) for (const c of mountsPvc(p.spec)) evidence.push(`pod ${p.metadata.name} mounts ${c}`);
   for (const j of (cronjobs?.items || []).filter(owned)) for (const c of mountsPvc(j.spec?.jobTemplate?.spec?.template?.spec)) evidence.push(`cronjob ${j.metadata.name} mounts ${c}`);
+  const scope = { own: [ksId(k)], own_hr: (hr?.items || []).filter(fluxOwned).map(h => `${h.metadata.namespace}/${h.metadata.name}`) };
+  const ws = M.scopeControllers(scope, { items: [k] }, hr, controllers);
+  for (const [kind, plural] of Object.entries(M.CONTROLLERS)) for (const o of (controllers?.[plural]?.items || []).filter(owned))
+    if (!ws.some(w => w.kind === kind && w.ns === ns && w.name === o.metadata.name)) ws.push({ kind, ns, name: o.metadata.name });
+  const claimNames = new Set();
+  const templates = [];
+  for (const w of ws) {
+    const o = (controllers?.[M.CONTROLLERS[w.kind]]?.items || []).find(x => x.metadata?.namespace === w.ns && x.metadata?.name === w.name);
+    if (!o || w.ns !== ns || !['Deployment', 'StatefulSet'].includes(w.kind)) continue;
+    for (const c of mountsPvc(o.spec?.template?.spec)) { evidence.push(`${w.kind} ${w.name} mounts ${c}`); claimNames.add(c); }
+    for (const c of o.spec?.volumeClaimTemplates || []) { evidence.push(`${w.kind} ${w.name} volumeClaimTemplate ${c.metadata?.name || '(unnamed)'}`); templates.push(`${c.metadata?.name}-${w.name}-`); }
+  }
+  const inventoryClaims = new Set((k.status?.inventory?.entries || []).flatMap(e => {
+    const [ins, name, group, kind] = String(e.id || '').split('_'); return ins === ns && group === '' && kind === 'PersistentVolumeClaim' ? [name] : [];
+  }));
+  for (const h of (hr?.items || []).filter(fluxOwned)) for (const e of h.status?.inventory?.entries || []) {
+    const [ins, name, group, kind] = String(e.id || '').split('_'); if (ins === ns && group === '' && kind === 'PersistentVolumeClaim') inventoryClaims.add(name);
+  }
+  for (const c of pvcs?.items || []) if (c.metadata?.namespace === ns && (owned(c) || inventoryClaims.has(c.metadata.name) || claimNames.has(c.metadata.name)
+    || templates.some(prefix => c.metadata.name.startsWith(prefix) && /^\d+$/.test(c.metadata.name.slice(prefix.length)))
+    || (c.metadata.ownerReferences || []).some(r => ws.some(w => w.ns === ns && w.kind === r.kind && w.name === r.name)))) evidence.push(`PVC ${c.metadata.name}`);
   const sources = (rs?.items || []).filter(r => fluxOwned(r));
   return { ks: ksId(k), namespace: ns, evidence: [...new Set(evidence)].slice(0, 6), sources };
 }
@@ -443,7 +464,7 @@ async function tick() {
   const alertNs = alerts ? [...new Set(alerts.map(nsOf))] : null;
   const ceph = (cf.ceph?.items || []).map(c => c.status?.ceph?.health || 'unknown').join(',') || 'unknown';
   const nsCache = new Map();
-  const nsFacts = ns => { if (!nsCache.has(ns)) nsCache.set(ns, { pods: kget(['pods', '-n', ns]), cronjobs: kget(['cronjobs', '-n', ns]), jobs: kget(['jobs', '-n', ns]) }); return nsCache.get(ns); };
+  const nsFacts = ns => { if (!nsCache.has(ns)) nsCache.set(ns, { pods: kget(['pods', '-n', ns]), cronjobs: kget(['cronjobs', '-n', ns]), jobs: kget(['jobs', '-n', ns]), ...M.readControllers(run, ns), pvcs: kget(['persistentvolumeclaims', '-n', ns]) }); return nsCache.get(ns); };
   const win = inWindow(now, night.timezone, night.merge_window_local.first, night.merge_window_local.last);
   // THE SETTLE GATE (story 551): facts about each candidate's target, read once here (the
   // source, every Kustomization and HelmRelease, main's commits Flux has not fetched) and
@@ -458,6 +479,7 @@ async function tick() {
   for (const r of lanes) {
     const blockers = [];
     const backup = [];
+    let hasState = false;
     let scope = { namespaces: [], chain: [], blocking: [] };
     let alertView = { unrelated: [], cluster: [] };
     if (!cms) blockers.push('unreadable: configmaps in upgrade-agent (work orders, pause)');
@@ -487,8 +509,11 @@ async function tick() {
       for (const k of mine) {
         const f = nsFacts(k.spec?.targetNamespace || k.metadata.namespace);
         if (!f.pods || !f.cronjobs) { blockers.push(`unreadable: pods/cronjobs in ${k.spec?.targetNamespace || k.metadata.namespace}`); continue; }
-        if (!cf.rs) continue;
-        const ev = stateEvidence(k, cf.hr, cf.rs, f.pods, f.cronjobs);
+        const unread = [['persistentvolumeclaims', f.pvcs], ['statefulsets', f.statefulsets], ['deployments', f.deployments]].filter(([, list]) => !Array.isArray(list?.items));
+        for (const [what] of unread) blockers.push(`unreadable: ${what} in ${k.spec?.targetNamespace || k.metadata.namespace}`);
+        if (unread.length || !cf.rs) continue;
+        const ev = stateEvidence(k, cf.hr, cf.rs, f.pods, f.cronjobs, f, f.pvcs);
+        hasState ||= ev.sources.length > 0 || ev.evidence.length > 0;
         for (const s of ev.sources) backup.push({ target: ev.ks, ...volsyncFresh(s, now, maxAge) });
         if (!ev.sources.length && ev.evidence.length) blockers.push(`backup-unmatched: ${ev.ks} has durable state (${ev.evidence.join('; ')}) and no ReplicationSource applied by it`);
       }
@@ -516,7 +541,7 @@ async function tick() {
       settleRec = M.settleBrief(sv);
     }
     if (!win.open) blockers.push(`outside the merge window (${night.merge_window_local.first}-${night.merge_window_local.last} ${night.timezone}, now ${win.local})`);
-    r.backup = { rule: night.backup_rule.text, targets: backup, stateful: backup.length > 0 };
+    r.backup = { rule: night.backup_rule.text, targets: backup, stateful: hasState || backup.length > 0 };
     r.gates = { namespaces: scope.namespaces, blockers, alerts_not_blocking: alertView, settle: settleRec, would_be_eligible: blockers.length === 0 };
   }
 
