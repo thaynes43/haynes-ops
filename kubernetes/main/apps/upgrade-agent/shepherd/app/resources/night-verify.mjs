@@ -36,7 +36,8 @@
 //                 the update type the history recorded), a CronJob template names it, or its
 //                 HelmRelease runs the new chart version.
 //   exercised     a CronJob whose template names the update: a Job from the new template made
-//                 since the merge has completed (failed: fail; none yet: not-yet).
+//                 since the merge has completed (failed: fail only on a proven successful
+//                 last run before the merge; otherwise cannot-tell; none yet: not-yet).
 //   rollout       each Deployment, StatefulSet and DaemonSet of the target (from the
 //                 Kustomization and HelmRelease inventories) has pods of one template only,
 //                 none terminating, all Ready.
@@ -500,7 +501,7 @@ export function nextCron(expr, tz, fromMs) {
 // M1, L-c: a CronJob whose template names the update has run from the new template since the
 // merge. The newest finished Job from the new template made since the merge decides (a newer
 // one still running does not hide it). A failure is the update's only when the CronJob's last
-// finished Job from the old template did not fail too. A suspended CronJob is cannot-tell.
+// run before the merge is proven successful. A suspended CronJob is cannot-tell.
 export function factExercised(u, mergedAt, kind, ctx) {
   if (!u.crons.length) return null;
   const parts = [], t = Date.parse(mergedAt);
@@ -524,9 +525,25 @@ export function factExercised(u, mergedAt, kind, ctx) {
     const j = done[0];
     if (finishedAs(j) === 'complete') { parts.push({ r: 'pass', d: `${id}: Job ${j.metadata.name} from the new template completed` }); continue; }
     const why = (j.status.conditions.find(x => x.type === 'Failed') || {}).reason || 'no reason';
-    const old = newest(mine.filter(x => !fromNew(x) && finishedAs(x)))[0];
-    if (old && finishedAs(old) === 'failed') parts.push({ r: 'unreadable', d: `${id}: Job ${j.metadata.name} from the new template failed (${why}), and its last Job from the old template (${old.metadata.name}) failed too: it was failing before the merge, so cannot tell` });
-    else parts.push({ r: 'fail', class: 'job-failed', d: `${id}: Job ${j.metadata.name} from the new template failed (${why})${old ? `; its last Job from the old template (${old.metadata.name}) completed` : ''}` });
+    const old = newest(mine.filter(x => Date.parse(x.metadata?.creationTimestamp || '') < t))[0];
+    const oldFinished = newest(mine.filter(x => !fromNew(x) && finishedAs(x)))[0];
+    const success = [...mine.filter(x => finishedAs(x) === 'complete')].sort((a, b) => String(b.status?.completionTime || '').localeCompare(String(a.status?.completionTime || '')))[0];
+    const lastSuccess = `last success: ${success ? `Job ${success.metadata.name}, completed ${success.status?.completionTime || 'at an unreadable time'}` : 'no successful Job kept'}; CronJob lastSuccessfulTime ${c.cj?.status?.lastSuccessfulTime || 'missing'}`;
+    const made = Date.parse(old?.metadata?.creationTimestamp || ''), completed = Date.parse(old?.status?.completionTime || '');
+    const next = old ? nextCron(c.cj?.spec?.schedule, c.cj?.spec?.timeZone, made) : null;
+    // Compare the next scheduled run AFTER the old Job's creation with the merge: it must
+    // be at or after the merge. Comparing only completion times could hide intervening
+    // failed or skipped runs while a long Job ran. A weeks-old retained success therefore
+    // cannot qualify, even when pruning removed all the later failures. Also require that
+    // this last kept pre-merge run succeeded BY the merge and matches lastSuccessfulTime;
+    // a run crossing the merge, missing timestamps or an unreadable schedule proves nothing.
+    const lastScheduled = Date.parse(c.cj?.status?.lastScheduleTime || '');
+    const proven = old && !fromNew(old) && finishedAs(old) === 'complete'
+      && (!oldFinished || finishedAs(oldFinished) !== 'failed')
+      && completed >= made && completed <= t && completed === Date.parse(c.cj?.status?.lastSuccessfulTime || '')
+      && next !== null && Date.parse(next) >= t && !(lastScheduled > made && lastScheduled < t);
+    if (proven) parts.push({ r: 'fail', class: 'job-failed', d: `${id}: Job ${j.metadata.name} from the new template failed (${why}); its last run before the merge, Job ${old.metadata.name}, completed ${old.status.completionTime}, matching lastSuccessfulTime; no later scheduled run before the merge (next ${next})` });
+    else parts.push({ r: 'unreadable', d: `${id}: Job ${j.metadata.name} from the new template failed (${why})${oldFinished && finishedAs(oldFinished) === 'failed' ? `, and its last Job from the old template (${oldFinished.metadata.name}) failed too: ${Date.parse(oldFinished.metadata.creationTimestamp) < t ? 'it was failing before the merge' : 'the old template also failed after the merge'}` : '; no proof that its last run before the merge succeeded'}; ${lastSuccess}, so cannot tell` });
   }
   return fold('exercised', parts);
 }
