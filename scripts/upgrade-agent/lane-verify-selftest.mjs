@@ -44,6 +44,7 @@ const V = await import(join(RES, 'night-verify.mjs'));
 const N = await import(join(RES, 'run-night.mjs'));
 const rules = L.loadRules(join(RES, 'upgrade-rules.json'));
 const fx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/verify-20261113.json'), 'utf8'));
+const controllers755 = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/controllers-755.json'), 'utf8'));
 const REPO = 'thaynes43/haynes-ops';
 
 let fails = 0, passes = 0;
@@ -65,6 +66,7 @@ function serve(w, cmd, argv) {
     if (/gitrepositories/.test(a)) return { items: [w.source] };
     if (/ocirepositories|helmcharts/.test(a)) return { items: w.charts || [] };
     if (/ get nodes /.test(` ${a} `)) return w.nodes ?? null;
+    if (/^(get (deployments|statefulsets|daemonsets)\.apps)/.test(a)) { const kind = argv[1].split('.')[0]; return w.fail?.[kind] ? null : { items: (w.controllers?.[kind]?.items || []).filter(c => c.metadata.namespace === ns) }; }
     if (/ get pods /.test(` ${a} `)) return w.fail?.pods ? null : (w.pods[ns]?.pods || { items: [] });
     if (/ get cronjobs /.test(` ${a} `)) return w.pods[ns]?.cronjobs || { items: [] };
     if (/ get jobs /.test(` ${a} `)) return w.fail?.jobs ? null : (w.pods[ns]?.jobs || { items: [] });
@@ -99,7 +101,17 @@ function fake(w) {
   return { run, calls };
 }
 const READY_NODE = (n, boot = 'boot-1', since = '2026-11-01T00:00:00Z') => ({ metadata: { name: n }, status: { nodeInfo: { bootID: boot }, conditions: [{ type: 'Ready', status: 'True', lastTransitionTime: since }] } });
-const world = () => { const pods = structuredClone(fx.pods); for (const ns of Object.keys(pods)) for (const p of pods[ns].pods.items) p.spec.nodeName = p.spec.nodeName || 'talosw01'; return { ks: structuredClone(fx.ks), hr: structuredClone(fx.hr), source: structuredClone(fx.source), pods, alerts: structuredClone(fx.alerts), promStart: '2026-11-01T00:00:00Z', nodes: { items: [READY_NODE('talosw01'), READY_NODE('talosw02')] } }; };
+const world = () => { const controllers = { deployments: { items: [] }, statefulsets: { items: [] }, daemonsets: { items: [] } };
+  for (const o of [...fx.ks.items, ...fx.hr.items]) for (const e of o.status?.inventory?.entries || []) {
+    const [ns, name, group, kind] = e.id.split('_'); if (group !== 'apps' || !controllers755[kind]) continue;
+    const c = structuredClone(controllers755[kind]); c.metadata.namespace = ns; c.metadata.name = name;
+    const count = V.podsOf({ kind, ns, name }, fx.pods[ns]?.pods?.items || []).filter(p => !p.metadata.deletionTimestamp && !['Succeeded', 'Failed'].includes(p.status?.phase)).length;
+    c.spec.replicas = count;
+    if (kind === 'DaemonSet') Object.assign(c.status, { desiredNumberScheduled: count, currentNumberScheduled: count, updatedNumberScheduled: count, numberReady: count, numberAvailable: count });
+    else Object.assign(c.status, { replicas: count, updatedReplicas: count, readyReplicas: count, availableReplicas: count });
+    controllers[`${kind.toLowerCase()}s`].items.push(c);
+  }
+  const pods = structuredClone(fx.pods); for (const ns of Object.keys(pods)) for (const p of pods[ns].pods.items) p.spec.nodeName = p.spec.nodeName || 'talosw01'; return { controllers, ks: structuredClone(fx.ks), hr: structuredClone(fx.hr), source: structuredClone(fx.source), pods, alerts: structuredClone(fx.alerts), promStart: '2026-11-01T00:00:00Z', nodes: { items: [READY_NODE('talosw01'), READY_NODE('talosw02')] } }; };
 const views = list => list.map(n => fx.prs.find(p => p.number === n));
 const vrules = over => ({ ...rules, night: { ...rules.night, verify: { ...rules.night.verify, ...over } } });
 const gjOf = w => async url => (/runtimeinfo$/.test(url) ? (w.promStart ? { data: { startTime: w.promStart } } : null) : (w.alertsUnreadable ? null : w.alerts));
@@ -171,7 +183,7 @@ const real = await twice(world());
   ok(b.rec(4869).other_changes.complete && b.rec(4869).other_changes.changes.length === 0, 'real #4869: no other change reached seerr, its chain or a cluster-wide part');
   ok(b.summary.events_for_history === 0 && b.events.length === 0 && b.summary.practice_events_not_written === 5, 'real: no event for the history; five practice events not written');
   ok(a.calls.every(c => /^(gh (api|pr view)|kubectl get) /.test(c)), 'real: every command was a read (gh api GET, kubectl get)');
-  ok(b.summary.reads.commands <= 30 && b.summary.reads.github <= 12, `real: ${b.summary.reads.commands} reads (${b.summary.reads.github} GitHub) for five merges`);
+  ok(b.summary.reads.commands <= 40 && b.summary.reads.github <= 12, `real: ${b.summary.reads.commands} reads (${b.summary.reads.github} GitHub) for five merges`);
   ok(/#4874 .* VERIFIED/.test(b.table) && /other changes: [0-9a-f]{8} #4873/.test(b.table) && /would write \(not written: practice\): verified merged_unverified->done/.test(b.table), 'real: the morning view names each verdict, fact and other change');
   ok(/open: not-yet since .*judged on 1 tick\(s\) over 1 night\(s\).*pods recorded at/.test(a.table), 'real: the morning view says what an open verdict waits for, since when and over how many nights');
 }
@@ -285,7 +297,7 @@ await failure('a chart source failing on two reads 900 s apart (M4)', 4873, w =>
   ok(r4.rec(4874).verdict === 'cannot-tell' && factOf(r4.rec(4874), 'alerts').result === 'unreadable' && factOf(r4.rec(4874), 'stable').result === 'pass', 'cannot tell: Prometheus unreadable; every other fact passes, and still no pass', r4.rec(4874).why);
   const w5 = world(); w5.pods.media.pods.items = [];
   const r5 = await tick(w5, { prs: [4869] });
-  ok(r5.rec(4869).verdict === 'cannot-tell' && /scaled to zero, or not created yet.*story 755/.test(factOf(r5.rec(4869), 'rollout').detail), 'cannot tell: a Deployment with no pod; the missing read (apps, story 755) is named', factOf(r5.rec(4869), 'rollout').detail);
+  ok(r5.rec(4869).verdict !== 'verified' && /0\/1 running pods/.test(factOf(r5.rec(4869), 'rollout').detail), 'not finished: the controller wants one replica but no pod exists', factOf(r5.rec(4869), 'rollout').detail);
   const w6 = world(); w6.fail = { pods: true };
   ok((await tick(w6, { prs: [4869] })).rec(4869).verdict === 'cannot-tell', 'cannot tell: pods unreadable');
   const w7 = world(); delete ksOf(w7, 'media/seerr').status.inventory;
@@ -314,6 +326,29 @@ await failure('a chart source failing on two reads 900 s apart (M4)', 4873, w =>
     && V.verdictOf([{ fact: 'a', result: 'pass' }, { fact: 'b', result: 'bogus' }], { complete: true, changes: [] }).verdict === 'cannot-tell'
     && V.verdictOf([{ fact: 'a', result: 'waiting' }, { fact: 'b', result: 'unreadable' }], {}).verdict === 'cannot-tell'
     && V.verdictOf([{ fact: 'a', result: 'fail', class: 'not-ready' }, { fact: 'b', result: 'unreadable' }], { complete: true, changes: [] }).verdict === 'failed', 'verdictOf: fail > unreadable > waiting > pass; an unknown result is cannot tell');
+}
+
+// Story 755: the one Ready pod cannot stand in for the controller's desired replicas.
+{
+  const c = w => w.controllers.deployments.items.find(c => c.metadata.namespace === 'media' && c.metadata.name === 'seerr');
+  const w = world(); c(w).spec.replicas = 3;
+  const r = (await twice(w, { prs: [4869] })).b;
+  ok(r.rec(4869).verdict === 'not-yet' && /replicas 1\/3/.test(factOf(r.rec(4869), 'rollout').detail) && factOf(r.rec(4869), 'stable').result === 'waiting', '755 verify: one Ready pod of three is not a finished rollout', r.rec(4869).why);
+  const lag = world(); c(lag).status.observedGeneration = 1;
+  ok(/generation 2 not observed/.test(factOf((await tick(lag, { prs: [4869] })).rec(4869), 'rollout').detail), '755 verify: unobserved controller generation waits');
+  for (const kind of ['deployments', 'statefulsets', 'daemonsets']) {
+    const u = world(); u.fail = { [kind]: true };
+    // Match the inventory kind to exercise each failed controller read in the verifier.
+    const k = ksOf(u, 'media/seerr');
+    for (const o of [k, hrOf(u, 'media/seerr')]) for (const e of o.status.inventory.entries) if (e.id === 'media_seerr_apps_Deployment') e.id = `media_seerr_apps_${kind === 'deployments' ? 'Deployment' : kind === 'statefulsets' ? 'StatefulSet' : 'DaemonSet'}`;
+    const v = await tick(u, { prs: [4869] });
+    ok(v.rec(4869).verdict === 'cannot-tell' && new RegExp(`unreadable: ${kind}`).test(factOf(v.rec(4869), 'rollout').detail), `755 verify: unreadable ${kind} cannot verify`, v.rec(4869).why);
+  }
+  const ds = world(), d = structuredClone(controllers755.DaemonSet); d.metadata.name = 'seerr'; d.status.updatedNumberScheduled = 1;
+  ds.controllers.daemonsets.items.push(d);
+  for (const o of [ksOf(ds, 'media/seerr'), hrOf(ds, 'media/seerr')]) for (const e of o.status.inventory.entries) if (e.id === 'media_seerr_apps_Deployment') e.id = 'media_seerr_apps_DaemonSet';
+  const v = await tick(ds, { prs: [4869] });
+  ok(factOf(v.rec(4869), 'rollout').result === 'waiting' && /updatedNumberScheduled 1\/3/.test(factOf(v.rec(4869), 'rollout').detail), '755 verify: a DaemonSet mid-rollout waits', v.rec(4869).why);
 }
 
 // ── 5. other changes: cannot tell which change did it, or the update's own ───────────────
@@ -366,6 +401,7 @@ await failure('a chart source failing on two reads 900 s apart (M4)', 4873, w =>
       status: { observedGeneration: 3, conditions: [{ type: 'Ready', status: 'True', reason: 'UpgradeSucceeded' }], history: [{ chartName: 'app-template', chartVersion: '5.3.0', status: 'deployed', lastDeployed: '2026-11-13T05:22:00Z' }], inventory: { entries: [{ id: 'dev_audio-authoring_apps_Deployment', v: 'v1' }] } } }] };
     w.pods.dev = { pods: { items: [{ metadata: { name: 'audio-authoring-7f9c8d6b5-x1', namespace: 'dev', uid: 'u-audio-1', creationTimestamp: '2026-11-13T05:23:00Z', labels: { 'pod-template-hash': '7f9c8d6b5' }, ownerReferences: [{ kind: 'ReplicaSet', name: 'audio-authoring-7f9c8d6b5' }] },
       spec: { containers: [{ name: 'app', image: `ghcr.io/thaynes43/audio-authoring:0.2.0@sha256:${D}` }] }, status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'True' }], containerStatuses: [{ name: 'app', imageID: `ghcr.io/thaynes43/audio-authoring@sha256:${D}`, ready: true, restartCount: 0, state: { running: {} } }] } }] }, cronjobs: { items: [] }, jobs: { items: [] } };
+    const c = structuredClone(controllers755.Deployment); c.metadata.namespace = 'dev'; c.metadata.name = 'audio-authoring'; c.spec.replicas = 1; Object.assign(c.status, { replicas: 1, updatedReplicas: 1, readyReplicas: 1, availableReplicas: 1 }); w.controllers.deployments.items.push(c);
     w.extraCommits = [{ sha: S, at: src.mergedAt, subject: src.title, pr: 9101, author: 'renovate[bot]', files: ['scripts/audio-authoring/Dockerfile'] }];
     w.runs = { [S]: [{ path: img.build, status: 'completed', conclusion: 'success', created_at: '2026-11-13T05:00:10Z', updated_at: '2026-11-13T05:06:00Z' }] };
     w.prHead = { 9102: '2026-11-13T05:12:00Z' };

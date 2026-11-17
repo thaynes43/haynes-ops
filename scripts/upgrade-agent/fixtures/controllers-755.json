@@ -1,0 +1,104 @@
+{
+  "Deployment": {
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+      "name": "target",
+      "namespace": "media",
+      "generation": 2,
+      "labels": {
+        "kustomize.toolkit.fluxcd.io/name": "plex-hw-canary",
+        "kustomize.toolkit.fluxcd.io/namespace": "media"
+      }
+    },
+    "spec": {
+      "replicas": 3,
+      "template": {
+        "spec": {
+          "containers": [
+            {
+              "name": "app",
+              "image": "example/app:2"
+            }
+          ]
+        }
+      }
+    },
+    "status": {
+      "observedGeneration": 2,
+      "replicas": 3,
+      "updatedReplicas": 3,
+      "readyReplicas": 3,
+      "availableReplicas": 3
+    }
+  },
+  "StatefulSet": {
+    "apiVersion": "apps/v1",
+    "kind": "StatefulSet",
+    "metadata": {
+      "name": "target",
+      "namespace": "media",
+      "generation": 2,
+      "labels": {
+        "kustomize.toolkit.fluxcd.io/name": "plex-hw-canary",
+        "kustomize.toolkit.fluxcd.io/namespace": "media"
+      }
+    },
+    "spec": {
+      "replicas": 3,
+      "template": {
+        "spec": {
+          "containers": [
+            {
+              "name": "app",
+              "image": "example/app:2"
+            }
+          ]
+        }
+      }
+    },
+    "status": {
+      "observedGeneration": 2,
+      "replicas": 3,
+      "updatedReplicas": 3,
+      "readyReplicas": 3,
+      "availableReplicas": 3,
+      "currentRevision": "target-new",
+      "updateRevision": "target-new"
+    }
+  },
+  "DaemonSet": {
+    "apiVersion": "apps/v1",
+    "kind": "DaemonSet",
+    "metadata": {
+      "name": "target",
+      "namespace": "media",
+      "generation": 2,
+      "labels": {
+        "kustomize.toolkit.fluxcd.io/name": "plex-hw-canary",
+        "kustomize.toolkit.fluxcd.io/namespace": "media"
+      }
+    },
+    "spec": {
+      "replicas": 3,
+      "template": {
+        "spec": {
+          "containers": [
+            {
+              "name": "app",
+              "image": "example/app:2"
+            }
+          ]
+        }
+      }
+    },
+    "status": {
+      "observedGeneration": 2,
+      "desiredNumberScheduled": 3,
+      "currentNumberScheduled": 3,
+      "updatedNumberScheduled": 3,
+      "numberReady": 3,
+      "numberAvailable": 3
+    }
+  }
+}

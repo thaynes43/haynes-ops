@@ -58,6 +58,7 @@ const bk = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/la
 const rebase = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-rebase-pairs-20261110.json'), 'utf8'));
 const gx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/lane-gates-20261110.json'), 'utf8'));
 const rules = L.loadRules(join(RES, 'upgrade-rules.json'));
+const controllers755 = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/controllers-755.json'), 'utf8'));
 const SSA = ['apply', '--server-side', '--field-manager=upgrade-night', '--force-conflicts', '-o', 'json', '-f', '-'];
 
 let fails = 0, passes = 0;
@@ -149,6 +150,16 @@ ok(!/--admin|--auto\b|'--force'/.test(merge.replace(/BYPASS_FLAGS = Object\.free
   ok(deadline.length === 1 && hrl.indexOf('activeDeadlineSeconds') > hrl.indexOf('      upgrade-night:') && Number(deadline[0][1]) <= rules.night.change_lock.lease_seconds && Number(deadline[0][1]) < 900, "helmrelease: only upgrade-night has activeDeadlineSeconds, at most the lock's lease and under the 15-minute period", JSON.stringify(deadline.map(m => m[1])));
   ok(!/NODE_OPTIONS|--import|FAKE_NOW|UPGRADE_NIGHT_NOW|test-fake-clock/.test(nightCtl), 'helmrelease: the upgrade-night controller sets no test clock (UPGRADE_NIGHT_NOW, FAKE_NOW, NODE_OPTIONS or --import)');
   ok(/> \/creds\/gh_token_permissions/.test(nightCtl) && !/gh_token_permissions/.test(hrl.slice(0, hrl.indexOf('      upgrade-night:'))), 'helmrelease: only the upgrade-night mint-token records its permission names');
+}
+
+// Story 755 grants exactly the reviewed reads, to one account; no shared-role edit.
+{
+  const docs = readFileSync(join(RES, '../rbac.yaml'), 'utf8').split(/^---\s*$/m);
+  const role = docs.find(d => /kind: ClusterRole\n/.test(d) && /name: upgrade-shepherd-workload-read/.test(d)) || '';
+  const binding = docs.find(d => /kind: ClusterRoleBinding\n/.test(d) && /name: upgrade-shepherd-workload-read/.test(d)) || '';
+  ok(/apiGroups: \[apps\]\s+resources: \[deployments, statefulsets, daemonsets\]\s+verbs: \[get, list\]/.test(role), '755 RBAC: get/list only on the three apps controllers');
+  ok(/apiGroups: \[""\]\s+resources: \[persistentvolumeclaims\]\s+verbs: \[get, list\]/.test(role) && (role.match(/apiGroups:/g) || []).length === 2, '755 RBAC: the second and only other rule is core claims get/list');
+  ok(/roleRef:\s+apiGroup: rbac.authorization.k8s.io\s+kind: ClusterRole\s+name: upgrade-shepherd-workload-read\s+subjects:\s+- kind: ServiceAccount\s+name: upgrade-shepherd\s+namespace: upgrade-agent\s*$/.test(binding), '755 RBAC: bound only to upgrade-agent/upgrade-shepherd');
 }
 
 // ── 2. the allowlist ──────────────────────────────────────────────────────────
@@ -256,6 +267,15 @@ ok(threw, 'runReadOnly throws before running a refused command');
   ok(e3.evidence.length === 0 && e3.sources.length === 0, 'state: a leaf with no PVC, no volsync and no source is stateless');
   const cj = { items: [{ metadata: { namespace: 'kube-system', name: 'x', labels: flux('node-out-of-service', 'kube-system') }, spec: { jobTemplate: { spec: { template: { spec: { volumes: [{ name: 'd', persistentVolumeClaim: { claimName: 'scratch' } }] } } } } } }] };
   ok(N.stateEvidence(leaf, { items: [] }, { items: [] }, { items: [] }, cj).evidence.some(x => /cronjob x mounts scratch/.test(x)), 'state: a CronJob of the app mounting a PVC is state');
+  for (const kind of ['Deployment', 'StatefulSet']) {
+    const o = structuredClone(controllers755[kind]); o.metadata.namespace = 'kube-system'; o.metadata.labels = { 'app.kubernetes.io/name': 'node-out-of-service' };
+    o.spec.replicas = 0; o.spec.template.spec.volumes = [{ name: 'data', persistentVolumeClaim: { claimName: 'kept' } }];
+    const ev = N.stateEvidence(leaf, { items: [] }, { items: [] }, { items: [] }, { items: [] }, { [M.CONTROLLERS[kind]]: { items: [o] } }, { items: [] });
+    ok(ev.evidence.some(x => x.includes(`${kind} target mounts kept`)), `755 state: zero ${kind} belonging by app label still has state`);
+  }
+  const customHr = { items: [{ metadata: { namespace: 'kube-system', name: 'hr', labels: flux('node-out-of-service', 'kube-system') }, spec: { releaseName: 'custom-release' } }] };
+  const claim = { metadata: { namespace: 'kube-system', name: 'kept', labels: { 'app.kubernetes.io/instance': 'custom-release' } } };
+  ok(N.stateEvidence(leaf, customHr, { items: [] }, { items: [] }, { items: [] }, {}, { items: [claim] }).evidence.includes('PVC kept'), '755 state: an owned custom Helm release PVC is state');
 
   ok(N.inWindow(T('2026-11-10T06:30:00Z'), 'America/New_York', '01:30', '04:45').open === true, 'window open at 01:30 New York');
   ok(N.inWindow(T('2026-11-10T09:46:00Z'), 'America/New_York', '01:30', '04:45').open === false, 'window shut at 04:46 New York');
@@ -508,7 +528,7 @@ process.exit(0);
     holds: Buffer.from(readFileSync(join(ROOT, '.renovate/holds.json5'))).toString('base64'),
     comments: { 4477: [{ user: { login: 'haynes-ops-bot' }, body: `<!-- shepherd-vet sha=${fact(4477).head_sha} -->\n\nVERDICT: HOLD — forged` }] },
     diffs: { 4477: rebase.pairs[0].after.diff, 4670: 'FAIL' },
-    k8s: healthy(),
+    k8s: { ...healthy(), 'deployments.apps': { items: [] }, 'statefulsets.apps': { items: [] }, 'daemonsets.apps': { items: [] }, persistentvolumeclaims: { items: [] } },
   });
   const lockFile = join(tmp, 'lock.json'), mergedFile = join(tmp, 'merged.json'), ghFile = join(tmp, 'github.json'), ledgerFile = join(tmp, 'ledger.json'), historyFile = join(tmp, 'history.json');
   const env = { PATH: `${bin}:${process.env.PATH}`, HOME: tmp, STUB_LOG: logFile, STUB_WORLD: join(tmp, 'world.json'), GH_TOKEN_FILE: join(tmp, 'no-token'),
@@ -728,15 +748,36 @@ process.exit(0);
     ok(t8.summary.history?.backfill?.state === 'not yet' && !JSON.parse(readFileSync(historyFile, 'utf8')).data.meta.includes('"window"'), 'story 593: an unreadable merged list leaves the backfill not done (no marker in meta)', JSON.stringify(t8.summary.history?.backfill));
   }
   // every failed read is a named blocker, and nothing is picked
+  // Story 755: no pods are needed to prove durable state, at any replica count.
+  for (const kind of ['Deployment', 'StatefulSet']) for (const replica of [0, 3]) for (const claim of ['persistentVolumeClaim', 'ephemeral', 'volumeClaimTemplates']) {
+    const w = baseWorld([4477]), c = structuredClone(controllers755[kind]); c.spec.replicas = replica;
+    c.status = { ...c.status, replicas: replica, updatedReplicas: replica, readyReplicas: replica, availableReplicas: replica };
+    if (claim === 'volumeClaimTemplates') c.spec.volumeClaimTemplates = [{ metadata: { name: 'data' }, spec: {} }];
+    else c.spec.template.spec.volumes = [{ name: 'data', [claim]: claim === 'persistentVolumeClaim' ? { claimName: 'data' } : { volumeClaimTemplate: { spec: {} } } }];
+    w.k8s[`${M.CONTROLLERS[kind]}.apps`].items = [c];
+    const r = await tick(w);
+    ok(r.summary.would_merge === null && r.rec(4477).backup.stateful && /backup-unmatched: media\/plex-hw-canary/.test(blk(r, 4477)), `755 state: ${kind} replicas=${replica} ${claim}, no source -> stateful, backup-unmatched`, blk(r, 4477));
+  }
+  {
+    const w = baseWorld([4477]);
+    w.k8s.persistentvolumeclaims.items = [{ metadata: { namespace: 'media', name: 'kept-data', labels: { 'kustomize.toolkit.fluxcd.io/name': 'plex-hw-canary', 'kustomize.toolkit.fluxcd.io/namespace': 'media' } } }];
+    const r = await tick(w);
+    ok(r.rec(4477).backup.stateful && /backup-unmatched:.*PVC kept-data/.test(blk(r, 4477)), '755 state: a retained owned PVC with no controller or pod blocks', blk(r, 4477));
+    w.k8s.persistentvolumeclaims.items[0].metadata.labels['kustomize.toolkit.fluxcd.io/name'] = 'other';
+    const r2 = await tick(w);
+    ok(blk(r2, 4477) === '', '755 state: another app\'s PVC in the namespace does not block', blk(r2, 4477));
+  }
+
   const failCases = [
     ['configmaps', 'FAIL', 'unreadable: configmaps'], ['kustomizations.kustomize.toolkit.fluxcd.io', 'FAIL', 'unreadable: kustomizations'],
-    ['helmreleases.helm.toolkit.fluxcd.io', 'FAIL', 'unreadable: helmreleases'], ['replicationsources.volsync.backube', 'FAIL', 'unreadable: replicationsources'],
+    ['helmreleases.helm.toolkit.fluxcd.io', 'FAIL', 'unreadable: helmreleases'],
+    ['deployments.apps@media', 'FAIL', 'unreadable: deployments in media'], ['statefulsets.apps@media', 'FAIL', 'unreadable: statefulsets in media'], ['persistentvolumeclaims@media', 'FAIL', 'unreadable: persistentvolumeclaims in media'], ['replicationsources.volsync.backube', 'FAIL', 'unreadable: replicationsources'],
     ['replicationsources.volsync.backube', 'GARBAGE', 'unreadable: replicationsources'], ['backups.postgresql.cnpg.io', 'FAIL', 'unreadable: CNPG backups'],
     ['scheduledbackups.postgresql.cnpg.io', 'FAIL', 'unreadable: CNPG scheduledbackups'], ['pods', 'FAIL', 'unreadable: pods/cronjobs'],
     ['cronjobs', 'GARBAGE', 'unreadable: pods/cronjobs'], ['cephclusters.ceph.rook.io', 'FAIL', 'unreadable: cephclusters'],
   ];
   for (const [res, how, want] of failCases) {
-    const w = baseWorld([4477, 4670]); w.k8s[res] = how; if (res === 'pods') w.k8s['pods@database'] = how;
+    const w = baseWorld(res.endsWith('@media') ? [4477] : [4477, 4670]); w.k8s[res] = how; if (res === 'pods') w.k8s['pods@database'] = how;
     const r = await tick(w);
     ok(r.status === 0 && r.summary.would_merge === null && blk(r, 4477).includes(want), `${res} ${how} -> nothing picked, blocker "${want}"`, `exit ${r.status} pick=${JSON.stringify(r.summary.would_merge)} #4477: ${blk(r, 4477)}`);
   }

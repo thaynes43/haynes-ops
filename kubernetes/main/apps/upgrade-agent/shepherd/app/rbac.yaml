@@ -61,3 +61,34 @@ subjects:
   - kind: ServiceAccount
     name: upgrade-shepherd
     namespace: upgrade-agent
+---
+# Story 755, Q-548-05: only the shepherd's account can read controller rollout
+# status and claims, including apps with zero replicas. No writes or Secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: upgrade-shepherd-workload-read
+  labels:
+    app.kubernetes.io/name: upgrade-shepherd
+rules:
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: upgrade-shepherd-workload-read
+  labels:
+    app.kubernetes.io/name: upgrade-shepherd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: upgrade-shepherd-workload-read
+subjects:
+  - kind: ServiceAccount
+    name: upgrade-shepherd
+    namespace: upgrade-agent
