@@ -111,7 +111,7 @@ jobs:
       - name: Shell selftests, one at a time
         run: |
           set -euo pipefail
-          for t in coordination-sig held-audit shepherd-verdict shepherd-stand-aside shepherd-prefilter stale-corpse triage-claim gate-morning orphan-count; do
+          for t in coordination-sig held-audit shepherd-verdict shepherd-stand-aside shepherd-prefilter stale-corpse triage-claim gate-morning orphan-count responder-claim; do
             echo "::group::${t}-selftest.sh"
             nice -n 19 bash "scripts/upgrade-agent/${t}-selftest.sh"
             echo "::endgroup::"
