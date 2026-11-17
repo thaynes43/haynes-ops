@@ -962,6 +962,16 @@ kubectl -n upgrade-agent logs job/<latest upgrade-shepherd job> | grep -i 'stand
   used by the verifier. Partitioned StatefulSets and OnDelete workloads wait until all
   desired replicas are updated. ReplicaSets are still not read; the gate cannot prove a
   Deployment pod's hash belongs to the controller's current template.
+- **Unhealthy controllers also hold F2.** Replica counters cannot distinguish a rollout
+  from a Deployment already in a crash loop. An unavailable controller keeps the gate
+  closed, even if the candidate update might fix it; F2 does not treat a progress deadline
+  or a lack of progress across ticks as permission to proceed. The Flux retry/failing split
+  above applies to Flux objects, not these controller counters.
+- **DaemonSets during node maintenance.** When a desired DaemonSet replica is unavailable
+  because a node is NotReady or undergoing maintenance, that target waits until its
+  desired/updated/Ready/available counts agree again. Cordoning alone need not reduce
+  those counts. F2 has no maintenance exception or node-based reduction of the desired
+  count; unrelated targets are unaffected.
 - **Late merges.** A merge that lands after the lane's merge call is invisible to the
   gate. The verifier (stories 553 and 753) finds it with `otherChanges`.
 - **Broken dependencies.** A Kustomization of T's chain that waits on a broken dependency
