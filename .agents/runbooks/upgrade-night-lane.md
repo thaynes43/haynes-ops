@@ -594,6 +594,9 @@ What it skips, because only the tick knows it:
 - the class allowlist;
 - the tick's other gates (backups, the Flux baseline, critical alerts, work orders).
 
+For a real approved update, [upgrade-approved-by-prompt.md](upgrade-approved-by-prompt.md)
+supplies those gate checks and follows the update through its read-only verdict.
+
 It also differs from the lane in three ways:
 
 - It does not take the lock: a session pod cannot write ConfigMaps in `upgrade-agent`.
@@ -1591,7 +1594,7 @@ on the tick's own clock; on the first read the fact waits and says since when.
 | `pods` | in pods made at or after the merge, the update's containers (init containers included) | `crash-loop`; `image-pull`; `not-ready`: CreateContainerConfigError, CreateContainerError or RunContainerError on two reads | pods unreadable; the same in another container; a Pending pod (with the scheduler's reason) |
 | `alerts` | Prometheus `/api/v1/alerts`, critical and firing, traced by R5's `alertSubject`; new means `activeAt` at or after the merge; Prometheus's start from `/api/v1/status/runtimeinfo` | `critical-alert`: a new alert whose subject belongs to the target or its chain | Prometheus or its start unreadable; a new alert within `prometheus_restart_slack_seconds` (300) of a Prometheus restart after the merge (a rule with no `for:` restarts its clock); a new alert in a target namespace that cannot be traced, or names no workload; for a cluster-wide target, a new alert with no namespace |
 | `image` | each package: the update's containers run the new version (digest or tag decided by the update type the history recorded, never by the characters); else a CronJob template names it; else the HelmRelease whose last release is that chart | `wrong-image`: the old version with nothing rolling; a CronJob template naming another version; a HelmRelease settled on another chart while its chart source is settled; `not-applied`: the chart source failing on two reads | no container, CronJob or chart of the target is the package; a version cannot be read (in a pod or a CronJob template) |
-| `exercised` | a CronJob whose template names the update: the newest finished Job from the new template made since the merge (a newer one still running does not hide it) | `job-failed`: that Job failed, and the CronJob's last finished Job from the old template did not fail too | Jobs unreadable; the CronJob suspended; the old template's last Job failed too (it was failing before the merge). None yet waits for the first run, with its schedule, last run and next run |
+| `exercised` | a CronJob whose template names the update: the newest finished Job from the new template made since the merge (a newer one still running does not hide it) | `job-failed`: that Job failed, the last finished old-template Job did not fail too, and the last kept run created before the merge is from the old template, completed by the merge, matches `status.lastSuccessfulTime`, and has no later scheduled run before the merge (schedule and time zone read with `nextCron`); `lastScheduleTime` must not name a later pre-merge run | Jobs unreadable; the CronJob suspended; the last old-template Job failed too; the last pre-merge run is missing, unfinished at the merge, or lacks the timestamp and schedule evidence. The detail names the last kept success and its completion time, plus `lastSuccessfulTime` (or their absence). None yet waits for the first run, with its schedule, last run and next run |
 | `rollout` | each Deployment, StatefulSet and DaemonSet in the inventories: its pods (by owner) are of one template, none terminating, all Ready | (waits) | a workload has no running pod |
 | `stable` | two reads (below) | `restart-growth` or `not-ready` of an update's container on a node that did not reboot; `churn` | pods or nodes unreadable; the same in another container; a pod on a node that is not Ready |
 | `pin` | own images only (below) | never: before the pin has merged nothing of the update runs, so the item stays awaiting | when a pin candidate was made cannot be read |
@@ -1761,6 +1764,21 @@ The missing rule: `apiGroups: ["apps"]`, `resources: ["deployments", "statefulse
   that has not yet created all its replicas looks finished (story 755).
 - A package the target names only outside a container image, a CronJob template or a chart
   (a CRD URL, a kustomize remote resource) is `cannot-tell`.
+- A failed new-template CronJob run is the update's regression only with positive evidence
+  that its last run before the merge succeeded (story 878). The next scheduled run after
+  the retained old Job's **creation**, in the CronJob's time zone, must be at or after the
+  merge; its completion must be by the merge and match `status.lastSuccessfulTime`.
+  Comparing creation rather than completion also leaves long Jobs with intervening
+  schedules unknown, including skipped runs under `concurrencyPolicy: Forbid`. A Job
+  running at the merge that completes afterwards is unknown. A stale success, missing
+  Job, missing or inconsistent timestamps, or unreadable schedule or time zone is
+  `cannot-tell`, with the last success shown, and follows the existing `NEEDS A PERSON`
+  path. A later failed old-template Job also prevents blaming the update. A schedule
+  with no next run in `nextCron`'s eight-day search remains unknown. With both history
+  limits at 0, a pruned run cannot prove success or failure;
+  no finished new-template Job means waiting, and no old Job means an unproven baseline.
+  The schedule and time zone are those readable now; the verifier cannot reconstruct
+  earlier schedule edits or distinguish every skipped, delayed or overlapping run.
 - An update that changes no pod (a chart bump that renders the same pods) passes on the pods
   it finds: pods alone cannot show that a template did not need to change.
 - `NEEDS A PERSON` is a mark in `upgrade-lane-state`, not a history event and not a page.

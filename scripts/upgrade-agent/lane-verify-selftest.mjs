@@ -26,7 +26,9 @@
 //      M3 (attribution by container, nodes, Prometheus restarts), M4 (start errors, Pending,
 //      failing sources and HelmReleases on two reads, churn), L5 (init containers and native
 //      sidecars), and a test for each mutation the review found surviving;
-//  10. the image and version readers.
+//  10. the image and version readers;
+//  11. story 878: pruning must not turn a stale success (or no old Job) into proof that
+//      the last run before the merge succeeded; long or overlapping runs stay unknown.
 //
 // Usage: node scripts/upgrade-agent/lane-verify-selftest.mjs
 // Requires: node 24. No network, no cluster access.
@@ -529,7 +531,7 @@ await failure('a chart source failing on two reads 900 s apart (M4)', 4873, w =>
     const w = world();
     w.ks = { items: [...w.ks.items, { metadata: { name: 'backup-tool', namespace: 'media', generation: 1, labels: { 'kustomize.toolkit.fluxcd.io/name': 'cluster-apps', 'kustomize.toolkit.fluxcd.io/namespace': 'flux-system' } }, spec: { path: './kubernetes/main/apps/media/backup-tool/app', sourceRef: { kind: 'GitRepository', name: 'haynes-ops', namespace: 'flux-system' } },
       status: { observedGeneration: 1, lastAppliedRevision: w.source.status.artifact.revision, lastAttemptedRevision: w.source.status.artifact.revision, conditions: [{ type: 'Ready', status: 'True' }], inventory: { entries: [{ id: 'media_backup-tool_batch_CronJob', v: 'v1' }] } } }] };
-    w.pods.media.cronjobs = { items: [{ metadata: { name: 'backup-tool', namespace: 'media' }, spec: { schedule: '0 3 * * *', timeZone: 'America/New_York', jobTemplate: { spec: { template: { spec: { containers: [{ name: 'tool', image }] } } } } }, status: { lastScheduleTime: '2026-11-12T08:00:00Z' } }] };
+    w.pods.media.cronjobs = { items: [{ metadata: { name: 'backup-tool', namespace: 'media' }, spec: { schedule: '0 3 * * *', timeZone: 'America/New_York', jobTemplate: { spec: { template: { spec: { containers: [{ name: 'tool', image }] } } } } }, status: { lastScheduleTime: '2026-11-12T08:00:00Z', lastSuccessfulTime: jobs.filter(j => j.status?.completionTime).map(j => j.status.completionTime).sort().at(-1) } }] };
     w.pods.media.jobs = { items: jobs };
     w.extraCommits = [{ sha: 'b9'.repeat(20), at: '2026-11-13T06:00:00Z', subject: 'fix(container): update image ghcr.io/example/backup-tool to v1.1.0', pr: 9300, author: 'renovate[bot]', files: ['kubernetes/main/apps/media/backup-tool/app/cronjob.yaml'] }];
     w.source.status.artifact.revision = `main@sha1:${'b9'.repeat(20)}`; // Flux fetched it, and the targets applied it
@@ -537,13 +539,67 @@ await failure('a chart source failing on two reads 900 s apart (M4)', 4873, w =>
     return w;
   };
   const cjView = { number: 9300, state: 'MERGED', title: 'fix(container): update image ghcr.io/example/backup-tool to v1.1.0', author: { login: 'app/renovate' }, mergedAt: '2026-11-13T06:00:00Z', mergedBy: { login: 'app/renovate' }, mergeCommit: { oid: 'b9'.repeat(20) }, labels: [{ name: 'type/minor' }], body: '| Package | Update | Change |\n|---|---|---|\n| ghcr.io/example/backup-tool | minor | `1.0.0` → `1.1.0` |\n', files: [{ path: 'kubernetes/main/apps/media/backup-tool/app/cronjob.yaml' }], changedFiles: 1 };
-  const job = (name, made, cond, image = 'ghcr.io/example/backup-tool:1.1.0') => ({ metadata: { name, namespace: 'media', creationTimestamp: made, ownerReferences: [{ kind: 'CronJob', name: 'backup-tool' }] }, spec: { template: { spec: { containers: [{ name: 'tool', image }] } } }, status: { conditions: cond ? [{ type: cond, status: 'True', reason: cond === 'Failed' ? 'BackoffLimitExceeded' : undefined }] : [] } });
+  const job = (name, made, cond, image = 'ghcr.io/example/backup-tool:1.1.0', completed = cond === 'Complete' ? iso(Date.parse(made) + 14e3) : undefined) => ({ metadata: { name, namespace: 'media', creationTimestamp: made, ownerReferences: [{ kind: 'CronJob', name: 'backup-tool' }] }, spec: { template: { spec: { containers: [{ name: 'tool', image }] } } }, status: { completionTime: completed, conditions: cond ? [{ type: cond, status: 'True', reason: cond === 'Failed' ? 'BackoffLimitExceeded' : undefined }] : [] } });
   const m1a = await tick(cjWorld([job('backup-tool-old', '2026-11-12T08:00:00Z', 'Complete', 'ghcr.io/example/backup-tool:1.0.0')]), { prs: [9300], views: [cjView] });
   ok(m1a.rec(9300).verdict === 'not-yet' && /no Job from the new template since the merge; waiting for its first run \(schedule 0 3 \* \* \* America\/New_York, last scheduled 2026-11-12T08:00:00Z, next 2026-11-14T08:00:00\.000Z\)/.test(factOf(m1a.rec(9300), 'exercised').detail), 'M1: a CronJob not run since the merge is not yet, with its next run', factOf(m1a.rec(9300), 'exercised').detail);
   const m1b = await tick(cjWorld([job('backup-tool-new', '2026-11-13T08:00:00Z', 'Complete')]), { prs: [9300], views: [cjView] });
   ok(m1b.rec(9300).verdict === 'verified' && factOf(m1b.rec(9300), 'exercised').result === 'pass', 'M1: a Job from the new template completed: verified', m1b.rec(9300).why);
-  const m1c = await tick(cjWorld([job('backup-tool-new', '2026-11-13T08:00:00Z', 'Failed')]), { prs: [9300], views: [cjView] });
+  const m1c = await tick(cjWorld([job('backup-tool-old', '2026-11-12T08:00:00Z', 'Complete', 'ghcr.io/example/backup-tool:1.0.0'), job('backup-tool-new', '2026-11-13T08:00:00Z', 'Failed')]), { prs: [9300], views: [cjView] });
   ok(m1c.rec(9300).verdict === 'failed' && m1c.rec(9300).failing[0].class === 'job-failed', 'M1: a Job from the new template failed: failed', m1c.rec(9300).why);
+  // Story 878: full verifier verdicts on an injected clock. A retained success must
+  // prove the last pre-merge run, rather than merely be the only success not pruned.
+  const oldImage = 'ghcr.io/example/backup-tool:1.0.0';
+  const recent = job('backup-tool-old', '2026-11-13T06:00:00Z', 'Complete', oldImage);
+  const failed = job('backup-tool-new', '2026-11-13T06:15:00Z', 'Failed');
+  const cronFailure = async (jobs, { mergedAt = '2026-11-13T06:07:00Z', now = T1, status = {}, spec = {} } = {}) => {
+    const w = cjWorld(jobs), cj = w.pods.media.cronjobs.items[0];
+    Object.assign(cj.spec, { schedule: '*/15 * * * *' }, spec);
+    Object.assign(cj.status, { lastScheduleTime: '2026-11-13T06:15:00Z' }, status);
+    w.extraCommits[0].at = mergedAt;
+    return (await tick(w, { prs: [9300], views: [{ ...cjView, mergedAt }], now })).rec(9300);
+  };
+  const cannotExercise = r => r.verdict === 'cannot-tell' && factOf(r, 'exercised').result === 'unreadable' && !(r.failing || []).length;
+  // The real case: 38-day-old success on 2026.08.26, a failure on the new template,
+  // one retained Job of each kind, and status.lastSuccessfulTime still October 10.
+  const stale = job('ytdl-sub-peloton-29859825', '2026-10-10T02:45:00Z', 'Complete', 'ghcr.io/example/backup-tool:2026.08.26', '2026-10-10T02:45:14Z');
+  const realFailure = job('ytdl-sub-peloton-29914935', '2026-11-17T06:15:00Z', 'Failed');
+  const staleResult = await cronFailure([stale, realFailure], { mergedAt: '2026-11-17T03:56:39Z', now: Date.parse('2026-11-17T06:30:00Z'), status: { lastSuccessfulTime: '2026-10-10T02:45:14Z', lastScheduleTime: '2026-11-17T06:15:00Z' } });
+  ok(cannotExercise(staleResult), '878 a: a retained success 38 days old cannot blame the update', staleResult.why);
+  ok(/last success: Job ytdl-sub-peloton-29859825, completed 2026-10-10T02:45:14Z/.test(factOf(staleResult, 'exercised').detail), '878 a: cannot tell names the last successful Job and its October 10 completion', staleResult.why);
+  const noOld = await cronFailure([failed], { status: { lastSuccessfulTime: recent.status.completionTime } });
+  ok(cannotExercise(noOld) && /no successful Job kept/.test(factOf(noOld, 'exercised').detail), '878 b: no old Job kept is unknown, even with lastSuccessfulTime', noOld.why);
+  const recentResult = await cronFailure([recent, failed]);
+  ok(recentResult.verdict === 'failed' && recentResult.attribution === 'own-regression' && factOf(recentResult, 'exercised').class === 'job-failed', '878 c: success completed after the last scheduled run before the merge, then new failure: own regression', recentResult.why);
+  ok(/no later scheduled run before the merge \(next 2026-11-13T06:15:00.000Z\)/.test(factOf(recentResult, 'exercised').detail), '878 c: positive proof names the next schedule after the merge', recentResult.why);
+  const crossing = job('backup-tool-crossing', '2026-11-13T06:00:00Z', 'Complete', oldImage, '2026-11-13T06:08:00Z');
+  const crossed = await cronFailure([crossing, failed]);
+  ok(cannotExercise(crossed) && /completed 2026-11-13T06:08:00Z/.test(factOf(crossed, 'exercised').detail), '878 d: an old Job running at the merge and completed afterwards is unknown: no success proven by the merge', crossed.why);
+  const missingSuccess = await cronFailure([recent, failed], { status: { lastSuccessfulTime: undefined } });
+  ok(cannotExercise(missingSuccess) && /lastSuccessfulTime missing/.test(factOf(missingSuccess, 'exercised').detail), '878 e: kept pre-merge success without lastSuccessfulTime is unknown', missingSuccess.why);
+  const overlap = job('backup-tool-long', '2026-11-13T05:45:00Z', 'Complete', oldImage, '2026-11-13T06:01:00Z');
+  const overlapped = await cronFailure([overlap, failed], { spec: { concurrencyPolicy: 'Forbid' } });
+  ok(cannotExercise(overlapped), '878: a long success cannot hide an intervening failed or skipped schedule, even with Forbid', overlapped.why);
+  const missingCompletion = structuredClone(recent); delete missingCompletion.status.completionTime;
+  ok(cannotExercise(await cronFailure([missingCompletion, failed], { status: { lastSuccessfulTime: recent.status.completionTime } })), '878: missing completion time cannot prove success by the merge');
+  ok(cannotExercise(await cronFailure([recent, failed], { status: { lastSuccessfulTime: '2026-11-13T05:45:14Z' } })), '878: lastSuccessfulTime must agree with the retained completion');
+  ok(cannotExercise(await cronFailure([recent, failed], { spec: { schedule: 'unreadable' } })), '878: unreadable schedule cannot prove the last pre-merge run');
+  ok(cannotExercise(await cronFailure([recent, failed], { spec: { timeZone: 'Unknown/Zone' } })), '878: unreadable time zone cannot prove the last pre-merge run');
+  const preMergeRunning = job('backup-tool-still-running', '2026-11-13T06:01:00Z', null, oldImage);
+  ok(cannotExercise(await cronFailure([recent, preMergeRunning, failed])), '878: a later pre-merge run still running cannot be hidden by an earlier success');
+  const lateOld = job('backup-tool-old-after-merge', '2026-11-13T06:10:00Z', 'Complete', oldImage);
+  ok(cannotExercise(await cronFailure([lateOld, failed])), '878: an old-template Job created after the merge cannot establish the pre-merge baseline');
+  const lateOldFailure = job('backup-tool-old-failed-after-merge', '2026-11-13T06:10:00Z', 'Failed', oldImage);
+  const failedToo = await cronFailure([recent, lateOldFailure, failed]);
+  ok(cannotExercise(failedToo) && /old-failed-after-merge\) failed too/.test(factOf(failedToo, 'exercised').detail), '878: a later old-template failure still prevents blaming the update', failedToo.why);
+  const backwards = job('backup-tool-bad-time', '2026-11-13T06:00:00Z', 'Complete', oldImage, '2026-11-13T05:59:00Z');
+  ok(cannotExercise(await cronFailure([backwards, failed])), '878: completion before creation is inconsistent evidence');
+  ok(cannotExercise(await cronFailure([recent, failed], { spec: { schedule: '0 0 1 * *' } })), '878: no next schedule within nextCron\'s search bound leaves the baseline unknown');
+  ok(cannotExercise(await cronFailure([recent, failed], { status: { lastScheduleTime: '2026-11-13T06:05:00Z' } })), '878: status naming a later pre-merge run contradicts the retained success');
+  const boundary = await cronFailure([recent, failed], { mergedAt: '2026-11-13T06:15:00Z' });
+  ok(boundary.verdict === 'failed', '878: a scheduled run exactly at the merge is not a run before it', boundary.why);
+  const newerRunning = job('backup-tool-new-running', '2026-11-13T06:30:00Z', null);
+  const withRunning = await cronFailure([recent, failed, newerRunning]);
+  ok(withRunning.verdict === 'failed' && withRunning.attribution === 'own-regression', '878: a newer running Job does not hide a proven finished failure', withRunning.why);
   const m1d = await tick(cjWorld([], 'ghcr.io/example/backup-tool:1.0.0'), { prs: [9300], views: [cjView] });
   ok(m1d.rec(9300).verdict === 'failed' && m1d.rec(9300).failing[0].class === 'wrong-image', 'M5: a CronJob template naming another version does not pass', m1d.rec(9300).why);
   const wj = cjWorld([]); wj.fail = { jobs: true };
