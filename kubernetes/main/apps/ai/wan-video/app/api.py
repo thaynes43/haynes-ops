@@ -21,6 +21,7 @@ EXPECTED = {
     "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
 }
 JOB_ID = re.compile(r"^[0-9a-f]{32}$")
+RANGE = re.compile(r"bytes=(\d{0,19})-(\d{0,19})")
 LOCK = threading.Lock()
 ACTIVE = None
 UNSAFE = False
@@ -90,6 +91,31 @@ def output_file(job):
     if not path.is_relative_to(base) or path.suffix.lower() != ".mp4":
         raise ValueError("Invalid output file")
     return path
+
+
+def byte_range(header, size):
+    """The (first, last) bytes one Range header asks for, or None to send the whole file.
+
+    A player fetches a video in parts and seeks with Range requests. RFC 9110 lets a
+    server ignore a header it does not understand (another unit, a list of ranges, a
+    malformed or backwards range, a number of 20 digits or more), so those return None.
+    A well-formed range that lies outside the file raises LookupError, which the caller
+    answers with 416.
+    """
+    match = RANGE.fullmatch(header.strip()) if header else None
+    if not match or match.groups() == ("", ""):
+        return None
+    first, last = match.groups()
+    if not first:  # "bytes=-N": the last N bytes
+        if not size or not int(last):
+            raise LookupError("Range not satisfiable")
+        return max(size - int(last), 0), size - 1
+    first = int(first)
+    if last and int(last) < first:
+        return None
+    if first >= size:
+        raise LookupError("Range not satisfiable")
+    return first, min(int(last), size - 1) if last else size - 1
 
 
 def recover():
@@ -257,7 +283,44 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def send_file(self, source, job_id):
+        """Answer with the open MP4 `source`, whole or the one byte range asked for."""
+        size = os.fstat(source.fileno()).st_size
+        # If-Range asks for the range only while a validator still matches. This server
+        # sends no validator, so none can match and the whole file is the answer.
+        asked = None if self.headers.get("If-Range") else self.headers.get("Range")
+        try:
+            span = byte_range(asked, size)
+        except LookupError:
+            self.send_response(416)
+            self.send_header("Content-Range", "bytes */" + str(size))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        first, last = span or (0, size - 1)
+        self.send_response(206 if span else 200)
+        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Accept-Ranges", "bytes")
+        if span:
+            self.send_header("Content-Range", "bytes " + str(first) + "-" + str(last) + "/" + str(size))
+        self.send_header("Content-Length", str(last - first + 1))
+        self.send_header("Content-Disposition", 'inline; filename="' + job_id + '.mp4"')
+        self.end_headers()
+        # The answer has started: from here a fault ends the stream short, do_GET sends
+        # no second answer into it, and the connection is not used again.
+        self.streaming = True
+        self.close_connection = True
+        source.seek(first)
+        count = last - first + 1
+        while count > 0 and (chunk := source.read(min(1024 * 1024, count))):
+            try:
+                self.wfile.write(chunk)
+            except (ConnectionError, TimeoutError):
+                return  # The player hung up or stopped reading: how it seeks and how it stops.
+            count -= len(chunk)
+
     def do_GET(self):
+        self.streaming = False
         try:
             if self.path == "/health":
                 # Status and completed downloads remain available during a render
@@ -283,20 +346,17 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) == 2:
                 self.respond(200, job)
             elif parts[2] == "file" and job["state"] == "succeeded":
-                path = output_file(job)
-                self.send_response(200)
-                self.send_header("Content-Type", "video/mp4")
-                self.send_header("Content-Length", str(path.stat().st_size))
-                self.send_header("Content-Disposition", 'inline; filename="' + job["id"] + '.mp4"')
-                self.end_headers()
-                with path.open("rb") as source:
-                    while chunk := source.read(1024 * 1024):
-                        self.wfile.write(chunk)
+                with output_file(job).open("rb") as source:
+                    self.send_file(source, job["id"])
             else:
                 self.respond(409, {"error": "Video is not ready"})
         except (FileNotFoundError, ValueError):
+            if self.streaming:
+                raise
             self.respond(404, {"error": "Not found"})
         except Exception:
+            if self.streaming:
+                raise
             self.respond(503, {"error": "Worker unavailable"})
 
     def do_POST(self):

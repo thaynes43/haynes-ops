@@ -90,6 +90,16 @@
               "type": "string",
               "pattern": "^[0-9a-f]{32}$"
             }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "description": "One byte range of the file: bytes=first-last, bytes=first- or bytes=-last_n",
+            "schema": {
+              "type": "string",
+              "pattern": "^bytes=\\d*-\\d*$"
+            }
           }
         ],
         "responses": {
@@ -103,6 +113,20 @@
                 }
               }
             }
+          },
+          "206": {
+            "description": "The requested byte range of the video",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "The requested byte range lies outside the video"
           }
         }
       }

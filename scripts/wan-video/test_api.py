@@ -1,7 +1,11 @@
 """CPU-only protocol and failure tests; never import torch or submit GPU work."""
+import errno
 import importlib.util
 import json
 from pathlib import Path
+import socket
+import struct
+import sys
 import tempfile
 import threading
 import unittest
@@ -162,6 +166,143 @@ class VideoTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as error:
             urlopen(base + "/ready", timeout=2)
         self.assertEqual(error.exception.code, 503)
+
+    def serve_file(self, data):
+        """A running API with one finished job whose MP4 holds `data`."""
+        out = api.ROOT / "output/video/clip.mp4"
+        out.parent.mkdir(parents=True)
+        out.write_bytes(data)
+        api.save({"id": "c" * 32, "state": "succeeded", "output": "video/clip.mp4"})
+        errors, closed = [], threading.Event()
+
+        class Server(api.ThreadingHTTPServer):
+            def handle_error(self, request, client_address):
+                errors.append(sys.exc_info()[1])
+
+            def shutdown_request(self, request):
+                super().shutdown_request(request)
+                closed.set()
+
+        server = Server(("127.0.0.1", 0), api.Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return server.server_port, errors, closed
+
+    def test_file_download_honours_byte_ranges(self):
+        data = bytes(range(256)) * 10240  # 2.5 MiB, so a range crosses the 1 MiB read size
+        size = len(data)
+        port, errors, _ = self.serve_file(data)
+        url = "http://127.0.0.1:" + str(port) + "/videos/" + "c" * 32 + "/file"
+        with urlopen(url, timeout=5) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+            self.assertIsNone(response.headers["Content-Range"])
+            self.assertEqual(response.headers["Content-Length"], str(size))
+            self.assertEqual(response.read(), data)
+        for header, first, last in [("bytes=0-1", 0, 1), ("bytes=1000000-", 1000000, size - 1),
+                                    ("bytes=1048570-2097160", 1048570, 2097160), ("bytes=-500", size - 500, size - 1),
+                                    ("bytes=-99999999", 0, size - 1), ("bytes=100-99999999", 100, size - 1),
+                                    (" bytes=7-7 ", 7, 7)]:
+            with self.subTest(header=header), urlopen(Request(url, headers={"Range": header}), timeout=5) as response:
+                self.assertEqual(response.status, 206)
+                self.assertEqual(response.headers["Content-Range"], "bytes %d-%d/%d" % (first, last, size))
+                self.assertEqual(response.headers["Content-Length"], str(last - first + 1))
+                self.assertEqual(response.headers["Content-Type"], "video/mp4")
+                self.assertEqual(response.read(), data[first:last + 1])
+        # RFC 9110: a header the server does not understand is ignored, and the whole file is sent.
+        for header in ["bytes=5-2", "bytes=0-1,4-5", "items=0-1", "bytes=-", "bytes=a-b", "", "bytes=" + "9" * 5000 + "-",
+                       "bytes=0-" + "9" * 5000, "bytes=-" + "9" * 5000]:
+            with self.subTest(header=header[:20]), urlopen(Request(url, headers={"Range": header}), timeout=5) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.read(), data)
+        # If-Range: no validator is ever sent, so none can match and the range is not honoured.
+        with urlopen(Request(url, headers={"Range": "bytes=0-1", "If-Range": '"stale"'}), timeout=5) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.read(), data)
+        for header in ["bytes=%d-" % size, "bytes=99999999-", "bytes=-0"]:
+            with self.subTest(header=header), self.assertRaises(HTTPError) as error:
+                urlopen(Request(url, headers={"Range": header}), timeout=5)
+            self.assertEqual(error.exception.code, 416)
+            self.assertEqual(error.exception.headers["Content-Range"], "bytes */%d" % size)
+        self.assertEqual(errors, [])
+
+    def test_range_of_an_empty_file(self):
+        self.assertIsNone(api.byte_range(None, 0))
+        self.assertIsNone(api.byte_range("bytes=-", 0))
+        for header in ["bytes=0-", "bytes=0-0", "bytes=-1"]:
+            with self.subTest(header=header), self.assertRaises(LookupError):
+                api.byte_range(header, 0)
+
+    def test_player_that_hangs_up_mid_file_is_not_answered_twice(self):
+        port, errors, closed = self.serve_file(bytes(16 * 1024 * 1024))
+        player = socket.socket()
+        self.addCleanup(player.close)
+        player.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)  # the file cannot fit in the buffers
+        player.settimeout(5)
+        player.connect(("127.0.0.1", port))
+        player.sendall(("GET /videos/" + "c" * 32 + "/file HTTP/1.1\r\nHost: x\r\n\r\n").encode())
+        self.assertTrue(player.recv(4096).startswith(b"HTTP/1.0 200"))
+        # Close with unread data and no linger: the server's next write fails, as it does
+        # when a player seeks or stops.
+        player.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+        player.close()
+        self.assertTrue(closed.wait(20))
+        self.assertEqual(errors, [])
+        with urlopen("http://127.0.0.1:" + str(port) + "/health", timeout=5) as response:
+            self.assertEqual(response.status, 200)
+
+    def test_fault_after_the_answer_started_is_not_answered_twice(self):
+        port, errors, closed = self.serve_file(b"0123456789" * 100)
+        real = api.output_file
+
+        class Failing:
+            def __init__(self, handle):
+                self.handle = handle
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                self.handle.close()
+
+            def fileno(self):
+                return self.handle.fileno()
+
+            def seek(self, position):
+                return self.handle.seek(position)
+
+            def read(self, count):
+                raise OSError(errno.EIO, "Input/output error")
+
+        class Source:
+            def __init__(self, path):
+                self.path = path
+
+            def open(self, mode):
+                return Failing(self.path.open(mode))
+
+        with patch.object(api, "output_file", side_effect=lambda job: Source(real(job))):
+            player = socket.create_connection(("127.0.0.1", port), timeout=5)
+            self.addCleanup(player.close)
+            player.sendall(("GET /videos/" + "c" * 32 + "/file HTTP/1.1\r\nHost: x\r\nRange: bytes=0-99\r\n\r\n").encode())
+            answer = b""
+            while chunk := player.recv(65536):
+                answer += chunk
+            self.assertTrue(closed.wait(5))
+        head, _, body = answer.partition(b"\r\n\r\n")
+        self.assertTrue(head.startswith(b"HTTP/1.0 206"))
+        self.assertEqual(body, b"")  # a short stream, and no 503 written into it
+        self.assertEqual([type(error) for error in errors], [OSError])  # the fault is logged, not hidden
+
+    def test_missing_file_is_a_clean_404(self):
+        port, errors, _ = self.serve_file(b"0123456789")
+        (api.ROOT / "output/video/clip.mp4").unlink()
+        with self.assertRaises(HTTPError) as error:
+            urlopen("http://127.0.0.1:" + str(port) + "/videos/" + "c" * 32 + "/file", timeout=5)
+        self.assertEqual(error.exception.code, 404)
+        self.assertEqual(json.load(error.exception), {"error": "Not found"})
+        self.assertEqual(errors, [])
 
     def test_pipeline_title_task_does_not_create_video(self):
         path = REPO / "kubernetes/main/apps/ai/open-webui/app/wan_video.py"
