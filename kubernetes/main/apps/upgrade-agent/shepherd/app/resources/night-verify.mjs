@@ -156,12 +156,21 @@ export function versionMatches(c, to, kind = 'either') {
 }
 
 // ── inventories and workloads ─────────────────────────────────────────────────────
-// Flux writes an inventory entry id as <namespace>_<name>_<group>_<kind>; Kubernetes names
-// carry no underscore. null = no inventory to read.
+// Flux kustomize-controller v1.10.1 uses cli-utils v1.4.0, pkg/object/objmetadata.go:
+// ParseObjMetadata takes namespace first, kind/group last, and decodes __ in the name.
+// Require nonempty name/kind as well; namespace/group may be empty.
+function parseInventoryId(id) {
+  if (typeof id !== 'string') return null;
+  const first = id.indexOf('_'), last = id.lastIndexOf('_'), groupAt = id.lastIndexOf('_', last - 1);
+  if (first < 0 || groupAt <= first) return null; // Fewer than three separators.
+  const name = id.slice(first + 1, groupAt).replaceAll('__', ':'), kind = id.slice(last + 1);
+  return name && kind ? { ns: id.slice(0, first), name, group: id.slice(groupAt + 1, last), kind } : null;
+}
+// null = no inventory to read; keep readable entries for workload/collision callers.
 export function inventoryOf(o) {
   const e = o?.status?.inventory?.entries;
   if (!Array.isArray(e)) return null;
-  return e.map(x => String(x?.id || '').split('_')).filter(p => p.length === 4).map(([ns, name, group, kind]) => ({ ns, name, group, kind }));
+  return e.map(x => parseInventoryId(x?.id)).filter(x => x !== null);
 }
 // The target's workloads: Deployments, StatefulSets, DaemonSets and CronJobs in the inventory
 // of its own Kustomizations and of the HelmReleases those apply (or that carry their Flux labels).
@@ -588,11 +597,7 @@ export function gatusEndpoints(sc, ks) {
     // inventoryOf intentionally keeps readable entries for its other callers. Absence
     // of an endpoint needs stronger evidence: every owned entry must be readable.
     const entries = k?.status?.inventory?.entries;
-    if (!inv || entries.some(e => {
-      if (typeof e?.id !== 'string') return true;
-      const p = e.id.split('_');
-      return p.length !== 4 || !p[1] || !p[3]; // namespace/group may be empty.
-    })) { unread.push(`the inventory of Kustomization ${id} (missing or unparseable entries)`); continue; }
+    if (!inv || inv.length !== entries.length) { unread.push(`the inventory of Kustomization ${id} (missing or unparseable entries)`); continue; }
     for (const e of inv.filter(e => e.kind === 'ConfigMap' && e.group === '' && e.name.endsWith('-gatus-ep'))) {
       const name = e.name.slice(0, -'-gatus-ep'.length);
       if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) { unread.push(`Gatus endpoint name in ${e.ns}/${e.name}`); continue; }

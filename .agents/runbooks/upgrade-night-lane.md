@@ -1690,6 +1690,7 @@ is `cannot-tell`. Missing series, duplicate exact identities, and a name used by
 inventories in two namespaces are also `cannot-tell`. Every entry in each owned
 Kustomization inventory must parse before absence can mean `not-applicable`;
 a partly unparseable inventory is `cannot-tell`, even if other entries are readable.
+Inventory IDs use Flux's first namespace separator and last kind/group separators, decoding `__` in the remaining name as `:`; only non-string IDs, fewer than three separators, or empty name/kind are unparseable.
 Custom endpoint ConfigMaps without this naming contract are not mapped; absence
 means “no shared-component endpoint in the inventories”, not a claim about every
 possible app test. The gauge's sample time is Prometheus's stored scrape time;

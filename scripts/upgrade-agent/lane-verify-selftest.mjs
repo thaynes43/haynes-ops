@@ -230,6 +230,17 @@ const real = await twice(world());
   const partialMapped = (await twice(extraBroken, { prs: [4869] })).b.rec(4869);
   ok(partialMapped.verdict === 'cannot-tell' && factOf(partialMapped, 'app-check').result === 'unreadable', '755 F1: even a passing mapped endpoint cannot clear another unreadable owned inventory entry');
 
+  // F4: Flux transcodes colons in RBAC names as double underscores.
+  const kyvernoId = '_kyverno__reports-controller__rbac-read_rbac.authorization.k8s.io_ClusterRole';
+  const kyverno = { metadata: { namespace: 'kyverno', name: 'kyverno' }, status: { inventory: { entries: [{ id: kyvernoId }] } } };
+  ok(JSON.stringify(V.inventoryOf(kyverno)) === JSON.stringify([{ ns: '', name: 'kyverno:reports-controller:rbac-read', group: 'rbac.authorization.k8s.io', kind: 'ClusterRole' }]), '755 F4: the live kyverno inventory ID decodes both colons and its empty namespace');
+  const kyvernoScope = { own: ['kyverno/kyverno'] }, kyvernoKs = { items: [kyverno] };
+  const kyvernoCheck = await V.factAppCheck(kyvernoScope, {}, { ks: kyvernoKs }, null);
+  ok(kyvernoCheck.result === 'not-applicable' && /no endpoint/.test(kyvernoCheck.detail), '755 F4: kyverno with the colon-bearing role and no Gatus ConfigMap is not applicable');
+  kyverno.status.inventory.entries.push({ id: 'kyverno_kyverno-gatus-ep__ConfigMap' });
+  const kyvernoMapping = V.gatusEndpoints(kyvernoScope, kyvernoKs);
+  ok(kyvernoMapping.names.join() === 'kyverno' && kyvernoMapping.unread.length === 0, '755 F4: the same colon-bearing inventory with a Gatus ConfigMap maps its endpoint');
+
   // Fix round F3: internal and external are distinct checks for the same endpoint.
   const dual = world(); dual.gatusDual = true;
   const dualPass = (await twice(dual, { prs: [4869] })).b.rec(4869);
