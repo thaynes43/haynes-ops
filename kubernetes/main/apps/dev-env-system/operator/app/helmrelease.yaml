@@ -633,7 +633,24 @@ spec:
               # (haynes-ops#4914); rollback target for the operator alone, with all current args.
               # Rollback retains the ledger/status and existing raise keys; it loses the Pending
               # reap/queue hold and suffix reserve, so later summoned activity needs review first.
-              tag: sha-4f3ef3d@sha256:a0fbe601f6cbae67e29c200441effa0bf161eaa41f9aab07eecc6e92f68ec7c9
+              # dev-env main 298841e61d05e60ff281eed988874e51910a0690 (OP921, dev-env#1223).
+              # publish.yml run 44415736921, operator job 135195422612, built, signed and
+              # verified this digest. Install the paired agent 2.112.0 image/hold FIRST
+              # (haynes-ops#4960), or together: older agentd refuses a 6.2 Session.
+              # dev-env#1219 admits explicitly requested gpt-6.2-sol/gpt-6.2-astra through
+              # shared validation. No default or privileged coordinator model/effort change.
+              # dev-env#1223's allowance reader accepts exact 0.160.1 and 0.169.1 hosts;
+              # unknown versions still refuse. The operator image does not replace a host CLI.
+              # #1222 is agent-run-only, #1217 design/docs, #1216 keeper-only switch source.
+              # Every current argument stays unchanged: no --codex-remote-stop-hosts value,
+              # no raise, pager or grant Ask switch, and host selection stays as configured.
+              # Keeper stays sha-1ae9c7c; broker and OP922 inputs are unchanged. No CRD,
+              # RBAC, admission, Secret, ExternalSecret or network policy change.
+              # CRD bodies match this source except the existing held OP503 GrantPolicy copy.
+              # Rollback operator alone to sha-4f3ef3d@sha256:a0fbe601f6cbae67e29c200441effa0bf161eaa41f9aab07eecc6e92f68ec7c9
+              # with all current args: it refuses new 6.2 requests and its allowance reader
+              # cannot read a 0.169.1 host. Agent/hold and any upgraded host package stay put.
+              tag: sha-298841e@sha256:a1903731023f6c7277e68577ba6c4125a5320aea6e216c41d2661e7587060ba9
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve
