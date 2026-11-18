@@ -1,7 +1,16 @@
-# Haynes Studio render worker: the versions the E0 PoC was rendered with.
-av==19.0.2
-imageio-ffmpeg==0.8.1
-numpy==2.5.5
-opencv-python-headless==5.0.0.93
+# Runtime dependencies from thaynes43/haynes-studio uv.lock at
+# f431c2402fa21819ee739f4e34e31b2c59e56091 (Python 3.12, linux x86_64).
+# Generated with uv 0.13.6 from that checkout (project and all dev groups omitted):
+# uv export --locked --no-default-groups --no-emit-project --no-annotate --no-header --no-hashes --python 3.12
+attrs==26.1.0
+av==18.1.0
+imageio-ffmpeg==0.7.0
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+numpy==2.4.6
+opencv-python-headless==4.14.0.94
 pillow==13.0.0
-scipy==1.18.1
+referencing==0.37.0
+rpds-py==2026.9.1
+scipy==1.16.3
+typing-extensions==4.16.0
