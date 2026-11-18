@@ -147,17 +147,44 @@
 # suspend and resume. A paired Codex host on 2.102.0 or newer stays usable for automatic
 # selection after this pin.
 # Rollback image:2.107.0@sha256:bbb81c6e847f2fb0ef9824178d27323100fc99ece7fc188bf4ec1561a5d52875.
-image: ghcr.io/thaynes43/dev-env:2.109.0@sha256:8b2b51d5997c7406271128143734e08b885de4c3efb2dcc271d9c6c2389a0dca
+# v2.111.0 source f9677123 (release #1192). publish-agent.yml run 44241082306, agent job
+# 134588897845, built, smoke-tested, signed and verified this digest on refs/tags/v2.111.0.
+# It carries 2.110.0 too, which was released and never pinned here (OP920).
+# What a session gains after its next start or resume from 2.109.0:
+# - agent-run displays a stored summoned remote registration in text and JSON (#1152, OP797).
+# - agent-run gains raise/status commands and display (#1145, OP830); an explicit request is
+#   still required, operator raise settings stay off and this image activates no raise.
+# - A summoned Claude task preflights its model and one fallback with fenced, bounded probes
+#   before its one real start (#1120, OP791); ordinary sessions and remote TUIs get no preflight.
+# - A summoned remote first launch carries one literal positional brief, rejects leading
+#   dash/NUL, reports a closed delivery word and counts even a handoff-only or unreadable
+#   start record against its one start (#1179, OP795); ordinary launch argv stays the same.
+#   Delivery means tmux handoff, not provider acknowledgement; real provider proof is separate.
+# - The Cursor collector retries EINTR within the original deadline (#1169, OP867).
+# - DESIGN-067 slice b (#1165, OP858) carries explicit coordinator thread intent and UID/purpose
+#   checks; slice c1 (#1171) selects the safe Codex stop only with controller-owned metadata.
+#   Both operator host settings stay empty, so no coordinator host is admitted and no unlisted
+#   pod changes its stop; this pin provides no host, flag activation or phone/stop proof.
+# - agentd links controller-runtime 0.25.3 and x/net 0.63.0 (#1190/#1201); agent-run does not.
+# No Dockerfile, entrypoint, provider CLI pin, settings template, env, mount or new template
+# field changes from 2.109.0, and no running process is replaced by an image setting.
+# Both image references below are byte-equal: the hold prevents any running session from
+# Draining; new sessions and resumes use 2.111.0, running pods stay until their own suspend
+# and resume. The keeper stays on sha-1ae9c7c and no keeper key is initialized by this pin.
+# Rollback image:2.109.0@sha256:8b2b51d5997c7406271128143734e08b885de4c3efb2dcc271d9c6c2389a0dca.
+# Roll back BOTH references together; ordinary launch JSON remains readable, but a summoned
+# handoff-only start is not downgrade-safe: 2.109.0 can miss that latch and launch again.
+image: ghcr.io/thaynes43/dev-env:2.111.0@sha256:0ce285b51dcb0b40168ef3be40476db28080c0a1d36db3decb0fffdc40ec0ffb
 
 # New-sessions-only rollout for THIS image (DESIGN-001 5.2, dev-env#925; Q-03 option B, a
 # per-rollout deviation recorded in the PR that sets it). While this equals `image`, the
-# operator marks no session Draining: new sessions and resumes use the 2.109.0 revision and
+# operator marks no session Draining: new sessions and resumes use the 2.111.0 revision and
 # running sessions keep their pods until their own suspend and resume. It is not part of the
 # revision. It MUST equal `image` exactly: the Renovate rule bumps only the `image:` line, so
 # the next image bump PR must update this line to the new image or delete it (deleting it
 # resumes idle drain), otherwise the templates are invalid and new sessions wait.
 rollout:
-  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.109.0@sha256:8b2b51d5997c7406271128143734e08b885de4c3efb2dcc271d9c6c2389a0dca
+  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.111.0@sha256:0ce285b51dcb0b40168ef3be40476db28080c0a1d36db3decb0fffdc40ec0ffb
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
