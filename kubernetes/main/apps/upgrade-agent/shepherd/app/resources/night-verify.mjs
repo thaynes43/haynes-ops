@@ -639,17 +639,24 @@ export async function factAppCheck(sc, change, ctx, memory) {
   let before;
   for (const name of mapping.names) {
     const matches = rows => rows.filter(r => r.name === name && ['internal', 'external'].includes(r.group) && r.key === `${r.group}_${name}`);
-    const rows = matches(current), row = rows[0];
-    if (rows.length !== 1) { parts.push({ r: 'unreadable', d: `cannot tell: Gatus ${name} has ${rows.length} matching series (group/name/key); endpoint missing or ambiguous` }); continue; }
-    const sample = row.sample, key = row.key;
-    if (!sample || sample.at <= Date.parse(memory.at)) { parts.push({ r: 'unreadable', d: `cannot tell: Gatus ${key} has no sample newer than rollout completion observed at ${memory.at}` }); continue; }
-    if (sample.success) { parts.push({ r: 'pass', d: `Gatus ${key} passed at sample ${iso(sample.at)}, after rollout completion observed at ${memory.at}` }); continue; }
-    const preAt = Date.parse(change.merged_at) - 1;
-    if (before === undefined) before = gatusSamples(await ctx.gatus(preAt), preAt, maxAge);
-    const old = before?.filter(r => r.group === row.group && r.name === row.name && r.key === row.key);
-    if (old?.length === 1 && old[0].sample?.success) parts.push({ r: 'fail', class: 'not-ready', d: `Gatus ${key} failed at sample ${iso(sample.at)} after the rollout; it passed before the update at sample ${iso(old[0].sample.at)}` });
-    else parts.push({ r: 'unreadable', d: `cannot tell: Gatus ${key} failed at sample ${iso(sample.at)}, but no unambiguous passing sample before the update (already failing, missing, stale or unreadable)` });
+    const rows = matches(current);
+    if (!rows.length) { parts.push({ r: 'unreadable', d: `cannot tell: Gatus ${name} has no matching series (group/name/key); endpoint missing` }); continue; }
+    for (const row of rows) {
+      const sample = row.sample, key = row.key;
+      // Internal and external checks both count; two copies of the same identity
+      // (for example from two scrapers) still cannot establish an unambiguous result.
+      if (rows.filter(r => r.key === key).length !== 1) { parts.push({ r: 'unreadable', d: `cannot tell: Gatus ${key} has duplicate matching series (group/name/key)` }); continue; }
+      if (!sample || sample.at <= Date.parse(memory.at)) { parts.push({ r: 'unreadable', d: `cannot tell: Gatus ${key} has no sample newer than rollout completion observed at ${memory.at}` }); continue; }
+      if (sample.success) { parts.push({ r: 'pass', d: `Gatus ${key} passed at sample ${iso(sample.at)}, after rollout completion observed at ${memory.at}` }); continue; }
+      const preAt = Date.parse(change.merged_at) - 1;
+      if (before === undefined) before = gatusSamples(await ctx.gatus(preAt), preAt, maxAge);
+      const old = before?.filter(r => r.group === row.group && r.name === row.name && r.key === row.key);
+      if (old?.length === 1 && old[0].sample?.success) parts.push({ r: 'fail', class: 'not-ready', d: `Gatus ${key} failed at sample ${iso(sample.at)} after the rollout; it passed before the update at sample ${iso(old[0].sample.at)}` });
+      else parts.push({ r: 'unreadable', d: `cannot tell: Gatus ${key} failed at sample ${iso(sample.at)}, but no unambiguous passing sample before the update (already failing, missing, stale or unreadable)` });
+    }
   }
+  // Every matching check must be readable before the app as a whole can be judged.
+  if (parts.some(p => p.r === 'unreadable')) return fold('app-check', parts.filter(p => p.r === 'unreadable'));
   return fold('app-check', parts, parts.map(p => p.d).join('; '));
 }
 
