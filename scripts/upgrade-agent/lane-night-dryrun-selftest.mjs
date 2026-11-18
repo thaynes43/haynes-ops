@@ -233,6 +233,43 @@ ok(threw, 'runReadOnly throws before running a refused command');
   ok(!N.cnpgFresh('database/postgres16', sb, b, T('2026-11-10T06:00:00Z'), D).pass, 'postgres16: a Backup older than 24h is not fresh');
   ok(!N.cnpgFresh('database/nope', sb, b, T('2026-11-09T07:00:00Z'), D).pass, 'a cluster with no ScheduledBackup is not fresh');
 
+  // Story 755: the clock and the configured window, never a real wait.
+  const window = N.backupWindow(T('2026-11-10T06:45:00Z'), rules.night);
+  const assets = rs('openproject-assets-aws');
+  const assetsWait = N.volsyncFresh(assets, T('2026-11-10T06:45:00Z'), D, window);
+  ok(!assetsWait.pass && assetsWait.blocker.startsWith('backup-due-in-window: frontend/openproject-assets-aws runs at 02:30'), "755: at 01:45 New York yesterday's assets sync cannot cross tonight's 02:30 run", JSON.stringify(assetsWait));
+  assets.status.lastSyncTime = '2026-11-10T07:30:52Z'; assets.status.nextSyncTime = '2026-11-11T07:30:00Z';
+  ok(N.volsyncFresh(assets, T('2026-11-10T07:31:00Z'), D, window).pass, '755: assets pass after the run inside the window completes');
+  const dbWait = N.cnpgFresh('frontend/openproject-db', sb, b, T('2026-11-10T06:45:00Z'), D, window);
+  ok(!dbWait.pass && dbWait.blocker.startsWith('backup-due-in-window: frontend/openproject-db runs at 02:00'), "755: at 01:45 New York yesterday's completed database backup cannot cross 02:00", JSON.stringify(dbWait));
+  const sbDone = structuredClone(sb); sbDone.find(x => x.metadata.name === 'openproject-db').status.lastScheduleTime = '2026-11-10T07:00:00Z';
+  const dbDone = structuredClone(b.find(x => x.spec.cluster.name === 'openproject-db')); dbDone.metadata.creationTimestamp = '2026-11-10T07:00:00Z';
+  ok(N.cnpgFresh('frontend/openproject-db', sbDone, [...b, dbDone], T('2026-11-10T07:01:00Z'), D, window).pass, '755: database passes on its completed 02:00 run');
+  ok(!N.cnpgFresh('frontend/openproject-db', sb, [...b, dbDone], T('2026-11-10T07:01:00Z'), D, window).pass, '755: a Backup alone does not prove the ScheduledBackup advanced');
+  const wrongSource = structuredClone(dbDone); wrongSource.metadata.labels['cnpg.io/scheduled-backup'] = 'another-schedule';
+  ok(!N.cnpgFresh('frontend/openproject-db', sbDone, [...b, wrongSource], T('2026-11-10T07:01:00Z'), D, window).pass, "755: another schedule's success cannot substitute for this run");
+  for (const expr of ['unreadable', '0 0 * *', '60 0 * * *', '0 24 * * *', '*/0 * * * *', '0 0 3-1 * *', '0 0 * JAN *']) {
+    const x = rs('mosquitto-aws'); x.spec.trigger.schedule = expr;
+    ok(N.volsyncFresh(x, T('2026-11-10T06:45:00Z'), D, window).blocker.startsWith('unreadable:'), `755: invalid VolSync schedule ${expr} is unreadable`);
+  }
+  const badSb = structuredClone(sb); badSb.find(x => x.metadata.name === 'openproject-db').spec.schedule = '0 2 * * *';
+  ok(N.cnpgFresh('frontend/openproject-db', badSb, b, T('2026-11-10T06:45:00Z'), D, window).blocker.startsWith('unreadable:'), '755: CNPG needs seconds first; five numeric fields are unreadable');
+  const seconds = N.backupCron('17 0 2 * * *', true, 'America/New_York');
+  ok(seconds.matches(T('2026-11-10T07:00:17Z')) && !seconds.matches(T('2026-11-10T07:00:00Z')), '755: CNPG seconds are honored, never discarded');
+  const explicit = rs('mosquitto-aws'); explicit.spec.trigger.schedule = 'CRON_TZ=UTC 0 5 * * *';
+  ok(N.volsyncFresh(explicit, T('2026-11-10T00:55:00Z'), D, window).pass, '755: explicit schedule zone overrides the lane zone when the anchor matches');
+  explicit.spec.trigger.schedule = 'CRON_TZ=No/SuchZone 0 5 * * *';
+  ok(N.volsyncFresh(explicit, T('2026-11-10T06:45:00Z'), D, window).blocker.startsWith('unreadable:'), '755: unreadable zone blocks');
+  const mismatch = rs('mosquitto-aws'); mismatch.spec.trigger.schedule = '0 1 * * *';
+  ok(N.volsyncFresh(mismatch, T('2026-11-10T06:45:00Z'), D, window).blocker.startsWith('unreadable:'), '755: status that does not corroborate the schedule zone blocks');
+  const shortWindow = N.backupWindow(T('2026-11-10T06:45:00Z'), { ...rules.night, merge_window_local: { first: '01:30', last: '01:59' } });
+  ok(N.cnpgFresh('frontend/openproject-db', sb, b, T('2026-11-10T06:45:00Z'), D, shortWindow).pass, '755: a run after the configured end is not pulled into tonight');
+  const dst = N.backupCron('0 1 * * *', false, 'America/New_York');
+  ok(dst.latest(T('2026-11-01T04:00:00Z'), T('2026-11-01T06:30:00Z')) === T('2026-11-01T06:00:00Z'), '755: repeated DST hour uses the later actual run, not a 24h period');
+  const hourly = rs('mosquitto-aws'); hourly.spec.trigger.schedule = '0 * * * *'; hourly.status.nextSyncTime = '2026-11-10T07:00:00Z';
+  const later = N.volsyncFresh(hourly, T('2026-11-10T06:45:00Z'), D, window);
+  ok(later.due === '2026-11-10T09:00:00.000Z' && !later.pass, '755: every run through window end must complete, including the last hourly run');
+
   const ready = (o, v) => ({ ...o, status: { conditions: [{ type: 'Ready', status: v ? 'True' : 'False' }] } });
   const ks = (ns, name, tns, path, dependsOn = [], v = true) => ready({ metadata: { namespace: ns, name }, spec: { targetNamespace: tns, path, dependsOn } }, v);
   const K = { items: [
