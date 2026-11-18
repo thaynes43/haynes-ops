@@ -169,7 +169,7 @@
       },
     },
     {
-      description: 'studio-render Python set: one PR per update type. Auto-merge policy is unchanged: the ai/** tier auto-merges the minor/patch group, and majors stay manual.',
+      description: 'studio-render Python set: one PR per update type. DISABLED since 2026-11-18 by the pip hold in holds.json5 (the file is generated from the haynes-studio lock). If that hold is lifted, the ai/** tier auto-merges the minor/patch group again and majors stay manual.',
       groupName: 'studio-render python requirements',
       groupSlug: 'pip-studio-render',
       matchManagers: ['pip_requirements'],

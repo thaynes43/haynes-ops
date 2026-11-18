@@ -306,17 +306,29 @@
     },
     {
       description: [
-        'HELD Python 3.14 and newer for the studio-render worker (HelmRelease image docker.io/library/python) until its pinned requirements have wheels for the new interpreter. 3.12.x and 3.13.x tag and digest updates stay allowed.',
-        'Reason: the pod pip-installs kubernetes/main/apps/ai/studio-render/app/requirements.txt at start, and the slim image has no compiler. numpy 2.2.6 ships wheels up to cp313 (none for cp314 or cp315) and scipy 1.16.3 up to cp314 (none for cp315); the first numpy with cp315 manylinux wheels is 2.5.2 and the first scipy is 1.18.1 (PyPI, 2026-11-10). On a 3.14 or 3.15 tag the venv build fails and the pod crashloops, and the start script deletes every older venv first (the for-loop over /studio/.venv/*), so the working py312 environment is already gone when the build fails. The 3.15 proposal (PR 4642) is the visible case; 3.14 fails the same way on numpy, so the bound is 3.14 and not 3.15.',
-        'Issue: Renovate PR https://github.com/thaynes43/haynes-ops/pull/4642 (3.15-slim-bookworm, to be closed by Renovate under this hold). Sibling of the Python hold above (PR #4220), which covers three Dockerfiles under the dockerfile manager.',
-        'Resume: MANUAL — after requirements.txt moves to numpy >=2.5.2 and scipy >=1.18 (or whichever set has wheels for the target interpreter) and a render check passes on that interpreter, widen the bound by hand.',
-        'Recorded: 2026-11-10 by claude under OpenProject story 513 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/513). Scope: this one HelmRelease; no other python consumer is held by this rule.',
+        'HELD Python for the studio-render worker (HelmRelease image docker.io/library/python) at 3.12: every other minor is held. 3.12.x tag and digest updates stay allowed.',
+        'Reason: the worker runs the haynes-studio package at its lock. That package requires Python 3.11 or 3.12, and its keyer and encoder builds are cache-key inputs, so the interpreter has to be the one the lock was resolved for. The older reason still holds for 3.14 and newer: the pod pip-installs kubernetes/main/apps/ai/studio-render/app/requirements.txt at start, the slim image has no compiler, and the start script deletes every older venv before it builds the new one (the for-loop over /studio/.venv/*), so a failed build leaves the worker with no environment.',
+        'Issue: OpenProject story 862 in project haynes-studio (https://work.haynesnetwork.com/work_packages/862), haynes-ops PR https://github.com/thaynes43/haynes-ops/pull/4932. Earlier: Renovate PR https://github.com/thaynes43/haynes-ops/pull/4642 (3.15-slim-bookworm). Sibling of the Python hold above (PR #4220), which covers three Dockerfiles under the dockerfile manager.',
+        'Resume: MANUAL — when haynes-studio widens requires-python and re-resolves its uv.lock for the new interpreter: regenerate requirements.txt from that lock, change the image tag and this bound in the same PR, and check the versions inside the worker.',
+        'Recorded: 2026-11-18 by claude (haynes-studio E1 coordinator) under story 862; first recorded 2026-11-10 under OpenProject story 513 (https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/513) as a bound of 3.13. Scope: this one HelmRelease; no other python consumer is held by this rule.',
       ],
       matchDatasources: ['docker'],
       matchPackageNames: ['python', 'docker.io/python', 'docker.io/library/python'],
       matchFileNames: ['kubernetes/main/apps/ai/studio-render/app/helmrelease.yaml'],
-      // A regex keeps Docker patch tags such as 3.13.9-slim-bookworm eligible; npm-semver's fallback treats their suffix as a prerelease.
-      allowedVersions: '/^(?:[12](?:[.-]|$)|3\\.(?:[0-9]|1[0-3])(?:[.-]|$))/',
+      // A regex keeps Docker patch tags such as 3.12.16-slim-bookworm eligible; npm-semver's fallback treats their suffix as a prerelease.
+      allowedVersions: '/^3\\.12(?:[.-]|$)/',
+    },
+    {
+      description: [
+        'HELD every pip update of the studio-render worker requirements: the file is generated from a lock, not maintained here.',
+        'Reason: kubernetes/main/apps/ai/studio-render/app/requirements.txt is exported from the uv.lock of thaynes43/haynes-studio (the command and the lock commit are in the file header). The worker has to run the studio package at exactly those versions: the keyer and encoder builds are cache-key inputs, so a picture keyed with other versions does not match keys made elsewhere. A bump here would move the worker off the lock without anyone deciding it, and the kubernetes/*/apps/ai/** tier auto-merges minor and patch updates.',
+        'Issue: OpenProject story 862 in project haynes-studio (https://work.haynesnetwork.com/work_packages/862), haynes-ops PR https://github.com/thaynes43/haynes-ops/pull/4932.',
+        'Resume: MANUAL — never by a bump in this file. Update the lock in thaynes43/haynes-studio, regenerate this file from it, and check the versions inside the worker. Remove this hold only if the worker stops following the studio lock.',
+        'Recorded: 2026-11-18 by claude (haynes-studio E1 coordinator) under story 862. Scope: this one file; the studio-render group in groups.json5 stays for the day the hold is lifted.',
+      ],
+      matchManagers: ['pip_requirements'],
+      matchFileNames: ['kubernetes/main/apps/ai/studio-render/app/requirements.txt'],
+      enabled: false,
     },
     // LIFTED 2026-07-17: grafana/mcp-grafana 0.17.1/0.17.2 /healthz 403 hold removed.
     //   Root cause was NOT a probe-path regression but v0.17.1's new DNS-rebinding
