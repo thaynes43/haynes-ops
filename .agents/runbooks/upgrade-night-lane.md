@@ -197,11 +197,15 @@ critical alerts from Prometheus, main's commits to the PR's files and each work 
     clears its star bit); CNPG 1.30 uses v1.2.0 (the bit is retained). A wildcard anywhere
     in a comma list contributes its bit. Weekdays range from 0 to 6.
     For VolSync an explicit `TZ=` or `CRON_TZ=` prefix supplies the zone. CNPG
-    v1 has no such prefix and one is unreadable. Otherwise the lane's
-    `night.timezone` is used only when the source's next/last scheduled timestamp matches
-    that schedule in that zone. This corroborates New York for today's sources without
-    assuming UTC or the worker pod's zone. Syntax, missing timestamps, a mismatched or
-    unreadable zone, or an unreadable window blocks as `unreadable: backup schedule …`.
+    v1 has no such prefix and one is unreadable. For a bare schedule, the candidate
+    zones are `night.timezone` and UTC. The source's next/last scheduled timestamp
+    rules out a candidate only when it does not match the schedule in that zone.
+    No candidate left is unreadable. Otherwise the newest completed backup must cover
+    the latest due run across all remaining candidates, including every run through the
+    window end. If their due times differ, the blocker says “time zone not certain”
+    and names the remaining zones. Today's five live schedule forms keep their existing
+    results. Syntax, missing timestamps, no matching zone, or an unreadable window
+    blocks as `unreadable: backup schedule …`.
   - Weekly sources still normally pass only on their own night under the 24-hour cap.
     An unsupported cron spelling (for example named months) fails closed. This reader
     uses the schedule readable now; it cannot reconstruct earlier schedule or zone edits.
@@ -1644,7 +1648,7 @@ on the tick's own clock; on the first read the fact waits and says since when.
 | `image` | each package: the update's containers run the new version (digest or tag decided by the update type the history recorded, never by the characters); else a CronJob template names it; else the HelmRelease whose last release is that chart | `wrong-image`: the old version with nothing rolling; a CronJob template naming another version; a HelmRelease settled on another chart while its chart source is settled; `not-applied`: the chart source failing on two reads | no container, CronJob or chart of the target is the package; a version cannot be read (in a pod or a CronJob template) |
 | `exercised` | a CronJob whose template names the update: the newest finished Job from the new template made since the merge (a newer one still running does not hide it) | `job-failed`: that Job failed, the last finished old-template Job did not fail too, and the last kept run created before the merge is from the old template, completed by the merge, matches `status.lastSuccessfulTime`, and has no later scheduled run before the merge (schedule and time zone read with `nextCron`); `lastScheduleTime` must not name a later pre-merge run | Jobs unreadable; the CronJob suspended; the last old-template Job failed too; the last pre-merge run is missing, unfinished at the merge, or lacks the timestamp and schedule evidence. The detail names the last kept success and its completion time, plus `lastSuccessfulTime` (or their absence). None yet waits for the first run, with its schedule, last run and next run |
 | `rollout` | each inventoried Deployment, StatefulSet and DaemonSet: controller generation observed; desired replicas updated and Ready (available too for Deployments and DaemonSets; StatefulSet revisions match); that many pods by owner, of one template, none terminating, all Ready. Zero desired replicas are distinguishable from replicas not yet created | (waits for incomplete generation/counts or pods) | the controller list, controller object, generation, desired count or pods cannot be read |
-| `app-check` | the shared Gatus component's endpoint, mapped by the target's inventoried `<APP>-gatus-ep` ConfigMap and exact live `group`, `name`, `key` labels; raw `gatus_results_endpoint_success` samples from Prometheus after observed rollout completion | `not-ready`: a failing sample after rollout and a passing sample before the update; the existing other-change rule still governs own-regression and the revert decision | failed read, malformed or ambiguous series, no sample newer than observed rollout completion, stale sample, or a failure with no passing pre-update sample; no shared-component endpoint is explicitly `not-applicable` |
+| `app-check` | every matching Gatus series for each endpoint, mapped by the target's inventoried `<APP>-gatus-ep` ConfigMap and exact live `group`, `name`, `key` labels; raw `gatus_results_endpoint_success` samples from Prometheus after observed rollout completion | `not-ready`: a failing series after rollout and a passing sample for that same series before the update, with every series readable; the existing other-change rule still governs own-regression and the revert decision | unreadable or partly unparseable inventory, failed read, missing or duplicate series identity, no sample newer than observed rollout completion, stale sample, or a failure with no passing pre-update sample; only a completely parsed inventory with no shared-component endpoint is `not-applicable` |
 | `stable` | two reads (below) | `restart-growth` or `not-ready` of an update's container on a node that did not reboot; `churn` | pods or nodes unreadable; the same in another container; a pod on a node that is not Ready |
 | `pin` | own images only (below) | never: before the pin has merged nothing of the update runs, so the item stays awaiting | when a pin candidate was made cannot be read |
 
@@ -1678,8 +1682,14 @@ The lane reaches Prometheus on its existing port 9090 permission; it reads neith
 Gatus itself nor an app namespace's ConfigMap. Endpoint names come from the shared
 component's actual inventory resource, rather than guessing from a workload or
 HelmRelease name. Live labels checked on 2026-11-18 use `name=APP`, `group=internal`
-(guarded) or `external`, and `key=group_APP`. Missing or multiple matching series,
-and a name used by inventories in two namespaces, are ambiguous and `cannot-tell`.
+(guarded) or `external`, and `key=group_APP`. Distinct matching series, such as
+internal and external checks for the same name, all belong to the app: every one
+must pass after rollout. A failure uses that same series' passing pre-update baseline
+and the existing attribution rule. If any series cannot be told, the whole app check
+is `cannot-tell`. Missing series, duplicate exact identities, and a name used by
+inventories in two namespaces are also `cannot-tell`. Every entry in each owned
+Kustomization inventory must parse before absence can mean `not-applicable`;
+a partly unparseable inventory is `cannot-tell`, even if other entries are readable.
 Custom endpoint ConfigMaps without this naming contract are not mapped; absence
 means “no shared-component endpoint in the inventories”, not a claim about every
 possible app test. The gauge's sample time is Prometheus's stored scrape time;
@@ -1894,9 +1904,14 @@ and [DaemonSets](https://kubernetes.io/docs/reference/kubernetes-api/workload-re
   change. A chart-only update at zero replicas says “no pod ran”; with no mapped endpoint
   it may still verify the chart and empty rollout, rather than proving app execution.
 - Gatus mapping covers the shared component inventory contract only. Custom endpoint
-  layouts, duplicated names and unreadable or stale samples need a person; this is not
-  a stateful hook. Prometheus sample times establish scrape freshness, not the precise
-  endpoint evaluation time (see App check above).
+  layouts, names shared across namespaces, duplicate exact series identities and
+  unreadable or stale samples need a person; this is not a stateful hook.
+  The 2026-11-18 live check still cannot tell `ai/ollama-prime` (no matching series)
+  or `rook-ceph/rook-ceph-cluster` (the endpoint is named `rook`, whereas its
+  `rook-dashboard-gatus-ep` ConfigMap implies `rook-dashboard`). Internal and external
+  series for one name, as on `frontend/sigoalumni`, are both checked.
+  Prometheus sample times establish scrape freshness, not the precise endpoint
+  evaluation time (see App check above).
 - `NEEDS A PERSON` is a mark in `upgrade-lane-state`, not a history event and not a page.
   It reaches a person through the morning summary (story 554).
 - An earlier merge that is still open and whose files are unknown makes every later merge's
