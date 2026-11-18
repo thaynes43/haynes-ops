@@ -100,6 +100,7 @@ export function composeFacts({ now, mode, rules, prev = null, records = [], veri
         // one entry per item: the revert, then whether the target recovered (the last word wins)
         let x = facts.reverted.find(r => r.item === ev.item_id);
         if (!x) facts.reverted.push(x = { ...base, item: ev.item_id, recovered: null, reason: null });
+        if (ev.type === 'revert-merged') x.reverted_at = ev.at;
         if (ev.type === 'recovery-verified') x.recovered = true;
         if (ev.type === 'recovery-failed') { x.recovered = false; x.reason = clean(ev.reason, R); }
         x.at = ev.at;
@@ -175,9 +176,10 @@ export function composeText(facts, { now, cfg, tz, finished }) {
 
   // One line per package, at its most recently merged version. Keep the first appearance's
   // position for a stable list. Compare timestamps, not input order or semver (also digests).
+  const packageKey = x => `${x.name}\0${displayName(x, cfg)}`;
   const upgrades = new Map();
   for (const x of facts.merged) {
-    const key = `${x.name}\0${displayName(x, cfg)}`;
+    const key = packageKey(x);
     const old = upgrades.get(key);
     if (!old || Date.parse(x.at) >= Date.parse(old.at)) upgrades.set(key, x);
   }
@@ -203,7 +205,11 @@ export function composeText(facts, { now, cfg, tz, finished }) {
     const reasons = x.recovered === true ? ['recovered'] : x.recovered === false ? ['not recovered', ...failureWords(x.reason)] : ['recovery unchecked'];
     return `- ${prName(x, cfg)}${x.to ? ` ${clean(x.to, 24)}` : ''}: ${reasons.join('; ')}`;
   }));
-  group('UPGRADED:', [...upgrades.values()].map(x => `- ${displayName(x, cfg)}${x.to ? ` ${clean(x.to, 24)}` : ''}`));
+  // This is activity during the span, not a live inventory: explicitly mark a rolled-back
+  // target. Recovery timestamps must not make a later re-merge look reverted. Older facts
+  // have only at, which is the best timestamp available for their revert.
+  const wasReverted = x => facts.reverted.some(r => packageKey(r) === packageKey(x) && (!r.to || r.to === x.to) && Date.parse(r.reverted_at || r.at) >= Date.parse(x.at));
+  group('UPGRADED:', [...upgrades.values()].map(x => `- ${displayName(x, cfg)}${x.to ? ` ${clean(x.to, 24)}` : ''}${wasReverted(x) ? ': reverted' : ''}`));
   return fit(lines, cfg.max_bytes || 1000);
 }
 

@@ -2108,7 +2108,10 @@ consume chart names such as `kube-prometheus-stack`.
    invented PR number. Reverts include the target version and the recovery result.
 4. **Bottom:** `UPGRADED:`, one short package name and its newest target per line, in order
    of first appearance in the span. Newest is determined by merge time, including digest
-   updates, rather than input order or a version-string comparison.
+   updates, rather than input order or a version-string comparison. These are activity
+   counts: a target subsequently reverted in the span stays counted, with `: reverted`
+   on its upgrade line. A later re-merge is unmarked. New revert facts keep `reverted_at`
+   separately from the last recovery verdict's `at`; older facts use their existing `at`.
 
 **Reason vocabulary.** Each reason phrase is at most four words; multiple facts on one
 item are separated by commas or semicolons. No raw explanations or bracketed descriptions:
@@ -2125,6 +2128,7 @@ item are separated by commas or semicolons. No raw explanations or bracketed des
 | Failure attribution | `by update`, `cause unclear` |
 | Fix ownership | `lane owns fix`, `lane reverting`, `triage owns fix`, `lane fixing another update`, `fix unclaimed`, `owner unreadable` |
 | Claim time budget exhausted | `fix budget spent`; `no revert this run` |
+| Upgrade target rolled back in the span | `reverted` |
 | Revert result | `recovered`, `not recovered`, `recovery unchecked`; a known failure category may follow `not recovered` |
 
 `lane reverting` requires the claim's state to be `reverting`; a claim alone says
