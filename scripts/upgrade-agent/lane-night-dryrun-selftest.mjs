@@ -270,6 +270,17 @@ ok(threw, 'runReadOnly throws before running a refused command');
   const later = N.volsyncFresh(hourly, T('2026-11-10T06:45:00Z'), D, window);
   ok(later.due === '2026-11-10T09:00:00.000Z' && !later.pass, '755: every run through window end must complete, including the last hourly run');
 
+  // Isolate max age from scheduled-run coverage: a stale controller timestamp
+  // still names a real scheduled run, already covered by a successful backup.
+  const agedRs = rs('plex-aws'); agedRs.status.nextSyncTime = '2026-11-08T05:00:00Z'; agedRs.status.lastSyncTime = '2026-11-08T05:00:51Z'; agedRs.status.latestMoverStatus.result = 'Successful';
+  const agedSync = N.volsyncFresh(agedRs, T('2026-11-10T06:45:00Z'), D);
+  ok(!agedSync.pass && /older than 24h/.test(agedSync.why), '755 mutation: VolSync coverage of an old run cannot bypass the independent 24h age cap', JSON.stringify(agedSync));
+  const agedSchedule = structuredClone(sb.find(s => s.metadata.name === 'openproject-db'));
+  agedSchedule.spec.schedule = '0 0 2 * * 0'; agedSchedule.status.lastScheduleTime = '2026-11-08T07:00:00Z';
+  const agedBackup = structuredClone(dbDone); agedBackup.metadata.creationTimestamp = '2026-11-08T07:00:00Z';
+  const agedPg = N.cnpgFresh('frontend/openproject-db', [agedSchedule], [agedBackup], T('2026-11-10T06:45:00Z'), D);
+  ok(!agedPg.pass && /older than 24h/.test(agedPg.why), '755 mutation: CNPG coverage of an old run cannot bypass the independent 24h age cap', JSON.stringify(agedPg));
+
   // Advisory review: VolSync uses robfig v3; CNPG still uses v1.2.0.
   ok(N.backupCron('TZ=UTC 0 0 2 * * *', true, 'America/New_York') === null, '755 review: CNPG v1 has no per-expression zone prefix and fails closed');
   const v3day = N.backupCron('0 2 */2 * 1', false, 'America/New_York');
