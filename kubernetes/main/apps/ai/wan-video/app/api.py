@@ -46,6 +46,22 @@ def engine(path, body=None):
         return json.load(response)
 
 
+def engine_queue():
+    """Treat an incomplete or malformed queue answer as unknown backend work."""
+    queue = engine("/queue")
+    if not isinstance(queue, dict) or any(
+        key not in queue or not isinstance(queue[key], list)
+        or any(
+            not isinstance(entry, list) or len(entry) < 2 or not isinstance(entry[1], str)
+            or (len(entry) > 3 and not isinstance(entry[3], dict))
+            for entry in queue[key]
+        )
+        for key in ("queue_running", "queue_pending")
+    ):
+        raise ValueError("Malformed ComfyUI /queue response; backend work is unknown")
+    return queue
+
+
 def gpu_sample():
     fields = "uuid,memory.used,utilization.gpu,power.draw,temperature.gpu"
     result = subprocess.run(
@@ -135,17 +151,20 @@ def recover():
     deadline = time.monotonic() + 300
     while True:
         try:
-            queue = engine("/queue")
+            queue = engine_queue()
             break
+        except ValueError:
+            UNSAFE = True
+            return
         except Exception:
             if time.monotonic() >= deadline:
                 UNSAFE = True
                 return
             time.sleep(5)
-    running = {entry[1] for entry in queue.get("queue_running", [])}
-    pending = {entry[1] for entry in queue.get("queue_pending", [])}
+    running = {entry[1] for entry in queue["queue_running"]}
+    pending = {entry[1] for entry in queue["queue_pending"]}
     # ComfyUI records our client_id even if its /prompt response was lost.
-    for entry in queue.get("queue_running", []) + queue.get("queue_pending", []):
+    for entry in queue["queue_running"] + queue["queue_pending"]:
         if len(entry) > 3 and entry[3].get("client_id") in recorded_ids:
             own_ids.add(entry[1])
     if (running | pending) - own_ids:
@@ -159,7 +178,7 @@ def recover():
         if running:
             engine("/interrupt", {})
             for _ in range(12):
-                if not engine("/queue").get("queue_running"):
+                if not engine_queue()["queue_running"]:
                     break
                 time.sleep(5)
             else:
@@ -184,8 +203,8 @@ def generate(job, prompt, lease=None):
         sample = gpu_sample()
         if any(s["utilization_percent"] > 5 or s["memory_mib"] > 22000 for s in sample["gpus"]):
             raise RuntimeError("Rack GPUs are busy; refusing to start a competing job")
-        queue = engine("/queue")
-        if queue.get("queue_running") or queue.get("queue_pending"):
+        queue = engine_queue()
+        if queue["queue_running"] or queue["queue_pending"]:
             raise RuntimeError("ComfyUI already has a job; refusing a competing request")
         graph = make_graph(prompt, job["preset"], job["seed"], job["id"])
         submission_attempted = True
@@ -236,10 +255,10 @@ def generate(job, prompt, lease=None):
     except Exception as exc:
         if started or submission_attempted:
             try:
-                queue = engine("/queue")
+                queue = engine_queue()
                 owned = lambda e: (len(e) > 3 and e[3].get("client_id") == job["id"]) or e[1] == job.get("prompt_id")
-                running = queue.get("queue_running", [])
-                pending = [e[1] for e in queue.get("queue_pending", []) if owned(e)]
+                running = queue["queue_running"]
+                pending = [e[1] for e in queue["queue_pending"] if owned(e)]
                 if pending:
                     engine("/queue", {"delete": pending})
                 if running and not all(owned(e) for e in running):
@@ -248,7 +267,7 @@ def generate(job, prompt, lease=None):
                 if running:
                     engine("/interrupt", {})
                 for _ in range(12):
-                    if not engine("/queue").get("queue_running"):
+                    if not engine_queue()["queue_running"]:
                         break
                     time.sleep(5)
                 else:

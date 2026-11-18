@@ -20,6 +20,23 @@ api = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(api)
 
 
+def malformed_queues():
+    """Bad answers paired with owned work to catch partial validation/cancellation."""
+    for answer in (None, [], "", 0, False, {}):
+        yield repr(answer), answer
+    for key in ("queue_running", "queue_pending"):
+        queue = {"queue_running": [[1, "p1"]], "queue_pending": [[2, "p1"]]}
+        yield key + " missing", {k: v for k, v in queue.items() if k != key}
+        for label, value in (
+            ("null", None), ("object", {}), ("string", ""), ("boolean", False), ("number", 0),
+            ("object entry", [[1, "p1"], {1: "p1"}]), ("string entry", ["p1"]),
+            ("null entry", [None]), ("empty entry", [[]]), ("short entry", [[1]]),
+            ("unhashable id", [[1, ["p1"]]]), ("numeric id", [[1, 7]]),
+            ("client data that is not an object", [[1, "p1", {}, "client"]]),
+        ):
+            yield key + " " + label, {**queue, key: value}
+
+
 class VideoTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -28,6 +45,89 @@ class VideoTests(unittest.TestCase):
         api.CONFIG = APP
         api.ACTIVE = None
         api.UNSAFE = False
+
+    def test_restart_rejects_malformed_queue_without_cancelling(self):
+        job = {"id": "a" * 32, "state": "running", "prompt_id": "p1"}
+        empty = {"queue_running": [], "queue_pending": []}
+        for label, queue in malformed_queues():
+            with self.subTest(queue=label):
+                api.UNSAFE = False
+                api.save(job)
+                with patch.object(api, "engine", side_effect=[queue, {}, empty]) as engine, \
+                        patch.object(api.time, "sleep") as sleep:
+                    api.recover()
+                self.assertTrue(api.UNSAFE)
+                self.assertEqual(engine.call_args_list, [unittest.mock.call("/queue")])
+                sleep.assert_not_called()
+                self.assertEqual(json.loads(api.job_path(job["id"]).read_text())["state"], "running")
+
+    def test_submit_rejects_malformed_queue_without_submitting(self):
+        sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
+        for label, queue in malformed_queues():
+            with self.subTest(queue=label):
+                job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
+                api.ACTIVE = job["id"]
+                with patch.object(api, "gpu_sample", return_value=sample), \
+                        patch.object(api, "engine", side_effect=[queue]) as engine:
+                    api.generate(job, "test")
+                self.assertEqual(job["state"], "failed")
+                self.assertIn("Malformed ComfyUI /queue response; backend work is unknown", job["error"])
+                self.assertEqual(engine.call_args_list, [unittest.mock.call("/queue")])
+                self.assertIsNone(api.ACTIVE)
+
+    def test_failure_rejects_malformed_queue_without_cancelling(self):
+        sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
+        empty = {"queue_running": [], "queue_pending": []}
+        failure = {"p1": {"status": {"status_str": "error"}}}
+        for label, queue in malformed_queues():
+            with self.subTest(queue=label):
+                api.UNSAFE = False
+                job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
+                replies = [empty, {"prompt_id": "p1"}, failure, queue, {}, empty]
+                with patch.object(api, "gpu_sample", return_value=sample), \
+                        patch.object(api, "engine", side_effect=replies) as engine, patch.object(api.time, "sleep"):
+                    api.generate(job, "test")
+                self.assertEqual(job["state"], "failed")
+                self.assertTrue(api.UNSAFE)
+                self.assertEqual([call.args[0] for call in engine.call_args_list],
+                                 ["/queue", "/prompt", "/history/p1", "/queue"])
+                self.assertEqual(engine.call_args_list[-1], unittest.mock.call("/queue"))
+
+    def test_restart_interrupt_wait_rejects_malformed_queue(self):
+        job = {"id": "a" * 32, "state": "running", "prompt_id": "p1"}
+        owned = {"queue_running": [[1, "p1"]], "queue_pending": []}
+        empty = {"queue_running": [], "queue_pending": []}
+        for label, queue in malformed_queues():
+            with self.subTest(queue=label):
+                api.UNSAFE = False
+                api.save(job)
+                with patch.object(api, "engine", side_effect=[owned, {}, queue, empty]) as engine, \
+                        patch.object(api.time, "sleep") as sleep:
+                    api.recover()
+                self.assertTrue(api.UNSAFE)
+                self.assertEqual(engine.call_args_list, [unittest.mock.call("/queue"),
+                                 unittest.mock.call("/interrupt", {}), unittest.mock.call("/queue")])
+                sleep.assert_not_called()
+                self.assertEqual(json.loads(api.job_path(job["id"]).read_text())["state"], "running")
+
+    def test_failure_interrupt_wait_rejects_malformed_queue(self):
+        sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
+        empty = {"queue_running": [], "queue_pending": []}
+        owned = {"queue_running": [[1, "p1"]], "queue_pending": []}
+        failure = {"p1": {"status": {"status_str": "error"}}}
+        for label, queue in malformed_queues():
+            with self.subTest(queue=label):
+                api.UNSAFE = False
+                job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
+                replies = [empty, {"prompt_id": "p1"}, failure, owned, {}, queue, empty]
+                with patch.object(api, "gpu_sample", return_value=sample), \
+                        patch.object(api, "engine", side_effect=replies) as engine, patch.object(api.time, "sleep") as sleep:
+                    api.generate(job, "test")
+                self.assertEqual(job["state"], "failed")
+                self.assertTrue(api.UNSAFE)
+                self.assertEqual([call.args[0] for call in engine.call_args_list],
+                                 ["/queue", "/prompt", "/history/p1", "/queue", "/interrupt", "/queue"])
+                sleep.assert_not_called()
 
     def test_graph_keeps_both_gpus_and_guidance(self):
         graph = api.make_graph("test", "preview", 43, "a" * 32)
@@ -61,7 +161,7 @@ class VideoTests(unittest.TestCase):
     def test_busy_backend_is_not_interrupted(self):
         job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
         sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
-        with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", return_value={"queue_running": [[1]]}) as engine:
+        with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", return_value={"queue_running": [[1, "other"]], "queue_pending": []}) as engine:
             api.generate(job, "test")
         self.assertEqual(job["state"], "failed")
         self.assertEqual(engine.call_args_list, [unittest.mock.call("/queue")])
@@ -91,7 +191,7 @@ class VideoTests(unittest.TestCase):
         job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
         sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
         history = {"p1": {"status": {"status_str": "success"}, "outputs": {"12": {"images": [{"filename": "result.mp4", "subfolder": "video"}]}}}}
-        with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=[{}, {"prompt_id": "p1"}, history]):
+        with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=[{"queue_running": [], "queue_pending": []}, {"prompt_id": "p1"}, history]):
             api.generate(job, "test")
         saved = json.loads(api.job_path(job["id"]).read_text())
         self.assertEqual(saved["state"], "succeeded")
@@ -105,7 +205,7 @@ class VideoTests(unittest.TestCase):
         job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
         sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
         history = {"p1": {"status": {"status_str": "success"}, "outputs": {"12": {"images": [{"filename": "result.mp4", "subfolder": "video"}]}}}}
-        replies = [{}, {"prompt_id": "p1"}, TimeoutError("timed out"), TimeoutError("timed out"), history]
+        replies = [{"queue_running": [], "queue_pending": []}, {"prompt_id": "p1"}, TimeoutError("timed out"), TimeoutError("timed out"), history]
         with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=replies) as engine, \
                 patch.object(api.time, "sleep"):
             api.generate(job, "test")
@@ -116,7 +216,7 @@ class VideoTests(unittest.TestCase):
     def test_persistent_poll_failure_still_fails_the_job(self):
         job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
         sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
-        replies = [{}, {"prompt_id": "p1"}] + [TimeoutError("timed out")] * 12 + [{"queue_running": [[1, "p1"]]}, {}, {"queue_running": []}]
+        replies = [{"queue_running": [], "queue_pending": []}, {"prompt_id": "p1"}] + [TimeoutError("timed out")] * 12 + [{"queue_running": [[1, "p1"]], "queue_pending": []}, {}, {"queue_running": [], "queue_pending": []}]
         with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=replies) as engine, \
                 patch.object(api.time, "sleep"):
             api.generate(job, "test")
@@ -126,8 +226,8 @@ class VideoTests(unittest.TestCase):
     def test_slow_poll_window_bounds_the_retries(self):
         job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
         sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
-        replies = [{}, {"prompt_id": "p1"}, TimeoutError("timed out"), TimeoutError("timed out"),
-                   {"queue_running": [[1, "p1"]]}, {}, {"queue_running": []}]
+        replies = [{"queue_running": [], "queue_pending": []}, {"prompt_id": "p1"}, TimeoutError("timed out"), TimeoutError("timed out"),
+                   {"queue_running": [[1, "p1"]], "queue_pending": []}, {}, {"queue_running": [], "queue_pending": []}]
         clock = iter([0, 0, 10, 10, 200, 200, 200, 200, 200, 200])
         with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=replies), \
                 patch.object(api.time, "sleep"), patch.object(api.time, "monotonic", side_effect=lambda: next(clock, 200)):
@@ -138,7 +238,7 @@ class VideoTests(unittest.TestCase):
     def test_failed_inference_interrupts_only_own_job(self):
         job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
         sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
-        replies = [{}, {"prompt_id": "p1"}, {"p1": {"status": {"status_str": "error"}}}, {"queue_running": [[1, "p1"]]}, {}, {"queue_running": []}]
+        replies = [{"queue_running": [], "queue_pending": []}, {"prompt_id": "p1"}, {"p1": {"status": {"status_str": "error"}}}, {"queue_running": [[1, "p1"]], "queue_pending": []}, {}, {"queue_running": [], "queue_pending": []}]
         with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=replies) as engine:
             api.generate(job, "test")
         self.assertEqual(job["state"], "failed")
@@ -320,14 +420,14 @@ class VideoTests(unittest.TestCase):
     def test_restart_cancels_owned_job_without_replaying(self):
         job = {"id": "a" * 32, "state": "running", "prompt_id": "p1"}
         api.save(job)
-        with patch.object(api, "engine", side_effect=[{"queue_running": [[1, "p1"]]}, {}, {"queue_running": []}]) as engine:
+        with patch.object(api, "engine", side_effect=[{"queue_running": [[1, "p1"]], "queue_pending": []}, {}, {"queue_running": [], "queue_pending": []}]) as engine:
             api.recover()
         self.assertEqual(json.loads(api.job_path(job["id"]).read_text())["state"], "failed")
         self.assertNotIn("/prompt", [call.args[0] for call in engine.call_args_list])
         self.assertFalse(api.UNSAFE)
 
     def test_restart_preserves_unknown_work_and_fails_closed(self):
-        with patch.object(api, "engine", return_value={"queue_running": [[1, "unknown"]]}) as engine:
+        with patch.object(api, "engine", return_value={"queue_running": [[1, "unknown"]], "queue_pending": []}) as engine:
             api.recover()
         self.assertTrue(api.UNSAFE)
         self.assertEqual(engine.call_count, 1)
@@ -335,17 +435,17 @@ class VideoTests(unittest.TestCase):
     def test_restart_matches_client_when_submission_response_was_lost(self):
         job = {"id": "a" * 32, "state": "queued"}
         api.save(job)
-        queue = {"queue_running": [[1, "p-lost", {}, {"client_id": job["id"]}]]}
-        with patch.object(api, "engine", side_effect=[queue, {}, {"queue_running": []}]) as engine:
+        queue = {"queue_running": [[1, "p-lost", {}, {"client_id": job["id"]}]], "queue_pending": []}
+        with patch.object(api, "engine", side_effect=[queue, {}, {"queue_running": [], "queue_pending": []}]) as engine:
             api.recover()
         self.assertIn(unittest.mock.call("/interrupt", {}), engine.call_args_list)
         self.assertFalse(api.UNSAFE)
 
     def test_submission_timeout_does_not_orphan_owned_render(self):
         job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
-        queue = {"queue_running": [[1, "p-lost", {}, {"client_id": job["id"]}]]}
+        queue = {"queue_running": [[1, "p-lost", {}, {"client_id": job["id"]}]], "queue_pending": []}
         sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
-        with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=[{}, TimeoutError("submission timeout"), queue, {}, {"queue_running": []}]) as engine:
+        with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=[{"queue_running": [], "queue_pending": []}, TimeoutError("submission timeout"), queue, {}, {"queue_running": [], "queue_pending": []}]) as engine:
             api.generate(job, "test")
         self.assertIn(unittest.mock.call("/interrupt", {}), engine.call_args_list)
         self.assertEqual(job["state"], "failed")
