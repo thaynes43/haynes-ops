@@ -220,7 +220,7 @@ const real = await twice(world());
     ok(result.verdict === 'cannot-tell' && factOf(result, 'app-check').result === 'unreadable', `755: ${reason} is cannot tell, never a pass`, result.why);
   }
   // Fix round F1: a dropped inventory entry cannot remove the required app check.
-  for (const broken of ['unparseable-inventory-entry', 'media_seerr_gatus_ep__ConfigMap', null, 'media___']) {
+  for (const broken of ['unparseable-inventory-entry', 'media_seerr_ConfigMap', null, 'media___']) {
     const partial = world(); partial.gatusUnreadable = true;
     ksOf(partial, 'media/seerr').status.inventory.entries.find(e => /seerr-gatus-ep/.test(e.id)).id = broken;
     const result = (await twice(partial, { prs: [4869] })).b.rec(4869);
@@ -229,6 +229,14 @@ const real = await twice(world());
   const extraBroken = world(); ksOf(extraBroken, 'media/seerr').status.inventory.entries.push({ id: 'unparseable-inventory-entry' });
   const partialMapped = (await twice(extraBroken, { prs: [4869] })).b.rec(4869);
   ok(partialMapped.verdict === 'cannot-tell' && factOf(partialMapped, 'app-check').result === 'unreadable', '755 F1: even a passing mapped endpoint cannot clear another unreadable owned inventory entry');
+
+  const underscored = { metadata: { namespace: 'media', name: 'seerr' }, status: { inventory: { entries: [{ id: 'media_seerr_gatus_ep__ConfigMap' }] } } };
+  const underscoredScope = { own: ['media/seerr'] }, underscoredKs = { items: [underscored] };
+  const underscoredMapping = V.gatusEndpoints(underscoredScope, underscoredKs);
+  const underscoredCheck = await V.factAppCheck(underscoredScope, {}, { ks: underscoredKs }, null);
+  ok(JSON.stringify(V.inventoryOf(underscored)) === JSON.stringify([{ ns: 'media', name: 'seerr_gatus_ep', group: '', kind: 'ConfigMap' }])
+    && underscoredMapping.names.length === 0 && underscoredMapping.unread.length === 0
+    && underscoredCheck.result === 'not-applicable' && /no endpoint/.test(underscoredCheck.detail), '755 F4: single underscores in a readable name do not make an endpoint; no Gatus ConfigMap is not applicable');
 
   // F4: Flux transcodes colons in RBAC names as double underscores.
   const kyvernoId = '_kyverno__reports-controller__rbac-read_rbac.authorization.k8s.io_ClusterRole';
