@@ -44,5 +44,9 @@ check('fourth drop stops',f=>{request(f);f.state.request.replacements=3;Object.a
 check('wake timeout not reset by app restart',f=>{request(f);f.state.request.startedAt='2026-11-18T01:00:00Z';Object.assign(f.evidence.driver,{bootId:'boot2',waitingDropConfirmed:true});},'stop','wake-timeout-leave-request');
 check('aborted transfer stops',f=>{request(f);Object.assign(f.evidence.driver,{status:'aborted',requestKey:'request1'});},'stop','transfer-failed');
 check('completed requires health receipt',f=>{request(f);Object.assign(f.evidence.driver,{status:'completed',node:55,requestKey:'request1'});},'stop');
-check('complete receipt permits recording, not next start',f=>{request(f);Object.assign(f.evidence.driver,{status:'completed',node:55,requestKey:'request1'});f.evidence.receipt={device,versionCC:'2.50.0',haVersion:'2.50.0',updateOff:true,normalState:true,sensorAt:now,battery:80,batteryAt:now};},'record-receipt');
+check('complete receipt permits recording, not next start',f=>{request(f);Object.assign(f.evidence.driver,{status:'completed',node:55,requestKey:'request1'});f.evidence.receipt={device,versionCC:'2.50.0',haVersion:'2.50.0',updateOff:true,normalState:true,zwaveChecker:0,batteryChecker:0,sensorAt:now,battery:80,batteryAt:now};},'record-receipt');
 check('invalid clock fails closed',f=>f.now='bad','stop');
+
+check('malformed prior receipt fails closed',f=>{f.state.index=1;f.state.receipts=[null];},'stop');
+check('cannot finish with residual request',f=>{request(f);f.state.index=1;f.state.receipts=[{device,verified:true}];},'stop','request-after-batch-end');
+check('ZSE70 uses five-hour wake bound',f=>{f.manifest.devices[0].model='ZSE70';f.evidence.device.model='ZSE70';request(f);f.state.request.device.model='ZSE70';f.state.request.startedAt='2026-11-18T09:00:00Z';},'stop','wake-timeout-leave-request');

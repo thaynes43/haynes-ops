@@ -28,8 +28,8 @@ export function plan({ manifest, state, evidence, now: nowText }) {
     if (!same(d, d) || !allowedModels.has(d.model) || heldNodes.has(d.node) || d.safetyRelated !== false || d.endDevice !== true) return stop('excluded-or-unknown-device');
   }
   if (!Array.isArray(state.receipts) || state.receipts.length !== state.index ||
-      state.receipts.some((r, i) => !same(r.device, manifest.devices[i]) || r.verified !== true)) return stop('missing-prior-receipt');
-  if (state.index === manifest.devices.length) return result('done', 'all-receipts-verified');
+      state.receipts.some((r, i) => !same(r?.device, manifest.devices[i]) || r?.verified !== true)) return stop('missing-prior-receipt');
+  if (state.index === manifest.devices.length) return state.request ? stop('request-after-batch-end') : result('done', 'all-receipts-verified');
   const device = manifest.devices[state.index];
   if (!evidence || !fresh(evidence.at, now, 60000)) return stop('stale-or-missing-evidence');
   const driver = evidence.driver;
@@ -47,7 +47,7 @@ export function plan({ manifest, state, evidence, now: nowText }) {
     if (driver.status === 'completed' && driver.node === device.node) {
       const r = evidence.receipt;
       if (!r || !same(r.device, device) || r.versionCC !== device.to_version || r.haVersion !== device.to_version ||
-          r.updateOff !== true || r.normalState !== true || !fresh(r.sensorAt, now, 24 * HOUR) ||
+          r.updateOff !== true || r.normalState !== true || r.zwaveChecker !== 0 || r.batteryChecker !== 0 || !fresh(r.sensorAt, now, 24 * HOUR) ||
           !Number.isFinite(r.battery) || r.battery < 50 || !fresh(r.batteryAt, now, 24 * HOUR)) return stop('incomplete-post-update-receipt');
       return result('record-receipt', 'verified-target-and-health');
     }
