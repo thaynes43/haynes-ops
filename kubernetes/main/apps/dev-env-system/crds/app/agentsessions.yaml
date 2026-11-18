@@ -4,12 +4,26 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main dc824832d8cfd1a96fc5dc5c65622ad5ebe2ec37 (merge of PR #1158),
-# verified byte for byte (SHA-256 8771cc255e6524623a48eb83a48da87063e2839decdf1998506262712c7812fe
-# below this header). Four changes since the copy from 96d4fcd7, all of DESIGN-064 (summoned
-# sessions). Each adds fields and rules that only a summoned session carries; no pinned
-# operator or agent writes them before the pins that follow this copy, and summoning
-# creates stay switched off (the operator's --summon-create-kinds is unset):
+# Source: dev-env main e0ce9958fb1e5395d960765c04a068209bb42ca6 (merge of PR #1179),
+# verified byte for byte (SHA-256 7b289c2c2a5efba037c3787100b7696315bc8be02631a0032a5ed33b77c2c70f
+# below this header). One change since the copy from dc824832:
+# - dev-env e0ce9958, PR #1179, DESIGN-064 6.10, OpenProject #795:
+#   status.agent.brief, an optional, replaceable string with the four words pending,
+#   launched, unconfirmed and not-launched and a length limit of 12. Status only;
+#   agentd's heartbeat reports it and the operator copies it without acting on it.
+#   It must be here before the operator pin that stores it: with an older schema the
+#   API server would drop it, losing the stored claim about whether a summoned remote
+#   session's brief was launched.
+#   Install precondition, read in the cluster on 2026-11-18T04:25:51Z: of 505
+#   AgentSessions none has spec.caller, spec.summon, status.summon, status.agent.start
+#   or status.agent.brief. The live CRD has no status.agent.brief key; the operator is
+#   sha-e8f8184, the configured agent image is 2.109.0, and --summon-create-kinds is unset.
+# Rolling back only this change once an object carries status.agent.brief drops that
+# field at the next status write. It is optional and replaceable; its removal does not
+# block a status update.
+# The copy before this one was from dev-env main dc824832d8cfd1a96fc5dc5c65622ad5ebe2ec37
+# (merge of PR #1158). Its four changes since 96d4fcd7, still in force (DESIGN-064,
+# summoned sessions; the install precondition below was read before that copy merged):
 # - dev-env 4f1c4114, PR #1132, DESIGN-064 6.10, OpenProject #794 (the leader settles a
 #   remote escalation's registration): status.summon.registration ({agentSeenAt, result,
 #   reason, at}; result registered or unavailable; each member set once), the rule that
@@ -62,6 +76,8 @@
 # status.outcome.note bound (dev-env db8f0a3f497a, PR #1088, OpenProject #740); spec.summon
 # and its rules (dev-env 66201204c557, PR #1079, OpenProject #756); status.agent.podUID
 # (dev-env 83a125e6eb11, PR #1077, OpenProject #709).
+# The following earlier rollback cautions refer to the rename copy where they say
+# "this copy":
 # Do not roll this file back once a session with spec.summon or status.summon exists (an
 # older schema drops them at the next write), once an operator writes
 # status.agent.podUID, or once a session with spec.title exists (an older schema drops
@@ -996,6 +1012,19 @@ spec:
                     type: string
                   branch:
                     description: Branch is the worktree's branch, for example agent/haynes-ops-1005-202504.
+                    type: string
+                  brief:
+                    description: |-
+                      Brief is the pod's brief delivery claim for a summoned remote session
+                      with a prompt (DESIGN-064 6.10, OP795). The heartbeat copies only these
+                      words, and the operator does not act on them. Optional and replaceable:
+                      an older agentd or operator may omit it on any status update.
+                    enum:
+                    - pending
+                    - launched
+                    - unconfirmed
+                    - not-launched
+                    maxLength: 12
                     type: string
                   conversationId:
                     description: |-
