@@ -31,6 +31,8 @@ def malformed_queues():
             ("null", None), ("object", {}), ("string", ""), ("boolean", False), ("number", 0),
             ("object entry", [[1, "p1"], {1: "p1"}]), ("string entry", ["p1"]),
             ("null entry", [None]), ("empty entry", [[]]), ("short entry", [[1]]),
+            ("unhashable id", [[1, ["p1"]]]), ("numeric id", [[1, 7]]),
+            ("client data that is not an object", [[1, "p1", {}, "client"]]),
         ):
             yield key + " " + label, {**queue, key: value}
 

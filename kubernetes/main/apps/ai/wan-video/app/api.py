@@ -51,7 +51,11 @@ def engine_queue():
     queue = engine("/queue")
     if not isinstance(queue, dict) or any(
         key not in queue or not isinstance(queue[key], list)
-        or any(not isinstance(entry, list) or len(entry) < 2 for entry in queue[key])
+        or any(
+            not isinstance(entry, list) or len(entry) < 2 or not isinstance(entry[1], str)
+            or (len(entry) > 3 and not isinstance(entry[3], dict))
+            for entry in queue[key]
+        )
         for key in ("queue_running", "queue_pending")
     ):
         raise ValueError("Malformed ComfyUI /queue response; backend work is unknown")
