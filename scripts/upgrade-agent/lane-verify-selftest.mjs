@@ -245,6 +245,16 @@ const real = await twice(world());
   const zfail = (await twice(zero, { prs: [4873], own: true, cfg: { write_history_events: true } })).b;
   ok(zfail.rec(4873).verdict === 'failed' && /no pod ran/.test(zfail.table) && factOf(zfail.rec(4873), 'app-check').result === 'fail', '755: with no pod run a failing endpoint still fails the chart update');
   ok(/Deployment\/media\/seerr.*replicas 1\/1.*updatedReplicas 1\/1.*all Ready \([^)]*seerr/.test(factOf(passed, 'rollout').detail), '755: rollout pass names the controller, namespace, name, counts and pods', factOf(passed, 'rollout').detail);
+  // Equality is not after; a corrupt old memory cannot remove the time boundary.
+  const scope = { own: ['media/seerr'] }, change = { merged_at: views([4869])[0].mergedAt };
+  const matrixAt = t => ({ status: 'success', data: { resultType: 'matrix', result: [{ metric: { group: 'internal', name: 'seerr', key: 'internal_seerr' }, values: [[t / 1000, '1']] }] } });
+  const directCtx = { ks: world().ks, now: T1, cfg: V.verifyConfig(rules), gatus: async () => matrixAt(T1) };
+  ok((await V.factAppCheck(scope, change, directCtx, { at: iso(T1) })).result === 'unreadable', '755: a sample exactly at completion is not newer than completion');
+  ok((await V.factAppCheck(scope, change, directCtx, { at: 'unreadable' })).result === 'unreadable', '755: an unreadable completion timestamp cannot pass');
+  const remembered = JSON.parse(real.a.memory), item = Object.values(remembered.items).find(x => x.pr === 4869);
+  item.mem.app_rollout.at = 'unreadable';
+  const corrupt = await tick(world(), { prs: [4869], now: T2, prev: JSON.stringify(remembered), doc: real.a.doc });
+  ok(corrupt.rec(4869).verdict === 'cannot-tell' && corrupt.rec(4869).mem.app_rollout.at === iso(T2), '755: corrupt prior completion memory is observed again, not reused as a pass');
   const calls = real.b.calls.filter(c => /^kubectl get (deployments|statefulsets|daemonsets)\.apps/.test(c));
   ok(calls.length === 3 && calls.every(c => / -A /.test(c)), '755: standalone verification reads one shared cluster controller snapshot');
   const reuseWorld = world();

@@ -624,6 +624,7 @@ export async function factAppCheck(sc, change, ctx, memory) {
   if (mapping.unread.length) return fact('app-check', 'unreadable', `cannot tell: ${mapping.unread.join('; ')}`);
   if (!mapping.names.length) return NA('app-check', 'not applicable: the target has no endpoint from the shared Gatus component in its inventories');
   if (!memory) return fact('app-check', 'waiting', 'read once the image and rollout pass');
+  if (!Number.isFinite(Date.parse(memory.at)) || Date.parse(memory.at) < Date.parse(change.merged_at) || Date.parse(memory.at) > ctx.now) return fact('app-check', 'unreadable', 'cannot tell: rollout completion observation has no valid timestamp after the update');
   const maxAge = ctx.cfg.gatus_sample_max_age_seconds;
   const current = gatusSamples(await ctx.gatus(ctx.now), ctx.now, maxAge);
   if (!current) return fact('app-check', 'unreadable', 'cannot tell: Prometheus Gatus samples unreadable (expected raw matrix samples)');
@@ -931,7 +932,7 @@ async function judgeTarget(rec, cand, change, sc, clusterWide, upd, ctx) {
   rec.no_pod_ran = ro.noPodRan === true;
   const appReady = ro.fact.result === 'pass' && im.result === 'pass' && rec.facts.find(f => f.fact === 'pods')?.result === 'pass';
   const oldRollout = prior.mem?.app_rollout;
-  if (gatusEndpoints(sc, ctx.ks).names.length) rec.mem.app_rollout = appReady ? (oldRollout?.signature === ro.signature ? oldRollout : { at: iso(now), signature: ro.signature }) : null;
+  if (gatusEndpoints(sc, ctx.ks).names.length) rec.mem.app_rollout = appReady ? (oldRollout?.signature === ro.signature && Number.isFinite(Date.parse(oldRollout.at)) && Date.parse(oldRollout.at) >= Date.parse(change.merged_at) && Date.parse(oldRollout.at) <= now ? oldRollout : { at: iso(now), signature: ro.signature }) : null;
   rec.facts.push(await factAppCheck(sc, change, ctx, rec.mem.app_rollout));
   const ex = im.result === 'pass' ? factExercised(u, change.merged_at, versionKindOf(upd.type), ctx) : (u.crons.length ? after('exercised', 'read once the image passes') : null);
   if (ex) rec.facts.push(ex);
