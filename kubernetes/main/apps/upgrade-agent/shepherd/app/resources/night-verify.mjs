@@ -585,7 +585,14 @@ export function gatusEndpoints(sc, ks) {
   const names = new Set(), unread = [], mine = new Set(sc.own || []);
   for (const id of mine) {
     const k = ks?.items?.find(k => L.ksId(k) === id), inv = inventoryOf(k);
-    if (!inv) { unread.push(`the inventory of Kustomization ${id}`); continue; }
+    // inventoryOf intentionally keeps readable entries for its other callers. Absence
+    // of an endpoint needs stronger evidence: every owned entry must be readable.
+    const entries = k?.status?.inventory?.entries;
+    if (!inv || entries.some(e => {
+      if (typeof e?.id !== 'string') return true;
+      const p = e.id.split('_');
+      return p.length !== 4 || !p[1] || !p[3]; // namespace/group may be empty.
+    })) { unread.push(`the inventory of Kustomization ${id} (missing or unparseable entries)`); continue; }
     for (const e of inv.filter(e => e.kind === 'ConfigMap' && e.group === '' && e.name.endsWith('-gatus-ep'))) {
       const name = e.name.slice(0, -'-gatus-ep'.length);
       if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) { unread.push(`Gatus endpoint name in ${e.ns}/${e.name}`); continue; }
