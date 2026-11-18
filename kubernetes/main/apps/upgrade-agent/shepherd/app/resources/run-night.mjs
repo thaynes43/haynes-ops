@@ -193,11 +193,13 @@ export function cronPeriodMs(expr) {
 
 // Story 755: numeric cron, with seconds first for CNPG. A bare schedule uses the
 // lane's zone ONLY when the controller's next/last scheduled timestamp corroborates it.
-// Explicit TZ=/CRON_TZ= wins. Unknown syntax, zone or inconsistent anchor fails closed.
+// VolSync TZ=/CRON_TZ= overrides it; CNPG v1 rejects prefixes. Unknown syntax,
+// zone or inconsistent anchor fails closed.
 export function backupCron(expr, seconds, timezone) {
   const aliases = { '@hourly': '0 * * * *', '@daily': '0 0 * * *', '@midnight': '0 0 * * *', '@weekly': '0 0 * * 0', '@monthly': '0 0 1 * *', '@yearly': '0 0 1 1 *', '@annually': '0 0 1 1 *' };
   let text = String(expr ?? '').trim(), tz = timezone;
   const prefix = /^(?:CRON_TZ|TZ)=([^ ]+)\s+(.+)$/.exec(text);
+  if (prefix && seconds) return null; // CNPG's robfig v1.2.0 has no per-expression zone prefix.
   if (prefix) { tz = prefix[1]; text = prefix[2]; }
   let f = (aliases[text] || text).split(/\s+/);
   if (aliases[text] || !seconds) f = ['0', ...f];

@@ -196,7 +196,8 @@ critical alerts from Prometheus, main's commits to the PR's files and each work 
     actual parser: VolSync 0.14 uses robfig v3.0.1 (a wildcard step greater than one
     clears its star bit); CNPG 1.30 uses v1.2.0 (the bit is retained). A wildcard anywhere
     in a comma list contributes its bit. Weekdays range from 0 to 6.
-    An explicit `TZ=` or `CRON_TZ=` prefix supplies the zone. Otherwise the lane's
+    For VolSync an explicit `TZ=` or `CRON_TZ=` prefix supplies the zone. CNPG
+    v1 has no such prefix and one is unreadable. Otherwise the lane's
     `night.timezone` is used only when the source's next/last scheduled timestamp matches
     that schedule in that zone. This corroborates New York for today's sources without
     assuming UTC or the worker pod's zone. Syntax, missing timestamps, a mismatched or

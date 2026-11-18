@@ -271,9 +271,10 @@ ok(threw, 'runReadOnly throws before running a refused command');
   ok(later.due === '2026-11-10T09:00:00.000Z' && !later.pass, '755: every run through window end must complete, including the last hourly run');
 
   // Advisory review: VolSync uses robfig v3; CNPG still uses v1.2.0.
+  ok(N.backupCron('TZ=UTC 0 0 2 * * *', true, 'America/New_York') === null, '755 review: CNPG v1 has no per-expression zone prefix and fails closed');
   const v3day = N.backupCron('0 2 */2 * 1', false, 'America/New_York');
   const v1day = N.backupCron('0 0 2 */2 * 1', true, 'America/New_York');
-  ok(v3day.matches(T('2026-11-10T07:00:00Z')) && !v1day.matches(T('2026-11-10T07:00:00Z')), '755 review: stepped DOM uses OR for VolSync v3, AND for CNPG v1 when paired with DOW');
+  ok(v3day.matches(T('2026-11-11T07:00:00Z')) && !v1day.matches(T('2026-11-11T07:00:00Z')), '755 review: stepped DOM uses OR for VolSync v3, AND for CNPG v1 when paired with DOW');
   const v3week = N.backupCron('0 2 10 * */2', false, 'America/New_York');
   const v1week = N.backupCron('0 0 2 10 * */2', true, 'America/New_York');
   ok(v3week.matches(T('2026-11-12T07:00:00Z')) && !v1week.matches(T('2026-11-12T07:00:00Z')), "755 review: stepped DOW uses each controller's star-bit rule");
