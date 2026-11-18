@@ -192,9 +192,9 @@ export function cronPeriodMs(expr) {
 }
 
 // Story 755: numeric cron, with seconds first for CNPG. A bare schedule uses the
-// lane's zone ONLY when the controller's next/last scheduled timestamp corroborates it.
-// VolSync TZ=/CRON_TZ= overrides it; CNPG v1 rejects prefixes. Unknown syntax,
-// zone or inconsistent anchor fails closed.
+// candidate zones retained by sourceDue when the controller's next/last timestamp
+// corroborates them. VolSync TZ=/CRON_TZ= overrides those candidates; CNPG v1
+// rejects prefixes. Unknown syntax, zone or inconsistent anchor fails closed.
 export function backupCron(expr, seconds, timezone) {
   const aliases = { '@hourly': '0 * * * *', '@daily': '0 0 * * *', '@midnight': '0 0 * * *', '@weekly': '0 0 * * 0', '@monthly': '0 0 1 * *', '@yearly': '0 0 1 1 *', '@annually': '0 0 1 1 *' };
   let text = String(expr ?? '').trim(), tz = timezone;
@@ -260,18 +260,27 @@ export function backupWindow(now, night) {
   return { start, end, timezone: tz };
 }
 function sourceDue(expr, seconds, anchor, now, maxAgeMs, window) {
-  const cron = backupCron(expr, seconds, window?.timezone || 'America/New_York');
-  if (!cron || !cron.matches(anchor)) return { unreadable: `schedule ${JSON.stringify(expr ?? null)} or its time zone (scheduled timestamp does not corroborate ${cron?.timezone || 'a readable zone'})` };
+  const laneZone = window?.timezone || 'America/New_York';
+  const explicit = /^(?:CRON_TZ|TZ)=/.test(String(expr ?? '').trim());
+  const zones = explicit ? [laneZone] : [...new Set([laneZone, 'UTC'])];
+  const candidates = zones.map(tz => backupCron(expr, seconds, tz)).filter(cron => cron?.matches(anchor));
+  if (!candidates.length) return { unreadable: `schedule ${JSON.stringify(expr ?? null)} or its time zone (scheduled timestamp does not corroborate ${explicit ? 'its explicit zone' : zones.join(' or ')})` };
   if (window && (!Number.isFinite(window.start) || !Number.isFinite(window.end))) return { unreadable: 'the merge window end in its time zone' };
   const end = Math.max(now, window?.end ?? now);
-  const due = cron.latest(now - maxAgeMs, end);
-  if (due === null) return { due: anchor, inWindow: false, timezone: cron.timezone };
-  return { due, inWindow: !!window && due >= window.start && due <= window.end, timezone: cron.timezone };
+  // One anchor can match both zones without their later (or earlier) runs agreeing.
+  // Cover the latest required run over every candidate that the anchor leaves open.
+  const runs = candidates.map(cron => {
+    const latest = cron.latest(now - maxAgeMs, end);
+    return { due: latest ?? anchor, inWindow: latest !== null && !!window && latest >= window.start && latest <= window.end, timezone: cron.timezone };
+  });
+  const latest = runs.reduce((a, b) => b.due > a.due ? b : a);
+  return { ...latest, inWindow: runs.some(r => r.inWindow), uncertainZones: new Set(runs.map(r => r.due)).size > 1 ? candidates.map(cron => cron.timezone) : [] };
 }
 function backupBlocker(name, d, why) {
   if (d.unreadable) return `unreadable: backup schedule for ${name}: ${d.unreadable}`;
-  if (d.inWindow) return `backup-due-in-window: ${name} runs at ${new Intl.DateTimeFormat('en-GB', { timeZone: d.timezone, hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(d.due))} ${d.timezone} (${new Date(d.due).toISOString()}): ${why}`;
-  return `backup not fresh: ${name} (${why})`;
+  const uncertainty = d.uncertainZones?.length ? ` (time zone not certain: ${d.uncertainZones.join(' or ')})` : '';
+  if (d.inWindow) return `backup-due-in-window: ${name} runs at ${new Intl.DateTimeFormat('en-GB', { timeZone: d.timezone, hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(d.due))} ${d.timezone}${uncertainty} (${new Date(d.due).toISOString()}): ${why}`;
+  return `backup not fresh: ${name}${uncertainty} (${why})`;
 }
 
 // Per source: pass only on the required scheduled run, including any later run in
