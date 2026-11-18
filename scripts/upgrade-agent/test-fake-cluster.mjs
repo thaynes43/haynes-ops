@@ -22,7 +22,8 @@ import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs
 import { spawnSync } from 'node:child_process';
 
 const [tool, ...args] = process.argv.slice(2);
-const env = process.env;
+// A fake-cluster child must never inherit in-cluster discovery or a real kubeconfig.
+const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'KUBECONFIG' && !k.startsWith('KUBERNETES_')));
 const readJson = (p, dflt) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return dflt; } };
 const out = s => process.stdout.write(typeof s === 'string' ? s : JSON.stringify(s));
 const fail = (msg, code = 1) => { process.stderr.write(`${msg}\n`); process.exit(code); };

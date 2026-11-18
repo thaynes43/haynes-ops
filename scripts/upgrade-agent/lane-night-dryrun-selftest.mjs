@@ -257,7 +257,7 @@ ok(threw, 'runReadOnly throws before running a refused command');
   const seconds = N.backupCron('17 0 2 * * *', true, 'America/New_York');
   ok(seconds.matches(T('2026-11-10T07:00:17Z')) && !seconds.matches(T('2026-11-10T07:00:00Z')), '755: CNPG seconds are honored, never discarded');
   const explicit = rs('mosquitto-aws'); explicit.spec.trigger.schedule = 'CRON_TZ=UTC 0 5 * * *';
-  ok(N.volsyncFresh(explicit, T('2026-11-10T00:55:00Z'), D, window).pass, '755: explicit schedule zone overrides the lane zone when the anchor matches');
+  ok(N.volsyncFresh(explicit, T('2026-11-10T00:55:00Z'), D).pass, '755: explicit schedule zone overrides the lane zone when the anchor matches');
   explicit.spec.trigger.schedule = 'CRON_TZ=No/SuchZone 0 5 * * *';
   ok(N.volsyncFresh(explicit, T('2026-11-10T06:45:00Z'), D, window).blocker.startsWith('unreadable:'), '755: unreadable zone blocks');
   const mismatch = rs('mosquitto-aws'); mismatch.spec.trigger.schedule = '0 1 * * *';
@@ -805,10 +805,28 @@ process.exit(0);
     ok(blk(r2, 4477) === '', '755 state: another app\'s PVC in the namespace does not block', blk(r2, 4477));
   }
 
+  // Backups inside the window through the real tick, with fake Kubernetes only.
+  {
+    const w = baseWorld([4670]);
+    const source = w.k8s['replicationsources.volsync.backube'].items[0];
+    source.spec.trigger.schedule = '0 2 * * *';
+    source.status.lastSyncTime = '2026-11-01T07:00:51Z'; source.status.nextSyncTime = '2026-11-02T07:00:00Z';
+    const before = await tick(w, { FAKE_NOW: '2026-11-02T06:45:00Z' });
+    ok(before.summary.would_merge === null && /backup-due-in-window: database\/mosquitto-aws runs at 02:00/.test(blk(before, 4670)), "755 tick: at 01:45 yesterday's backup cannot clear a 02:00 source", blk(before, 4670));
+    source.status.lastSyncTime = '2026-11-02T07:00:51Z'; source.status.nextSyncTime = '2026-11-03T07:00:00Z';
+    const after = await tick(w, { FAKE_NOW: '2026-11-02T07:01:00Z' });
+    ok(after.summary.would_merge?.pr === 4670 && blk(after, 4670) === '', '755 tick: target passes after its scheduled run completes', blk(after, 4670));
+    source.spec.trigger.schedule = 'unreadable';
+    const unknown = await tick(w, { FAKE_NOW: '2026-11-02T07:01:00Z' });
+    ok(unknown.summary.would_merge === null && /unreadable: backup schedule for database\/mosquitto-aws/.test(blk(unknown, 4670)), '755 tick: unreadable schedule fails closed with the fixed unreadable prefix', blk(unknown, 4670));
+    const reads = after.calls.filter(c => c.cmd === 'kubectl' && /^(deployments|statefulsets|daemonsets)\.apps$/.test(c.argv[1]));
+    ok(reads.length <= 6 && reads.every(c => c.argv.includes('-A')), '755 tick: state and verifier share the initial controller read; only merge preflight refreshes it', JSON.stringify(reads));
+  }
+
   const failCases = [
     ['configmaps', 'FAIL', 'unreadable: configmaps'], ['kustomizations.kustomize.toolkit.fluxcd.io', 'FAIL', 'unreadable: kustomizations'],
     ['helmreleases.helm.toolkit.fluxcd.io', 'FAIL', 'unreadable: helmreleases'],
-    ['deployments.apps@media', 'FAIL', 'unreadable: deployments in media'], ['statefulsets.apps@media', 'FAIL', 'unreadable: statefulsets in media'], ['persistentvolumeclaims@media', 'FAIL', 'unreadable: persistentvolumeclaims in media'], ['replicationsources.volsync.backube', 'FAIL', 'unreadable: replicationsources'],
+    ['deployments.apps', 'FAIL', 'unreadable: deployments in media'], ['statefulsets.apps', 'FAIL', 'unreadable: statefulsets in media'], ['persistentvolumeclaims@media', 'FAIL', 'unreadable: persistentvolumeclaims in media'], ['replicationsources.volsync.backube', 'FAIL', 'unreadable: replicationsources'],
     ['replicationsources.volsync.backube', 'GARBAGE', 'unreadable: replicationsources'], ['backups.postgresql.cnpg.io', 'FAIL', 'unreadable: CNPG backups'],
     ['scheduledbackups.postgresql.cnpg.io', 'FAIL', 'unreadable: CNPG scheduledbackups'], ['pods', 'FAIL', 'unreadable: pods/cronjobs'],
     ['cronjobs', 'GARBAGE', 'unreadable: pods/cronjobs'], ['cephclusters.ceph.rook.io', 'FAIL', 'unreadable: cephclusters'],

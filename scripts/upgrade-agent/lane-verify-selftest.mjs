@@ -66,7 +66,7 @@ function serve(w, cmd, argv) {
     if (/gitrepositories/.test(a)) return { items: [w.source] };
     if (/ocirepositories|helmcharts/.test(a)) return { items: w.charts || [] };
     if (/ get nodes /.test(` ${a} `)) return w.nodes ?? null;
-    if (/^(get (deployments|statefulsets|daemonsets)\.apps)/.test(a)) { const kind = argv[1].split('.')[0]; return w.fail?.[kind] ? null : { items: (w.controllers?.[kind]?.items || []).filter(c => c.metadata.namespace === ns) }; }
+    if (/^(get (deployments|statefulsets|daemonsets)\.apps)/.test(a)) { const kind = argv[1].split('.')[0]; return w.fail?.[kind] ? null : { items: (w.controllers?.[kind]?.items || []).filter(c => (argv.includes('-A') || c.metadata.namespace === ns)) }; }
     if (/ get pods /.test(` ${a} `)) return w.fail?.pods ? null : (w.pods[ns]?.pods || { items: [] });
     if (/ get cronjobs /.test(` ${a} `)) return w.pods[ns]?.cronjobs || { items: [] };
     if (/ get jobs /.test(` ${a} `)) return w.fail?.jobs ? null : (w.pods[ns]?.jobs || { items: [] });
@@ -114,7 +114,21 @@ const world = () => { const controllers = { deployments: { items: [] }, stateful
   const pods = structuredClone(fx.pods); for (const ns of Object.keys(pods)) for (const p of pods[ns].pods.items) p.spec.nodeName = p.spec.nodeName || 'talosw01'; return { controllers, ks: structuredClone(fx.ks), hr: structuredClone(fx.hr), source: structuredClone(fx.source), pods, alerts: structuredClone(fx.alerts), promStart: '2026-11-01T00:00:00Z', nodes: { items: [READY_NODE('talosw01'), READY_NODE('talosw02')] } }; };
 const views = list => list.map(n => fx.prs.find(p => p.number === n));
 const vrules = over => ({ ...rules, night: { ...rules.night, verify: { ...rules.night.verify, ...over } } });
-const gjOf = w => async url => (/runtimeinfo$/.test(url) ? (w.promStart ? { data: { startTime: w.promStart } } : null) : (w.alertsUnreadable ? null : w.alerts));
+const gjOf = w => async url => {
+  if (/\/api\/v1\/query\?/.test(url)) {
+    const u = new URL(url), at = Number(u.searchParams.get('time')) * 1000;
+    if (!u.searchParams.get('query')?.startsWith('gatus_results_endpoint_success[')) throw new Error('unexpected query');
+    if (w.gatusRequests) w.gatusRequests.push({ at, query: u.searchParams.get('query') });
+    if (w.gatusUnreadable) return null;
+    if (w.gatusAnswer) return w.gatusAnswer;
+    const before = at < T1;
+    const names = [...new Set(w.ks.items.flatMap(k => V.inventoryOf(k) || []).filter(e => e.kind === 'ConfigMap' && e.name.endsWith('-gatus-ep')).map(e => e.name.slice(0, -'-gatus-ep'.length)))];
+    const rows = names.map(name => ({ metric: { group: 'internal', name: w.gatusWrongName || name, key: `internal_${name}` }, values: [[(at - (w.gatusAgeMs ?? 100)) / 1000, (before ? w.gatusBeforeFailed : w.gatusFailed) ? '0' : '1']] }));
+    if (w.gatusDuplicate) rows.push(...structuredClone(rows));
+    return { status: 'success', data: { resultType: 'matrix', result: w.gatusEmpty ? [] : rows } };
+  }
+  return /runtimeinfo$/.test(url) ? (w.promStart ? { data: { startTime: w.promStart } } : null) : (w.alertsUnreadable ? null : w.alerts);
+};
 async function tick(w, { prs = PRS, now = T1, prev = null, own = false, cfg = {}, doc = null, onlyPrs = prs, deps = {}, startedAt = now, views: vs = null } = {}) {
   const d = doc || V.docOf(vs || views(prs), { repo: REPO, rules, at: iso(now), actor: own ? { kind: 'lane', login: null } : null });
   const f = fake(w);
@@ -169,9 +183,9 @@ const real = await twice(world());
 {
   const { a, b } = real;
   for (const n of [4869, 4870, 4873, 4874]) {
-    ok(a.rec(n)?.verdict === 'not-yet' && factOf(a.rec(n), 'stable').result === 'waiting', `real #${n}: the first tick is not yet (the rollout recorded; stability needs a later tick)`, JSON.stringify(a.rec(n)?.why));
+    ok(a.rec(n)?.verdict === ([4869, 4873].includes(n) ? 'cannot-tell' : 'not-yet') && factOf(a.rec(n), 'stable').result === 'waiting', `real #${n}: first tick records rollout and waits for stability; a mapped endpoint also needs a newer sample`, JSON.stringify(a.rec(n)?.why));
     ok(b.rec(n)?.verdict === 'verified', `real #${n}: verified on the second tick, 900 s later`, b.rec(n)?.why);
-    ok(['source', 'applied', 'helmreleases', 'pods', 'alerts', 'image', 'rollout', 'stable'].every(x => ['pass', 'not-applicable'].includes(factOf(b.rec(n), x).result)), `real #${n}: every fact has its own passing result`);
+    ok(['source', 'applied', 'helmreleases', 'pods', 'alerts', 'image', 'rollout', 'app-check', 'stable'].every(x => ['pass', 'not-applicable'].includes(factOf(b.rec(n), x).result)), `real #${n}: every fact has its own passing result`);
     ok(b.rec(n)?.practice === true && (b.rec(n).would_write || []).map(e => `${e.type}:${e.legal}`).join() === 'verified:true', `real #${n}: practice; would write verified (legal on someone else's merge), not written`);
   }
   ok(b.rec(4871)?.verdict === 'verified' && factOf(b.rec(4871), 'source').result === 'not-applicable' && a.rec(4871)?.verdict === 'verified', 'real #4871 (a GitHub Action): no cluster effect, nothing to verify');
@@ -186,6 +200,56 @@ const real = await twice(world());
   ok(b.summary.reads.commands <= 40 && b.summary.reads.github <= 12, `real: ${b.summary.reads.commands} reads (${b.summary.reads.github} GitHub) for five merges`);
   ok(/#4874 .* VERIFIED/.test(b.table) && /other changes: [0-9a-f]{8} #4873/.test(b.table) && /would write \(not written: practice\): verified merged_unverified->done/.test(b.table), 'real: the morning view names each verdict, fact and other change');
   ok(/open: not-yet since .*judged on 1 tick\(s\) over 1 night\(s\).*pods recorded at/.test(a.table), 'real: the morning view says what an open verdict waits for, since when and over how many nights');
+}
+
+// ── story 755: the app check, sample times and positive attribution ─────────────────
+{
+  const passed = real.b.rec(4869), first = real.a.rec(4869);
+  ok(factOf(first, 'app-check').result === 'unreadable' && /no sample newer than rollout completion/.test(factOf(first, 'app-check').detail), '755: a scrape before the first observed completion is cannot tell, even queried after the merge');
+  ok(factOf(passed, 'app-check').result === 'pass' && /passed at sample/.test(factOf(passed, 'app-check').detail) && passed.verdict === 'verified', '755: a passing sample after the rollout counts toward verified');
+  ok(factOf(real.b.rec(4870), 'app-check').result === 'not-applicable' && /not applicable.*no endpoint/.test(factOf(real.b.rec(4870), 'app-check').detail), '755: an app without an endpoint is not applicable in words');
+  const bad = world(); bad.gatusFailed = true; bad.gatusRequests = [];
+  const own = await twice(bad, { prs: [4869], own: true, cfg: { write_history_events: true } });
+  const r = own.b.rec(4869);
+  ok(factOf(r, 'app-check').result === 'fail' && r.verdict === 'failed' && r.attribution === 'own-regression' && own.b.events.some(e => e.type === 'verification-failed'), '755: Gatus failure after rollout, passing before merge and no other change gives the existing revert decision', r.why);
+  ok(bad.gatusRequests.some(x => x.at === Date.parse(views([4869])[0].mergedAt) - 1), '755: the success baseline is read before the update timestamp, not before the current query');
+  for (const [field, value, reason] of [['gatusUnreadable', true, 'unreadable Prometheus answer'], ['gatusEmpty', true, 'missing series'], ['gatusDuplicate', true, 'ambiguous series'], ['gatusWrongName', 'guessing-is-not-a-map', 'wrong name'], ['gatusAgeMs', 301000, 'stale stored sample'], ['gatusAgeMs', -1000, 'future sample']]) {
+    const w = world(); w[field] = value;
+    const result = (await twice(w, { prs: [4869], own: true })).b.rec(4869);
+    ok(result.verdict === 'cannot-tell' && factOf(result, 'app-check').result === 'unreadable', `755: ${reason} is cannot tell, never a pass`, result.why);
+  }
+  const already = world(); already.gatusFailed = true; already.gatusBeforeFailed = true;
+  const unproven = (await twice(already, { prs: [4869], own: true, cfg: { write_history_events: true } })).b;
+  ok(unproven.rec(4869).verdict === 'cannot-tell' && !unproven.events.some(e => e.type === 'verification-failed') && /no unambiguous passing sample before/.test(factOf(unproven.rec(4869), 'app-check').detail), '755: an endpoint already failing before the update cannot trigger a revert');
+  const other = world(); other.gatusFailed = true;
+  other.extraCommits = [{ sha: 'd'.repeat(40), at: iso(T1 - 1000), subject: 'another change to seerr', pr: 9999, files: ['kubernetes/main/apps/media/seerr/app/helmrelease.yaml'] }];
+  const shared = (await twice(other, { prs: [4869], own: true, cfg: { write_history_events: true } })).b;
+  ok(shared.rec(4869).verdict === 'failed' && shared.rec(4869).attribution === 'cannot-tell-which-change' && !shared.events.some(e => e.type === 'verification-failed'), '755: another change reaching the app prevents own-regression and its revert event');
+  const at = T2, sample = { status: 'success', data: { resultType: 'vector', result: [{ metric: { group: 'internal', name: 'seerr', key: 'internal_seerr' }, value: [at / 1000, '1'] }] } };
+  ok(V.gatusSamples(sample, at, 300) === null, '755: instant-vector evaluation timestamps cannot prove sample freshness');
+  for (const value of [59, 1801, 300.5, '300', null]) ok(!V.verifyConfig(vrules({ gatus_sample_max_age_seconds: value })).ok, `755: sample max age ${value} outside validated integer range blocks config`);
+  ok(V.verifyConfig(vrules({ gatus_sample_max_age_seconds: 60 })).ok && V.verifyConfig(vrules({ gatus_sample_max_age_seconds: 1800 })).ok, '755: sample age setting accepts both range boundaries');
+  const rename = world();
+  ksOf(rename, 'media/seerr').status.inventory.entries.find(e => /seerr-gatus-ep/.test(e.id)).id = 'media_custom-endpoint-gatus-ep__ConfigMap';
+  const renamed = (await twice(rename, { prs: [4869] })).b.rec(4869);
+  ok(renamed.verdict === 'verified' && /internal_custom-endpoint/.test(factOf(renamed, 'app-check').detail), '755: endpoint comes from the ConfigMap inventory, not the app or HelmRelease name');
+  const zero = world();
+  for (const list of Object.values(zero.controllers)) for (const c of list.items.filter(c => c.metadata.namespace === 'network')) {
+    c.spec.replicas = 0;
+    Object.assign(c.status, { replicas: 0, updatedReplicas: 0, readyReplicas: 0, availableReplicas: 0, desiredNumberScheduled: 0, currentNumberScheduled: 0, updatedNumberScheduled: 0, numberReady: 0, numberAvailable: 0 });
+  }
+  zero.pods.network.pods.items = [];
+  const zr = await twice(zero, { prs: [4873] });
+  ok(/#4873 .*no pod ran/.test(zr.b.table) && zr.b.rec(4873).verdict === 'verified' && factOf(zr.b.rec(4873), 'app-check').result === 'pass', '755: all controllers at zero say no pod ran on the verdict line; a passing endpoint decides the app check', zr.b.table);
+  zero.gatusFailed = true;
+  const zfail = (await twice(zero, { prs: [4873], own: true, cfg: { write_history_events: true } })).b;
+  ok(zfail.rec(4873).verdict === 'failed' && /no pod ran/.test(zfail.table) && factOf(zfail.rec(4873), 'app-check').result === 'fail', '755: with no pod run a failing endpoint still fails the chart update');
+  ok(/Deployment\/media\/seerr.*replicas 1\/1.*updatedReplicas 1\/1.*all Ready \([^)]*seerr/.test(factOf(passed, 'rollout').detail), '755: rollout pass names the controller, namespace, name, counts and pods', factOf(passed, 'rollout').detail);
+  const calls = real.b.calls.filter(c => /^kubectl get (deployments|statefulsets|daemonsets)\.apps/.test(c));
+  ok(calls.length === 3 && calls.every(c => / -A /.test(c)), '755: standalone verification reads one shared cluster controller snapshot');
+  const reuseWorld = world();
+  const reused = await tick(reuseWorld, { prs: [4869], deps: { controllers: reuseWorld.controllers } });
+  ok(reused.calls.every(c => !/^kubectl get (deployments|statefulsets|daemonsets)\.apps/.test(c)) && factOf(reused.rec(4869), 'rollout').result === 'pass', '755: a controller snapshot handed in by the tick is reused without another controller read');
 }
 
 // ── 3. the failure modes (practice: failed; the lane's own merge: a revert decision) ───────
@@ -245,7 +309,7 @@ await failure('a chart source failing on two reads 900 s apart (M4)', 4873, w =>
   const m0 = await tick(seerrW(0), { prs: [4869] });
   let pm = m0.memory, lm;
   for (let i = 1; i <= 3; i++) { lm = await tick(seerrW(i), { prs: [4869], now: T1 + i * 900e3, prev: pm, doc: m0.doc }); pm = lm.memory; }
-  ok(lm.rec(4869).verdict === 'not-yet' && /moved \(Ready, no new restarts at its last read\)/.test(factOf(lm.rec(4869), 'stable').detail) && /pods Deployment\/media\/seerr moved 3x/.test(lm.table), 'N3: a Ready pod moved three times is not churn; the moves show in the morning view', lm.rec(4869).why);
+  ok(lm.rec(4869).verdict === 'cannot-tell' && /moved \(Ready, no new restarts at its last read\)/.test(factOf(lm.rec(4869), 'stable').detail) && /pods Deployment\/media\/seerr moved 3x/.test(lm.table), 'N3: a Ready pod moved three times is not churn; the app needs a sample after the new rollout and the moves show', lm.rec(4869).why);
   const after = await tick(seerrW(3), { prs: [4869], now: T1 + 4 * 900e3, prev: pm, doc: m0.doc });
   ok(after.rec(4869).verdict === 'verified', 'N3: after the moves the new record soaks and verifies', after.rec(4869).why);
 }
@@ -644,7 +708,7 @@ await failure('a chart source failing on two reads 900 s apart (M4)', 4873, w =>
   const a = await tick(world(), { prs: [4869] }), b = await tick(world(), { prs: [4869], now: T1 + 1000, prev: a.memory, doc: a.doc });
   ok(b.rec(4869).verdict === 'not-yet' && /recorded at .*, 1 s ago; they are read again at least 600 s after that/.test(factOf(b.rec(4869), 'stable').detail), 'M2: two reads a second apart are not yet, saying how long ago the pods were recorded', factOf(b.rec(4869), 'stable').detail);
   const same = await tick(world(), { prs: [4869], now: T1, prev: a.memory, doc: a.doc });
-  ok(same.rec(4869).verdict === 'not-yet' && factOf(same.rec(4869), 'stable').result === 'waiting', 'M5: no stability within the same tick');
+  ok(same.rec(4869).verdict === 'cannot-tell' && factOf(same.rec(4869), 'stable').result === 'waiting' && factOf(same.rec(4869), 'app-check').result === 'unreadable', 'M5: no stability within the same tick');
   // M3: attribution by container, nodes, Prometheus restarts
   const side = w => { for (const p of podsIn(w, 'ai', 'piper-')) { p.spec.containers.push({ name: 'exporter', image: 'ghcr.io/example/exporter:1' }); p.status.containerStatuses.push({ name: 'exporter', ready: true, restartCount: 0, state: { running: {} } }); } };
   const wc = world(); side(wc); podsIn(wc, 'ai', 'piper-')[0].status.containerStatuses[1].state = { waiting: { reason: 'CrashLoopBackOff' } };

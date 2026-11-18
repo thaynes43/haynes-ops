@@ -551,6 +551,25 @@ const inst = id => sx.instants.find(i => i.id === id);
   ok(!check(f).settled && check(f).blockers.some(b => /controller not listed/.test(b)), '755 settle: an inventoried controller absent from a readable list blocks');
 }
 
+// Story 755, second slice: target namespace is distinct from Helm storage.
+{
+  const h = { metadata: { namespace: 'flux-config', name: 'app' }, spec: { targetNamespace: 'app-runtime', storageNamespace: 'helm-storage', releaseName: 'custom-release' } };
+  const c = structuredClone(controllers755.Deployment);
+  c.metadata.namespace = 'app-runtime'; c.metadata.name = 'custom-workload'; c.metadata.labels = {};
+  c.metadata.annotations = { 'meta.helm.sh/release-name': 'custom-release', 'meta.helm.sh/release-namespace': 'app-runtime' };
+  const lists = { ...emptyControllers(), deployments: { items: [c] } }, scope = { own: [], own_hr: ['flux-config/app'] };
+  ok(M.scopeControllers(scope, { items: [] }, { items: [h] }, lists).some(w => w.ns === 'app-runtime' && w.name === 'custom-workload'), '755: annotation ownership uses HelmRelease targetNamespace, not storageNamespace');
+  c.metadata.annotations['meta.helm.sh/release-namespace'] = 'helm-storage';
+  ok(M.scopeControllers(scope, { items: [] }, { items: [h] }, lists).length === 0, '755: Helm storage namespace annotation does not establish workload ownership');
+  for (const [strategy, phrase] of [[{ type: 'OnDelete' }, /OnDelete.*will not finish by itself/], [{ type: 'RollingUpdate', rollingUpdate: { partition: 1 } }, /partition 1.*will not finish by itself/]]) {
+    const o = structuredClone(controllers755.StatefulSet); o.spec.updateStrategy = strategy; o.status.updatedReplicas = 1;
+    const result = M.controllerRollout({ kind: 'StatefulSet', ns: o.metadata.namespace, name: o.metadata.name }, { statefulsets: { items: [o] } });
+    ok(result.result === 'waiting' && phrase.test(result.detail), `755: ${strategy.type} waits with a reason readable in the morning`, result.detail);
+  }
+  const sliced = M.controllersIn({ ...lists, statefulsets: null }, 'another-namespace');
+  ok(sliced.deployments.items.length === 0 && sliced.statefulsets === null, '755: sharing a controller snapshot preserves failed reads and namespace isolation');
+}
+
 // ── 4. the lock and the merge call against stub kubectl and gh ─────────────────────────
 const tmp = mkdtempSync(join(tmpdir(), 'merge-step-'));
 try {

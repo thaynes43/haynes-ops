@@ -173,16 +173,35 @@ critical alerts from Prometheus, main's commits to the PR's files and each work 
   `backup-unmatched` and remains recorded as stateful. An unreadable PVC, StatefulSet or
   Deployment list blocks as `unreadable: <kind> in <namespace>`; an empty readable list is
   different from a failed read.
-- **Backup freshness, per source:** the newest successful sync or backup must be at or
-  after that source's most recent scheduled run, and no older than 24 hours at merge time.
-  - VolSync: the source's most recent run is `status.nextSyncTime` if that time has
-    already passed, else `nextSyncTime` minus the period of `spec.trigger.schedule`. The
-    cluster evaluates `0 0 * * *` as 05:00Z.
-  - CNPG: the most recent run is the ScheduledBackup's `status.lastScheduleTime`, checked
-    against the newest Backup with `phase=completed`, timed by its `creationTimestamp`.
-    `startedAt` and `stoppedAt` are not used: postgres16 and ytdrivarr stamp local time
-    with `Z`, so a 05:00Z run reads as 00:00Z.
-  - Weekly sources (`plex-aws`, `plexops-aws`) therefore pass only on their own night.
+- **Backup freshness, per source:** the newest successful sync or backup must cover
+  the source's most recent scheduled run **and every run due through tonight's configured
+  merge-window end**, and be no older than 24 hours at merge time. At 01:45 New York,
+  yesterday's successful backup cannot clear a source due at 02:00 or 02:30 tonight.
+  The blocker has the fixed prefix `backup-due-in-window:`, followed by the source,
+  local due time, zone and UTC instant. It remains until that run completes. There is no
+  list of special source names. For a repeating schedule, the last run through the
+  window end must finish. Runs after the configured end are not pulled into tonight.
+  - VolSync: read `spec.trigger.schedule`, `status.nextSyncTime`, `status.lastSyncTime`
+    and `latestMoverStatus.result=Successful`. Compute actual cron occurrences rather
+    than subtracting a fixed period (including across daylight-saving changes).
+  - CNPG: read **each** active ScheduledBackup's schedule and `status.lastScheduleTime`.
+    It must have scheduled the required run; a Backup belonging to that ScheduledBackup
+    (`cnpg.io/scheduled-backup` label or ScheduledBackup owner reference) must be completed,
+    with its server-set `creationTimestamp` at or after the due time. `startedAt` and
+    `stoppedAt` are not used: some instances stamp local time with `Z`. Another
+    schedule's or an unlinked manual Backup cannot substitute for this run.
+  - Numeric lists, ranges and positive steps and the hourly/daily/weekly/monthly/yearly
+    aliases are readable. VolSync has five fields; CNPG has six, **seconds first**;
+    seconds are validated and honored, never discarded. DOM/DOW uses robfig cron's rule.
+    An explicit `TZ=` or `CRON_TZ=` prefix supplies the zone. Otherwise the lane's
+    `night.timezone` is used only when the source's next/last scheduled timestamp matches
+    that schedule in that zone. This corroborates New York for today's sources without
+    assuming UTC or the worker pod's zone. Syntax, missing timestamps, a mismatched or
+    unreadable zone, or an unreadable window blocks as `unreadable: backup schedule …`.
+  - Weekly sources still normally pass only on their own night under the 24-hour cap.
+    An unsupported cron spelling (for example named months) fails closed. This reader
+    uses the schedule readable now; it cannot reconstruct earlier schedule or zone edits.
+
 - **Baseline, scoped to the target.** These block:
   - a NotReady Kustomization that applies the target, sits in its `dependsOn` chain, or
     targets its namespace;
@@ -1573,7 +1592,7 @@ upgrade-night dryrun: history: WRITTEN: 311 new events (observed 13, merged 298)
 
 Story 553 (<https://work.haynesnetwork.com/projects/haynes-engineering/work_packages/553>)
 builds the read-only verifier: acceptance lines 1 to 3. The revert, the drill and "never merge
-this version again" are story 753; the app health check through Gatus is story 755. The code
+this version again" are story 753; story 755 adds the app health check through Gatus samples in Prometheus. The code
 is `night-verify.mjs`, and the settings are `night.verify` in `upgrade-rules.json`.
 
 **The principle** (the review of PR 4880): "failed, the update's own regression" needs
@@ -1621,12 +1640,52 @@ on the tick's own clock; on the first read the fact waits and says since when.
 | `image` | each package: the update's containers run the new version (digest or tag decided by the update type the history recorded, never by the characters); else a CronJob template names it; else the HelmRelease whose last release is that chart | `wrong-image`: the old version with nothing rolling; a CronJob template naming another version; a HelmRelease settled on another chart while its chart source is settled; `not-applied`: the chart source failing on two reads | no container, CronJob or chart of the target is the package; a version cannot be read (in a pod or a CronJob template) |
 | `exercised` | a CronJob whose template names the update: the newest finished Job from the new template made since the merge (a newer one still running does not hide it) | `job-failed`: that Job failed, the last finished old-template Job did not fail too, and the last kept run created before the merge is from the old template, completed by the merge, matches `status.lastSuccessfulTime`, and has no later scheduled run before the merge (schedule and time zone read with `nextCron`); `lastScheduleTime` must not name a later pre-merge run | Jobs unreadable; the CronJob suspended; the last old-template Job failed too; the last pre-merge run is missing, unfinished at the merge, or lacks the timestamp and schedule evidence. The detail names the last kept success and its completion time, plus `lastSuccessfulTime` (or their absence). None yet waits for the first run, with its schedule, last run and next run |
 | `rollout` | each inventoried Deployment, StatefulSet and DaemonSet: controller generation observed; desired replicas updated and Ready (available too for Deployments and DaemonSets; StatefulSet revisions match); that many pods by owner, of one template, none terminating, all Ready. Zero desired replicas are distinguishable from replicas not yet created | (waits for incomplete generation/counts or pods) | the controller list, controller object, generation, desired count or pods cannot be read |
+| `app-check` | the shared Gatus component's endpoint, mapped by the target's inventoried `<APP>-gatus-ep` ConfigMap and exact live `group`, `name`, `key` labels; raw `gatus_results_endpoint_success` samples from Prometheus after observed rollout completion | `not-ready`: a failing sample after rollout and a passing sample before the update; the existing other-change rule still governs own-regression and the revert decision | failed read, malformed or ambiguous series, no sample newer than observed rollout completion, stale sample, or a failure with no passing pre-update sample; no shared-component endpoint is explicitly `not-applicable` |
 | `stable` | two reads (below) | `restart-growth` or `not-ready` of an update's container on a node that did not reboot; `churn` | pods or nodes unreadable; the same in another container; a pod on a node that is not Ready |
 | `pin` | own images only (below) | never: before the pin has merged nothing of the update runs, so the item stays awaiting | when a pin candidate was made cannot be read |
 
 `workloads` appears as an extra unreadable fact when an inventory cannot be read. Facts
 are read in order: until `source` passes, the rest wait; `image`, `exercised`, `rollout` and
-`stable` wait until `applied` passes and the HelmReleases are settled.
+`app-check` and `stable` wait until `applied` passes and the HelmReleases are settled.
+
+**App check (story 755).** The fact is named `app-check`: `pass`, `fail`,
+`not-applicable` (said in words), or `unreadable` with “cannot tell”; while rollout or
+image is still waiting, it waits too. A stateless app with a mapped endpoint cannot
+be verified without a passing sample. This is an endpoint check, not a stateful app
+hook or restore proof (stories 555 and 560).
+
+The reader sends an **instant query with a raw range selector**,
+`gatus_results_endpoint_success[300s]`, at an explicit evaluation time. Its matrix
+`values[][0]` carries stored sample times. An instant-vector `value[0]`, or a range
+query's evaluation steps, would give query times and is never accepted as proof.
+`night.verify.gatus_sample_max_age_seconds` defaults to 300, validated as an integer
+from 60 to 1800. The newest sample for each exact endpoint must be within that age
+and strictly newer than the first tick that observed this rollout complete. The
+completion observation is kept with a hash of controller identity/generation/counts
+and pod identity/revision; a changed rollout resets it. The first observation usually
+has no newer sample and is `cannot-tell`; the next tick can supply it, without a sleep.
+The endpoint's pre-update sample is queried just before the merge (or digest pin),
+under the same age bound, only when its later sample fails. A check already failing,
+missing or unreadable before the update cannot blame that update or request its revert.
+A failure with a passing baseline still needs no other change reaching the scope under
+the existing attribution rule. A passing sample can verify despite unrelated changes.
+
+The lane reaches Prometheus on its existing port 9090 permission; it reads neither
+Gatus itself nor an app namespace's ConfigMap. Endpoint names come from the shared
+component's actual inventory resource, rather than guessing from a workload or
+HelmRelease name. Live labels checked on 2026-11-18 use `name=APP`, `group=internal`
+(guarded) or `external`, and `key=group_APP`. Missing or multiple matching series,
+and a name used by inventories in two namespaces, are ambiguous and `cannot-tell`.
+Custom endpoint ConfigMaps without this naming contract are not mapped; absence
+means “no shared-component endpoint in the inventories”, not a claim about every
+possible app test. The gauge's sample time is Prometheus's stored scrape time;
+it does not expose the precise time Gatus evaluated the endpoint. Passing this
+check proves the exported success sample after the rollout observation, not an
+application transaction or a stateful hook.
+
+References: [Prometheus raw samples and evaluation times](https://prometheus.io/docs/prometheus/latest/querying/basics/),
+[HTTP API matrix results](https://prometheus.io/docs/prometheus/latest/querying/api/),
+[CNPG scheduled backups](https://cloudnative-pg.io/docs/devel/backup/).
 
 **Stability: two reads at least 600 seconds apart.** On the first tick on which the image,
 the rollout and the pods pass, the verifier records the target's pods (uid, node, restarts per
@@ -1775,7 +1834,8 @@ Both the verifier's `rollout` fact and F2 use `night-merge.mjs`'s `controllerRol
   Ready (and available for Deployments and DaemonSets); StatefulSet revisions must match;
 - a controller with one of three replicas waits even if its single pod is Ready;
 - zero replicas can pass `rollout` when the observed controller confirms zero and no pod
-  remains. Image/exercise/stability facts still decide whether the update can be verified;
+  remains. When all target controllers are at zero, the verdict line says **“no pod ran”**.
+  The mapped Gatus endpoint still decides `app-check`; image/exercise/stability also apply;
 - unreadable lists and missing inventoried controllers are unreadable, never a pass.
 
 ReplicaSets remain outside the read grant. A Deployment pod's hash cannot be matched to
@@ -1784,6 +1844,11 @@ labels still supply that part of the proof. The verifier uses inventories; the s
 check also recognizes Flux/Helm labels. Objects missing both ownership evidence and an
 inventory entry cannot be associated with a target. A partitioned StatefulSet or an
 OnDelete workload waits until all replicas are updated; partial rollouts do not pass.
+The reason now says that OnDelete or the partition **will not finish by itself**.
+A passing rollout line names each controller (kind, namespace, name, counts) and its pods.
+Helm annotation ownership uses the release target namespace, independently of its
+storage namespace. The initial settle/state/verify reads share one controller snapshot;
+merge preflight deliberately refreshes facts under the change lock and at a live call.
 
 Controller counters follow the Kubernetes API definitions for
 [Deployments](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/deployment-v1/),
@@ -1816,8 +1881,14 @@ and [DaemonSets](https://kubernetes.io/docs/reference/kubernetes-api/workload-re
   no finished new-template Job means waiting, and no old Job means an unproven baseline.
   The schedule and time zone are those readable now; the verifier cannot reconstruct
   earlier schedule edits or distinguish every skipped, delayed or overlapping run.
-- An update that changes no pod (a chart bump that renders the same pods) passes on the pods
-  it finds: pods alone cannot show that a template did not need to change.
+- An update that changes no pod (a chart bump that renders the same pods) reads those pods
+  and any mapped Gatus endpoint. Pods alone cannot show that a template did not need to
+  change. A chart-only update at zero replicas says “no pod ran”; with no mapped endpoint
+  it may still verify the chart and empty rollout, rather than proving app execution.
+- Gatus mapping covers the shared component inventory contract only. Custom endpoint
+  layouts, duplicated names and unreadable or stale samples need a person; this is not
+  a stateful hook. Prometheus sample times establish scrape freshness, not the precise
+  endpoint evaluation time (see App check above).
 - `NEEDS A PERSON` is a mark in `upgrade-lane-state`, not a history event and not a page.
   It reaches a person through the morning summary (story 554).
 - An earlier merge that is still open and whose files are unknown makes every later merge's
@@ -2439,8 +2510,8 @@ dev-env-ops, so merge such a change only when no work order is claimed.
   Deployment/StatefulSet templates and PVCs, including retained claims and zero replicas.
   All three lists must be readable. Ownership follows inventories, Flux/Helm/app labels,
   controller references and claim names; a claim carrying none of those links cannot be
-  attributed. Backups that run inside the current window and the Gatus app check remain
-  the second slice of story 755; this slice changes neither.
+  attributed. Story 755 also waits for backups due through the configured window end
+  and reads the Gatus app-check samples through Prometheus (see above).
 - R8's map can lag the repository. The selftest workflow runs on changes to the lane,
   `scripts/upgrade-agent/**`, workflows and `.renovate/**`, not on every
   `kustomization.yaml`. A PR that adds a new consumer of a component without touching

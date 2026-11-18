@@ -81,6 +81,7 @@
 //
 // Controller generation and replica counters are read as well as pods (story 755).
 // ReplicaSets remain unreadable: the pod template is checked through the image and labels.
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import * as L from './lane-classify.mjs';
 import * as M from './night-merge.mjs';
@@ -113,8 +114,8 @@ export function verifyConfig(rules) {
   const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
   const ok = typeof c.practice === 'boolean' && typeof c.write_history_events === 'boolean' && int(c.max_items_per_tick, 1, 50) && int(c.max_items_kept, 1, 300)
     && int(c.max_range_commits, 1, 250) && int(c.time_budget_seconds, 10, 400) && int(c.min_stable_seconds, 60, 3600) && int(c.needs_person_after_nights, 1, 14) && int(c.needs_person_min_ticks, 1, 100)
-    && int(c.max_replacements, 2, 20) && int(c.prometheus_restart_slack_seconds, 30, 1800) && int(c.max_state_bytes, 8192, 262144);
-  return { ok, ...c, why: ok ? null : 'night.verify in upgrade-rules.json is invalid (practice and write_history_events booleans; max_items_per_tick 1 to 50; max_items_kept 1 to 300; max_range_commits 1 to 250; time_budget_seconds 10 to 400; min_stable_seconds 60 to 3600; needs_person_after_nights 1 to 14; needs_person_min_ticks 1 to 100; max_replacements 2 to 20; prometheus_restart_slack_seconds 30 to 1800; max_state_bytes 8192 to 262144)' };
+    && int(c.max_replacements, 2, 20) && int(c.prometheus_restart_slack_seconds, 30, 1800) && int(c.max_state_bytes, 8192, 262144) && int(c.gatus_sample_max_age_seconds, 60, 1800);
+  return { ok, ...c, why: ok ? null : 'night.verify in upgrade-rules.json is invalid (practice and write_history_events booleans; max_items_per_tick 1 to 50; max_items_kept 1 to 300; max_range_commits 1 to 250; time_budget_seconds 10 to 400; min_stable_seconds 60 to 3600; needs_person_after_nights 1 to 14; needs_person_min_ticks 1 to 100; max_replacements 2 to 20; prometheus_restart_slack_seconds 30 to 1800; max_state_bytes 8192 to 262144; gatus_sample_max_age_seconds 60 to 1800)' };
 }
 
 // ── images ──────────────────────────────────────────────────────────────────────
@@ -549,28 +550,99 @@ export function factExercised(u, mergedAt, kind, ctx) {
 // pods of one template, none terminating, all Ready. Returns the fact and a
 // map workload -> its own result (factImage reads whether a workload is still rolling).
 export function factRollout(wl, ctx) {
-  const parts = [], per = new Map();
+  const parts = [], per = new Map(), identity = [];
+  let noPodRan = true;
   const ws = wl.filter(w => w.kind !== 'CronJob');
   if (!ws.length) return { fact: NA('rollout', 'the target has no Deployment, StatefulSet or DaemonSet'), per };
   for (const w of ws) {
     const key = wkey(w), f = ctx.pods(w.ns);
-    if (!f?.pods) { parts.push({ r: 'unreadable', d: `pods in ${w.ns}` }); per.set(key, 'unreadable'); continue; }
+    if (!f?.pods) { noPodRan = false; parts.push({ r: 'unreadable', d: `pods in ${w.ns}` }); per.set(key, 'unreadable'); continue; }
     const all = podsOf(w, f.pods.items), cur = current(all), term = all.filter(p => p.metadata?.deletionTimestamp);
     const revs = uniq(cur.map(p => revisionOf(p, w.kind)));
     const notReady = cur.filter(p => !podReady(p));
-    const controller = M.controllerRollout(w, ctx.controllers(w.ns));
+    const lists = ctx.controllers(w.ns), controller = M.controllerRollout(w, lists);
+    const obj = lists?.[M.CONTROLLERS[w.kind]]?.items?.find(o => o.metadata?.namespace === w.ns && o.metadata?.name === w.name);
+    noPodRan &&= controller.result === 'pass' && controller.desired === 0 && cur.length === 0 && term.length === 0;
+    identity.push([key, obj?.metadata?.uid, obj?.metadata?.generation, controller.desired, cur.map(p => [p.metadata?.uid, p.metadata?.name, revisionOf(p, w.kind)]).sort()]);
     let r, d;
     if (controller.result !== 'pass') { r = controller.result; d = controller.detail; }
     else if (term.length) { r = 'waiting'; d = `${key}: ${term.length} pod(s) terminating`; }
-    else if (!cur.length && controller.desired === 0) { r = 'pass'; d = `${key}: controller observed at zero replicas`; }
+    else if (!cur.length && controller.desired === 0) { r = 'pass'; d = `${controller.detail}; no pod ran (zero replicas)`; }
     else if (revs.some(x => x === null)) { r = 'unreadable'; d = `${key}: a pod carries no template revision label`; }
     else if (revs.length > 1) { r = 'waiting'; d = `${key} has pods of ${revs.length} templates (${revs.join(', ')})`; }
     else if (cur.length !== controller.desired) { r = 'waiting'; d = `${key}: ${cur.length}/${controller.desired} running pods`; }
     else if (notReady.length) { r = 'waiting'; d = `${key}: ${notReady.length} of ${cur.length} pod(s) not Ready (${notReady.slice(0, 2).map(p => p.metadata.name).join(', ')})`; }
-    else { r = 'pass'; d = `${key}: ${cur.length} pod(s) of template ${revs[0]}, all Ready`; }
+    else { r = 'pass'; d = `${controller.detail}; ${cur.length} pod(s) of template ${revs[0]}, all Ready (${cur.map(p => p.metadata.name).join(', ')})`; }
     parts.push({ r, d }); per.set(key, r);
   }
-  return { fact: fold('rollout', parts, parts.map(p => p.d).join('; ')), per };
+  return { fact: fold('rollout', parts, parts.map(p => p.d).join('; ')), per, noPodRan, signature: createHash('sha256').update(JSON.stringify(identity.sort((a, b) => a[0].localeCompare(b[0])))).digest('hex') };
+}
+
+// Story 755: the shared Gatus component renders <APP>-gatus-ep in its own
+// Kustomization inventory. Take APP from that exact resource, never a workload or HR
+// name. No app-namespace ConfigMap read (the lane has no such permission).
+export function gatusEndpoints(sc, ks) {
+  const names = new Set(), unread = [], mine = new Set(sc.own || []);
+  for (const id of mine) {
+    const k = ks?.items?.find(k => L.ksId(k) === id), inv = inventoryOf(k);
+    if (!inv) { unread.push(`the inventory of Kustomization ${id}`); continue; }
+    for (const e of inv.filter(e => e.kind === 'ConfigMap' && e.group === '' && e.name.endsWith('-gatus-ep'))) {
+      const name = e.name.slice(0, -'-gatus-ep'.length);
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) { unread.push(`Gatus endpoint name in ${e.ns}/${e.name}`); continue; }
+      const resources = new Set((ks?.items || []).flatMap(k => inventoryOf(k) || []).filter(x => x.kind === 'ConfigMap' && x.group === '' && x.name === e.name).map(x => `${x.ns}/${x.name}`));
+      if (resources.size > 1) unread.push(`Gatus name ${name} belongs to more than one namespace`);
+      names.add(name);
+    }
+  }
+  return { names: [...names].sort(), unread };
+}
+
+// A raw range selector returned by an INSTANT query is a matrix of stored samples.
+// In contrast, an instant-vector value[0] is the query evaluation time, NOT the sample
+// time. Never accept that vector as evidence. Keep exact group/name/key identities;
+// duplicate series (e.g. two scrapers) are ambiguous, not an arbitrarily chosen pass.
+export function gatusSamples(answer, at, maxAgeSeconds) {
+  if (answer?.status !== 'success' || answer?.data?.resultType !== 'matrix' || !Array.isArray(answer.data.result)) return null;
+  const rows = [];
+  for (const r of answer.data.result) {
+    const m = r.metric;
+    if (!m || !['group', 'name', 'key'].every(k => typeof m[k] === 'string' && m[k].length > 0) || !Array.isArray(r.values)) return null;
+    let latest = null;
+    for (const v of r.values) {
+      if (!Array.isArray(v) || v.length !== 2 || typeof v[0] !== 'number' || !Number.isFinite(v[0]) || !['0', '1'].includes(v[1])) return null;
+      const t = v[0] * 1000;
+      if (t > at) return null;
+      if (t > at - maxAgeSeconds * 1000 && (!latest || t > latest.at)) latest = { at: t, success: v[1] === '1' };
+    }
+    rows.push({ group: m.group, name: m.name, key: m.key, sample: latest });
+  }
+  return rows;
+}
+
+export async function factAppCheck(sc, change, ctx, memory) {
+  const mapping = gatusEndpoints(sc, ctx.ks);
+  if (mapping.unread.length) return fact('app-check', 'unreadable', `cannot tell: ${mapping.unread.join('; ')}`);
+  if (!mapping.names.length) return NA('app-check', 'not applicable: the target has no endpoint from the shared Gatus component in its inventories');
+  if (!memory) return fact('app-check', 'waiting', 'read once the image and rollout pass');
+  const maxAge = ctx.cfg.gatus_sample_max_age_seconds;
+  const current = gatusSamples(await ctx.gatus(ctx.now), ctx.now, maxAge);
+  if (!current) return fact('app-check', 'unreadable', 'cannot tell: Prometheus Gatus samples unreadable (expected raw matrix samples)');
+  const parts = [];
+  let before;
+  for (const name of mapping.names) {
+    const matches = rows => rows.filter(r => r.name === name && ['internal', 'external'].includes(r.group) && r.key === `${r.group}_${name}`);
+    const rows = matches(current), row = rows[0];
+    if (rows.length !== 1) { parts.push({ r: 'unreadable', d: `cannot tell: Gatus ${name} has ${rows.length} matching series (group/name/key); endpoint missing or ambiguous` }); continue; }
+    const sample = row.sample, key = row.key;
+    if (!sample || sample.at <= Date.parse(memory.at)) { parts.push({ r: 'unreadable', d: `cannot tell: Gatus ${key} has no sample newer than rollout completion observed at ${memory.at}` }); continue; }
+    if (sample.success) { parts.push({ r: 'pass', d: `Gatus ${key} passed at sample ${iso(sample.at)}, after rollout completion observed at ${memory.at}` }); continue; }
+    const preAt = Date.parse(change.merged_at) - 1;
+    if (before === undefined) before = gatusSamples(await ctx.gatus(preAt), preAt, maxAge);
+    const old = before?.filter(r => r.group === row.group && r.name === row.name && r.key === row.key);
+    if (old?.length === 1 && old[0].sample?.success) parts.push({ r: 'fail', class: 'not-ready', d: `Gatus ${key} failed at sample ${iso(sample.at)} after the rollout; it passed before the update at sample ${iso(old[0].sample.at)}` });
+    else parts.push({ r: 'unreadable', d: `cannot tell: Gatus ${key} failed at sample ${iso(sample.at)}, but no unambiguous passing sample before the update (already failing, missing, stale or unreadable)` });
+  }
+  return fold('app-check', parts, parts.map(p => p.d).join('; '));
 }
 
 // Two ticks at least min_stable_seconds apart, on the tick's own clock (M2). prior (the record):
@@ -792,7 +864,7 @@ export function buildOf(runs, workflow) {
 
 // One candidate, with every read it needs handed in (tests pass fakes). Returns its record.
 // ctx.prior: its record from the last tick (the memory).
-export function judge(cand, ctx) {
+export async function judge(cand, ctx) {
   const { rules, range } = ctx;
   const prior = ctx.prior || {};
   const rec = { pr: cand.pr, item: cand.id, name: cand.name, from: cand.from, to: cand.to, type: cand.type ?? null, merged_at: cand.merged_at, merge_commit: cand.merge_commit, merged_by: cand.merged_by, practice: !cand.own,
@@ -823,7 +895,7 @@ export function judge(cand, ctx) {
 // The facts of one target. change: the commit whose rollout is judged (the merge, or an own
 // image's pin) and when it merged; cand: the history's item (its events name its own merge);
 // upd: { packages, type } of the change.
-function judgeTarget(rec, cand, change, sc, clusterWide, upd, ctx) {
+async function judgeTarget(rec, cand, change, sc, clusterWide, upd, ctx) {
   const { now } = ctx;
   const m = change.merge_commit;
   const prior = ctx.prior || {};
@@ -832,7 +904,7 @@ function judgeTarget(rec, cand, change, sc, clusterWide, upd, ctx) {
   rec.facts.push(src);
   const after = (name, why) => fact(name, 'waiting', why);
   if (src.result !== 'pass') {
-    for (const n of ['applied', 'helmreleases', 'pods', 'alerts', 'image', 'rollout', 'stable']) rec.facts.push(after(n, 'read once Flux\'s source contains the merge'));
+    for (const n of ['applied', 'helmreleases', 'pods', 'alerts', 'image', 'rollout', 'app-check', 'stable']) rec.facts.push(after(n, 'read once Flux\'s source contains the merge'));
     return finish(rec, cand, ctx);
   }
   const ap = factApplied(m, sc, ctx, seen.failing, rec.mem.failing);
@@ -850,12 +922,17 @@ function judgeTarget(rec, cand, change, sc, clusterWide, upd, ctx) {
   rec.facts.push(factPods(change.merged_at, wl, u, ctx, seen.errors, rec.mem.errors));
   rec.facts.push(factAlerts(change.merged_at, sc, clusterWide, ctx));
   if (ap.result !== 'pass' || !['pass', 'not-applicable'].includes(hrf.result)) {
-    for (const n of ['image', 'rollout', 'stable']) rec.facts.push(after(n, 'read once the target applied the merge and its HelmReleases are settled'));
+    for (const n of ['image', 'rollout', 'app-check', 'stable']) rec.facts.push(after(n, 'read once the target applied the merge and its HelmReleases are settled'));
     return finish(rec, cand, ctx);
   }
   const ro = factRollout(wl, ctx);
   const im = factImage(upd, u, ro.per, ctx, seen.failing, rec.mem.failing);
   rec.facts.push(im, ro.fact);
+  rec.no_pod_ran = ro.noPodRan === true;
+  const appReady = ro.fact.result === 'pass' && im.result === 'pass' && rec.facts.find(f => f.fact === 'pods')?.result === 'pass';
+  const oldRollout = prior.mem?.app_rollout;
+  if (gatusEndpoints(sc, ctx.ks).names.length) rec.mem.app_rollout = appReady ? (oldRollout?.signature === ro.signature ? oldRollout : { at: iso(now), signature: ro.signature }) : null;
+  rec.facts.push(await factAppCheck(sc, change, ctx, rec.mem.app_rollout));
   const ex = im.result === 'pass' ? factExercised(u, change.merged_at, versionKindOf(upd.type), ctx) : (u.crons.length ? after('exercised', 'read once the image passes') : null);
   if (ex) rec.facts.push(ex);
   const podsOk = rec.facts.find(f => f.fact === 'pods')?.result === 'pass';
@@ -885,7 +962,7 @@ function judgeTarget(rec, cand, change, sc, clusterWide, upd, ctx) {
 // failed: a failed or cancelled build, a blocked pin PR or no pin keep the item awaiting its pin
 // with the reason, shown every morning and marked "needs a person" by the common rule. Only the
 // facts read after the pin merged (its rollout) can fail.
-function pinPath(rec, cand, images, ctx) {
+async function pinPath(rec, cand, images, ctx) {
   const { range, rules } = ctx;
   rec.other_changes = otherFor(cand, range, null, rules, null);
   const pinFiles = new Set(images.flatMap(o => o.pins || []));
@@ -934,6 +1011,7 @@ function finish(rec, cand, ctx) {
   const prior = ctx.prior || {};
   const v = verdictOf(rec.facts, rec.other_changes);
   Object.assign(rec, v);
+  if (rec.no_pod_ran) rec.why += '; no pod ran (all target controllers are at zero replicas)';
   rec.verdict_at = iso(ctx.now);
   rec.verdict_since = prior.verdict === v.verdict && prior.verdict_since ? prior.verdict_since : rec.verdict_at;
   rec.ticks = (prior.ticks || 0) + 1;
@@ -1048,8 +1126,8 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
     const nsCache = new Map();
     const own = ns => { if (!nsCache.has(ns)) nsCache.set(ns, { pods: kList(timed, ['pods', '-n', ns]), cronjobs: kList(timed, ['cronjobs', '-n', ns]), jobs: kList(timed, ['jobs', '-n', ns]) }); return nsCache.get(ns); };
     const pods = ns => { if (left() <= 0) { budgetHit = true; return { pods: null, cronjobs: null, jobs: null }; } return (deps.nsFacts || own)(ns); };
-    const controllerCache = new Map();
-    const controllers = ns => { if (!controllerCache.has(ns)) controllerCache.set(ns, M.readControllers(timed, ns)); return controllerCache.get(ns); };
+    let controllerLists = deps.controllers;
+    const controllers = ns => { if (controllerLists === undefined) controllerLists = M.readControllers(timed); return M.controllersIn(controllerLists, ns); };
     let nodeList;
     const nodes = () => { if (nodeList === undefined) nodeList = kList(timed, ['nodes']); return nodeList; };
     const prom = deps.prom || 'http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090';
@@ -1059,6 +1137,15 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
     const alerts = Array.isArray(aj?.data?.alerts) ? aj.data.alerts : null;
     const rt = alerts ? await gj(`${prom}/api/v1/status/runtimeinfo`) : null;
     const promStart = Number.isFinite(Date.parse(rt?.data?.startTime || '')) ? rt.data.startTime : null;
+    const gatusCache = new Map();
+    const gatus = async at => {
+      if (!gatusCache.has(at)) {
+        if (left() <= 0) { budgetHit = true; return null; }
+        const q = `gatus_results_endpoint_success[${cfg.gatus_sample_max_age_seconds}s]`;
+        gatusCache.set(at, Promise.resolve(gj(`${prom}/api/v1/query?query=${encodeURIComponent(q)}&time=${at / 1000}`)).catch(() => null));
+      }
+      return gatusCache.get(at);
+    };
     const chartSource = h => {
       const ref = h.spec?.chartRef;
       const kind = ref?.kind === 'OCIRepository' ? 'ocirepositories.source.toolkit.fluxcd.io' : !ref && h.spec?.chart ? 'helmcharts.source.toolkit.fluxcd.io' : null;
@@ -1085,7 +1172,7 @@ export async function verifyPhase({ rules, run, repo, now, startedAt = now, cloc
       const prev = mem.items?.[c.id] || null;
       budgetHit = false;
       const files = filesOf(c);
-      const rec = judge({ ...c, files }, { rules, cfg, now, repo, range, ks, hr, st, sourceRev, contains, pods, controllers, nodes, alerts, promStart, alertSubject: deps.alertSubject, alertScope: rules.alert_scope || {}, chartSource, builds, prHeadDate, itemByPr,
+      const rec = await judge({ ...c, files }, { rules, cfg, now, repo, range, ks, hr, st, sourceRev, contains, pods, controllers, nodes, alerts, promStart, gatus, alertSubject: deps.alertSubject, alertScope: rules.alert_scope || {}, chartSource, builds, prHeadDate, itemByPr,
         openRecords: deps.records || [], earlier: earlierOf(c), prior: prev });
       // a record judged while the budget ran out is not kept: its reads failed for want of time
       if (budgetHit) { sum.deferred.push(c.pr); sum.stopped = `the time budget (${cfg.time_budget_seconds} s of the tick) ran out while #${c.pr} was judged; its last record is kept, the rest is judged next tick`; break; }
@@ -1162,7 +1249,7 @@ export function fitMemory(mem, cfg, isOpen, mergedAtOf) {
     if (!over()) break;
     const r = mem.items[id];
     mem.items[id] = { pr: r.pr, item: r.item, name: r.name, from: r.from, to: r.to, type: r.type ?? null, merged_at: r.merged_at, merged_by: r.merged_by, practice: r.practice, verdict: r.verdict, why: String(r.why || '').slice(0, 300),
-      verdict_at: r.verdict_at, verdict_since: r.verdict_since, first_at: r.first_at, ticks: r.ticks, final: r.final, nights: r.nights, needs_person: r.needs_person, gave_up: r.gave_up, baseline: r.baseline ?? null, mem: r.mem, files: r.files, compacted: true };
+      no_pod_ran: r.no_pod_ran, verdict_at: r.verdict_at, verdict_since: r.verdict_since, first_at: r.first_at, ticks: r.ticks, final: r.final, nights: r.nights, needs_person: r.needs_person, gave_up: r.gave_up, baseline: r.baseline ?? null, mem: r.mem, files: r.files, compacted: true };
     counts.compacted++; text = JSON.stringify(mem);
   }
   for (const id of byAge(Object.keys(mem.done))) { if (!over()) break; delete mem.done[id]; counts.done_trimmed++; text = JSON.stringify(mem); }
@@ -1175,7 +1262,7 @@ export function fitMemory(mem, cfg, isOpen, mergedAtOf) {
 export function tableOf(mem, now = Date.now()) {
   const lines = [];
   for (const r of Object.values(mem.items || {}).sort((a, b) => String(b.merged_at).localeCompare(String(a.merged_at)))) {
-    lines.push(`#${r.pr} ${r.name ?? '?'} ${r.from ?? '?'} -> ${r.to ?? '?'}, merged ${r.merged_at} by ${r.merged_by?.login ?? r.merged_by?.kind ?? '?'}${r.practice ? ' (practice)' : ''}: ${r.gave_up ? 'GIVEN UP, NEEDS A PERSON: ' : r.needs_person ? 'NEEDS A PERSON: ' : ''}${String(r.verdict).toUpperCase()}${r.attribution ? ` (${r.attribution})` : ''} at ${r.verdict_at}`);
+    lines.push(`#${r.pr} ${r.name ?? '?'} ${r.from ?? '?'} -> ${r.to ?? '?'}, merged ${r.merged_at} by ${r.merged_by?.login ?? r.merged_by?.kind ?? '?'}${r.practice ? ' (practice)' : ''}: ${r.gave_up ? 'GIVEN UP, NEEDS A PERSON: ' : r.needs_person ? 'NEEDS A PERSON: ' : ''}${String(r.verdict).toUpperCase()}${r.attribution ? ` (${r.attribution})` : ''}${r.no_pod_ran ? '; no pod ran (all target controllers are at zero replicas)' : ''} at ${r.verdict_at}`);
     const sm = r.mem?.stable || {};
     const counts = [...Object.entries(sm.moves || {}).map(([k, n]) => `${k} moved ${n}x`), ...Object.entries(sm.replaced || {}).map(([k, n]) => `${k} replaced ${n}x`)].join(', ');
     if (!r.final || r.gave_up) lines.push(`  ${r.gave_up ? 'given up' : 'open'}: ${r.verdict} since ${r.verdict_since ?? r.first_at ?? '?'}; judged on ${r.ticks ?? 1} tick(s) over ${(r.nights || []).length} night(s) (${(r.nights || []).join(', ')})${counts ? `; pods ${counts}` : ''}${r.baseline?.at ? `; pods recorded at ${r.baseline.at} (${ago(now, r.baseline.at)} ago)` : ''}`);
