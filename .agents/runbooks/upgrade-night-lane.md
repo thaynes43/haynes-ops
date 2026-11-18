@@ -190,9 +190,12 @@ critical alerts from Prometheus, main's commits to the PR's files and each work 
     with its server-set `creationTimestamp` at or after the due time. `startedAt` and
     `stoppedAt` are not used: some instances stamp local time with `Z`. Another
     schedule's or an unlinked manual Backup cannot substitute for this run.
-  - Numeric lists, ranges and positive steps and the hourly/daily/weekly/monthly/yearly
+  - Numeric lists, ranges, `?` wildcards and positive steps and the hourly/daily/weekly/monthly/yearly
     aliases are readable. VolSync has five fields; CNPG has six, **seconds first**;
-    seconds are validated and honored, never discarded. DOM/DOW uses robfig cron's rule.
+    seconds are validated and honored, never discarded. DOM/DOW follows the controller's
+    actual parser: VolSync 0.14 uses robfig v3.0.1 (a wildcard step greater than one
+    clears its star bit); CNPG 1.30 uses v1.2.0 (the bit is retained). A wildcard anywhere
+    in a comma list contributes its bit. Weekdays range from 0 to 6.
     An explicit `TZ=` or `CRON_TZ=` prefix supplies the zone. Otherwise the lane's
     `night.timezone` is used only when the source's next/last scheduled timestamp matches
     that schedule in that zone. This corroborates New York for today's sources without
@@ -1685,7 +1688,11 @@ application transaction or a stateful hook.
 
 References: [Prometheus raw samples and evaluation times](https://prometheus.io/docs/prometheus/latest/querying/basics/),
 [HTTP API matrix results](https://prometheus.io/docs/prometheus/latest/querying/api/),
-[CNPG scheduled backups](https://cloudnative-pg.io/docs/devel/backup/).
+[CNPG scheduled backups](https://cloudnative-pg.io/docs/devel/backup/),
+[VolSync 0.14 dependency](https://github.com/backube/volsync/blob/v0.14.0/go.mod),
+[CNPG 1.30.2 dependency](https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.30.2/go.mod),
+[robfig v3 parser](https://github.com/robfig/cron/blob/v3.0.1/parser.go) and
+[v1 parser](https://github.com/robfig/cron/blob/v1.2.0/parser.go).
 
 **Stability: two reads at least 600 seconds apart.** On the first tick on which the image,
 the rollout and the pods pass, the verifier records the target's pods (uid, node, restarts per

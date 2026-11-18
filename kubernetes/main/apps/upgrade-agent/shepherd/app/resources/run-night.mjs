@@ -202,16 +202,18 @@ export function backupCron(expr, seconds, timezone) {
   let f = (aliases[text] || text).split(/\s+/);
   if (aliases[text] || !seconds) f = ['0', ...f];
   if (f.length !== 6) return null;
-  const limits = [[0, 59], [0, 59], [0, 23], [1, 31], [1, 12], [0, 7]];
+  const limits = [[0, 59], [0, 59], [0, 23], [1, 31], [1, 12], [0, 6]];
   const sets = f.map((field, i) => {
     const [lo, hi] = limits[i], values = new Set();
     for (const part of field.split(',')) {
-      const m = /^(\*|\d+)(?:-(\d+))?(?:\/(\d+))?$/.exec(part);
-      if (!m || (m[1] === '*' && m[2])) return null;
-      const step = Number(m[3] || 1), first = m[1] === '*' ? lo : Number(m[1]);
-      const last = m[1] === '*' ? hi : m[2] !== undefined ? Number(m[2]) : m[3] ? hi : first;
+      const m = /^(\*|\?|\d+)(?:-(\d+))?(?:\/(\d+))?$/.exec(part);
+      if (!m) return null;
+      const wildcard = m[1] === '*' || m[1] === '?';
+      if (wildcard && m[2]) return null;
+      const step = Number(m[3] || 1), first = wildcard ? lo : Number(m[1]);
+      const last = wildcard ? hi : m[2] !== undefined ? Number(m[2]) : m[3] ? hi : first;
       if (step < 1 || step > hi - lo + 1 || first < lo || last > hi || first > last) return null;
-      for (let n = first; n <= last; n += step) values.add(i === 5 && n === 7 ? 0 : n);
+      for (let n = first; n <= last; n += step) values.add(n);
     }
     return values;
   });
@@ -222,8 +224,10 @@ export function backupCron(expr, seconds, timezone) {
   const matchesMinute = t => {
     const p = Object.fromEntries(fmt.formatToParts(new Date(t)).filter(x => x.type !== 'literal').map(x => [x.type, x.value]));
     const day = sets[3].has(Number(p.day)), week = sets[5].has(dow[p.weekday]);
-    // robfig cron treats */n like * for the DOM/DOW conjunction rule.
-    const dayOk = f[3].startsWith('*') || f[5].startsWith('*') ? day && week : day || week;
+    // VolSync 0.14 uses robfig v3.0.1 (step > 1 clears starBit); CNPG
+    // 1.30 uses v1.2.0 (it retains starBit). A comma list ORs each part's bit.
+    const star = field => field.split(',').some(part => { const m = /^(?:\*|\?)(?:\/(\d+))?$/.exec(part); return m && (seconds || Number(m[1] || 1) === 1); });
+    const dayOk = star(f[3]) || star(f[5]) ? day && week : day || week;
     return sets[1].has(Number(p.minute)) && sets[2].has(Number(p.hour)) && sets[4].has(Number(p.month)) && dayOk;
   };
   const matches = t => Number.isFinite(t) && t % 1000 === 0 && sets[0].has(new Date(t).getUTCSeconds()) && matchesMinute(t);

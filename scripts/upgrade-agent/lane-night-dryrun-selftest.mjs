@@ -270,6 +270,17 @@ ok(threw, 'runReadOnly throws before running a refused command');
   const later = N.volsyncFresh(hourly, T('2026-11-10T06:45:00Z'), D, window);
   ok(later.due === '2026-11-10T09:00:00.000Z' && !later.pass, '755: every run through window end must complete, including the last hourly run');
 
+  // Advisory review: VolSync uses robfig v3; CNPG still uses v1.2.0.
+  const v3day = N.backupCron('0 2 */2 * 1', false, 'America/New_York');
+  const v1day = N.backupCron('0 0 2 */2 * 1', true, 'America/New_York');
+  ok(v3day.matches(T('2026-11-10T07:00:00Z')) && !v1day.matches(T('2026-11-10T07:00:00Z')), '755 review: stepped DOM uses OR for VolSync v3, AND for CNPG v1 when paired with DOW');
+  const v3week = N.backupCron('0 2 10 * */2', false, 'America/New_York');
+  const v1week = N.backupCron('0 0 2 10 * */2', true, 'America/New_York');
+  ok(v3week.matches(T('2026-11-12T07:00:00Z')) && !v1week.matches(T('2026-11-12T07:00:00Z')), "755 review: stepped DOW uses each controller's star-bit rule");
+  ok(N.backupCron('0 2 ? * 1', false, 'America/New_York').matches(T('2026-11-09T07:00:00Z')) && !N.backupCron('0 2 ? * 1', false, 'America/New_York').matches(T('2026-11-10T07:00:00Z')), '755 review: question mark is a wildcard with the AND day rule');
+  ok(!N.backupCron('0 2 1,*/1 * 1', false, 'America/New_York').matches(T('2026-11-10T07:00:00Z')), '755 review: a wildcard later in a comma list still sets the star bit');
+  ok(N.backupCron('0 2 * * 7', false, 'America/New_York') === null, '755 review: robfig weekday 7 is out of range and unreadable');
+
   const ready = (o, v) => ({ ...o, status: { conditions: [{ type: 'Ready', status: v ? 'True' : 'False' }] } });
   const ks = (ns, name, tns, path, dependsOn = [], v = true) => ready({ metadata: { namespace: ns, name }, spec: { targetNamespace: tns, path, dependsOn } }, v);
   const K = { items: [
