@@ -140,6 +140,7 @@ const FAILURE_WORDS = [
   [/not-applied/, 'rollout failed'], [/critical-alert/, 'critical alert'],
   [/wrong-image/, 'wrong image'], [/churn/, 'pods replaced'],
   [/restart-growth/, 'restarts growing'], [/not-ready/, 'not ready'],
+  [/image-pull/, 'image pull failed'], [/pin-timeout/, 'pin timed out'],
 ];
 const failureWords = why => FAILURE_WORDS.filter(([re]) => re.test(why || '')).map(([, words]) => words);
 const displayName = (x, cfg) => shortName(x.short_name || x.name, cfg.max_name_chars || 40) || 'unknown';

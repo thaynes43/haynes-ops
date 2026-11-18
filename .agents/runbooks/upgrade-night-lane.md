@@ -2120,7 +2120,7 @@ item are separated by commas or semicolons. No raw explanations or bracketed des
 | Owner decisions | `major`, `restarts v1`, `prerelease`, `held`, `held by review`, `owner decision` |
 | Overdue verifier, abandoned checks, pending digest pin | `open N nights`, `checks abandoned`, `pin pending` |
 | History review, unknown blocked class | `needs review`, `blocked` |
-| Failed check categories | `job failed`, `pods crashing`, `rollout failed`, `critical alert`, `wrong image`, `pods replaced`, `restarts growing`, `not ready` |
+| Failed check categories | `job failed`, `pods crashing`, `rollout failed`, `critical alert`, `wrong image`, `pods replaced`, `restarts growing`, `not ready`, `image pull failed`, `pin timed out` |
 | Other failed category | `checks failed` |
 | Failure attribution | `by update`, `cause unclear` |
 | Fix ownership | `lane owns fix`, `lane reverting`, `triage owns fix`, `lane fixing another update`, `fix unclaimed`, `owner unreadable` |

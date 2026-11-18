@@ -162,7 +162,7 @@ section('3b. failed checks, attribution and every ownership outcome');
   ok(S.claimWords(null) === '', 'no claim adds no invented owner');
   ok(!/practice|\[|signature|claim/.test(t(failed(1), { outcome: 'claimed' })), 'failure line has no practice or internal prose');
   ok(t(failed(1)).includes('\nFAILED:\n') && first(compose({ verify: { a: failed(1) } })).includes('1 failed'), 'failure heading and count agree');
-  for (const [klass, words] of Object.entries({ 'job-failed': 'job failed', 'crash-loop': 'pods crashing', 'critical-alert': 'critical alert', 'wrong-image': 'wrong image', churn: 'pods replaced', 'restart-growth': 'restarts growing', 'not-ready': 'not ready', unknown: 'checks failed' })) {
+  for (const [klass, words] of Object.entries({ 'job-failed': 'job failed', 'crash-loop': 'pods crashing', 'critical-alert': 'critical alert', 'wrong-image': 'wrong image', churn: 'pods replaced', 'restart-growth': 'restarts growing', 'not-ready': 'not ready', 'image-pull': 'image pull failed', 'pin-timeout': 'pin timed out', unknown: 'checks failed' })) {
     ok(t(failed(1, { failing: [{ fact: 'pods', class: klass }] })).includes(`: ${words}, by update`), `fixed failure reason: ${klass}`);
   }
   ok(t(failed(1, { failing: [{ fact: 'pods', class: 'crash-loop' }, { fact: 'jobs', class: 'job-failed' }] })).includes('job failed, pods crashing, by update'), 'multiple failure categories stay visible');
