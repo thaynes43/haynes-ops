@@ -60,7 +60,43 @@ spec:
               # PROPOSED RD2 source bfd5143; publish41253643759 and local cosign verified; activation HELD.
               # Claim metadata source dev-env#815, merge 79085ea; publish41294218791 signed and verified this digest.
               # Schema4573 is installed first; operator follows before any taskClaim producer use. Arguments and permissions are unchanged.
-              tag: sha-79085ea@sha256:9ca4670835520b5749d229ee8f247e0e05776a9ace290ad9430d2b7afe85376d
+              # dev-env main 4f3ef3d9 (release 2.111.0 plus workflow-only #1205 and broker #1208);
+              # publish 44363676517, operator job 135011558410, signed and verified this digest.
+              # CI - Success at the same source is green (OP920).
+              # What changes in broker mode since the 2026-11-01 pin sha-79085ea:
+              # - dev-env#991 bounds every grant Event note to 1024 bytes at a UTF-8 boundary.
+              #   Existing grant clients can see the bounded note; token construction is unchanged.
+              # - dev-env#1037/#1041 add the grant Ask kind, immutable scope validation, one stored
+              #   Ask route, answer rechecks, terminal cleanup and bounded exponential cleanup retry.
+              #   --enable-grant-asks stays unset, so no new Ask is opened or watched and an
+              #   unrouted grant still times out at 30 minutes; a stored route still governs its
+              #   decisions and cleanup even with the flag off, with unreadable routes closed.
+              #   Existing policy selection now takes one live list, and approvals and Decide
+              #   re-read the grant and write with preconditions even while new grant Asks are off.
+              # - dev-env#1088/#1172 (OP802) end a reaped, closed, terminal summoned requester's
+              #   grants while its Session is retained for filing, for name and UID-bound requests.
+              #   A Session change wakes its grants; end revokes before storing Released or Denied.
+              #   Ordinary requesters do not take this new path, and no session pod or PVC is deleted.
+              # - dev-env#1208 (OP918) fixes the review's L1: with grant Asks off and no stored
+              #   route, terminal denial/release cleanup performs no Ask read or cleanup retry.
+              #   Stored routes keep cleanup; enabled grant Asks keep their bounded retry.
+              # - Runtime dependencies move oauth2 0.37.0 to 0.38.0, x/sys 0.49.0 to 0.50.0,
+              #   controller-runtime 0.25.2 to 0.25.3 and x/net 0.62.0 to 0.63.0 (#1024/#1025/#1190/#1201).
+              #   These affect transport, OS, manager/client and leader election in the broker;
+              #   existing agentd grant install/remove commands and token/expiry bytes are unchanged.
+              # Raise slice (a) code is carried in the shared image but does not run in broker mode;
+              # raise stays off, the keeper stays on sha-1ae9c7c and no keeper key is initialized.
+              # Later grant Ask activation needs broker Ask CRUD/status RBAC and admission allowing
+              # its origin; later keeper overflow paging needs named get on dev-env-summon-creates.
+              # This pin needs neither activation prerequisite, and enables neither feature.
+              # CRD bodies match 4f3ef3d9 except the held GrantPolicy difference (OP503); no copy.
+              # No flag, permission, template, ConfigMap or Secret change; running sessions keep
+              # their pods and existing clients keep the grant install/remove protocol.
+              # Previous pin sha-79085ea@sha256:9ca4670835520b5749d229ee8f247e0e05776a9ace290ad9430d2b7afe85376d
+              # (haynes-ops#4574); rollback target for the broker alone, with all current args.
+              # Rollback leaves grant/Ask records behind; an old broker ignores status.ask and can
+              # choose an independent policy/delegate path after activation, so review routes first.
+              tag: sha-4f3ef3d@sha256:a0fbe601f6cbae67e29c200441effa0bf161eaa41f9aab07eecc6e92f68ec7c9
               pullPolicy: IfNotPresent
             args:
               - broker
