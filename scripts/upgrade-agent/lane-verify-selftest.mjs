@@ -124,6 +124,7 @@ const gjOf = w => async url => {
     const before = at < T1;
     const names = [...new Set(w.ks.items.flatMap(k => V.inventoryOf(k) || []).filter(e => e.kind === 'ConfigMap' && e.name.endsWith('-gatus-ep')).map(e => e.name.slice(0, -'-gatus-ep'.length)))];
     const rows = names.map(name => ({ metric: { group: 'internal', name: w.gatusWrongName || name, key: `internal_${name}` }, values: [[(at - (w.gatusAgeMs ?? 100)) / 1000, (before ? w.gatusBeforeFailed : w.gatusFailed) ? '0' : '1']] }));
+    if (w.gatusDual) rows.push(...rows.map(row => ({ metric: { ...row.metric, group: 'external', key: `external_${row.metric.name}` }, values: [[(at - (before ? 100 : w.gatusExternalAgeMs ?? 100)) / 1000, (before ? w.gatusExternalBeforeFailed : w.gatusExternalFailed) ? '0' : '1']] })));
     if (w.gatusDuplicate) rows.push(...structuredClone(rows));
     return { status: 'success', data: { resultType: 'matrix', result: w.gatusEmpty ? [] : rows } };
   }
@@ -218,6 +219,38 @@ const real = await twice(world());
     const result = (await twice(w, { prs: [4869], own: true })).b.rec(4869);
     ok(result.verdict === 'cannot-tell' && factOf(result, 'app-check').result === 'unreadable', `755: ${reason} is cannot tell, never a pass`, result.why);
   }
+  // Fix round F1: a dropped inventory entry cannot remove the required app check.
+  for (const broken of ['unparseable-inventory-entry', 'media_seerr_gatus_ep__ConfigMap', null, 'media___']) {
+    const partial = world(); partial.gatusUnreadable = true;
+    ksOf(partial, 'media/seerr').status.inventory.entries.find(e => /seerr-gatus-ep/.test(e.id)).id = broken;
+    const result = (await twice(partial, { prs: [4869] })).b.rec(4869);
+    ok(result.verdict === 'cannot-tell' && factOf(result, 'app-check').result === 'unreadable' && /inventory of Kustomization media\/seerr/.test(factOf(result, 'app-check').detail), `755 F1: malformed inventory ${JSON.stringify(broken)} cannot become not applicable or verified`, result.why);
+  }
+  const extraBroken = world(); ksOf(extraBroken, 'media/seerr').status.inventory.entries.push({ id: 'unparseable-inventory-entry' });
+  const partialMapped = (await twice(extraBroken, { prs: [4869] })).b.rec(4869);
+  ok(partialMapped.verdict === 'cannot-tell' && factOf(partialMapped, 'app-check').result === 'unreadable', '755 F1: even a passing mapped endpoint cannot clear another unreadable owned inventory entry');
+
+  // Fix round F3: internal and external are distinct checks for the same endpoint.
+  const dual = world(); dual.gatusDual = true;
+  const dualPass = (await twice(dual, { prs: [4869] })).b.rec(4869);
+  ok(dualPass.verdict === 'verified' && factOf(dualPass, 'app-check').result === 'pass' && /internal_seerr passed/.test(factOf(dualPass, 'app-check').detail) && /external_seerr passed/.test(factOf(dualPass, 'app-check').detail), '755 F3: both matching series pass after rollout and verify the app');
+  const dualFail = world(); dualFail.gatusDual = true; dualFail.gatusExternalFailed = true;
+  const dualOwn = (await twice(dualFail, { prs: [4869], own: true, cfg: { write_history_events: true } })).b;
+  ok(dualOwn.rec(4869).verdict === 'failed' && dualOwn.rec(4869).attribution === 'own-regression' && /external_seerr failed/.test(factOf(dualOwn.rec(4869), 'app-check').detail) && dualOwn.events.some(e => e.type === 'verification-failed'), '755 F3: one failing series with its own passing baseline uses the existing revert decision');
+  const dualStale = world(); dualStale.gatusDual = true; dualStale.gatusExternalAgeMs = 301000;
+  const staleDual = (await twice(dualStale, { prs: [4869] })).b.rec(4869);
+  ok(staleDual.verdict === 'cannot-tell' && factOf(staleDual, 'app-check').result === 'unreadable' && /external_seerr has no sample newer/.test(factOf(staleDual, 'app-check').detail), '755 F3: one stale series makes the whole check cannot tell with that series named');
+  const dualNoBaseline = structuredClone(dualFail); dualNoBaseline.gatusExternalBeforeFailed = true;
+  const notOwn = (await twice(dualNoBaseline, { prs: [4869], own: true, cfg: { write_history_events: true } })).b;
+  ok(notOwn.rec(4869).verdict === 'cannot-tell' && /external_seerr failed.*no unambiguous passing sample before/.test(factOf(notOwn.rec(4869), 'app-check').detail) && !notOwn.events.some(e => e.type === 'verification-failed'), '755 F3: another series passing before the update cannot supply the failing series baseline');
+  const mixed = structuredClone(dualStale); mixed.gatusFailed = true;
+  const mixedResult = (await twice(mixed, { prs: [4869], own: true, cfg: { write_history_events: true } })).b;
+  ok(mixedResult.rec(4869).verdict === 'cannot-tell' && factOf(mixedResult.rec(4869), 'app-check').result === 'unreadable' && /external_seerr has no sample newer/.test(factOf(mixedResult.rec(4869), 'app-check').detail) && !mixedResult.events.some(e => e.type === 'verification-failed'), '755 F3: an unreadable series keeps the aggregate cannot tell even beside a provable failure');
+  const dualOther = structuredClone(dualFail);
+  dualOther.extraCommits = [{ sha: 'd'.repeat(40), at: iso(T1 - 1000), subject: 'another change to seerr', pr: 9999, files: ['kubernetes/main/apps/media/seerr/app/helmrelease.yaml'] }];
+  const dualShared = (await twice(dualOther, { prs: [4869], own: true, cfg: { write_history_events: true } })).b;
+  ok(dualShared.rec(4869).verdict === 'failed' && dualShared.rec(4869).attribution === 'cannot-tell-which-change' && !dualShared.events.some(e => e.type === 'verification-failed'), '755 F3: a second change still prevents attributing the failing series to this update');
+
   const already = world(); already.gatusFailed = true; already.gatusBeforeFailed = true;
   const unproven = (await twice(already, { prs: [4869], own: true, cfg: { write_history_events: true } })).b;
   ok(unproven.rec(4869).verdict === 'cannot-tell' && !unproven.events.some(e => e.type === 'verification-failed') && /no unambiguous passing sample before/.test(factOf(unproven.rec(4869), 'app-check').detail), '755: an endpoint already failing before the update cannot trigger a revert');

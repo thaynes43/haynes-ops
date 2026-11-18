@@ -270,6 +270,38 @@ ok(threw, 'runReadOnly throws before running a refused command');
   const later = N.volsyncFresh(hourly, T('2026-11-10T06:45:00Z'), D, window);
   ok(later.due === '2026-11-10T09:00:00.000Z' && !later.pass, '755: every run through window end must complete, including the last hourly run');
 
+  // Fix round F2: one anchor can corroborate two different controller zones.
+  const ambiguousSchedule = { metadata: { namespace: 'test', name: 'ambiguous-zone' }, spec: { cluster: { name: 'db' }, schedule: '0 0 0,5,7 * * *' }, status: { lastScheduleTime: '2026-11-10T05:00:00Z' } };
+  const ambiguousBackup = { metadata: { namespace: 'test', name: 'backup', creationTimestamp: '2026-11-10T05:00:00Z', labels: { 'cnpg.io/scheduled-backup': 'ambiguous-zone' } }, spec: { cluster: { name: 'db' } }, status: { phase: 'completed' } };
+  const ambiguous = N.cnpgFresh('test/db', [ambiguousSchedule], [ambiguousBackup], T('2026-11-10T06:45:00Z'), D, window);
+  ok(!ambiguous.pass && ambiguous.sources[0].due === '2026-11-10T07:00:00.000Z' && /backup-due-in-window: test\/ambiguous-zone runs at 07:00:00 UTC/.test(ambiguous.blocker) && /time zone not certain:.*America\/New_York.*UTC/.test(ambiguous.blocker), '755 F2: the review reproducer waits for 07:00 UTC across both corroborated zones', JSON.stringify(ambiguous));
+  const utcSchedule = structuredClone(ambiguousSchedule); utcSchedule.spec.schedule = '0 0 2 * * *'; utcSchedule.status.lastScheduleTime = '2026-11-10T02:00:00Z';
+  const utcBackup = structuredClone(ambiguousBackup); utcBackup.metadata.creationTimestamp = utcSchedule.status.lastScheduleTime;
+  ok(N.cnpgFresh('test/db', [utcSchedule], [utcBackup], T('2026-11-10T06:45:00Z'), D, window).pass, '755 F2: a UTC-only anchor rules out the lane zone instead of making the schedule unreadable');
+  const pastSchedule = structuredClone(ambiguousSchedule); pastSchedule.spec.schedule = '0 0 0,5,6 * * *';
+  const pastDue = N.cnpgFresh('test/db', [pastSchedule], [ambiguousBackup], T('2026-11-10T06:45:00Z'), D);
+  ok(!pastDue.pass && pastDue.sources[0].due === '2026-11-10T06:00:00.000Z' && /time zone not certain/.test(pastDue.blocker), '755 F2: without a window the completed backup must cover the latest due time across candidates', JSON.stringify(pastDue));
+  const ambiguousRs = rs('mosquitto-aws'); ambiguousRs.spec.trigger.schedule = '0 0,5,7 * * *'; ambiguousRs.status.nextSyncTime = '2026-11-10T05:00:00Z'; ambiguousRs.status.lastSyncTime = '2026-11-10T05:00:51Z';
+  const ambiguousSync = N.volsyncFresh(ambiguousRs, T('2026-11-10T06:45:00Z'), D, window);
+  ok(!ambiguousSync.pass && ambiguousSync.due === '2026-11-10T07:00:00.000Z' && /time zone not certain/.test(ambiguousSync.blocker), '755 F2: bare VolSync schedules also retain every corroborated zone', JSON.stringify(ambiguousSync));
+  // Compatibility controls: all five live forms remain anchored to New York.
+  for (const [source, now, expectedDue, pass] of [
+    [rs('mosquitto-aws'), '2026-11-10T06:45:00Z', '2026-11-10T05:00:00.000Z', false],
+    [rs('openproject-assets-aws'), '2026-11-10T06:45:00Z', '2026-11-10T07:30:00.000Z', false],
+    [rs('plex-aws'), '2026-11-08T07:00:00Z', '2026-11-08T05:00:00.000Z', true],
+  ]) {
+    const result = N.volsyncFresh(source, T(now), D, N.backupWindow(T(now), rules.night));
+    ok(result.pass === pass && result.due === expectedDue && !/time zone not certain/.test(result.blocker || ''), `755 F2 control: live VolSync ${source.spec.trigger.schedule} keeps its reviewed result`, JSON.stringify(result));
+  }
+  for (const [cluster, now, due, pass] of [['database/postgres16', '2026-11-09T07:00:00Z', '2026-11-09T05:00:00.000Z', true], ['frontend/openproject-db', '2026-11-10T06:45:00Z', '2026-11-10T07:00:00.000Z', false]]) {
+    const result = N.cnpgFresh(cluster, sb, b, T(now), D, N.backupWindow(T(now), rules.night));
+    ok(result.pass === pass && result.sources[0].due === due && !/time zone not certain/.test(result.blocker || ''), `755 F2 control: live CNPG ${result.name} keeps its reviewed result`, JSON.stringify(result));
+  }
+  for (const prefix of ['TZ', 'CRON_TZ']) {
+    const pinnedZone = structuredClone(ambiguousRs); pinnedZone.spec.trigger.schedule = `${prefix}=America/New_York 0 0,5,7 * * *`;
+    ok(N.volsyncFresh(pinnedZone, T('2026-11-10T06:45:00Z'), D, window).pass, `755 F2 control: explicit ${prefix} keeps its own zone despite a corroborating UTC anchor`);
+  }
+
   // Isolate max age from scheduled-run coverage: a stale controller timestamp
   // still names a real scheduled run, already covered by a successful backup.
   const agedRs = rs('plex-aws'); agedRs.status.nextSyncTime = '2026-11-08T05:00:00Z'; agedRs.status.lastSyncTime = '2026-11-08T05:00:51Z'; agedRs.status.latestMoverStatus.result = 'Successful';
