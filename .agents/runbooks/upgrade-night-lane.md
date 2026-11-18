@@ -2066,56 +2066,94 @@ no GitHub read:
 - the history's own verdict;
 - `summary.claims`.
 
-The text is ordered by what a reader must not miss, so that cutting from the end loses
-detail, never a count:
+**Fixed phone template (story 890; Tom's ruling Q-548-08, 2026-11-18).** Summary first,
+then the punch list, then the upgrades. Empty sections have no heading. Example:
 
-1. **Every count, in the first three lines:**
-   - the night and the lane's mode; in plain words, whether the lane finished the night (its
-     last run was the 05:45 New York one) or not yet; its runs and the time of the last one;
-   - merged since the last summary, by whom (the lane, Renovate, the shepherd, a session
-     (`hand`), or a person by login); reverted, and how many recovered, did not, or are not
-     checked yet;
-   - the health checks after merging (passed, still being checked, failed), marked practice
-     in dry-run (or in live mode when only practice was judged); and how many items wait for
-     Tom.
-2. **Then the detail, each group under its own heading, and a group with nothing in it has
-   no heading:**
-   - `Reverted and NOT recovered:` each with the reason;
-   - `Failed health checks:` each with the PR, what failed, whether this update caused it
-     ("cannot tell which change caused it" otherwise, also when the other changes could not
-     be read), and who has taken it;
-   - `Waiting for you:` one line per item: the verifier's `NEEDS A PERSON` marks, the items
-     waiting for their digest pin, the PRs whose record says blocked with the reason (for
-     `check-failing-after-retry`, the failing check), the owner's updates (majors, holds) on
-     one line, and a history that needs a person. This is story 715's list;
-   - `Reverted:` those that recovered, and those not checked yet;
-   - `Merged:` one line per actor, each with the PR, the package and the version;
-   - `Health checks:` what passed and what is still being checked.
+```text
+Updates 18 Nov (dry-run): 10 in, 0 reverted, 1 failed, 5 need you
+NEED YOU:
+- #4757 antlr4-python3-runtime: check failing
+- #4848 kyverno: check failing
+- #4376 node: major
+- #4758 httpcore2: restarts v1
+- #4764 av: major
+FAILED:
+- #4918 ytdl-sub: job failed, by update
+UPGRADED:
+- claude-code-action v1.0.281
+- cloudflared 2026.11.1
++8 more
+```
 
-Every line is in plain words for a reader who knows nothing of the lane. The text never says
-"tick", "claim" or "signature". Who has taken a failure is one of:
+This illustrates the template and a cut, not a new verdict on PR 4918: the stored sample's
+attribution is preserved. Story 879 owns that verdict. The complete stored sample fits in
+one message; the fixture retains its two already-truncated chart names (`k...`, `cloudna...`).
+New facts carry an additive `short_name`, shortened before the cap, so registry paths cannot
+consume chart names such as `kube-prometheus-stack`.
 
-- "the night lane has taken it" (or "is reverting it", only when the claim says a revert is
-  under way, story 753);
-- "the automatic remediation (triage) has taken it";
-- "no automatic fix has taken it yet" (also a `lost` claim that nobody holds, and a regression
-  the gate does not see: the text makes no claim about what else reports it, because a
-  critical alert also pages).
+1. **Line 1:** date; `(dry-run)` while not live; the counts `in`, `reverted`, `failed`,
+   `need you`. A nonzero pending count appends `N still being checked`. No passed count.
+   `in` counts distinct package names, with the target of the most recent merge shown once
+   below; two merges of one package count as one. Before cutting, this equals the number of
+   upgrade lines; after cutting, the omitted upgrade entries are included in the total.
+2. **Trouble, immediately below line 1:** `NIGHT INCOMPLETE` when the last completed tick
+   precedes 05:45; `UNREADABLE: history`, `checks`, or `owner #NNNN` when those facts cannot
+   be read. Multiple troubles share one line, separated by semicolons. Unreadable history
+   makes the `in` and `reverted` counts `?`; unreadable verifier records make `failed` `?`.
+   Unknown is never reported as zero.
+3. **Punch list, fixed order:** `NEED YOU:`, `FAILED:`, `REVERTED:`. One line per PR in
+   each section, with its number, the last component of its name, and short reasons.
+   A PR with several waiting reasons counts once and carries all of them on its line.
+   A history needing review counts separately (`- history: needs review`), without an
+   invented PR number. Reverts include the target version and the recovery result.
+4. **Bottom:** `UPGRADED:`, one short package name and its newest target per line, in order
+   of first appearance in the span. Newest is determined by merge time, including digest
+   updates, rather than input order or a version-string comparison.
 
-When the text is cut, the last line says `and N more lines`: it counts lines, not items. A
-heading is never the last line kept, because it would head nothing. The sender's cut follows
-the same rule.
+**Reason vocabulary.** Each reason phrase is at most four words; multiple facts on one
+item are separated by commas or semicolons. No raw explanations or bracketed descriptions:
 
-The window runs from the last night's record (`composed_at`). A merge by day therefore
-appears the next morning, and nothing appears twice. The facts behind the text keep every
-list.
+| Fact | Fixed words |
+|---|---|
+| Failing PR check, including after its retry | `check failing` |
+| Incomplete PR checks, missing PR facts | `checks pending`, `facts unreadable` |
+| Owner decisions | `major`, `restarts v1`, `prerelease`, `held`, `held by review`, `owner decision` |
+| Overdue verifier, abandoned checks, pending digest pin | `open N nights`, `checks abandoned`, `pin pending` |
+| History review, unknown blocked class | `needs review`, `blocked` |
+| Failed check categories | `job failed`, `pods crashing`, `rollout failed`, `critical alert`, `wrong image`, `pods replaced`, `restarts growing`, `not ready` |
+| Other failed category | `checks failed` |
+| Failure attribution | `by update`, `cause unclear` |
+| Fix ownership | `lane owns fix`, `lane reverting`, `triage owns fix`, `lane fixing another update`, `fix unclaimed`, `owner unreadable` |
+| Claim time budget exhausted | `fix budget spent`; `no revert this run` |
+| Revert result | `recovered`, `not recovered`, `recovery unchecked`; a known failure category may follow `not recovered` |
 
-**Limits.** Outside text is data. PR titles, package names, versions, check names and reasons
-lose control and format characters. Their whitespace is folded, token shapes are redacted,
-and each is capped (`max_name_chars` 40, `max_reason_chars` 90). The text is at most
-`night.summary.max_bytes` (1000), under Pushover's 1,024-character cap and `page.sh`'s 1,000
-clamp. When it does not fit, whole lines go from the end and the last line says
-`and N more`.
+`lane reverting` requires the claim's state to be `reverting`; a claim alone says
+`lane owns fix`. A lost claim with no holder says `fix unclaimed`. A missing claim adds no
+invented owner. Raw reasons, failing workflow names, actor logins, passed checks, pending
+check detail, practice flags, and all complete lists remain in the stored `facts`.
+
+**Cutting.** The composer respects `night.summary.max_bytes` (1000). Whole upgrade lines
+are removed from the bottom first. A punch-list line is removed only after every upgrade
+line has gone; if the punch list itself exceeds the limit, it too is cut from the bottom.
+The last line is `+N more`, counting omitted entries rather than headings. An empty heading
+goes with its last removed item. `lines_cut` still counts omitted lines, including headings.
+The summary counts remain unchanged. A defensive oversized-first-line fallback cuts only
+between complete UTF-8 characters. The unmodified sender may add delivery-status prefixes
+and apply its own 1000-byte cut with its existing `and N more lines` marker. Headings keep
+colons so that sender also removes an empty heading.
+
+**Window and record compatibility.** The span opens after the preceding night's
+`composed_at` and ends at the current tick, for merges, reverts and final check verdicts.
+Open checks, unresolved failures and waiting decisions remain visible until resolved.
+A merge by day therefore appears the next morning. `parseMorning` reads the JSON metadata,
+not the displayed first line; both old and new texts keep `haynes.upgrade-morning/v1` and
+the same `window_from`, timestamps and tick fields. No delivery or mode setting changes.
+
+**Limits.** Outside names, versions, check names and reasons lose control and format
+characters; whitespace is folded and token shapes are redacted. The existing `name` field
+keeps its 40-character cap, and `short_name` caps the final component at 40 characters.
+Reasons remain capped at 90 characters in facts. The complete lists stay in facts, including
+entries omitted from the phone text.
 
 **Where it is written.**
 
