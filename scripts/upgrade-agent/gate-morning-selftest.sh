@@ -58,7 +58,7 @@ nbytes() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' '; }
 utf8ok() { printf '%s' "$1" | python3 -I -c 'import sys; sys.stdin.buffer.read().decode("utf-8")' 2>/dev/null; }
 # base <text> [night] [ticks] [last tick] [sent night]
 base() { jq -n --arg t "$1" --arg night "${2:-$NIGHT}" --arg ticks "${3:-20}" --arg last "${4:-05:45}" --arg sent "${5:-}" '{count:"0", summary:"", last_paged:"0", morning_text:$t, morning_night:$night, morning_composed_at:"2026-11-13T10:45:05.419Z", morning_ticks:$ticks, morning_last_tick:$last, morning_last_tick_expected:"05:45", morning_mode:"dryrun"} + (if $sent != "" then {morning_sent_night:$sent} else {} end)'; }
-TEXT=$'Night of 13 Nov (lane dry-run): the lane finished the night: 20 runs, the last at 05:45.\nMerged 0 since 05:45 12 Nov. Reverted 0.\nHealth checks after merging: 0 passed, 0 still being checked, 0 failed. Waiting for you: 0 items.'
+TEXT='Updates 13 Nov (dry-run): 0 in, 0 reverted, 0 failed, 0 need you'
 
 echo "== the lane's summary for this night"
 world "$(base "$TEXT" "$NIGHT" 20 05:45 "$D1")"; send
