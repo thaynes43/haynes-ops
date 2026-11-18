@@ -53,7 +53,10 @@ def engine_queue():
         key not in queue or not isinstance(queue[key], list)
         or any(
             not isinstance(entry, list) or len(entry) < 2 or not isinstance(entry[1], str)
-            or (len(entry) > 3 and not isinstance(entry[3], dict))
+            or (len(entry) > 3 and (
+                not isinstance(entry[3], dict)
+                or ("client_id" in entry[3] and not isinstance(entry[3]["client_id"], str))
+            ))
             for entry in queue[key]
         )
         for key in ("queue_running", "queue_pending")
