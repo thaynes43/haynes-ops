@@ -174,17 +174,43 @@
 # Rollback image:2.109.0@sha256:8b2b51d5997c7406271128143734e08b885de4c3efb2dcc271d9c6c2389a0dca.
 # Roll back BOTH references together; ordinary launch JSON remains readable, but a summoned
 # handoff-only start is not downgrade-safe: 2.109.0 can miss that latch and launch again.
-image: ghcr.io/thaynes43/dev-env:2.111.0@sha256:0ce285b51dcb0b40168ef3be40476db28080c0a1d36db3decb0fffdc40ec0ffb
+# v2.112.0 source 57450cf143971fbd31a9117017dc3e792efa7717 (release #1209; includes
+# dev-env#1223 at 298841e6). publish-agent.yml run 44418843181, agent job 135206150326,
+# built, smoke-tested, signed and verified this digest on refs/tags/v2.112.0.
+# What a session gains after its next start or resume from 2.111.0:
+# - Codex CLI 0.169.1 and agentd admission of explicitly requested gpt-6.2-sol and
+#   gpt-6.2-astra (#1223/#1219, OP921). Defaults and the privileged coordinator's
+#   model/effort restriction stay unchanged. Older agentd refuses a 6.2 session:
+#   install this paired agent/hold pin BEFORE or WITH the operator sha-298841e pin.
+# - A retained 0.160.1 host package can be upgraded with the native daemon update
+#   --from-cli --yes before start, only after the existing process-absence proofs;
+#   interrupted/unknown lifecycle states still refuse. Both qualified rollout versions
+#   remain readable, and the allowance collector accepts both exact versions (#1223).
+# - agent-run coordinator wait, the parent-owned wake adapter (#1222, OP858 slice c2):
+#   explicit, bounded waits with durable replay/acknowledgement; it starts no wait itself.
+# - #1217 is recovery design/docs only; #1216 is keeper-only switch source, which
+#   does not run in a session. #1208 is broker-only; #1205 changes review workflows only.
+# No new env, mount or template field, model switch, host selection, stop-host setting,
+# raise/pager/grant Ask activation, keeper or broker pin change. Keeper stays sha-1ae9c7c;
+# the codex-login helper stays 0.160.1. This pin initializes no keeper key.
+# Both references are byte-equal: no running session is marked Draining for this image;
+# new sessions/resumes use 2.112.0, running pods stay until their own suspend/resume.
+# Rollback image:2.111.0@sha256:0ce285b51dcb0b40168ef3be40476db28080c0a1d36db3decb0fffdc40ec0ffb.
+# To undo this pin, roll back BOTH references together. HOME keeps the lifecycle receipt
+# and any managed host package upgraded to 0.169.1: 2.111.0 agentd requires 0.160.1
+# and CANNOT start that upgraded retained host. An image rollback does not undo the
+# native package update or make 6.2 sessions start on the old agentd; recovery is separate.
+image: ghcr.io/thaynes43/dev-env:2.112.0@sha256:eac1a8a7e88f6968f5c12f6491ae6eb49016a2a8fc459eb8d06c165ebd5992b5
 
 # New-sessions-only rollout for THIS image (DESIGN-001 5.2, dev-env#925; Q-03 option B, a
 # per-rollout deviation recorded in the PR that sets it). While this equals `image`, the
-# operator marks no session Draining: new sessions and resumes use the 2.111.0 revision and
+# operator marks no session Draining: new sessions and resumes use the 2.112.0 revision and
 # running sessions keep their pods until their own suspend and resume. It is not part of the
 # revision. It MUST equal `image` exactly: the Renovate rule bumps only the `image:` line, so
 # the next image bump PR must update this line to the new image or delete it (deleting it
 # resumes idle drain), otherwise the templates are invalid and new sessions wait.
 rollout:
-  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.111.0@sha256:0ce285b51dcb0b40168ef3be40476db28080c0a1d36db3decb0fffdc40ec0ffb
+  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.112.0@sha256:eac1a8a7e88f6968f5c12f6491ae6eb49016a2a8fc459eb8d06c165ebd5992b5
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
