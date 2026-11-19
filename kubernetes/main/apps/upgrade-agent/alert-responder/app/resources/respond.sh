@@ -217,7 +217,7 @@ record_spend() {
 # Read ONCE per run into STATE_JSON (the cron is concurrencyPolicy: Forbid, so no
 # writer races us); all membership checks are in-memory, all writes go through
 # state_write (which merges + TTL-prunes + refreshes the in-memory copy).
-sig_of() { printf '%s' "$1" | sha256sum | grep -oE '[0-9a-f]{64}' | head -1 | cut -c1-12; }
+source "$(dirname "${BASH_SOURCE[0]}")/rescue-incident.sh"
 sk() {  # sanitize a constructed state key to the ConfigMap-legal charset.
         # CM data keys must match [-._a-zA-Z0-9]+ — the API server REJECTS the
         # whole write otherwise, which fails claims closed and silently disables
@@ -325,7 +325,7 @@ if [ -z "$alerts" ]; then
   exit 0
 fi
 # TZ=UTC for jq: jq 1.6 (Debian bookworm) parses fromdateiso8601 in local time, and under the pod's TZ=America/New_York it lands an hour late during DST.
-candidates="$(printf '%s' "$alerts" | TZ=UTC jq -c --arg sev "$SEVERITY" --arg allow "$ALLOWLIST" --arg deny "$DENYLIST" --arg ignore "$IGNORE_PAIRS" --argjson now "$NOW" --argjson maxage "$(( MAX_AGE_HOURS * 3600 ))" '
+candidates="$(printf '%s' "$alerts" | TZ=UTC jq -c --arg sev "$SEVERITY" --arg allow "$ALLOWLIST" --arg deny "$DENYLIST" --arg ignore "$IGNORE_PAIRS" '
   ($ignore | split(" ") | map(select(. != ""))) as $ignorepairs
   | [ .[]
     | select(.labels.severity == $sev)
@@ -348,7 +348,6 @@ candidates="$(printf '%s' "$alerts" | TZ=UTC jq -c --arg sev "$SEVERITY" --arg a
     # `scope: host` and the responder skips it (no LLM, no page); Alertmanager still routes
     # it to Pushover normally. Anything without the label is unaffected.
     | select((.labels.scope // "") != "host")
-    | select(((.startsAt | sub("\\.[0-9]+";"") | fromdateiso8601? ) // $now) > ($now - $maxage))
   ] | sort_by(.startsAt) | reverse' 2>/dev/null)"
 count="$(printf '%s' "$candidates" | jq 'length' 2>/dev/null)" || count=0
 if [ "${count:-0}" -eq 0 ] 2>/dev/null; then
@@ -372,12 +371,21 @@ while [ "$i" -lt "$count" ]; do
   ans="$(printf '%s' "$alert" | jq -r '.labels.namespace // .labels.exported_namespace // ""')"
   fp="$(printf '%s' "$alert" | jq -r '.fingerprint // ""')"
   sat="$(printf '%s' "$alert" | jq -r '.startsAt // ""')"
-  key="$(sig_of "${fp}|${sat}")"
+  if rescue_incident_owned "$alert"; then
+    log "rescue incident has an exact current native owner — no duplicate diagnosis; direct normal-priority notification remains enabled."
+    continue
+  fi
+  if ! incident_age_eligible "$alert" "$NOW" "$(( MAX_AGE_HOURS * 3600 ))"; then
+    continue
+  fi
+  key="$(incident_claim_key "$alert")" || continue
   if state_has "$key"; then
     log "incident $key ($aname) already handled — skip."
     continue
   fi
-  if cooldown_active "$aname" "$ans"; then
+  # A changed rescue UID/reason/typed risk must not inherit an alertname-wide
+  # cooldown from another cause or owner. Its own durable claim still dedupes it.
+  if ! rescue_identity_qualified "$alert" && cooldown_active "$aname" "$ans"; then
     log "incident $key ($aname@$ans) inside the ${COOLDOWN_HOURS}h cooldown — skip (flap guard: a resolve→refire is not a new problem)."
     continue
   fi
