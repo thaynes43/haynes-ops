@@ -124,9 +124,10 @@ kubectl / flux      in-cluster SA    operator tier: read (no secrets), pod delet
                                      flux reconcile, jobs, cronjob suspend. No exec/secrets/RBAC/node.
 helm kustomize yq jq sops age task tofu restic    installed
 node 24 / pnpm 11 / tsx / python3 / uv            installed
-omnictl             READ-ONLY        Omni Reader SA (proxied): get clusters/machinestatus. No mutate.
-talosctl            READ-ONLY        via `omnictl talosconfig /tmp/tc` then talosctl --talosconfig
-                                     /tmp/tc -n <ip> dmesg/logs. Routes through Omni (WAN). No mutate.
+omnictl             Omni Admin       SA dev-env-node-triage, Admin by design (proxied). Reads: get
+                                     clusters/machinestatus. Writes only in an authorized story, gated.
+talosctl            via Omni role    via `omnictl talosconfig /tmp/tc` then talosctl --talosconfig
+                                     /tmp/tc -n <ip> dmesg/logs. Routes through Omni (WAN). Same write rule.
 SOPS age key        absent           deliberate — never leaves the Mac
 ```
 
