@@ -128,14 +128,76 @@ export function composeFacts({ now, mode, rules, prev = null, records = [], veri
 }
 
 // ── the text ────────────────────────────────────────────────────────────────────────
-// Fixed headings and a closed vocabulary (story 890). A PR can have several reasons; each
-// phrase is at most four words. The raw check names, explanations and claim data stay in facts.
-const WAIT_WORDS = Object.freeze({
-  'check-failing': 'check failing', 'check-failing-after-retry': 'check failing',
-  'checks-incomplete': 'checks pending', 'facts-incomplete': 'facts unreadable',
-  major: 'major', 'v1-restart': 'restarts v1', prerelease: 'prerelease',
-  hold: 'held', 'vet-hold': 'held by review', 'rule-owner': 'owner decision',
-});
+// Fixed reasons in display precedence. A failed check, explicit hold or incomplete
+// evidence takes precedence over an owner gate on the same open PR.
+const PR_WAITS = [
+  ['check-failing-after-retry', 'ci', 'failed after retry'],
+  ['check-failing', 'ci', 'check failing'],
+  ['hold', 'held', 'standing hold'],
+  ['vet-hold', 'held', 'held by review'],
+  ['facts-incomplete', 'waiting', 'facts unreadable'],
+  ['checks-incomplete', 'waiting', 'checks pending'],
+  ['v1-restart', 'action', 'v1 restart window'],
+  ['major', 'action', 'major'],
+  ['prerelease', 'action', 'prerelease'],
+  ['rule-owner', 'action', 'owner decision'],
+];
+
+function prWaitClasses(record) {
+  const classes = new Set([record?.class]);
+  // A saved wait has only its primary class. Current lane records also carry the secondary
+  // findings, such as a failed check under a major gate or a standing hold under a major.
+  for (const finding of Array.isArray(record?.findings) ? record.findings : []) {
+    const match = /^(?:BLOCKED|LANE-B-OWNER)\/([a-z0-9-]+):/.exec(finding);
+    if (match) classes.add(match[1]);
+  }
+  const hasChecks = checks => Array.isArray(checks) && checks.length > 0;
+  if (hasChecks(record?.checks?.failing)) classes.add('check-failing');
+  if (hasChecks(record?.checks?.pending) || hasChecks(record?.checks?.missing)) classes.add('checks-incomplete');
+  return classes;
+}
+
+function prWait(classes, owner) {
+  const matches = PR_WAITS.filter(([cls]) => classes.has(cls) && (cls !== 'check-failing' || !classes.has('check-failing-after-retry')));
+  if (!matches.length) return owner ? ['action', 'owner decision'] : ['waiting', 'blocked'];
+  return [matches[0][1], ...matches.map(([, , words]) => words)];
+}
+
+function waitGroups(waits, records, cfg) {
+  const byPr = new Map((records ?? []).map(x => [String(x.pr), x]));
+  const waiting = new Map();
+  const itemFor = x => {
+    const key = String(x.pr);
+    if (!waiting.has(key)) waiting.set(key, { ...x, section: null, reasons: new Set(), classes: prWaitClasses(byPr.get(key)) });
+    return waiting.get(key);
+  };
+  const add = (item, section, ...reasons) => {
+    item.section ??= section;
+    for (const reason of reasons) item.reasons.add(reason);
+  };
+  const addPrWait = (x, owner) => {
+    const item = itemFor(x);
+    item.classes.add(x.class);
+    add(item, ...prWait(item.classes, owner));
+  };
+  // An explicit verifier escalation stays actionable even if the same PR is also waiting.
+  for (const x of waits.needs_person ?? []) {
+    add(itemFor(x), 'action', Number.isInteger(x.nights) ? `open ${x.nights} nights` : 'needs review', ...(x.given_up ? ['checks abandoned'] : []));
+  }
+  for (const x of waits.awaiting_pin ?? []) add(itemFor(x), null, 'pin pending');
+  for (const x of waits.blocked ?? []) addPrWait(x, false);
+  for (const x of waits.owner ?? []) addPrWait(x, true);
+  const groups = { action: [], ci: [], held: [], waiting: [], checkFailures: 0, holds: 0, unreadablePrs: [] };
+  for (const x of waiting.values()) {
+    groups[x.section ?? 'waiting'].push(`- ${prName(x, cfg)}: ${[...x.reasons].join('; ')}`);
+    if (x.classes.has('check-failing') || x.classes.has('check-failing-after-retry')) groups.checkFailures++;
+    if (x.classes.has('hold') || x.classes.has('vet-hold')) groups.holds++;
+    if (x.classes.has('facts-incomplete')) groups.unreadablePrs.push(x.pr);
+  }
+  if (waits.history) groups.action.push('- history: needs review');
+  return groups;
+}
+
 const FAILURE_WORDS = [
   [/job-failed/, 'job failed'], [/crash-loop/, 'pods crashing'],
   [/not-applied/, 'rollout failed'], [/critical-alert/, 'critical alert'],
@@ -158,21 +220,10 @@ export function claimWords(c) {
   return 'fix unclaimed';
 }
 
-export function composeText(facts, { now, cfg, tz, finished }) {
+export function composeText(facts, { now, cfg, tz, finished, records }) {
   const historyKnown = !facts.unreadable.some(u => u.startsWith('the history'));
   const checksKnown = !facts.unreadable.some(u => u.startsWith('the verifier'));
-  const waiting = new Map();
-  const wait = (x, ...reasons) => {
-    const key = String(x.pr);
-    if (!waiting.has(key)) waiting.set(key, { ...x, reasons: [] });
-    for (const reason of reasons) if (!waiting.get(key).reasons.includes(reason)) waiting.get(key).reasons.push(reason);
-  };
-  const w = facts.waits;
-  for (const x of w.needs_person) wait(x, `open ${x.nights} nights`, ...(x.given_up ? ['checks abandoned'] : []));
-  for (const x of w.awaiting_pin) wait(x, 'pin pending');
-  for (const x of w.blocked) wait(x, WAIT_WORDS[x.class] || 'blocked');
-  for (const x of w.owner) wait(x, WAIT_WORDS[x.class] || 'owner decision');
-  const waitCount = waiting.size + (w.history ? 1 : 0);
+  const waits = waitGroups(facts.waits ?? {}, records, cfg);
 
   // One line per package, at its most recently merged version. Keep the first appearance's
   // position for a stable list. Compare timestamps, not input order or semver (also digests).
@@ -183,34 +234,66 @@ export function composeText(facts, { now, cfg, tz, finished }) {
     const old = upgrades.get(key);
     if (!old || Date.parse(x.at) >= Date.parse(old.at)) upgrades.set(key, x);
   }
-  const lines = [`Updates ${dayLabel(now, tz)}${facts.mode === 'live' ? '' : ' (dry-run)'}: ${historyKnown ? upgrades.size : '?'} in, ${historyKnown ? facts.reverted.length : '?'} reverted, ${checksKnown ? facts.failed.length : '?'} failed, ${waitCount} need you${checksKnown && facts.checking.length ? `, ${facts.checking.length} still being checked` : ''}`];
+  const counts = [
+    `${historyKnown ? upgrades.size : '?'} in`,
+    `${historyKnown ? facts.reverted.length : '?'} reverted`,
+    `${checksKnown ? facts.failed.length : '?'} failed verification`,
+    `${waits.action.length} need you`,
+    `${waits.checkFailures} PR check failures`,
+    `${waits.holds} held`,
+    `${waits.waiting.length} waiting`,
+  ];
+  if (checksKnown && facts.checking.length) counts.push(`${facts.checking.length} still being checked`);
+  const modeLabel = facts.mode === 'live' ? '' : ' (dry-run)';
+  const lines = [`Updates ${dayLabel(now, tz)}${modeLabel}: ${counts.join(', ')}`];
   const trouble = [];
+  const unreadableFacts = facts.unreadable.map(u => u.startsWith('the history') ? 'history' : u.startsWith('the verifier') ? 'checks' : clean(u, cfg.max_reason_chars || 90));
+  if (waits.unreadablePrs.length === 1) unreadableFacts.push(`PR #${clean(waits.unreadablePrs[0], 12)}`);
+  else if (waits.unreadablePrs.length > 1) unreadableFacts.push('PR facts');
+  const unreadableOwners = facts.claims.filter(c => c.outcome === 'unreadable');
   if (!finished) trouble.push('NIGHT INCOMPLETE');
-  if (facts.unreadable.length) trouble.push(`UNREADABLE: ${facts.unreadable.map(u => u.startsWith('the history') ? 'history' : u.startsWith('the verifier') ? 'checks' : clean(u, cfg.max_reason_chars || 90)).join('; ')}`);
-  for (const c of facts.claims.filter(c => c.outcome === 'unreadable')) trouble.push(`UNREADABLE: owner #${clean(c.pr, 12)}`);
+  if (unreadableFacts.length) trouble.push(`UNREADABLE: ${unreadableFacts.join('; ')}`);
+  for (const c of unreadableOwners) trouble.push(`UNREADABLE: owner #${clean(c.pr, 12)}`);
   if (trouble.length) lines.push(trouble.join('; '));
   const group = (heading, items) => { if (items.length) lines.push(heading, ...items); };
-  group('NEED YOU:', [
-    ...[...waiting.values()].map(x => `- ${prName(x, cfg)}: ${x.reasons.join('; ')}`),
-    ...(w.history ? ['- history: needs review'] : []),
-  ]);
-  group('FAILED:', !checksKnown ? [] : facts.failed.map(x => {
+  group('NEED YOU:', waits.action);
+  const firstFailureRow = lines.length + 1;
+  const failures = !checksKnown ? [] : facts.failed.map(x => {
     const reasons = failureWords(x.why);
     if (!reasons.length) reasons.push('checks failed');
     reasons.push(x.attribution === 'own-regression' ? 'by update' : 'cause unclear');
     const who = claimWords(facts.claims.find(k => k.pr === x.pr));
     return `- ${prName(x, cfg)}: ${reasons.join(', ')}${who ? `; ${who}` : ''}`;
-  }));
+  });
+  group('FAILED:', failures);
   group('REVERTED:', facts.reverted.map(x => {
     const reasons = x.recovered === true ? ['recovered'] : x.recovered === false ? ['not recovered', ...failureWords(x.reason)] : ['recovery unchecked'];
     return `- ${prName(x, cfg)}${x.to ? ` ${clean(x.to, 24)}` : ''}: ${reasons.join('; ')}`;
   }));
+  group('PR CHECKS:', waits.ci);
+  group('HELD:', waits.held);
+  group('WAITING:', waits.waiting);
   // This is activity during the span, not a live inventory: explicitly mark a rolled-back
   // target. Recovery timestamps must not make a later re-merge look reverted. Older facts
   // have only at, which is the best timestamp available for their revert.
   const wasReverted = x => facts.reverted.some(r => packageKey(r) === packageKey(x) && (!r.to || r.to === x.to) && Date.parse(r.reverted_at || r.at) >= Date.parse(x.at));
   group('UPGRADED:', [...upgrades.values()].map(x => `- ${displayName(x, cfg)}${x.to ? ` ${clean(x.to, 24)}` : ''}${wasReverted(x) ? ': reverted' : ''}`));
-  return fit(lines, cfg.max_bytes || 1000);
+  const maxBytes = cfg.max_bytes || 1000;
+  const fitted = fit(lines, maxBytes);
+  const kept = lines.length - fitted.cut;
+  const lostCoverage = kept === 1;
+  const lostAllFailures = failures.length > 0 && kept <= firstFailureRow;
+  if (!trouble.length || (!lostCoverage && !lostAllFailures)) return fitted;
+  // Keep compact coverage only if it restores the warning or at least one failure row.
+  const flags = [];
+  if (!finished) flags.push('NIGHT INCOMPLETE');
+  if (unreadableFacts.length || unreadableOwners.length) flags.push('UNREADABLE FACTS');
+  lines[1] = flags.join('; ');
+  const compact = fit(lines, maxBytes);
+  const compactKept = lines.length - compact.cut;
+  const recoveredCoverage = lostCoverage && compactKept > 1;
+  const recoveredFailure = lostAllFailures && compactKept > firstFailureRow;
+  return recoveredCoverage || recoveredFailure ? compact : fitted;
 }
 
 // Cut whole lines from the bottom: UPGRADED first, then punch-list entries only if necessary.
@@ -244,7 +327,7 @@ export function composeMorning({ now, mode, rules, prevText = null, records, ver
   // night the clocks go forward has 16 ticks, the night they go back may have more than 20.
   const last = hhmm(now, tz);
   const finished = last >= cfg.last_tick_local;
-  const { text, cut } = composeText(facts, { now, cfg, tz, ticks, finished });
+  const { text, cut } = composeText(facts, { now, cfg, tz, finished, records });
   const morning = { schema: SUMMARY_SCHEMA, night: facts.night, composed_at: iso(now), window_from: facts.window_from, ticks_completed: ticks, finished,
     last_tick_local: last, expected_last_tick_local: cfg.last_tick_local, mode, bytes: bytes(text), lines_cut: cut, text, facts };
   const delivery = { morning_text: text, morning_night: facts.night, morning_composed_at: morning.composed_at, morning_ticks: String(ticks), morning_last_tick: last, morning_last_tick_expected: cfg.last_tick_local, morning_mode: mode };

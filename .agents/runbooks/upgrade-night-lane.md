@@ -2161,46 +2161,48 @@ no GitHub read:
 - the history's own verdict;
 - `summary.claims`.
 
-**Fixed phone template (story 890; Tom's ruling Q-548-08, 2026-11-18).** Summary first,
-then the punch list, then the upgrades. Empty sections have no heading. Example:
+**Fixed phone template (story 890, Tom's ruling Q-548-08, 2026-11-18).** Summary first,
+then the punch list, then the upgrades. Empty sections have no heading. The five-PR
+offline fixture renders as follows.
 
 ```text
-Updates 18 Nov (dry-run): 10 in, 0 reverted, 1 failed, 5 need you
+Updates 19 Nov (dry-run): 0 in, 0 reverted, 0 failed verification, 1 need you, 3 PR check failures, 1 held, 0 waiting
 NEED YOU:
+- #4758 httpcore2: v1 restart window
+PR CHECKS:
 - #4757 antlr4-python3-runtime: check failing
-- #4848 kyverno: check failing
-- #4376 node: major
-- #4758 httpcore2: restarts v1
-- #4764 av: major
-FAILED:
-- #4918 ytdl-sub: job failed, by update
-UPGRADED:
-- claude-code-action v1.0.281
-- cloudflared 2026.11.1
-+8 more
+- #4848 kyverno: failed after retry
+- #4764 av: check failing; major
+HELD:
+- #4376 node: standing hold; major
 ```
 
-This illustrates the template and a cut, not a new verdict on PR 4918: the stored sample's
-attribution is preserved. Story 879 owns that verdict. The complete stored sample fits in
-one message; the fixture retains its two already-truncated chart names (`k...`, `cloudna...`).
-New facts carry an additive `short_name`, shortened before the cap, so registry paths cannot
-consume chart names such as `kube-prometheus-stack`.
+The example covers the five open PRs in story 890. Merges, reverts and verification
+are empty fixture inputs. Fresh text uses the tick's classifier findings, including
+secondary findings. Rendering older saved facts alone uses the primary class they
+carry. The `short_name` fact shortens the package path before capping it.
 
-1. **Line 1:** date; `(dry-run)` while not live; the counts `in`, `reverted`, `failed`,
-   `need you`. A nonzero pending count appends `N still being checked`. No passed count.
-   `in` counts distinct package names, with the target of the most recent merge shown once
-   below; two merges of one package count as one. Before cutting, this equals the number of
-   upgrade lines; after cutting, the omitted upgrade entries are included in the total.
-2. **Trouble, immediately below line 1:** `NIGHT INCOMPLETE` when the last completed tick
-   precedes 05:45; `UNREADABLE: history`, `checks`, or `owner #NNNN` when those facts cannot
-   be read. Multiple troubles share one line, separated by semicolons. Unreadable history
-   makes the `in` and `reverted` counts `?`; unreadable verifier records make `failed` `?`.
-   Unknown is never reported as zero.
-3. **Punch list, fixed order:** `NEED YOU:`, `FAILED:`, `REVERTED:`. One line per PR in
-   each section, with its number, the last component of its name, and short reasons.
-   A PR with several waiting reasons counts once and carries all of them on its line.
-   A history needing review counts separately (`- history: needs review`), without an
-   invented PR number. Reverts include the target version and the recovery result.
+1. The first line gives the date, mode if dry-run, and counts for upgrades in, reverts,
+   verification failures, decisions, PR check failures, holds and waits. A nonzero pending
+   verification count appends `N still being checked`.
+   The `in` count includes each package once, even when the byte limit cuts its upgrade
+   line or several merges changed the same package. `PR check failures` and `held`
+   each count qualifying PRs in the digest wait set once, wherever their rows appear.
+   `held` includes standing and review holds. The two counts can overlap. `need you`
+   and `waiting` count the rows under `NEED YOU` and `WAITING`.
+2. Coverage appears on the next line. `NIGHT INCOMPLETE` means the last completed tick
+   preceded 05:45. `UNREADABLE: history`, `checks` or `owner #NNNN` identifies the missing
+   evidence. The warning names an unreadable PR as `PR #NNNN` and uses `PR facts` for
+   several. When the byte limit cuts the warning or every verification failure row,
+   the renderer uses `UNREADABLE FACTS` if it restores the coverage warning or at
+   least one failure row. Unreadable history makes the `in` and `reverted` counts `?`.
+   Unreadable verifier records make `failed verification` `?`.
+3. The punch list shows `NEED YOU`, `FAILED`, `REVERTED`, `PR CHECKS`, `HELD` and
+   `WAITING` in that order. Verifier escalations and history review count under `NEED YOU`.
+   A failed check, an explicit hold, or incomplete evidence takes precedence over
+   an open PR's owner gate, in that order. Each PR has one row across the waiting
+   sections and its line keeps the other reasons it matches. Reverts show the target
+   version and the recovery result.
 4. **Bottom:** `UPGRADED:`, one short package name and its newest target per line, in order
    of first appearance in the span. Newest is determined by merge time, including digest
    updates, rather than input order or a version-string comparison. These are activity
@@ -2213,12 +2215,13 @@ item are separated by commas or semicolons. No raw explanations or bracketed des
 
 | Fact | Fixed words |
 |---|---|
-| Failing PR check, including after its retry | `check failing` |
+| Failing PR check, including after its retry | `check failing`, `failed after retry` |
 | Incomplete PR checks, missing PR facts | `checks pending`, `facts unreadable` |
-| Owner decisions | `major`, `restarts v1`, `prerelease`, `held`, `held by review`, `owner decision` |
+| Standing or current-head review hold | `standing hold`, `held by review` |
+| Owner decisions | `major`, `v1 restart window`, `prerelease`, `owner decision` |
 | Overdue verifier, abandoned checks, pending digest pin | `open N nights`, `checks abandoned`, `pin pending` |
 | History review, unknown blocked class | `needs review`, `blocked` |
-| Failed check categories | `job failed`, `pods crashing`, `rollout failed`, `critical alert`, `wrong image`, `pods replaced`, `restarts growing`, `not ready`, `image pull failed`, `pin timed out` |
+| Failed verification categories | `job failed`, `pods crashing`, `rollout failed`, `critical alert`, `wrong image`, `pods replaced`, `restarts growing`, `not ready`, `image pull failed`, `pin timed out` |
 | Other failed category | `checks failed` |
 | Failure attribution | `by update`, `cause unclear` |
 | Fix ownership | `lane owns fix`, `lane reverting`, `triage owns fix`, `lane fixing another update`, `fix unclaimed`, `owner unreadable` |
@@ -2226,10 +2229,9 @@ item are separated by commas or semicolons. No raw explanations or bracketed des
 | Upgrade target rolled back in the span | `reverted` |
 | Revert result | `recovered`, `not recovered`, `recovery unchecked`; a known failure category may follow `not recovered` |
 
-`lane reverting` requires the claim's state to be `reverting`; a claim alone says
-`lane owns fix`. A lost claim with no holder says `fix unclaimed`. A missing claim adds no
-invented owner. Raw reasons, failing workflow names, actor logins, passed checks, pending
-check detail, practice flags, and all complete lists remain in the stored `facts`.
+`lane reverting` requires the claim's state to be `reverting`. A claim alone says
+`lane owns fix`. A lost claim with no holder says `fix unclaimed`. Raw secondary findings
+remain in the open-PR records. The stored summary retains its fact fields and full lists.
 
 **Cutting.** The composer respects `night.summary.max_bytes` (1000). Whole upgrade lines
 are removed from the bottom first. A punch-list line is removed only after every upgrade
