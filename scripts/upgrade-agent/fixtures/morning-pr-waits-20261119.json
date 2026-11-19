@@ -1,0 +1,49 @@
+{
+  "note": "Minimal offline lane records from OP890 comments 9291, 9325 and 9347 and OP733 comment 9321. Covers the five PR waits only.",
+  "last_tick": "2026-11-19T10:45:05.093Z",
+  "records": [
+    {
+      "pr": 4757,
+      "package": "antlr4-python3-runtime",
+      "lane": "BLOCKED",
+      "class": "check-failing",
+      "reason": "failing: Build and Push ControlFoley Image / validate (FAILURE)"
+    },
+    {
+      "pr": 4848,
+      "package": "github.com/kyverno/kyverno",
+      "lane": "BLOCKED",
+      "class": "check-failing-after-retry",
+      "reason": "dev-env archive guard source tests / Archive Guard Source - Success (FAILURE)",
+      "findings": [
+        "BLOCKED/check-failing: failing: dev-env archive guard source tests / Archive Guard Source - Success (FAILURE)"
+      ]
+    },
+    {
+      "pr": 4376,
+      "package": "node",
+      "lane": "LANE-B-OWNER",
+      "class": "major",
+      "findings": [
+        "LANE-B-OWNER/major: update type major",
+        "LANE-B-OWNER/hold: standing Node hold"
+      ]
+    },
+    {
+      "pr": 4758,
+      "package": "httpcore2",
+      "lane": "LANE-B-OWNER",
+      "class": "v1-restart"
+    },
+    {
+      "pr": 4764,
+      "package": "av",
+      "lane": "LANE-B-OWNER",
+      "class": "major",
+      "findings": [
+        "LANE-B-OWNER/major: update type major",
+        "BLOCKED/check-failing: failing: Build and Push ControlFoley Image / validate (FAILURE)"
+      ]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Offline morning-template tests (stories 554, 890). The fixtures exercise the stored facts,
 // count window, phone byte limit, claims and delivery copy. No child, network, clock wait or
-// real delivery. --sample prints the real 18 Nov record through the current renderer.
+// real delivery. --sample prints the stored records and the five-PR regression.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,7 @@ const rules = JSON.parse(readFileSync(join(RES, 'upgrade-rules.json'), 'utf8'));
 const vfx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/verify-20261113.json'), 'utf8'));
 const mfx = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/morning-20261113.json'), 'utf8'));
 const real18 = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/morning-20261118.json'), 'utf8'));
+const waits19 = JSON.parse(readFileSync(join(ROOT, 'scripts/upgrade-agent/fixtures/morning-pr-waits-20261119.json'), 'utf8'));
 const REPO = 'thaynes43/haynes-ops';
 const bytes = s => Buffer.byteLength(s, 'utf8');
 const at = s => Date.parse(s);
@@ -32,6 +33,7 @@ const compose = (o = {}) => S.composeMorning({ now: LAST, mode: 'dryrun', rules,
 const ev = (type, atS, item, pr, extra = {}) => ({ type, at: atS, item_id: item, carrier: { pr }, ...extra });
 const render = (facts, cfg = rules.night.summary) => S.composeText(facts, { now: at(real18.composed_at), cfg, tz: rules.night.timezone, ticks: real18.ticks_completed, finished: real18.finished });
 const first = m => lines(m.morning.text)[0];
+const quietCounts = '0 in, 0 reverted, 0 failed verification, 0 need you, 0 PR check failures, 0 held, 0 waiting';
 
 section('0. configuration');
 {
@@ -50,12 +52,12 @@ section('1. quiet night and modes');
   const m = compose({ records: [{ pr: 4752, lane: 'LANE-A', class: 'no-cluster-effect', package: 'p' }] });
   const t = m.morning.text;
   ok(m.ok && bytes(t) <= 1000 && m.morning.lines_cut === 0, 'quiet night fits without cuts');
-  ok(t === 'Updates 13 Nov (dry-run): 0 in, 0 reverted, 0 failed, 0 need you', 'one line carries the date, mode and all zero counts', t);
-  ok(lines(t).length === 1 && !/NEED YOU|FAILED|REVERTED|UPGRADED/.test(t), 'no empty sections');
+  ok(t === `Updates 13 Nov (dry-run): ${quietCounts}`, 'one line carries the date, mode and all zero counts', t);
+  ok(lines(t).length === 1 && !/NEED YOU|FAILED|REVERTED|PR CHECKS|HELD|WAITING|UPGRADED/.test(t), 'no empty sections');
   ok(!/passed|practice|still being checked|\btick|claim|signature/.test(t), 'no passed count, zero checking count or internal descriptions');
-  ok(first(compose({ mode: 'live' })) === 'Updates 13 Nov: 0 in, 0 reverted, 0 failed, 0 need you', 'live omits the dry-run label');
+  ok(first(compose({ mode: 'live' })) === `Updates 13 Nov: ${quietCounts}`, 'live omits the dry-run label');
   ok(!compose({ mode: 'live', verify: { a: vrec(4869, 'seerr') } }).morning.text.includes('practice'), 'practice verdicts add no wording in live mode');
-  ok(first(compose({ mode: 'live', verify: { a: vrec(4869, 'seerr', { practice: false }) } })) === 'Updates 13 Nov: 0 in, 0 reverted, 0 failed, 0 need you', 'a passed live check adds no text');
+  ok(first(compose({ mode: 'live', verify: { a: vrec(4869, 'seerr', { practice: false }) } })) === `Updates 13 Nov: ${quietCounts}`, 'a passed live check adds no text');
   const pending = compose({ verify: { a: vrec(1, 'p', { verdict: 'not-yet', final: false, waiting_for: ['stable'] }) } });
   ok(first(pending).endsWith(', 1 still being checked'), 'nonzero checking count appears on line 1');
   ok(pending.morning.facts.checking[0].why === 'stable', 'checking detail survives in facts');
@@ -65,15 +67,16 @@ section('2. the stored night of 18 Nov, rendered without changing its facts');
 {
   const before = JSON.stringify(real18);
   const r = render(real18.facts);
-  const expected = `Updates 18 Nov (dry-run): 10 in, 0 reverted, 1 failed, 5 need you
+  const expected = `Updates 18 Nov (dry-run): 10 in, 0 reverted, 1 failed verification, 3 need you, 2 PR check failures, 0 held, 0 waiting
 NEED YOU:
-- #4757 antlr4-python3-runtime: check failing
-- #4848 kyverno: check failing
 - #4376 node: major
-- #4758 httpcore2: restarts v1
+- #4758 httpcore2: v1 restart window
 - #4764 av: major
 FAILED:
 - #4918 ytdl-sub: job failed, by update
+PR CHECKS:
+- #4757 antlr4-python3-runtime: check failing
+- #4848 kyverno: failed after retry
 UPGRADED:
 - claude-code-action v1.0.281
 - cloudflared 2026.11.1
@@ -122,11 +125,11 @@ section('3. waiting items, combined reasons and fixed vocabulary');
   };
   const m = compose({ verify, records: mfx.records, historyNote: { needs_person: true, line: 'HISTORY NEEDS A PERSON: the backfill comparison disagrees' } });
   const t = m.morning.text;
-  ok(first(m).includes('7 need you'), 'seven distinct waiting items including history');
+  ok(first(m).includes('4 need you, 2 PR check failures, 0 held, 1 waiting'), 'owner and verifier decisions, history, CI failures and a pending pin have distinct counts');
   ok(t.includes('- #4810 upgrade-agent: open 2 nights; checks abandoned'), 'overdue nights and abandoned checks survive in short form');
-  ok(t.includes('- #4811 upgrade-shepherd: pin pending'), 'digest pin pending');
-  ok(t.includes('- #4757 antlr4-python3-runtime: check failing') && t.includes('- #4848 kyverno: check failing'), 'both failing-check classes share the same reason');
-  ok(t.includes('- #4376 node: major') && t.includes('- #4764 av: major'), 'each owner decision gets a line');
+  ok(t.includes('WAITING:\n- #4811 upgrade-shepherd: pin pending'), 'digest pin pending stays in WAITING');
+  ok(t.includes('- #4757 antlr4-python3-runtime: failed after retry') && t.includes('- #4848 kyverno: failed after retry'), 'retry evidence stays on both legacy failed rows');
+  ok(t.includes('- #4376 node: major') && t.includes('- #4764 av: major'), 'legacy owner decisions retain their primary class');
   ok(t.includes('- history: needs review'), 'history without a PR gets its own waiting entry');
   ok(lines(t).filter(l => l === 'NEED YOU:').length === 1, 'one waiting heading');
   ok(m.morning.facts.waits.needs_person[0].why === 'pin not built' && m.morning.facts.waits.awaiting_pin[0].why === 'pin PR is blocked', 'raw waiting explanations stay in facts');
@@ -136,10 +139,54 @@ section('3. waiting items, combined reasons and fixed vocabulary');
   ok(first(both).includes('1 need you'), 'overdue, pin and owner reasons count as one PR');
   ok(lines(both.morning.text).filter(l => l.startsWith('- #4811 ')).length === 1 && both.morning.text.includes('open 2 nights; pin pending; major'), 'all reasons retained on one line');
   ok(first(compose({ verify: { own }, historyNote: { needs_person: true, line: 'review' } })).includes('2 need you'), 'history remains a separate item');
-  for (const [klass, reason] of Object.entries({ 'checks-incomplete': 'checks pending', 'facts-incomplete': 'facts unreadable', prerelease: 'prerelease', hold: 'held', 'vet-hold': 'held by review', 'rule-owner': 'owner decision', 'v1-restart': 'restarts v1' })) {
-    ok(compose({ records: [{ pr: 1, package: 'p', lane: klass.startsWith('checks') || klass.startsWith('facts') ? 'BLOCKED' : 'LANE-B-OWNER', class: klass }] }).morning.text.includes(`- #1 p: ${reason}`), `fixed waiting reason: ${klass}`);
+  for (const [klass, reason, heading] of [
+    ['checks-incomplete', 'checks pending', 'WAITING'],
+    ['facts-incomplete', 'facts unreadable', 'WAITING'],
+    ['prerelease', 'prerelease', 'NEED YOU'],
+    ['hold', 'standing hold', 'HELD'],
+    ['vet-hold', 'held by review', 'HELD'],
+    ['rule-owner', 'owner decision', 'NEED YOU'],
+    ['v1-restart', 'v1 restart window', 'NEED YOU'],
+  ]) {
+    const lane = heading === 'WAITING' ? 'BLOCKED' : 'LANE-B-OWNER';
+    const sample = compose({ records: [{ pr: 1, package: 'p', lane, class: klass }] }).morning.text;
+    ok(sample.includes(`\n${heading}:\n- #1 p: ${reason}`), `fixed waiting reason and section: ${klass}`);
   }
-  ok(compose({ records: [{ pr: 1, package: 'p', lane: 'BLOCKED', class: 'future-class', reason: 'long explanation' }] }).morning.text.includes('- #1 p: blocked'), 'unknown blocked class has a bounded fallback');
+  ok(compose({ records: [{ pr: 1, package: 'p', lane: 'BLOCKED', class: 'future-class', reason: 'long explanation' }] }).morning.text.includes('WAITING:\n- #1 p: blocked'), 'unknown blocked class has a bounded fallback');
+}
+
+section('3a. five PR waits from the 19 Nov tracker facts');
+{
+  const input = { now: at(waits19.last_tick), prevText: JSON.stringify(real18), records: waits19.records };
+  const before = JSON.stringify(input.records);
+  const { morning } = compose(input);
+  const expected = `Updates 19 Nov (dry-run): 0 in, 0 reverted, 0 failed verification, 1 need you, 3 PR check failures, 1 held, 0 waiting
+NEED YOU:
+- #4758 httpcore2: v1 restart window
+PR CHECKS:
+- #4757 antlr4-python3-runtime: check failing
+- #4848 kyverno: failed after retry
+- #4764 av: check failing; major
+HELD:
+- #4376 node: standing hold; major`;
+  ok(morning.text === expected, 'only the restart window needs action, with CI failures and the hold at their own headings', morning.text);
+  ok(morning.lines_cut === 0 && morning.bytes === bytes(morning.text), 'all five rows and both mixed findings fit');
+  ok(JSON.stringify(input.records) === before, 'rendering leaves the lane records intact');
+  const primaryOnly = compose({ ...input, records: input.records.map(({ findings, ...r }) => r) }).morning;
+  ok(JSON.stringify(morning.facts) === JSON.stringify(primaryOnly.facts), 'secondary findings are used for text only and leave saved facts intact');
+  const major = input.records.find(r => r.pr === 4764);
+  const noFindings = compose({ records: [{ ...major, findings: null, checks: { failing: ['validate (FAILURE)'] } }] });
+  ok(noFindings.morning.text.includes('PR CHECKS:\n- #4764 av: check failing; major'), 'existing failing check facts cover records without findings');
+  const firstWindow = input.records.find(r => r.pr === 4758);
+  const pendingWindow = compose({ records: [{ ...firstWindow, checks: { pending: ['fixture job'] } }] });
+  ok(first(pendingWindow).includes('0 need you') && pendingWindow.morning.text.includes('WAITING:\n- #4758 httpcore2: checks pending; v1 restart window'), 'incomplete checks stay visible beside the owner gate');
+  const overdue = vrec(4764, 'av', { verdict: 'not-yet', final: false, needs_person: true, nights: ['2026-11-12', '2026-11-13'], pin: { state: 'awaiting' } });
+  const escalation = compose({ records: [major], verify: { overdue } }).morning.text;
+  ok(escalation.includes('NEED YOU:\n- #4764 av: open 2 nights; pin pending; check failing; major'), 'explicit verifier escalation retains its action and the other facts');
+  ok(lines(escalation).filter(l => l.startsWith('- #4764 ')).length === 1, 'each waiting PR appears once even with verifier and open-PR facts');
+  const legacy = render({ ...real18.facts, waits: { owner: [{ pr: 1, name: 'registry/pkg' }], blocked: [{ pr: 2 }] } }).text;
+  ok(legacy.includes('NEED YOU:\n- #1 pkg: owner decision') && legacy.includes('WAITING:\n- #2 unknown: blocked'), 'partial saved wait fields use bounded fallbacks');
+  if (SAMPLE) console.log(`\n----- five-PR fixture 2026-11-19 (${morning.bytes} bytes) -----\n${morning.text}\n-----`);
 }
 
 section('3b. failed checks, attribution and every ownership outcome');
@@ -189,7 +236,8 @@ section('4. reverts and fixed section order');
   const facts = structuredClone(real18.facts);
   facts.reverted = m.morning.facts.reverted;
   const all = render(facts).text;
-  ok(all.indexOf('\nNEED YOU:\n') < all.indexOf('\nFAILED:\n') && all.indexOf('\nFAILED:\n') < all.indexOf('\nREVERTED:\n') && all.indexOf('\nREVERTED:\n') < all.indexOf('\nUPGRADED:\n'), 'fixed order: NEED YOU, FAILED, REVERTED, UPGRADED');
+  const headings = lines(all).filter(l => l.endsWith(':'));
+  ok(headings.join(' ') === 'NEED YOU: FAILED: REVERTED: PR CHECKS: UPGRADED:', 'verification failures and reverts precede routine PR checks and upgrades');
 }
 
 section('5. finish by the last local tick, including DST');
@@ -222,7 +270,7 @@ section('6. byte limit: upgrades go before any punch-list item');
   ok(!/UPGRADED:\n\+/.test(t), 'no dangling upgraded heading');
   ok(facts.merged.length === 30, 'full list retained in facts');
   const big = compose({ records: Array.from({ length: 40 }, (_, i) => ({ pr: 5000 + i, lane: 'BLOCKED', class: 'facts-incomplete', package: `registry/package-${i}` })), doc: doc13, verify: verified13 }).morning;
-  ok(bytes(big.text) <= 1000 && big.text.includes('5 in') && big.text.includes('40 need you'), 'even an oversized punch list keeps all counts');
+  ok(bytes(big.text) <= 1000 && big.text.includes('5 in') && big.text.includes('0 need you') && big.text.includes('40 waiting'), 'even an oversized punch list keeps all counts');
   ok(!big.text.includes('UPGRADED:') && big.lines_cut > 0, 'no upgrade survives once a punch-list entry must be cut');
   ok(big.facts.waits.blocked.length === 40 && big.facts.merged.length === 5, 'facts keep all cut entries');
   const whole = S.fit(['summary', 'NEED YOU:', '- #1 p: major', 'UPGRADED:', ...Array.from({ length: 12 }, (_, i) => `- p${i} ${'x'.repeat(60)}`)], 90);
@@ -233,6 +281,25 @@ section('6. byte limit: upgrades go before any punch-list item');
   ok(bytes(u.text) <= 1000 && !u.text.includes('\ufffd') && u.text.endsWith('\n+1 more'), 'UTF-8 byte limit never splits a character');
   const under = S.fit(['summary', 'UPGRADED:', '- p 1'], 1000);
   ok(under.cut === 0 && under.text === 'summary\nUPGRADED:\n- p 1', 'fitting text is unchanged');
+  const busy = {
+    now: at('2026-11-13T10:30:00Z'),
+    doc: null,
+    claims: [{ pr: 4901, outcome: 'unreadable' }],
+    verify: {
+      outage: vrec(4901, 'registry/café', { verdict: 'failed', practice: false, attribution: 'own-regression', failing: [{ fact: 'pods', class: 'crash-loop' }] }),
+      overdue: vrec(4902, 'registry/🚦status', { verdict: 'not-yet', final: false, needs_person: true, nights: ['2026-11-12', '2026-11-13'] }),
+    },
+    records: [...waits19.records, ...big.facts.waits.blocked.map(x => ({ ...x, lane: 'BLOCKED', package: 'registry/vérification' }))],
+  };
+  const capped = max_bytes => compose({ ...busy, rules: { ...rules, night: { ...rules.night, summary: { ...rules.night.summary, max_bytes } } } }).morning;
+  const crowded = capped(420);
+  ok(crowded.bytes <= 420 && crowded.lines_cut > 0 && !crowded.text.includes('\ufffd'), 'mixed punch list fits by UTF-8 bytes');
+  ok(lines(crowded.text)[1] === 'NIGHT INCOMPLETE; UNREADABLE: history; UNREADABLE: owner #4901', 'coverage appears before the cuttable sections');
+  ok(crowded.text.includes('- #4902 🚦status: open 2 nights') && crowded.text.includes('- #4758 httpcore2: v1 restart window'), 'verifier escalation and the window survive routine row cuts');
+  ok(crowded.text.includes('FAILED:\n- #4901 café: pods crashing, by update; owner unreadable'), 'real outage and fix ownership survive routine row cuts');
+  ok(!/:\n\+\d+ more$/.test(crowded.text) && crowded.text.includes('40 waiting'), 'cut omits empty headings and keeps the full waiting count');
+  const minimum = capped(200);
+  ok(minimum.bytes <= 200 && lines(minimum.text)[1] === 'NIGHT INCOMPLETE; UNREADABLE FACTS', 'the minimum cap keeps coverage flags when the detailed warning is too long');
 }
 
 section('7. hostile outside text stays data');
@@ -310,7 +377,7 @@ section('10. original 13 Nov fixture retains coverage');
 {
   const m = compose({ now: at(mfx.last_tick), prevText: JSON.stringify({ ...SAME, window_from: mfx.prev_composed_at }), records: mfx.records, verify: verified13, doc: doc13 });
   const t = m.morning.text;
-  ok(first(m) === 'Updates 13 Nov (dry-run): 5 in, 0 reverted, 0 failed, 4 need you', 'five upgraded names, two blocked PRs and two owner decisions');
+  ok(first(m) === 'Updates 13 Nov (dry-run): 5 in, 0 reverted, 0 failed verification, 2 need you, 2 PR check failures, 0 held, 0 waiting', 'five upgraded names, two check failures and two legacy owner decisions');
   ok(t.includes('- seerr v3.5.2') && t.includes('- traefik 42.4.0'), 'name/version bottom section retained from original fixture');
   ok(m.morning.facts.merged.filter(x => x.by === 'renovate').length === 4 && m.morning.facts.merged.filter(x => x.by === 'shepherd').length === 1, 'actor split retained in facts');
   ok(m.morning.facts.verified.length === 5 && !t.includes('passed'), 'passed verdict list retained in facts only');
