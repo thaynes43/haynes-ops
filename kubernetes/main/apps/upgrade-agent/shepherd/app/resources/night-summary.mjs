@@ -148,7 +148,7 @@ function prWait(row, record, owner) {
   // A saved wait has only its primary class. Current lane records also carry the secondary
   // findings, such as a failed check under a major gate or a standing hold under a major.
   for (const finding of Array.isArray(record?.findings) ? record.findings : []) {
-    const match = /^(?:BLOCKED|LANE-B-OWNER)\/([a-z-]+):/.exec(finding);
+    const match = /^(?:BLOCKED|LANE-B-OWNER)\/([a-z0-9-]+):/.exec(finding);
     if (match) classes.add(match[1]);
   }
   const hasChecks = checks => Array.isArray(checks) && checks.length > 0;

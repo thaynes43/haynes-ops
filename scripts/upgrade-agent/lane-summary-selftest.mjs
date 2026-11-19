@@ -178,6 +178,8 @@ HELD:
   const noFindings = compose({ records: [{ ...major, findings: null, checks: { failing: ['validate (FAILURE)'] } }] });
   ok(noFindings.morning.text.includes('PR CHECKS:\n- #4764 av: check failing; major'), 'existing failing check facts cover records without findings');
   const firstWindow = input.records.find(r => r.pr === 4758);
+  const secondaryWindow = compose({ records: [{ ...firstWindow, class: 'major', findings: ['LANE-B-OWNER/v1-restart: Tom picks the night'] }] });
+  ok(secondaryWindow.morning.text.includes('NEED YOU:\n- #4758 httpcore2: v1 restart window; major'), 'a secondary v1 finding keeps the restart window visible');
   const pendingWindow = compose({ records: [{ ...firstWindow, checks: { pending: ['fixture job'] } }] });
   ok(first(pendingWindow).includes('0 need you') && pendingWindow.morning.text.includes('WAITING:\n- #4758 httpcore2: checks pending; v1 restart window'), 'incomplete checks stay visible beside the owner gate');
   const overdue = vrec(4764, 'av', { verdict: 'not-yet', final: false, needs_person: true, nights: ['2026-11-12', '2026-11-13'], pin: { state: 'awaiting' } });
