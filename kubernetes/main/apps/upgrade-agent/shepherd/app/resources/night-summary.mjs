@@ -187,10 +187,11 @@ function waitGroups(waits, records, cfg) {
   for (const x of waits.awaiting_pin ?? []) add(itemFor(x), null, 'pin pending');
   for (const x of waits.blocked ?? []) addPrWait(x, false);
   for (const x of waits.owner ?? []) addPrWait(x, true);
-  const groups = { action: [], ci: [], held: [], waiting: [], checkFailures: 0, unreadablePrs: [] };
+  const groups = { action: [], ci: [], held: [], waiting: [], checkFailures: 0, holds: 0, unreadablePrs: [] };
   for (const x of waiting.values()) {
     groups[x.section ?? 'waiting'].push(`- ${prName(x, cfg)}: ${[...x.reasons].join('; ')}`);
     if (x.classes.has('check-failing') || x.classes.has('check-failing-after-retry')) groups.checkFailures++;
+    if (x.classes.has('hold') || x.classes.has('vet-hold')) groups.holds++;
     if (x.classes.has('facts-incomplete')) groups.unreadablePrs.push(x.pr);
   }
   if (waits.history) groups.action.push('- history: needs review');
@@ -239,7 +240,7 @@ export function composeText(facts, { now, cfg, tz, finished, records }) {
     `${checksKnown ? facts.failed.length : '?'} failed verification`,
     `${waits.action.length} need you`,
     `${waits.checkFailures} PR check failures`,
-    `${waits.held.length} held`,
+    `${waits.holds} held`,
     `${waits.waiting.length} waiting`,
   ];
   if (checksKnown && facts.checking.length) counts.push(`${facts.checking.length} still being checked`);
@@ -281,15 +282,18 @@ export function composeText(facts, { now, cfg, tz, finished, records }) {
   const fitted = fit(lines, maxBytes);
   const kept = lines.length - fitted.cut;
   const lostCoverage = kept === 1;
-  const lostOnlyFailure = failures.length === 1 && kept <= firstFailureRow;
-  if (!trouble.length || (!lostCoverage && !lostOnlyFailure)) return fitted;
-  // Compact coverage can save the warning itself or make room for the only failure detail.
+  const lostAllFailures = failures.length > 0 && kept <= firstFailureRow;
+  if (!trouble.length || (!lostCoverage && !lostAllFailures)) return fitted;
+  // Keep compact coverage only if it restores the warning or at least one failure row.
   const flags = [];
   if (!finished) flags.push('NIGHT INCOMPLETE');
   if (unreadableFacts.length || unreadableOwners.length) flags.push('UNREADABLE FACTS');
   lines[1] = flags.join('; ');
   const compact = fit(lines, maxBytes);
-  return lostCoverage || lines.length - compact.cut > firstFailureRow ? compact : fitted;
+  const compactKept = lines.length - compact.cut;
+  const recoveredCoverage = lostCoverage && compactKept > 1;
+  const recoveredFailure = lostAllFailures && compactKept > firstFailureRow;
+  return recoveredCoverage || recoveredFailure ? compact : fitted;
 }
 
 // Cut whole lines from the bottom: UPGRADED first, then punch-list entries only if necessary.

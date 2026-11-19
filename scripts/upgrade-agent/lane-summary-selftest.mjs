@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const RES = join(ROOT, 'kubernetes/main/apps/upgrade-agent/shepherd/app/resources');
+const L = await import(join(RES, 'lane-classify.mjs'));
 const S = await import(join(RES, 'night-summary.mjs'));
 const V = await import(join(RES, 'night-verify.mjs'));
 const rules = JSON.parse(readFileSync(join(RES, 'upgrade-rules.json'), 'utf8'));
@@ -173,10 +174,10 @@ HELD:
   ok(morning.lines_cut === 0 && morning.bytes === bytes(morning.text), 'all five rows and both mixed findings fit');
   ok(JSON.stringify(input.records) === before, 'rendering leaves the lane records intact');
   const outsideWaits = [
-    { pr: 4762, lane: 'EXCLUDED', checks: { failing: ['fixture check'] } },
-    { pr: 4839, lane: 'LANE-B-AGENT', checks: { failing: ['fixture check'] } },
+    { pr: 4762, lane: 'EXCLUDED', checks: { failing: ['fixture check'] }, findings: ['LANE-B-OWNER/hold: synthetic standing hold'] },
+    { pr: 4839, lane: 'LANE-B-AGENT', checks: { failing: ['fixture check'] }, findings: ['LANE-B-OWNER/vet-hold: synthetic review hold'] },
   ];
-  ok(compose({ ...input, records: [...input.records, ...outsideWaits] }).morning.text === expected, 'only PRs in the digest wait set contribute to its check-failure count');
+  ok(compose({ ...input, records: [...input.records, ...outsideWaits] }).morning.text === expected, 'only PRs in the digest wait set contribute to its check and hold counts');
   const primaryOnly = compose({ ...input, records: input.records.map(({ findings, ...r }) => r) }).morning;
   ok(JSON.stringify(morning.facts) === JSON.stringify(primaryOnly.facts), 'secondary findings are used for text only and leave saved facts intact');
   const major = input.records.find(r => r.pr === 4764);
@@ -197,7 +198,37 @@ HELD:
   if (SAMPLE) console.log(`\n----- five-PR fixture 2026-11-19 (${morning.bytes} bytes) -----\n${morning.text}\n-----`);
 }
 
-section('3b. failed checks, attribution and every ownership outcome');
+section('3b. classifier findings for overlapping checks and holds');
+{
+  // A synthetic path keeps the example independent of the shepherd ramp.
+  const files = ['kubernetes/main/apps/default/synthetic/app/helmrelease.yaml'];
+  const head = 'a'.repeat(40);
+  const node = {
+    number: 4376, author: 'app/renovate', head_sha: head, files,
+    commits: [{ authors: ['renovate[bot]'] }],
+    packages: [{ name: 'docker.io/library/node', update: 'major', from: '22-bookworm-slim', to: '24-bookworm-slim' }],
+    checks: L.expectedChecks(files, rules).expected.map(({ workflow, check }, i) => ({
+      workflow, name: check, status: 'COMPLETED', conclusion: i === 0 ? 'FAILURE' : 'SUCCESS',
+      completed_at: new Date(LAST).toISOString(),
+    })),
+  };
+  const holdRules = [{ matchPackageNames: ['docker.io/library/node'], allowedVersions: '<23' }];
+  const vet_markers = [{ author: 'haynes-ops-bot[bot]', sha: head, verdict: 'HOLD' }];
+  const standing = L.classify(node, rules, { now: LAST, holdRules });
+  const review = L.classify({ ...node, number: 6001, vet_markers }, rules, { now: LAST });
+  const both = L.classify({ ...node, number: 6002, vet_markers }, rules, { now: LAST, holdRules });
+  const overdue = vrec(review.pr, 'node', { verdict: 'not-yet', needs_person: true, nights: ['2026-11-12', '2026-11-13'] });
+  const m = compose({ records: [standing, review, both], verify: { overdue } });
+  ok(first(m).endsWith('1 need you, 3 PR check failures, 3 held, 0 waiting'), 'standing and review holds count once per PR alongside failed checks', first(m));
+  const expectedRows = `NEED YOU:
+- #6001 node: open 2 nights; check failing; held by review; major
+PR CHECKS:
+- #4376 node: check failing; standing hold; major
+- #6002 node: check failing; standing hold; held by review; major`;
+  ok(lines(m.morning.text).slice(1).join('\n') === expectedRows, 'the verifier escalation and failed checks keep their sections and one row per PR', m.morning.text);
+}
+
+section('3c. failed checks, attribution and every ownership outcome');
 {
   const failed = (pr, extra = {}) => vrec(pr, `registry/pkg-${pr}`, { verdict: 'failed', attribution: 'own-regression', failing: [{ fact: 'helmreleases', class: 'not-applied' }], ...extra });
   const t = (rec, claim) => compose({ verify: { a: rec }, claims: claim ? [{ pr: rec.pr, ...claim }] : [] }).morning.text;
@@ -303,6 +334,23 @@ section('6. byte limit: upgrades go before any punch-list item');
   ok(lines(tight.text)[0].includes('1 failed verification') && lines(tight.text).slice(1).join('\n') === 'UNREADABLE FACTS\nFAILED:\n- #4901 café: pods crashing, by update; owner unreadable', 'the tight digest keeps the coverage flag and the only outage detail');
   const longer = capped({ claims, verify: { outage: { ...outage, name: 'registry/café-status' } } }, 200);
   ok(longer.bytes <= 200 && lines(longer.text)[1] === 'UNREADABLE: owner #4901' && longer.text.endsWith('\n+1 more'), 'the detailed warning stays when the compact warning cannot save the outage detail');
+  const multiple = {
+    claims: [{ pr: 4902, outcome: 'unreadable' }],
+    verify: {
+      outage: { ...outage, name: 'registry/café-api' },
+      another: { ...outage, pr: 4902, name: 'registry/worker' },
+    },
+  };
+  const keptOutage = 'FAILED:\n- #4901 café-api: pods crashing, by update\n+1 more';
+  const twoTight = capped(multiple, 200);
+  ok(twoTight.bytes === 194 && twoTight.lines_cut === 1 && lines(twoTight.text)[0].includes('2 failed verification'), 'at 200 bytes the two-failure digest keeps the total and cuts one row', twoTight.text);
+  ok(lines(twoTight.text).slice(1).join('\n') === `UNREADABLE FACTS\n${keptOutage}`, 'at 200 bytes compact coverage restores the first outage row', twoTight.text);
+  const majorWaits = Array.from({ length: 16 }, (_, i) => ({
+    pr: 5000 + i, lane: 'LANE-B-OWNER', class: 'major', package: `registry/synthetic-major-image-component-${i + 3}`,
+  }));
+  const twoBusy = compose({ ...multiple, records: majorWaits }).morning;
+  ok(twoBusy.bytes === 998 && twoBusy.lines_cut === 1 && lines(twoBusy.text)[0].includes('2 failed verification, 16 need you'), 'at the deployed cap the two-failure digest keeps both totals and cuts one row', twoBusy.text);
+  ok(lines(twoBusy.text)[1] === 'UNREADABLE FACTS' && twoBusy.text.endsWith(keptOutage) && majorWaits.every(x => twoBusy.text.includes(`- #${x.pr} `)), 'at the deployed cap compact coverage restores an outage and keeps all 16 owner waits', twoBusy.text);
   const busy = {
     now: at('2026-11-13T10:30:00Z'),
     doc: null,

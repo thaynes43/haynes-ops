@@ -2186,16 +2186,17 @@ carry. The `short_name` fact shortens the package path before capping it.
    verification failures, decisions, PR check failures, holds and waits. A nonzero pending
    verification count appends `N still being checked`.
    The `in` count includes each package once, even when the byte limit cuts its upgrade
-   line or several merges changed the same package. `PR check failures` counts each
-   waiting PR with a known failed check once, even if a verifier escalation puts its
-   row under `NEED YOU`.
+   line or several merges changed the same package. `PR check failures` and `held`
+   each count qualifying PRs in the digest wait set once, wherever their rows appear.
+   `held` includes standing and review holds. The two counts can overlap. `need you`
+   and `waiting` count the rows under `NEED YOU` and `WAITING`.
 2. Coverage appears on the next line. `NIGHT INCOMPLETE` means the last completed tick
    preceded 05:45. `UNREADABLE: history`, `checks` or `owner #NNNN` identifies the missing
    evidence. The warning names an unreadable PR as `PR #NNNN` and uses `PR facts` for
-   several. At a tight byte limit, `UNREADABLE FACTS` can keep the coverage warning
-   visible or free room for the only verification failure detail. Unreadable history
-   makes the `in` and `reverted` counts `?`. Unreadable verifier records make `failed
-   verification` `?`.
+   several. When the byte limit cuts the warning or every verification failure row,
+   the renderer uses `UNREADABLE FACTS` if it restores the coverage warning or at
+   least one failure row. Unreadable history makes the `in` and `reverted` counts `?`.
+   Unreadable verifier records make `failed verification` `?`.
 3. The punch list shows `NEED YOU`, `FAILED`, `REVERTED`, `PR CHECKS`, `HELD` and
    `WAITING` in that order. Verifier escalations and history review count under `NEED YOU`.
    A failed check, an explicit hold, or incomplete evidence takes precedence over
