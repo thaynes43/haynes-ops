@@ -1,0 +1,32 @@
+[
+  {
+    "loki_timestamp_ns": "1794941493635861878",
+    "kernel_timestamp": "2026-11-17T18:51:19.115459459Z",
+    "excerpt": "file_ref_inc() on a released file reference"
+  },
+  {
+    "loki_timestamp_ns": "1794941493638842000",
+    "kernel_timestamp": "2026-11-17T18:51:19.116306821Z",
+    "excerpt": "imbalanced put on file reference count"
+  },
+  {
+    "loki_timestamp_ns": "1794941519163667208",
+    "kernel_timestamp": "2026-11-17T18:51:44.170908665Z",
+    "excerpt": "rcu: INFO: rcu_preempt self-detected stall on CPU"
+  },
+  {
+    "loki_timestamp_ns": "1794941522603710091",
+    "kernel_timestamp": "2026-11-17T18:51:48.046861567Z",
+    "excerpt": "rcu: INFO: rcu_preempt detected expedited stalls on CPUs/tasks"
+  },
+  {
+    "loki_timestamp_ns": "1794941792811631728",
+    "kernel_timestamp": "2026-11-17T18:56:17.444835375Z",
+    "excerpt": "mds0 hung"
+  },
+  {
+    "loki_timestamp_ns": "1794949458675777579",
+    "kernel_timestamp": "2026-11-17T21:04:03.674602211Z",
+    "excerpt": "rcu: INFO: rcu_preempt self-detected stall on CPU"
+  }
+]

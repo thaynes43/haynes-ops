@@ -1,0 +1,14 @@
+max by (kubernetes_node, device) (
+  min_over_time(node_disk_io_now{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"}[3m]) > 0
+  and count_over_time(node_disk_io_now{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"}[3m]) >= 3
+  and count_over_time(node_disk_reads_completed_total{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"}[3m]) >= 3
+  and count_over_time(node_disk_writes_completed_total{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"}[3m]) >= 3
+  and changes(node_disk_reads_completed_total{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"}[3m]) == 0
+  and changes(node_disk_writes_completed_total{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"}[3m]) == 0
+  and (time() - timestamp(node_disk_io_now{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"})) <= 75
+  and timestamp(node_disk_io_now{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"})
+    == timestamp(node_disk_reads_completed_total{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"})
+  and timestamp(node_disk_io_now{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"})
+    == timestamp(node_disk_writes_completed_total{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"})
+  and on (job, kubernetes_node, instance, pod) (up{job="node-exporter",kubernetes_node="talosm03"} == 1)
+)
