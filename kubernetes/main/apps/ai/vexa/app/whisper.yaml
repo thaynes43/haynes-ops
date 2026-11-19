@@ -2,13 +2,8 @@
 # OpenAI-compatible STT the Vexa bots transcribe against (the same
 # faster-whisper server Vexa's own lite deployment bundles). large-v3 at
 # GPU speed — the dry run's CPU `small` misheard plenty and the offline
-# re-transcription crawled. Runs on the RTX A2000 12GB (talosm01) as of
-# 2026-08-19: the 3090 (talosw01) is reserved for ComfyUI (camera→image
-# flow) and ollama-prime, so transcription gets the least-contended GPU.
-# talosm01 is a control-plane node — fine for whisper's bounded resources.
-# It used to share the A2000 with ollama-assist01; that app was removed on
-# 2026-09-22 (empty model store), so whisper now has the card to itself.
-# meeting-scribe/01.
+# re-transcription crawled. The RTX A2000 12 GB on talosm01 also serves the
+# Home Assistant speech workloads.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -59,8 +54,16 @@ spec:
           # minimal diff, and bump this digest in the same PR.
           image: docker.io/fedirz/faster-whisper-server:latest-cuda@sha256:0b64050ad0b9244745746b652473ee42a8d5454d501877a252c3e65f631ffc99
           env:
-            - name: WHISPER_MODEL
+            - name: WHISPER__MODEL
               value: "Systran/faster-whisper-large-v3"
+            # Capture 22 exhausted VRAM on this shared GPU. Quantize the
+            # weights while keeping the large-v3 model and one inference worker.
+            - name: WHISPER__INFERENCE_DEVICE
+              value: "cuda"
+            - name: WHISPER__COMPUTE_TYPE
+              value: "int8_float16"
+            - name: WHISPER__NUM_WORKERS
+              value: "1"
             # Static name-bias lexicon (meeting-scribe). The stt.py overlay
             # defaults `hotwords` to this when a transcription request omits it;
             # an explicit request-supplied hotwords still wins. Biases the model
@@ -84,6 +87,10 @@ spec:
               value: "-1"
           ports:
             - containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
           resources:
             requests:
               cpu: "2"
