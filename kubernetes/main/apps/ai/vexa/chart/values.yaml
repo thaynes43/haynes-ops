@@ -1,13 +1,15 @@
 # Default values for the Vexa v0.12 Helm chart.
 #
 # The v0.12 carved control plane = 5 long-running services (gateway · admin-api · meeting-api ·
-# runtime · agent-api) + infra (postgres · redis · minio + a minio-init bucket Job). The runtime
+# runtime · agent-api) + infra (postgres · redis). Recordings go to YOUR S3-compatible bucket
+# (`storage.s3`, required) — the chart runs no object store. The runtime
 # spawns the bot and the agent-worker ON DEMAND (they are NOT services here): with
 # runtime.backend=k8s it launches them as Pods under its ServiceAccount/RBAC; with backend=docker
 # (compose/desktop) via the host docker socket. Images are the compose `vexaai/v012-*` repos.
 #
-# Production overrides: set `global.imageTag` to a pinned YYMMDD-HHMM tag, fill `secrets`, and point
-# `database`/`redisConfig` at managed infra (postgres.enabled=false / redis.enabled=false).
+# Production overrides: set `global.imageTag` to a pinned YYMMDD-HHMM tag, fill `secrets`, set
+# `storage.s3`, and point `database`/`redisConfig` at managed infra (postgres.enabled=false /
+# redis.enabled=false).
 
 global:
   imageTag: ""              # When set, overrides every service image tag (build-once promotion).
@@ -33,8 +35,9 @@ global:
   #       whenUnsatisfiable: ScheduleAnyway
   topologySpreadConstraints: []
   podSecurityContext: {}
-  # Hardened defaults: block privilege escalation, drop all caps. Images run non-root via their
-  # Dockerfile USER. Override per-component only if a workload genuinely needs a cap back.
+  # No pod security context is set by default; service images run as root. Set
+  # global.podSecurityContext / global.securityContext to run as a non-root UID.
+  # Container defaults block privilege escalation and drop all capabilities.
   securityContext:
     allowPrivilegeEscalation: false
     capabilities:
@@ -46,10 +49,16 @@ global:
 # VEXA_SERVICE_AUTHORITY_SECRET, VEXA_SYSTEM_WEBHOOK_SECRET, VEXA_DISPATCH_SIGNING_KEY,
 # VEXA_BOT_API_KEY, ANTHROPIC_API_KEY,
 # ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, CLAUDE_CODE_OAUTH_TOKEN.
+# The deployment profile, the same word the mcp and transcription services read. Anything but
+# `production` (including unset) is a development posture; `production` makes an empty
+# `secrets.secretsKey` a boot refusal instead of a silently generated key (R-E08).
+vexaEnv: "development"
+
 secrets:
   existingSecretName: ""
   adminApiToken: "CHANGE_ME"        # admin-api auth + MeetingToken signing (== meeting-api ADMIN_TOKEN)
-  internalApiSecret: ""             # gateway↔admin-api↔meeting-api internal calls (default vexa-internal-secret)
+  internalApiSecret: ""             # REQUIRED, no default (F95): the internal tier every service
+                                    # presents AND believes — `openssl rand -hex 32`
   transcriptionServiceToken: ""     # funded STT token threaded into spawned bots
   serviceAuthoritySecret: ""        # exact-byte HMAC secret; required only when meetingApi.serviceAuthorityConfig is set
   systemWebhookSecret: ""           # exact-byte HMAC secret; required only when meetingApi.systemWebhookUrl is set
@@ -90,6 +99,34 @@ redisConfig:
   url: ""           # auto-filled when redis.enabled=true, else REQUIRED
   host: ""
   port: 6379
+
+# Object storage — REQUIRED. meeting-api stores recordings in YOUR bucket on AWS S3 or any
+# S3-compatible store. The chart runs no object store and has no pod-local fallback: rendering
+# fails while endpoint, bucket or existingSecret is empty, and a stale `minio.enabled: true` (the
+# removed built-in MinIO) fails with the upgrade steps. The bucket must already exist; the chart
+# never creates it. Docs: https://docs.vexa.ai/deployment-kubernetes#object-storage
+storage:
+  s3:
+    endpoint: ""              # REQUIRED, a full URL: https://s3.eu-central-1.amazonaws.com
+    bucket: ""                # REQUIRED, an existing bucket
+    region: "us-east-1"       # SigV4 signing region; most S3-compatible stores accept us-east-1
+    # true: path-style requests (https://host/bucket/key).
+    # false: virtual-hosted style (https://bucket.host/key), which needs DNS for bucket.host.
+    forcePathStyle: true
+    # REQUIRED: a Secret you create in the release namespace, holding the access key pair:
+    #   kubectl -n vexa create secret generic vexa-s3 \
+    #     --from-literal=AWS_ACCESS_KEY_ID=… --from-literal=AWS_SECRET_ACCESS_KEY=…
+    existingSecret: ""
+    accessKeyIdKey: AWS_ACCESS_KEY_ID          # the Secret key holding the access key id
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY  # the Secret key holding the secret access key
+    # A private CA for an https endpoint: name a ConfigMap OR a Secret in the release namespace (not
+    # both) and the key holding the PEM bundle. It replaces the default trust store for S3 calls.
+    # OpenShift: a ConfigMap labelled config.openshift.io/inject-trusted-cabundle=true receives the
+    # cluster's trusted bundle under the key ca-bundle.crt.
+    caBundle:
+      configMapName: ""
+      secretName: ""
+      key: ca.crt
 
 # Model ids brokered into agents/bots (empty ⇒ provider default). Mirrors compose ANTHROPIC_*/VEXA_*.
 models:
@@ -173,13 +210,19 @@ adminApi:
 meetingApi:
   enabled: true
   replicaCount: 2
+  # Keep the process alive briefly after Kubernetes marks the Pod terminating. This gives
+  # EndpointSlice/kube-proxy enough time to stop routing fresh connections to the old IP before
+  # Uvicorn exits; it is especially important when multiple co-located replicas disappear.
+  preStopDelaySeconds: 5
+  terminationGracePeriodSeconds: 30
   image:
     repository: vexaai/v012-meeting-api
     tag: v012
   service:
     type: ClusterIP
     port: 8080
-  defaultBotName: ""        # server-side fallback when POST /bots omits bot_name
+  defaultBotName: "Vexa"    # the bot's display name; the terminal omits bot_name so this is what
+                            # participants see. Blank it to get the service's VexaBot-{random}.
   transcriptionServiceUrl: ""   # STT endpoint the spawned bot transcribes against (empty ⇒ capture only)
   # Optional service-authority.v1 adapter JSON. Empty preserves stock OSS allow-all. A configured
   # authority must use failure_policy=closed and mode=enforce|observe; the secret lives under
@@ -199,7 +242,6 @@ meetingApi:
   botS3Bucket: ""
   botS3AccessKey: ""
   botS3SecretKey: ""
-  minioSecure: "false"
   logLevel: "info"
   resources:
     requests: { cpu: 200m, memory: 512Mi }
@@ -241,6 +283,27 @@ runtime:
   resources:
     requests: { cpu: 50m, memory: 256Mi }
     limits:   { cpu: 500m, memory: 768Mi }
+  # Sizing for the Pods the runtime SPAWNS (backend=k8s) — NOT `runtime.resources` above, which sizes
+  # the runtime Deployment itself. Namespace policy commonly REQUIRES every container to declare CPU
+  # and memory requests AND limits (a ResourceQuota naming requests.cpu/limits.memory, or a restricted
+  # OpenShift project); a spawned Pod that declares none is rejected at admission and the meeting or
+  # dispatch never starts (#1005).
+  #
+  # The two classes are sized INDEPENDENTLY: a meeting bot is a Chromium browser + capture pipeline,
+  # an agent worker is a code harness. runtime.v1 carries ONE value per dimension, so each value sets
+  # BOTH the request and the limit (Guaranteed QoS) — there is no separate request/limit knob.
+  #
+  # The defaults below are conservative and sized to fit a small dev cluster. RAISE THEM for real
+  # meetings: memoryMb is a hard ceiling, and a bot that exceeds it is OOM-killed mid-meeting (before
+  # #1005 nothing was enforced, so bots ran unbounded). Set a class's values to "" to emit no
+  # resources for it at all and keep exactly the pre-#1005 unbounded behaviour.
+  workloadResources:
+    meetingBot:
+      cpu: 1                    # cores → requests/limits cpu: 1000m
+      memoryMb: 2048            # MiB   → requests/limits memory: 2048Mi
+    agentWorker:
+      cpu: 0.5                  # cores → requests/limits cpu: 500m
+      memoryMb: 1024            # MiB   → requests/limits memory: 1024Mi
   # Per-component override of global.topologySpreadConstraints (same shape). Applies to the runtime
   # Deployment's OWN pods (not the bot/agent Pods it spawns — those carry runtime.tolerations/
   # nodeSelector via the RUNTIME_K8S_* env below). Omit `labelSelector` and the runtime's own pod
@@ -401,27 +464,6 @@ redis:
     requests: { cpu: 100m, memory: 256Mi }
     limits:   { cpu: 1000m, memory: 1Gi }
 
-minio:
-  enabled: true
-  image:
-    repository: minio/minio
-    tag: latest
-  accessKey: vexa-access-key
-  secretKey: vexa-secret-key
-  bucket: vexa
-  persistence:
-    size: 10Gi
-    storageClassName: ""
-  service:
-    # ClusterIP keeps MinIO internal (prod fronts it via ingress). Switch to NodePort on dev/k3s to
-    # reach presigned download URLs browser-side, then set meetingApi presigning accordingly.
-    type: ClusterIP
-    port: 9000
-    nodePort: ""
-  resources:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits:   { cpu: 500m, memory: 1Gi }
-
 # ---------- Ingress (optional; fronts the terminal web UI by default) ----------
 # The terminal is the human front door (it proxies /ws → gateway and /api → agent-api/admin-api
 # server-side). Add a second path to `gateway` if you also want the raw API exposed externally.
@@ -459,3 +501,46 @@ podDisruptionBudgets:
   agentApi:
     enabled: false        # single-replica (shared workspace); don't block drains
     minAvailable: 1
+
+# ── Vexa Minutes flows tier (off by default; the channel publisher pins the image digest) ──
+flows:
+  enabled: false
+  # THE FLOWS TIER FOLLOWS global.imageTag like every other service (A12). `image` is the explicit
+  # full-ref override and wins when set (that is how a publisher digest-pins a release); leave it
+  # empty and the ref is imageRepository:global.imageTag, falling back to imageRepository:imageTag.
+  # It was a hardcoded `vexaai/v012-flows:dev` — a mutable tag that no release pin could reach, so
+  # a chart pinned to a release ran every other service at that release and flows at whatever
+  # `:dev` was that morning.
+  image: ""
+  imageRepository: vexaai/v012-flows
+  imageTag: v012
+  workerReplicas: 2
+  # The database the flows tables live in. Default "flows": a SEPARATE database from
+  # database.name, bootstrapped by the ensure-db initContainer (needs CREATEDB or a pre-created
+  # database — see flows.yaml). Set equal to database.name (e.g. "vexa") to put the flows tables
+  # alongside the rest of the app's tables instead — same shape compose already runs (its flows
+  # tables live in the shared vexa database, no separate CREATE DATABASE at all). When the two
+  # names match, the ensure-db initContainer is skipped entirely: there is nothing to create, the
+  # application database already exists by definition. Reason this matters in prod: a separate
+  # "flows" database is NOT covered by a backup job that only dumps the app database by name.
+  databaseName: "flows"
+  apiKey: ""
+  mail:
+    address: ""
+    appPassword: ""
+    # WHO THE MAILBOX WILL ACT FOR. A sender who is neither a known user nor inside this list
+    # gets no account, no agent turn and no model call — one quarantine row (R-B12).
+    # EMPTY IS NOT "EVERYONE": it means the mailbox's own domain, exactly as an unset attendee
+    # allow-list means the organizer's (PRD §16.2 — outside the domain, never). Set it when the
+    # mailbox is hosted on a domain other than the organisation it serves.
+    domains: ""                       # comma-separated, e.g. "example.com,example.test"
+    # One fixed line back to a quarantined stranger, once per address, no model. Off by default:
+    # an automatic reply to an unverified sender is a reflector.
+    quarantineReply: ""               # "1" to enable
+  # THE CEILING ON WHAT ONE INBOX CAN COST. Per-sender bounds one correspondent (including a
+  # user whose own mail client has looped); global bounds the deployment, which is the number
+  # that matters when the sender is a hundred allow-listed addresses rather than one.
+  mailRate:
+    perSender: "12"
+    global: "120"
+    windowSeconds: "3600"

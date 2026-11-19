@@ -70,13 +70,17 @@ metadata:
 data:
   dispatch.py: |
     import json, os, ssl, sys, urllib.request
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
 
     SITE = os.environ["SITE_ORIGIN"]
     GATEWAY = "http://vexa-vexa-gateway:8000"
     BOT_NAME = "ΣΦΟ Scribe"
     GRACE_MIN = 5          # active this long with zero segments => stall
     RESTART_COOLDOWN_MIN = 15
+    DISPATCH_LOOKAHEAD = timedelta(minutes=10)  # site's dispatchableMeetings contract
+    DISPATCH_LOOKBACK = timedelta(minutes=15)
+    RETRY_COOLDOWN = timedelta(minutes=3)
+    MAX_JOIN_ATTEMPTS = 3  # includes the initial dispatch, per event window
 
     # ── Notes-pipeline stage 3 (meeting-scribe/03 §2) config. Thresholds are env
     #    so a self-test can validate with a lower minimum duration. DISPATCH stays
@@ -107,8 +111,9 @@ data:
         if not s:
             return None
         try:
-            return datetime.fromisoformat(s.replace("Z", "+00:00"))
-        except ValueError:
+            value = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            return value if value.tzinfo is not None else None
+        except (AttributeError, ValueError):
             return None
 
     def create_notes_job(meeting_db_id, code, event_id):
@@ -140,11 +145,9 @@ data:
             else:
                 print(f"notes-job {name}: create failed HTTP {e.code}: {e.read()[:200]}", file=sys.stderr)
 
-    # Gateway meetings, fetched ONCE up front and reused by all three stages
-    # below (dispatch skip-guard, watchdog, notes) — don't double-fetch. A
-    # gateway hiccup must not block dispatch, so on failure we degrade to an
-    # empty list (dispatch then falls back to the Vexa 409 as before; the
-    # watchdog and notes stages simply find nothing and no-op).
+    # Use the same history for dispatch, watchdog and notes. A failed history
+    # read leaves no way to distinguish a first send from an exhausted retry
+    # or a finished capture. Try the history read again at the next poll.
     now = datetime.now(timezone.utc)
     gst, gbody = req(f"{GATEWAY}/meetings", {"X-API-Key": os.environ["VEXA_API_KEY"]})
     if gst == 200:
@@ -153,39 +156,57 @@ data:
         print(f"WARN meetings list HTTP {gst}", file=sys.stderr)
         all_meetings = []
 
-    def already_captured(code, ev_start):
-        # This Meet code already has a capture for this window if a gateway
-        # meeting is active-ish (anything not completed/failed => a bot is live
-        # in the room now) OR completed with end_time at/after the event's start
-        # (this event already had its meeting). The feed only surfaces meetings
-        # starting about now, so a completed capture ending after startAt is
-        # unambiguously THIS window; a stale capture of a recurring code ended
-        # before startAt and is correctly ignored.
-        for g in all_meetings:
-            if g.get("native_meeting_id") != code:
-                continue
-            status = g.get("status")
-            if status not in ("completed", "failed"):
-                return True
-            if status == "completed" and ev_start is not None:
-                g_end = parse_dt(g.get("end_time"))
-                if g_end is not None and g_end >= ev_start:
-                    return True
-        return False
+    def retryable_join_failure(meeting):
+        evidence = (meeting.get("data") or {}).get("join_evidence") or {}
+        detail = (evidence.get("detail") or "").lower()
+        if "google_meet_join_refused" in detail:
+            return True
+        return (evidence.get("reason") == "never_reached_lobby"
+                and "could not locate name input" in detail)
 
-    # 1) Dispatch: send the bot to meetings starting about now — but skip any
-    #    whose capture already happened this window (see already_captured).
-    #    Without this, a meeting that ended while its scheduled window is still
-    #    open is re-summoned to an empty room every run (the 409 guard the
-    #    gateway offers only covers ACTIVE meetings, not completed ones).
+    def dispatch_skip(history, event, now):
+        start = parse_dt(event.get("startAt"))
+        if start is None:
+            return "missing scheduled start"
+        window_start = start - DISPATCH_LOOKAHEAD
+        if not window_start <= now <= start + DISPATCH_LOOKBACK:
+            return "outside site dispatch window"
+        attempts = []
+        for meeting in history:
+            if meeting.get("platform") != "google_meet" or meeting.get("native_meeting_id") != event["code"]:
+                continue
+            status = meeting.get("status")
+            if status not in ("completed", "failed"):
+                return "bot still running"
+            ended = parse_dt(meeting.get("end_time"))
+            began = parse_dt(meeting.get("start_time"))
+            if began is not None and began >= window_start:
+                return "already captured this window"
+            if ended is None or ended < window_start:
+                continue
+            if status == "completed" or began is not None:
+                return "already captured this window"
+            if not retryable_join_failure(meeting):
+                return "previous join failure requires review"
+            attempts.append(ended)
+        if len(attempts) >= MAX_JOIN_ATTEMPTS:
+            return "join retry limit reached"
+        if attempts and now - max(attempts) < RETRY_COOLDOWN:
+            return "join retry cooling down"
+        return None
+
+    # 1) Dispatch only while the site advertises the event. Retry a platform
+    #    refusal or the missing-name failure after a pause; leave host denials,
+    #    intentional stops and previously admitted captures to the owner.
     st, body = req(f"{SITE}/api/internal/upcoming-meetings",
                    {"Authorization": "Bearer " + os.environ["SCRIBE_DISPATCH_TOKEN"]})
     if st != 200:
         print(f"ERROR upcoming-meetings HTTP {st}", file=sys.stderr); sys.exit(1)
     meetings = json.loads(body)["meetings"]
-    for m in meetings:
-        if already_captured(m["code"], parse_dt(m.get("startAt"))):
-            print(f"dispatch skip {m['code']}: already captured this window")
+    for m in meetings if gst == 200 else []:
+        skip = dispatch_skip(all_meetings, m, now)
+        if skip:
+            print(f"dispatch skip (event {m['id']}): {skip}")
             continue
         st, body = req(f"{GATEWAY}/bots",
                        {"X-API-Key": os.environ["VEXA_API_KEY"], "Content-Type": "application/json"},
