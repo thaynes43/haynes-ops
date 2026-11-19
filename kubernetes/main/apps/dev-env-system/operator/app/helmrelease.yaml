@@ -592,7 +592,65 @@ spec:
               # Previous pin sha-e28fbd8@sha256:21594e113dd0bfd59f9c3544f8aaae0f4794f49f7e713749883e889fdb8558a5
               # (haynes-ops#4879); rollback target for the operator alone, with all current args.
               # Its code ignores the retained raise key Secret and public-key ConfigMap.
-              tag: sha-e8f8184@sha256:8f2e0d6e02e9585d746340960e97ccec7ba148e49d337eb2c73483de15e853a8
+              # dev-env main 4f3ef3d9 (publish 44363676517, operator job 135011558410, signed and
+              # verified this digest; CI - Success at the same commit is green).
+              # This is release 2.111.0 (f9677123), a workflow-only Renovate update and the broker
+              # fix dev-env#1208 (OP918), which does not execute in operator mode.
+              # What changes in the running operator since sha-e8f8184, with all arguments kept:
+              # - dev-env#1165 (OP858, DESIGN-067 slice b) excludes workbench-account, reserved
+              #   and unresolved-account hosts from the ordinary pool, its login reading and lease.
+              #   Existing Codex hosts can be refused by account resolution even with
+              #   --codex-workbench-hosts unset; an owned ordinary-account pod still proves its
+              #   account if its profile disappears, and ordinary thread calls retain their path.
+              #   Explicit coordinator thread intent requires the named workbench host and a
+              #   privileged caller, checks both UIDs and never falls back to an ordinary host.
+              #   No host is named here, so no coordinator launch is admitted and no running
+              #   session pod changes; clients selecting a pool can see the stricter refusals.
+              # - dev-env#1171 (OP858, DESIGN-067 slice c1) adds the named-host safe rescue stop
+              #   only to that host's next agent or hold pod when --codex-remote-stop-hosts names it.
+              #   The setting stays unset, so no host is named, no pod receives the decision,
+              #   and unlisted pods, running sessions and existing clients keep their stop path.
+              # - dev-env#1172 (OP802, DESIGN-064 6.6) recovers an existing escalation or abandons
+              #   a Pending filing after 24 hours, holds a reap until filing settles or for ten
+              #   minutes after Abandoned, keeps Pending charges in queue capacity and reserves
+              #   ledger bytes for filing-name suffix growth while still stopping/releasing a reap.
+              #   This also applies to existing summoned records with creates off; ordinary
+              #   sessions and their clients take none of these paths, and create kinds stay unset.
+              #   The ten-minute local-clock guard assumes bounded clock lag/request delay;
+              #   it is not an atomic server-side fence against a late create after abandonment.
+              # - dev-env#1179 (OP795, DESIGN-064 6.10) refuses a rendered summoned brief with a
+              #   leading dash or NUL before charge and tolerantly records its optional delivery word.
+              #   Existing old heartbeats still work, ordinary clients gain no view field and no
+              #   running session receives a brief; actual delivery needs the later agent image.
+              # - dev-env#1190 and #1201 move controller-runtime 0.25.2 to 0.25.3 and x/net 0.62.0
+              #   to 0.63.0 in the manager, cache, client, leader election and HTTP paths.
+              #   These affect the operator process; no session binary or client schema changes.
+              # Keeper-only code in the shared image does not run in operator mode; keeper stays
+              # on sha-1ae9c7c and this pin initializes no keeper key.
+              # CRD bodies match 4f3ef3d9 except the held GrantPolicy difference (OP503); no copy.
+              # No flag, permission, template, ConfigMap or Secret change; existing session pods stay.
+              # Previous pin sha-e8f8184@sha256:8f2e0d6e02e9585d746340960e97ccec7ba148e49d337eb2c73483de15e853a8
+              # (haynes-ops#4914); rollback target for the operator alone, with all current args.
+              # Rollback retains the ledger/status and existing raise keys; it loses the Pending
+              # reap/queue hold and suffix reserve, so later summoned activity needs review first.
+              # dev-env main 298841e61d05e60ff281eed988874e51910a0690 (OP921, dev-env#1223).
+              # publish.yml run 44415736921, operator job 135195422612, built, signed and
+              # verified this digest. Install the paired agent 2.112.0 image/hold FIRST
+              # (haynes-ops#4960), or together: older agentd refuses a 6.2 Session.
+              # dev-env#1219 admits explicitly requested gpt-6.2-sol/gpt-6.2-astra through
+              # shared validation. No default or privileged coordinator model/effort change.
+              # dev-env#1223's allowance reader accepts exact 0.160.1 and 0.169.1 hosts;
+              # unknown versions still refuse. The operator image does not replace a host CLI.
+              # #1222 is agent-run-only, #1217 design/docs, #1216 keeper-only switch source.
+              # Every current argument stays unchanged: no --codex-remote-stop-hosts value,
+              # no raise, pager or grant Ask switch, and host selection stays as configured.
+              # Keeper stays sha-1ae9c7c; broker and OP922 inputs are unchanged. No CRD,
+              # RBAC, admission, Secret, ExternalSecret or network policy change.
+              # CRD bodies match this source except the existing held OP503 GrantPolicy copy.
+              # Rollback operator alone to sha-4f3ef3d@sha256:a0fbe601f6cbae67e29c200441effa0bf161eaa41f9aab07eecc6e92f68ec7c9
+              # with all current args: it refuses new 6.2 requests and its allowance reader
+              # cannot read a 0.169.1 host. Agent/hold and any upgraded host package stay put.
+              tag: sha-298841e@sha256:a1903731023f6c7277e68577ba6c4125a5320aea6e216c41d2661e7587060ba9
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve

@@ -15,6 +15,9 @@ metadata:
   namespace: ai
 spec:
   interval: 30m
+  # A Python or requirements change rebuilds the venv on NFS before the pod reports
+  # ready, which takes well over Helm's default 5m wait (#4932 stalled on it).
+  timeout: 20m
   chartRef:
     kind: OCIRepository
     name: app-template

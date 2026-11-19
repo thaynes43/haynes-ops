@@ -33,6 +33,8 @@ def malformed_queues():
             ("null entry", [None]), ("empty entry", [[]]), ("short entry", [[1]]),
             ("unhashable id", [[1, ["p1"]]]), ("numeric id", [[1, 7]]),
             ("client data that is not an object", [[1, "p1", {}, "client"]]),
+            *[("non-text client id " + repr(client), [[1, "p1", {}, {"client_id": client}]])
+              for client in (None, [], {}, 7, False)],
         ):
             yield key + " " + label, {**queue, key: value}
 
@@ -45,6 +47,22 @@ class VideoTests(unittest.TestCase):
         api.CONFIG = APP
         api.ACTIVE = None
         api.UNSAFE = False
+
+    def test_queue_reader_rejects_nontext_client_ids(self):
+        for key in ("queue_running", "queue_pending"):
+            for client in (None, [], {}, 7, False):
+                queue = {"queue_running": [], "queue_pending": [],
+                         key: [[1, "p1", {}, {"client_id": client}]]}
+                with self.subTest(key=key, client=client), \
+                        patch.object(api, "engine", return_value=queue):
+                    with self.assertRaisesRegex(ValueError, "Malformed ComfyUI /queue"):
+                        api.engine_queue()
+
+    def test_queue_reader_accepts_missing_or_text_client_ids(self):
+        for extra in ({}, {"client_id": "a" * 32}):
+            queue = {"queue_running": [[1, "p1", {}, extra]], "queue_pending": []}
+            with self.subTest(extra=extra), patch.object(api, "engine", return_value=queue):
+                self.assertIs(api.engine_queue(), queue)
 
     def test_restart_rejects_malformed_queue_without_cancelling(self):
         job = {"id": "a" * 32, "state": "running", "prompt_id": "p1"}
