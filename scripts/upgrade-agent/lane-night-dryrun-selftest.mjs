@@ -233,6 +233,98 @@ ok(threw, 'runReadOnly throws before running a refused command');
   ok(!N.cnpgFresh('database/postgres16', sb, b, T('2026-11-10T06:00:00Z'), D).pass, 'postgres16: a Backup older than 24h is not fresh');
   ok(!N.cnpgFresh('database/nope', sb, b, T('2026-11-09T07:00:00Z'), D).pass, 'a cluster with no ScheduledBackup is not fresh');
 
+  // Story 755: the clock and the configured window, never a real wait.
+  const window = N.backupWindow(T('2026-11-10T06:45:00Z'), rules.night);
+  const assets = rs('openproject-assets-aws');
+  const assetsWait = N.volsyncFresh(assets, T('2026-11-10T06:45:00Z'), D, window);
+  ok(!assetsWait.pass && assetsWait.blocker.startsWith('backup-due-in-window: frontend/openproject-assets-aws runs at 02:30'), "755: at 01:45 New York yesterday's assets sync cannot cross tonight's 02:30 run", JSON.stringify(assetsWait));
+  assets.status.lastSyncTime = '2026-11-10T07:30:52Z'; assets.status.nextSyncTime = '2026-11-11T07:30:00Z';
+  ok(N.volsyncFresh(assets, T('2026-11-10T07:31:00Z'), D, window).pass, '755: assets pass after the run inside the window completes');
+  const dbWait = N.cnpgFresh('frontend/openproject-db', sb, b, T('2026-11-10T06:45:00Z'), D, window);
+  ok(!dbWait.pass && dbWait.blocker.startsWith('backup-due-in-window: frontend/openproject-db runs at 02:00'), "755: at 01:45 New York yesterday's completed database backup cannot cross 02:00", JSON.stringify(dbWait));
+  const sbDone = structuredClone(sb); sbDone.find(x => x.metadata.name === 'openproject-db').status.lastScheduleTime = '2026-11-10T07:00:00Z';
+  const dbDone = structuredClone(b.find(x => x.spec.cluster.name === 'openproject-db')); dbDone.metadata.creationTimestamp = '2026-11-10T07:00:00Z';
+  ok(N.cnpgFresh('frontend/openproject-db', sbDone, [...b, dbDone], T('2026-11-10T07:01:00Z'), D, window).pass, '755: database passes on its completed 02:00 run');
+  ok(!N.cnpgFresh('frontend/openproject-db', sb, [...b, dbDone], T('2026-11-10T07:01:00Z'), D, window).pass, '755: a Backup alone does not prove the ScheduledBackup advanced');
+  const wrongSource = structuredClone(dbDone); wrongSource.metadata.labels['cnpg.io/scheduled-backup'] = 'another-schedule';
+  ok(!N.cnpgFresh('frontend/openproject-db', sbDone, [...b, wrongSource], T('2026-11-10T07:01:00Z'), D, window).pass, "755: another schedule's success cannot substitute for this run");
+  for (const expr of ['unreadable', '0 0 * *', '60 0 * * *', '0 24 * * *', '*/0 * * * *', '0 0 3-1 * *', '0 0 * JAN *']) {
+    const x = rs('mosquitto-aws'); x.spec.trigger.schedule = expr;
+    ok(N.volsyncFresh(x, T('2026-11-10T06:45:00Z'), D, window).blocker.startsWith('unreadable:'), `755: invalid VolSync schedule ${expr} is unreadable`);
+  }
+  const badSb = structuredClone(sb); badSb.find(x => x.metadata.name === 'openproject-db').spec.schedule = '0 2 * * *';
+  ok(N.cnpgFresh('frontend/openproject-db', badSb, b, T('2026-11-10T06:45:00Z'), D, window).blocker.startsWith('unreadable:'), '755: CNPG needs seconds first; five numeric fields are unreadable');
+  const seconds = N.backupCron('17 0 2 * * *', true, 'America/New_York');
+  ok(seconds.matches(T('2026-11-10T07:00:17Z')) && !seconds.matches(T('2026-11-10T07:00:00Z')), '755: CNPG seconds are honored, never discarded');
+  const explicit = rs('mosquitto-aws'); explicit.spec.trigger.schedule = 'CRON_TZ=UTC 0 5 * * *';
+  ok(N.volsyncFresh(explicit, T('2026-11-10T00:55:00Z'), D).pass, '755: explicit schedule zone overrides the lane zone when the anchor matches');
+  explicit.spec.trigger.schedule = 'CRON_TZ=No/SuchZone 0 5 * * *';
+  ok(N.volsyncFresh(explicit, T('2026-11-10T06:45:00Z'), D, window).blocker.startsWith('unreadable:'), '755: unreadable zone blocks');
+  const mismatch = rs('mosquitto-aws'); mismatch.spec.trigger.schedule = '0 1 * * *';
+  ok(N.volsyncFresh(mismatch, T('2026-11-10T06:45:00Z'), D, window).blocker.startsWith('unreadable:'), '755: status that does not corroborate the schedule zone blocks');
+  const shortWindow = N.backupWindow(T('2026-11-10T06:45:00Z'), { ...rules.night, merge_window_local: { first: '01:30', last: '01:59' } });
+  ok(N.cnpgFresh('frontend/openproject-db', sb, b, T('2026-11-10T06:45:00Z'), D, shortWindow).pass, '755: a run after the configured end is not pulled into tonight');
+  const dst = N.backupCron('0 1 * * *', false, 'America/New_York');
+  ok(dst.latest(T('2026-11-01T04:00:00Z'), T('2026-11-01T06:30:00Z')) === T('2026-11-01T06:00:00Z'), '755: repeated DST hour uses the later actual run, not a 24h period');
+  const hourly = rs('mosquitto-aws'); hourly.spec.trigger.schedule = '0 * * * *'; hourly.status.nextSyncTime = '2026-11-10T07:00:00Z';
+  const later = N.volsyncFresh(hourly, T('2026-11-10T06:45:00Z'), D, window);
+  ok(later.due === '2026-11-10T09:00:00.000Z' && !later.pass, '755: every run through window end must complete, including the last hourly run');
+
+  // Fix round F2: one anchor can corroborate two different controller zones.
+  const ambiguousSchedule = { metadata: { namespace: 'test', name: 'ambiguous-zone' }, spec: { cluster: { name: 'db' }, schedule: '0 0 0,5,7 * * *' }, status: { lastScheduleTime: '2026-11-10T05:00:00Z' } };
+  const ambiguousBackup = { metadata: { namespace: 'test', name: 'backup', creationTimestamp: '2026-11-10T05:00:00Z', labels: { 'cnpg.io/scheduled-backup': 'ambiguous-zone' } }, spec: { cluster: { name: 'db' } }, status: { phase: 'completed' } };
+  const ambiguous = N.cnpgFresh('test/db', [ambiguousSchedule], [ambiguousBackup], T('2026-11-10T06:45:00Z'), D, window);
+  ok(!ambiguous.pass && ambiguous.sources[0].due === '2026-11-10T07:00:00.000Z' && /backup-due-in-window: test\/ambiguous-zone runs at 07:00:00 UTC/.test(ambiguous.blocker) && /time zone not certain:.*America\/New_York.*UTC/.test(ambiguous.blocker), '755 F2: the review reproducer waits for 07:00 UTC across both corroborated zones', JSON.stringify(ambiguous));
+  const utcSchedule = structuredClone(ambiguousSchedule); utcSchedule.spec.schedule = '0 0 2 * * *'; utcSchedule.status.lastScheduleTime = '2026-11-10T02:00:00Z';
+  const utcBackup = structuredClone(ambiguousBackup); utcBackup.metadata.creationTimestamp = utcSchedule.status.lastScheduleTime;
+  ok(N.cnpgFresh('test/db', [utcSchedule], [utcBackup], T('2026-11-10T06:45:00Z'), D, window).pass, '755 F2: a UTC-only anchor rules out the lane zone instead of making the schedule unreadable');
+  const pastSchedule = structuredClone(ambiguousSchedule); pastSchedule.spec.schedule = '0 0 0,5,6 * * *';
+  const pastDue = N.cnpgFresh('test/db', [pastSchedule], [ambiguousBackup], T('2026-11-10T06:45:00Z'), D);
+  ok(!pastDue.pass && pastDue.sources[0].due === '2026-11-10T06:00:00.000Z' && /time zone not certain/.test(pastDue.blocker), '755 F2: without a window the completed backup must cover the latest due time across candidates', JSON.stringify(pastDue));
+  const ambiguousRs = rs('mosquitto-aws'); ambiguousRs.spec.trigger.schedule = '0 0,5,7 * * *'; ambiguousRs.status.nextSyncTime = '2026-11-10T05:00:00Z'; ambiguousRs.status.lastSyncTime = '2026-11-10T05:00:51Z';
+  const ambiguousSync = N.volsyncFresh(ambiguousRs, T('2026-11-10T06:45:00Z'), D, window);
+  ok(!ambiguousSync.pass && ambiguousSync.due === '2026-11-10T07:00:00.000Z' && /time zone not certain/.test(ambiguousSync.blocker), '755 F2: bare VolSync schedules also retain every corroborated zone', JSON.stringify(ambiguousSync));
+  // Compatibility controls: all five live forms remain anchored to New York.
+  for (const [source, now, expectedDue, pass] of [
+    [rs('mosquitto-aws'), '2026-11-10T06:45:00Z', '2026-11-10T05:00:00.000Z', false],
+    [rs('openproject-assets-aws'), '2026-11-10T06:45:00Z', '2026-11-10T07:30:00.000Z', false],
+    [rs('plex-aws'), '2026-11-08T07:00:00Z', '2026-11-08T05:00:00.000Z', true],
+  ]) {
+    const result = N.volsyncFresh(source, T(now), D, N.backupWindow(T(now), rules.night));
+    ok(result.pass === pass && result.due === expectedDue && !/time zone not certain/.test(result.blocker || ''), `755 F2 control: live VolSync ${source.spec.trigger.schedule} keeps its reviewed result`, JSON.stringify(result));
+  }
+  for (const [cluster, now, due, pass] of [['database/postgres16', '2026-11-09T07:00:00Z', '2026-11-09T05:00:00.000Z', true], ['frontend/openproject-db', '2026-11-10T06:45:00Z', '2026-11-10T07:00:00.000Z', false]]) {
+    const result = N.cnpgFresh(cluster, sb, b, T(now), D, N.backupWindow(T(now), rules.night));
+    ok(result.pass === pass && result.sources[0].due === due && !/time zone not certain/.test(result.blocker || ''), `755 F2 control: live CNPG ${result.name} keeps its reviewed result`, JSON.stringify(result));
+  }
+  for (const prefix of ['TZ', 'CRON_TZ']) {
+    const pinnedZone = structuredClone(ambiguousRs); pinnedZone.spec.trigger.schedule = `${prefix}=America/New_York 0 0,5,7 * * *`;
+    ok(N.volsyncFresh(pinnedZone, T('2026-11-10T06:45:00Z'), D, window).pass, `755 F2 control: explicit ${prefix} keeps its own zone despite a corroborating UTC anchor`);
+  }
+
+  // Isolate max age from scheduled-run coverage: a stale controller timestamp
+  // still names a real scheduled run, already covered by a successful backup.
+  const agedRs = rs('plex-aws'); agedRs.status.nextSyncTime = '2026-11-08T05:00:00Z'; agedRs.status.lastSyncTime = '2026-11-08T05:00:51Z'; agedRs.status.latestMoverStatus.result = 'Successful';
+  const agedSync = N.volsyncFresh(agedRs, T('2026-11-10T06:45:00Z'), D);
+  ok(!agedSync.pass && /older than 24h/.test(agedSync.why), '755 mutation: VolSync coverage of an old run cannot bypass the independent 24h age cap', JSON.stringify(agedSync));
+  const agedSchedule = structuredClone(sb.find(s => s.metadata.name === 'openproject-db'));
+  agedSchedule.spec.schedule = '0 0 2 * * 0'; agedSchedule.status.lastScheduleTime = '2026-11-08T07:00:00Z';
+  const agedBackup = structuredClone(dbDone); agedBackup.metadata.creationTimestamp = '2026-11-08T07:00:00Z';
+  const agedPg = N.cnpgFresh('frontend/openproject-db', [agedSchedule], [agedBackup], T('2026-11-10T06:45:00Z'), D);
+  ok(!agedPg.pass && /older than 24h/.test(agedPg.why), '755 mutation: CNPG coverage of an old run cannot bypass the independent 24h age cap', JSON.stringify(agedPg));
+
+  // Advisory review: VolSync uses robfig v3; CNPG still uses v1.2.0.
+  ok(N.backupCron('TZ=UTC 0 0 2 * * *', true, 'America/New_York') === null, '755 review: CNPG v1 has no per-expression zone prefix and fails closed');
+  const v3day = N.backupCron('0 2 */2 * 1', false, 'America/New_York');
+  const v1day = N.backupCron('0 0 2 */2 * 1', true, 'America/New_York');
+  ok(v3day.matches(T('2026-11-11T07:00:00Z')) && !v1day.matches(T('2026-11-11T07:00:00Z')), '755 review: stepped DOM uses OR for VolSync v3, AND for CNPG v1 when paired with DOW');
+  const v3week = N.backupCron('0 2 10 * */2', false, 'America/New_York');
+  const v1week = N.backupCron('0 0 2 10 * */2', true, 'America/New_York');
+  ok(v3week.matches(T('2026-11-12T07:00:00Z')) && !v1week.matches(T('2026-11-12T07:00:00Z')), "755 review: stepped DOW uses each controller's star-bit rule");
+  ok(N.backupCron('0 2 ? * 1', false, 'America/New_York').matches(T('2026-11-09T07:00:00Z')) && !N.backupCron('0 2 ? * 1', false, 'America/New_York').matches(T('2026-11-10T07:00:00Z')), '755 review: question mark is a wildcard with the AND day rule');
+  ok(!N.backupCron('0 2 1,*/1 * 1', false, 'America/New_York').matches(T('2026-11-10T07:00:00Z')), '755 review: a wildcard later in a comma list still sets the star bit');
+  ok(N.backupCron('0 2 * * 7', false, 'America/New_York') === null, '755 review: robfig weekday 7 is out of range and unreadable');
+
   const ready = (o, v) => ({ ...o, status: { conditions: [{ type: 'Ready', status: v ? 'True' : 'False' }] } });
   const ks = (ns, name, tns, path, dependsOn = [], v = true) => ready({ metadata: { namespace: ns, name }, spec: { targetNamespace: tns, path, dependsOn } }, v);
   const K = { items: [
@@ -768,10 +860,28 @@ process.exit(0);
     ok(blk(r2, 4477) === '', '755 state: another app\'s PVC in the namespace does not block', blk(r2, 4477));
   }
 
+  // Backups inside the window through the real tick, with fake Kubernetes only.
+  {
+    const w = baseWorld([4670]);
+    const source = w.k8s['replicationsources.volsync.backube'].items[0];
+    source.spec.trigger.schedule = '0 2 * * *';
+    source.status.lastSyncTime = '2026-11-01T07:00:51Z'; source.status.nextSyncTime = '2026-11-02T07:00:00Z';
+    const before = await tick(w, { FAKE_NOW: '2026-11-02T06:45:00Z' });
+    ok(before.summary.would_merge === null && /backup-due-in-window: database\/mosquitto-aws runs at 02:00/.test(blk(before, 4670)), "755 tick: at 01:45 yesterday's backup cannot clear a 02:00 source", blk(before, 4670));
+    source.status.lastSyncTime = '2026-11-02T07:00:51Z'; source.status.nextSyncTime = '2026-11-03T07:00:00Z';
+    const after = await tick(w, { FAKE_NOW: '2026-11-02T07:01:00Z' });
+    ok(after.summary.would_merge?.pr === 4670 && blk(after, 4670) === '', '755 tick: target passes after its scheduled run completes', blk(after, 4670));
+    source.spec.trigger.schedule = 'unreadable';
+    const unknown = await tick(w, { FAKE_NOW: '2026-11-02T07:01:00Z' });
+    ok(unknown.summary.would_merge === null && /unreadable: backup schedule for database\/mosquitto-aws/.test(blk(unknown, 4670)), '755 tick: unreadable schedule fails closed with the fixed unreadable prefix', blk(unknown, 4670));
+    const reads = after.calls.filter(c => c.cmd === 'kubectl' && /^(deployments|statefulsets|daemonsets)\.apps$/.test(c.argv[1]));
+    ok(reads.length <= 6 && reads.every(c => c.argv.includes('-A')), '755 tick: state and verifier share the initial controller read; only merge preflight refreshes it', JSON.stringify(reads));
+  }
+
   const failCases = [
     ['configmaps', 'FAIL', 'unreadable: configmaps'], ['kustomizations.kustomize.toolkit.fluxcd.io', 'FAIL', 'unreadable: kustomizations'],
     ['helmreleases.helm.toolkit.fluxcd.io', 'FAIL', 'unreadable: helmreleases'],
-    ['deployments.apps@media', 'FAIL', 'unreadable: deployments in media'], ['statefulsets.apps@media', 'FAIL', 'unreadable: statefulsets in media'], ['persistentvolumeclaims@media', 'FAIL', 'unreadable: persistentvolumeclaims in media'], ['replicationsources.volsync.backube', 'FAIL', 'unreadable: replicationsources'],
+    ['deployments.apps', 'FAIL', 'unreadable: deployments in media'], ['statefulsets.apps', 'FAIL', 'unreadable: statefulsets in media'], ['persistentvolumeclaims@media', 'FAIL', 'unreadable: persistentvolumeclaims in media'], ['replicationsources.volsync.backube', 'FAIL', 'unreadable: replicationsources'],
     ['replicationsources.volsync.backube', 'GARBAGE', 'unreadable: replicationsources'], ['backups.postgresql.cnpg.io', 'FAIL', 'unreadable: CNPG backups'],
     ['scheduledbackups.postgresql.cnpg.io', 'FAIL', 'unreadable: CNPG scheduledbackups'], ['pods', 'FAIL', 'unreadable: pods/cronjobs'],
     ['cronjobs', 'GARBAGE', 'unreadable: pods/cronjobs'], ['cephclusters.ceph.rook.io', 'FAIL', 'unreadable: cephclusters'],

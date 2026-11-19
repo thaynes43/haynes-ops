@@ -190,6 +190,7 @@
   {
     "metadata": {
       "name": "postgres-20261109000000",
+      "labels": {"cnpg.io/scheduled-backup": "postgres"},
       "namespace": "database",
       "creationTimestamp": "2026-11-09T05:00:00Z"
     },
@@ -207,6 +208,7 @@
   {
     "metadata": {
       "name": "postgres-pgvecto-20261109000000",
+      "labels": {"cnpg.io/scheduled-backup": "postgres-pgvecto"},
       "namespace": "database",
       "creationTimestamp": "2026-11-09T05:00:00Z"
     },
@@ -224,6 +226,7 @@
   {
     "metadata": {
       "name": "ytdrivarr-postgres16-20261109000000",
+      "labels": {"cnpg.io/scheduled-backup": "ytdrivarr-postgres16"},
       "namespace": "downloads",
       "creationTimestamp": "2026-11-09T05:00:00Z"
     },
@@ -241,6 +244,7 @@
   {
     "metadata": {
       "name": "openproject-db-20261109020000",
+      "labels": {"cnpg.io/scheduled-backup": "openproject-db"},
       "namespace": "frontend",
       "creationTimestamp": "2026-11-09T07:00:00Z"
     },

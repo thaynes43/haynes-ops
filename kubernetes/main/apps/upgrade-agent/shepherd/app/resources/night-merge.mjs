@@ -701,12 +701,20 @@ export function readControllers(run, namespace) {
     return [kind, Array.isArray(j?.items) ? j : null];
   }));
 }
+export function controllersIn(lists, namespace) {
+  return Object.fromEntries(Object.values(CONTROLLERS).map(kind => [kind, Array.isArray(lists?.[kind]?.items) ? { items: lists[kind].items.filter(o => o.metadata?.namespace === namespace) } : null]));
+}
 export function controllerRollout(w, lists) {
   const key = `${w.kind}/${w.ns}/${w.name}`, kind = CONTROLLERS[w.kind];
-  const result = (r, detail, desired = null) => ({ result: r, detail: `${key}: ${detail}`, desired });
+  let manual = '';
+  const result = (r, detail, desired = null) => ({ result: r, detail: `${key}: ${detail}${r === 'waiting' ? manual : ''}`, desired });
   if (!Array.isArray(lists?.[kind]?.items)) return result('unreadable', `unreadable: ${kind} in ${w.ns}`);
   const o = lists[kind].items.find(x => x.metadata?.namespace === w.ns && x.metadata?.name === w.name);
   if (!o) return result('unreadable', 'controller not listed');
+  if (w.kind === 'StatefulSet') {
+    if (o.spec?.updateStrategy?.type === 'OnDelete') manual = '; OnDelete does not replace pods automatically: this rollout will not finish by itself';
+    else if (o.spec?.updateStrategy?.rollingUpdate?.partition > 0) manual = `; partition ${o.spec.updateStrategy.rollingUpdate.partition} leaves pods on the old revision: this rollout will not finish by itself`;
+  }
   const st = o.status || {}, generation = o.metadata?.generation;
   if (!Number.isInteger(generation) || !Number.isInteger(st.observedGeneration)) return result('unreadable', 'generation or observedGeneration missing');
   if (st.observedGeneration < generation) return result('waiting', `generation ${generation} not observed yet (observed ${st.observedGeneration})`);
@@ -723,7 +731,7 @@ export function controllerRollout(w, lists) {
   }
   if ((st.terminatingReplicas ?? 0) > 0 || (st.numberMisscheduled ?? 0) > 0 || (st.numberUnavailable ?? 0) > 0) return result('waiting', 'replicas terminating, misscheduled or unavailable', desired);
   if (w.kind === 'StatefulSet' && desired > 0 && (!st.currentRevision || !st.updateRevision || st.currentRevision !== st.updateRevision)) return result('waiting', 'currentRevision does not match updateRevision', desired);
-  return result('pass', `generation ${generation} observed; ${desired} updated and Ready`, desired);
+  return result('pass', `generation ${generation} observed; ${desired} updated and Ready (${fields.map(f => `${f} ${st[f] ?? 0}/${desired}`).join(', ')})`, desired);
 }
 // Select T's own controllers by inventory or Flux/Helm ownership, never by namespace alone.
 // Inventoried objects missing from a readable list are still checked and fail closed.
@@ -746,7 +754,7 @@ export function scopeControllers(scope, ks, hr, lists) {
     const helmOwned = ownHr.some(h => {
       const releaseNs = h.spec?.targetNamespace || h.metadata.namespace;
       const release = h.spec?.releaseName || (h.spec?.targetNamespace ? `${h.spec.targetNamespace}-${h.metadata.name}` : h.metadata.name);
-      return ns === releaseNs && (l['app.kubernetes.io/instance'] === release || (a['meta.helm.sh/release-name'] === release && a['meta.helm.sh/release-namespace'] === (h.spec?.storageNamespace || h.metadata.namespace)));
+      return ns === releaseNs && (l['app.kubernetes.io/instance'] === release || (a['meta.helm.sh/release-name'] === release && a['meta.helm.sh/release-namespace'] === releaseNs));
     });
     if (ids.has(fluxId(o)) || helmOwned) put({ kind, ns, name: o.metadata.name });
   }

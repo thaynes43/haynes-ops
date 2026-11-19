@@ -147,9 +147,10 @@ async function httpGetJson(url) {
 }
 
 // ── time ─────────────────────────────────────────────────────────────────────
+const zoneFormats = new Map();
 function zoned(ms, tz) {
-  return Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-    .formatToParts(new Date(ms)).filter(x => x.type !== 'literal').map(x => [x.type, Number(x.value)]));
+  if (!zoneFormats.has(tz)) zoneFormats.set(tz, new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }));
+  return Object.fromEntries(zoneFormats.get(tz).formatToParts(new Date(ms)).filter(x => x.type !== 'literal').map(x => [x.type, Number(x.value)]));
 }
 export function inWindow(now, tz, first, last) {
   const z = zoned(now, tz);
@@ -190,33 +191,129 @@ export function cronPeriodMs(expr) {
   return Math.min(...fires.slice(1).map((t, i) => t - fires[i]));
 }
 
-// Per-source freshness: the newest successful backup or sync must be (a) at or after
-// that source's most recent scheduled run and (b) no older than maxAge at merge time.
-export function volsyncFresh(rs, now, maxAgeMs) {
+// Story 755: numeric cron, with seconds first for CNPG. A bare schedule uses the
+// candidate zones retained by sourceDue when the controller's next/last timestamp
+// corroborates them. VolSync TZ=/CRON_TZ= overrides those candidates; CNPG v1
+// rejects prefixes. Unknown syntax, zone or inconsistent anchor fails closed.
+export function backupCron(expr, seconds, timezone) {
+  const aliases = { '@hourly': '0 * * * *', '@daily': '0 0 * * *', '@midnight': '0 0 * * *', '@weekly': '0 0 * * 0', '@monthly': '0 0 1 * *', '@yearly': '0 0 1 1 *', '@annually': '0 0 1 1 *' };
+  let text = String(expr ?? '').trim(), tz = timezone;
+  const prefix = /^(?:CRON_TZ|TZ)=([^ ]+)\s+(.+)$/.exec(text);
+  if (prefix && seconds) return null; // CNPG's robfig v1.2.0 has no per-expression zone prefix.
+  if (prefix) { tz = prefix[1]; text = prefix[2]; }
+  let f = (aliases[text] || text).split(/\s+/);
+  if (aliases[text] || !seconds) f = ['0', ...f];
+  if (f.length !== 6) return null;
+  const limits = [[0, 59], [0, 59], [0, 23], [1, 31], [1, 12], [0, 6]];
+  const sets = f.map((field, i) => {
+    const [lo, hi] = limits[i], values = new Set();
+    for (const part of field.split(',')) {
+      const m = /^(\*|\?|\d+)(?:-(\d+))?(?:\/(\d+))?$/.exec(part);
+      if (!m) return null;
+      const wildcard = m[1] === '*' || m[1] === '?';
+      if (wildcard && m[2]) return null;
+      const step = Number(m[3] || 1), first = wildcard ? lo : Number(m[1]);
+      const last = wildcard ? hi : m[2] !== undefined ? Number(m[2]) : m[3] ? hi : first;
+      if (step < 1 || step > hi - lo + 1 || first < lo || last > hi || first > last) return null;
+      for (let n = first; n <= last; n += step) values.add(n);
+    }
+    return values;
+  });
+  if (sets.some(x => !x?.size)) return null;
+  let fmt;
+  try { fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', weekday: 'short' }); } catch { return null; }
+  const dow = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const matchesMinute = t => {
+    const p = Object.fromEntries(fmt.formatToParts(new Date(t)).filter(x => x.type !== 'literal').map(x => [x.type, x.value]));
+    const day = sets[3].has(Number(p.day)), week = sets[5].has(dow[p.weekday]);
+    // VolSync 0.14 uses robfig v3.0.1 (step > 1 clears starBit); CNPG
+    // 1.30 uses v1.2.0 (it retains starBit). A comma list ORs each part's bit.
+    const star = field => field.split(',').some(part => { const m = /^(?:\*|\?)(?:\/(\d+))?$/.exec(part); return m && (seconds || Number(m[1] || 1) === 1); });
+    const dayOk = star(f[3]) || star(f[5]) ? day && week : day || week;
+    return sets[1].has(Number(p.minute)) && sets[2].has(Number(p.hour)) && sets[4].has(Number(p.month)) && dayOk;
+  };
+  const matches = t => Number.isFinite(t) && t % 1000 === 0 && sets[0].has(new Date(t).getUTCSeconds()) && matchesMinute(t);
+  const latest = (from, end) => {
+    // Only search the freshness interval plus this window (bounded to at most 48h).
+    if (!Number.isFinite(from) || !Number.isFinite(end) || end < from || end - from > 48 * 3600e3) return null;
+    const secs = [...sets[0]].sort((a, b) => b - a);
+    for (let minute = Math.floor(end / 60e3) * 60e3; minute + 59999 >= from; minute -= 60e3) {
+      if (!matchesMinute(minute)) continue;
+      for (const sec of secs) { const t = minute + sec * 1000; if (t >= from && t <= end) return t; }
+    }
+    return null;
+  };
+  return { timezone: tz, matches, latest };
+}
+
+// Same local calendar day as inWindow; last is inclusive of its whole minute.
+export function backupWindow(now, night) {
+  const tz = night.timezone, z = zoned(now, tz), date = p => `${p.year}-${p.month}-${p.day}`;
+  const minuteOf = p => `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
+  let start = null, end = null;
+  for (let t = Math.floor(now / 60e3) * 60e3 - 24 * 3600e3; t <= now + 24 * 3600e3; t += 60e3) {
+    const p = zoned(t, tz);
+    if (date(p) !== date(z)) continue;
+    if (minuteOf(p) === night.merge_window_local.first && start === null) start = t;
+    if (minuteOf(p) === night.merge_window_local.last) end = t + 59999;
+  }
+  return { start, end, timezone: tz };
+}
+function sourceDue(expr, seconds, anchor, now, maxAgeMs, window) {
+  const laneZone = window?.timezone || 'America/New_York';
+  const explicit = /^(?:CRON_TZ|TZ)=/.test(String(expr ?? '').trim());
+  const zones = explicit ? [laneZone] : [...new Set([laneZone, 'UTC'])];
+  const candidates = zones.map(tz => backupCron(expr, seconds, tz)).filter(cron => cron?.matches(anchor));
+  if (!candidates.length) return { unreadable: `schedule ${JSON.stringify(expr ?? null)} or its time zone (scheduled timestamp does not corroborate ${explicit ? 'its explicit zone' : zones.join(' or ')})` };
+  if (window && (!Number.isFinite(window.start) || !Number.isFinite(window.end))) return { unreadable: 'the merge window end in its time zone' };
+  const end = Math.max(now, window?.end ?? now);
+  // One anchor can match both zones without their later (or earlier) runs agreeing.
+  // Cover the latest required run over every candidate that the anchor leaves open.
+  const runs = candidates.map(cron => {
+    const latest = cron.latest(now - maxAgeMs, end);
+    return { due: latest ?? anchor, inWindow: latest !== null && !!window && latest >= window.start && latest <= window.end, timezone: cron.timezone };
+  });
+  const latest = runs.reduce((a, b) => b.due > a.due ? b : a);
+  return { ...latest, inWindow: runs.some(r => r.inWindow), uncertainZones: new Set(runs.map(r => r.due)).size > 1 ? candidates.map(cron => cron.timezone) : [] };
+}
+function backupBlocker(name, d, why) {
+  if (d.unreadable) return `unreadable: backup schedule for ${name}: ${d.unreadable}`;
+  const uncertainty = d.uncertainZones?.length ? ` (time zone not certain: ${d.uncertainZones.join(' or ')})` : '';
+  if (d.inWindow) return `backup-due-in-window: ${name} runs at ${new Intl.DateTimeFormat('en-GB', { timeZone: d.timezone, hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(d.due))} ${d.timezone}${uncertainty} (${new Date(d.due).toISOString()}): ${why}`;
+  return `backup not fresh: ${name}${uncertainty} (${why})`;
+}
+
+// Per source: pass only on the required scheduled run, including any later run in
+// tonight's merge window. Never use the previous night's success to cross that run.
+export function volsyncFresh(rs, now, maxAgeMs, window = null) {
   const name = `${rs.metadata.namespace}/${rs.metadata.name}`;
   const next = Date.parse(rs.status?.nextSyncTime || ''), last = Date.parse(rs.status?.lastSyncTime || '');
-  const period = cronPeriodMs(rs.spec?.trigger?.schedule);
+  const d = sourceDue(rs.spec?.trigger?.schedule, false, next, now, maxAgeMs, window);
   const result = rs.status?.latestMoverStatus?.result || null;
-  if (!Number.isFinite(next) || !period) return { kind: 'volsync', name, pass: false, why: `schedule unknown (${rs.spec?.trigger?.schedule ?? 'no schedule'}, next=${rs.status?.nextSyncTime ?? 'none'})` };
-  const due = next <= now ? next : next - period;
-  const pass = result === 'Successful' && Number.isFinite(last) && last >= due && now - last <= maxAgeMs;
-  return { kind: 'volsync', name, due: new Date(due).toISOString(), last: rs.status?.lastSyncTime || null, result, pass,
-    why: pass ? 'fresh' : (result !== 'Successful' ? `last result ${result}` : last < due ? `no sync since the run due ${new Date(due).toISOString()}` : `last sync older than ${maxAgeMs / 3600e3}h`) };
+  const pass = !d.unreadable && result === 'Successful' && Number.isFinite(last) && last >= d.due && last <= now && now - last <= maxAgeMs;
+  const why = d.unreadable || (pass ? 'fresh' : result !== 'Successful' ? `last result ${result}` : !Number.isFinite(last) ? 'no lastSyncTime' : last > now ? 'lastSyncTime is in the future' : last < d.due ? `no sync since the run due ${new Date(d.due).toISOString()}` : `last sync older than ${maxAgeMs / 3600e3}h`);
+  return { kind: 'volsync', name, due: Number.isFinite(d.due) ? new Date(d.due).toISOString() : null, last: rs.status?.lastSyncTime || null, result, pass, why, ...(!pass ? { blocker: backupBlocker(name, d, why) } : {}) };
 }
-// CNPG: Backup.status.startedAt/stoppedAt come from the instance and can carry local
-// time stamped Z (postgres16 and ytdrivarr show 00:00Z for a 05:00Z run), so the
-// server-set creationTimestamp is the time used, with phase=completed.
-export function cnpgFresh(cluster, schedules, backups, now, maxAgeMs) {
+// CNPG instance startedAt/stoppedAt can be local time stamped Z. Use the server's
+// creationTimestamp and completed phase. Require the ScheduledBackup to have advanced
+// past the due run, and its own Backup (CNPG's label or ScheduledBackup owner reference).
+export function cnpgFresh(cluster, schedules, backups, now, maxAgeMs, window = null) {
   const [ns, cname] = cluster.split('/');
   const sb = schedules.filter(s => s.metadata.namespace === ns && s.spec?.cluster?.name === cname && !s.spec?.suspend);
-  const due = Math.max(...sb.map(s => Date.parse(s.status?.lastScheduleTime || '')).filter(Number.isFinite));
-  if (!Number.isFinite(due)) return { kind: 'cnpg', name: cluster, pass: false, why: 'no ScheduledBackup with a lastScheduleTime' };
-  const done = backups.filter(b => b.metadata.namespace === ns && b.spec?.cluster?.name === cname && b.status?.phase === 'completed')
-    .map(b => Date.parse(b.metadata.creationTimestamp || '')).filter(Number.isFinite);
-  const last = done.length ? Math.max(...done) : NaN;
-  const pass = Number.isFinite(last) && last >= due && now - last <= maxAgeMs;
-  return { kind: 'cnpg', name: cluster, due: new Date(due).toISOString(), last: Number.isFinite(last) ? new Date(last).toISOString() : null, result: Number.isFinite(last) ? 'completed' : null, pass,
-    why: pass ? 'fresh' : !Number.isFinite(last) ? 'no completed Backup' : last < due ? `no completed Backup since the run due ${new Date(due).toISOString()}` : `newest Backup older than ${maxAgeMs / 3600e3}h` };
+  if (!sb.length) return { kind: 'cnpg', name: cluster, pass: false, why: 'no active ScheduledBackup', blocker: `unreadable: backup schedule for ${cluster}: no active ScheduledBackup` };
+  const sources = sb.map(s => {
+    const name = `${ns}/${s.metadata.name}`, scheduled = Date.parse(s.status?.lastScheduleTime || '');
+    const d = sourceDue(s.spec?.schedule, true, scheduled, now, maxAgeMs, window);
+    const own = b => b.metadata?.labels?.['cnpg.io/scheduled-backup'] === s.metadata.name || (b.metadata?.ownerReferences || []).some(r => r.kind === 'ScheduledBackup' && r.name === s.metadata.name && (!s.metadata.uid || r.uid === s.metadata.uid));
+    const done = backups.filter(b => b.metadata.namespace === ns && b.spec?.cluster?.name === cname && b.status?.phase === 'completed' && own(b))
+      .map(b => Date.parse(b.metadata.creationTimestamp || '')).filter(t => Number.isFinite(t) && t <= now);
+    const last = done.length ? Math.max(...done) : NaN;
+    const pass = !d.unreadable && scheduled <= now && scheduled >= d.due && Number.isFinite(last) && last >= d.due && now - last <= maxAgeMs;
+    const why = d.unreadable || (pass ? 'fresh' : !Number.isFinite(last) ? 'no completed Backup belonging to this ScheduledBackup' : scheduled < d.due || last < d.due ? `no completed scheduled run since ${new Date(d.due).toISOString()}` : `newest Backup older than ${maxAgeMs / 3600e3}h`);
+    return { kind: 'cnpg', name, due: Number.isFinite(d.due) ? new Date(d.due).toISOString() : null, last: Number.isFinite(last) ? new Date(last).toISOString() : null, result: Number.isFinite(last) ? 'completed' : null, pass, why, ...(!pass ? { blocker: backupBlocker(name, d, why) } : {}) };
+  });
+  const failed = sources.find(s => !s.pass);
+  return { kind: 'cnpg', name: cluster, sources, pass: !failed, why: failed?.why || 'fresh', ...(failed ? { blocker: failed.blocker } : {}) };
 }
 
 // ── Flux objects for a target ───────────────────────────────────────────────
@@ -408,6 +505,8 @@ async function tick() {
   const clock = () => (Number.isFinite(pinned) ? pinned : Date.now());
   const night = rules.night;
   const maxAge = night.backup_rule.max_age_hours * 3600e3;
+  const backupWin = backupWindow(now, night);
+  const backupRule = 'Per source: the newest successful VolSync sync or completed CNPG Backup must cover the most recent scheduled run and every run due through the configured merge-window end, and be no older than 24 hours. Read each source schedule in its corroborated time zone; CNPG uses lastScheduleTime and its own completed Backup creationTimestamp, never instance startedAt/stoppedAt.';
   const token = tokenPerms();
   log(`upgrade-night ${MODE}: token permissions: ${token.readable ? token.names.join(', ') : 'unreadable'} (as requested by mint-token, ${permFile}); ${token.can_merge ? 'can merge' : `cannot merge: ${token.why}`}`);
   if (MODE === 'live') log(`upgrade-night live: class allowlist: ${LIVE.classes.length ? LIVE.classes.join(', ') : 'empty, so this tick merges nothing'}`);
@@ -463,13 +562,12 @@ async function tick() {
   const nsOf = m => m.namespace || m[alertScope.flux_object?.namespace_label] || '(cluster)';
   const alertNs = alerts ? [...new Set(alerts.map(nsOf))] : null;
   const ceph = (cf.ceph?.items || []).map(c => c.status?.ceph?.health || 'unknown').join(',') || 'unknown';
-  const nsCache = new Map();
-  const nsFacts = ns => { if (!nsCache.has(ns)) nsCache.set(ns, { pods: kget(['pods', '-n', ns]), cronjobs: kget(['cronjobs', '-n', ns]), jobs: kget(['jobs', '-n', ns]), ...M.readControllers(run, ns), pvcs: kget(['persistentvolumeclaims', '-n', ns]) }); return nsCache.get(ns); };
-  const win = inWindow(now, night.timezone, night.merge_window_local.first, night.merge_window_local.last);
-  // THE SETTLE GATE (story 551): facts about each candidate's target, read once here (the
-  // source, every Kustomization and HelmRelease, main's commits Flux has not fetched) and
-  // judged per candidate; the merge step reads it again, and live mode once more at the call.
+  // Share the initial controller snapshot. Merge preflight deliberately refreshes
+  // facts under the lock; caching that re-read would weaken the settle gate.
   const settleFacts = cluster ? M.readSettleFacts(REPO, rules, run) : null;
+  const nsCache = new Map();
+  const nsFacts = ns => { if (!nsCache.has(ns)) nsCache.set(ns, { pods: kget(['pods', '-n', ns]), cronjobs: kget(['cronjobs', '-n', ns]), jobs: kget(['jobs', '-n', ns]), ...M.controllersIn(settleFacts?.controllers, ns), pvcs: kget(['persistentvolumeclaims', '-n', ns]) }); return nsCache.get(ns); };
+  const win = inWindow(now, night.timezone, night.merge_window_local.first, night.merge_window_local.last);
   const scopes = new Map();
   const orders = cm(night.work_orders_configmap);
   const orderBad = [], claimed = [];
@@ -514,15 +612,15 @@ async function tick() {
         if (unread.length || !cf.rs) continue;
         const ev = stateEvidence(k, cf.hr, cf.rs, f.pods, f.cronjobs, f, f.pvcs);
         hasState ||= ev.sources.length > 0 || ev.evidence.length > 0;
-        for (const s of ev.sources) backup.push({ target: ev.ks, ...volsyncFresh(s, now, maxAge) });
+        for (const s of ev.sources) backup.push({ target: ev.ks, ...volsyncFresh(s, now, maxAge, backupWin) });
         if (!ev.sources.length && ev.evidence.length) blockers.push(`backup-unmatched: ${ev.ks} has durable state (${ev.evidence.join('; ')}) and no ReplicationSource applied by it`);
       }
       if (cf.backups && cf.schedules) for (const c of rules.cnpg_clients) {
         // a namespace-level target (a shared component's consumer) covers the clients below it
         if (!r.targets.some(t => c.paths.some(g => L.matchGlob(`${t}/x`, g) || g.startsWith(t + '/')))) continue;
-        backup.push({ target: c.cluster, ...cnpgFresh(c.cluster, cf.schedules.items, cf.backups.items, now, maxAge) });
+        backup.push({ target: c.cluster, ...cnpgFresh(c.cluster, cf.schedules.items, cf.backups.items, now, maxAge, backupWin) });
       }
-      for (const b of backup.filter(x => !x.pass)) blockers.push(`backup not fresh: ${b.name} (${b.why})`);
+      for (const b of backup.filter(x => !x.pass)) blockers.push(b.blocker || `backup not fresh: ${b.name} (${b.why})`);
       if (/HEALTH_ERR|unknown/.test(ceph)) blockers.push(cf.ceph ? `Ceph ${ceph}` : 'unreadable: cephclusters');
       if (!alerts) blockers.push('unreadable: critical alerts (Prometheus)');
       else if (cf.ks && cf.hr) {
@@ -541,7 +639,7 @@ async function tick() {
       settleRec = M.settleBrief(sv);
     }
     if (!win.open) blockers.push(`outside the merge window (${night.merge_window_local.first}-${night.merge_window_local.last} ${night.timezone}, now ${win.local})`);
-    r.backup = { rule: night.backup_rule.text, targets: backup, stateful: hasState || backup.length > 0 };
+    r.backup = { rule: backupRule, targets: backup, stateful: hasState || backup.length > 0 };
     r.gates = { namespaces: scope.namespaces, blockers, alerts_not_blocking: alertView, settle: settleRec, would_be_eligible: blockers.length === 0 };
   }
 
@@ -570,7 +668,7 @@ async function tick() {
   const counts = Object.fromEntries(L.LANES.map(l => [l, records.filter(r => r.lane === l).length]));
   const summary = {
     mode: MODE, at: new Date(now).toISOString(), repo: REPO, window: { ...win, tz: night.timezone },
-    backup_rule: night.backup_rule.text,
+    backup_rule: backupRule,
     baseline: { ceph: cluster ? ceph : 'not needed', alerts_read: cluster ? alertNs !== null : 'not needed', critical_alert_namespaces: alertNs ?? [],
       critical_alerts: (alerts || []).map(m => `${m.alertname || '(unnamed)'} @ ${nsOf(m)}${(alertScope.subject_labels || []).filter(k => m[k]).slice(0, 1).map(k => ` ${k}=${m[k]}`).join('')}`).slice(0, 40),
       flux_warnings: fluxWarnings },
@@ -595,7 +693,7 @@ async function tick() {
   try {
     V = await import('./night-verify.mjs');
     ver = await V.verifyPhase({ rules, run, repo: REPO, now, clock, startedAt: now, prevText: stateCm?.data?.verify ?? null, prevUnreadable: !cms,
-      deps: { alertSubject, nsFacts, prom: PROM, records, ...(cf.ks ? { ks: cf.ks } : {}), ...(cf.hr ? { hr: cf.hr } : {}), ...(settleFacts && settleFacts.source !== undefined ? { source: settleFacts.source } : {}) } });
+      deps: { alertSubject, nsFacts, prom: PROM, records, ...(settleFacts ? { controllers: settleFacts.controllers } : {}), ...(cf.ks ? { ks: cf.ks } : {}), ...(cf.hr ? { hr: cf.hr } : {}), ...(settleFacts && settleFacts.source !== undefined ? { source: settleFacts.source } : {}) } });
   } catch (e) { ver = { summary: { error: `${V ? '' : 'night-verify.mjs did not load: '}${String(e.message).slice(0, 300)}` }, memory: null, table: null, events: [] }; }
   summary.verify = ver.summary;
   log(`${ver.summary.error ? 'ERROR ' : ''}upgrade-night ${MODE}: verifier: ${V && !ver.summary.error ? V.verifyLine(ver.summary) : `FAILED: ${ver.summary.error}`}`);
