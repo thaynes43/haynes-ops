@@ -29,9 +29,8 @@ spec:
               tag: 3.12.0
             env:
               TZ: America/New_York
-              # Targets (the pvedash LB on 443 and each node's pveproxy on
-              # 8006, all self-signed) are set per scrape in the ServiceMonitor
-              # below; only auth comes from env.
+              # Direct pveproxy targets on 8006 use self-signed certificates.
+              # The ServiceMonitor below sets the target for each scrape.
               PVE_VERIFY_SSL: "false"
             envFrom:
               # PVE_USER / PVE_TOKEN_NAME / PVE_TOKEN_VALUE (token auth).
@@ -84,9 +83,9 @@ spec:
           # endpoint, because the exporter's collectors split in two:
           #
           #  * cluster=1 collectors (status/resources/node/cluster/version) read
-          #    /cluster/resources and describe EVERY node + guest — one scrape
-          #    via the pvedash LB (lxc/107 on pve04, HAProxy over all five
-          #    pveproxies, API on 443 not 8006) is enough.
+          #    /cluster/resources and describe every node and guest. Scrape one
+          #    direct pveproxy to keep a single cluster series per ID and avoid
+          #    depending on the pvedash guest (lxc/107 on pve04).
           #  * node=1 collectors (config → pve_onboot_status, subscription,
           #    replication) only read the node that ANSWERED the request. Via
           #    the LB that was silently one node (HaynesIntelligence), so
@@ -103,7 +102,7 @@ spec:
             scrapeTimeout: 30s
             params:
               module: ["default"]
-              target: ["pvedash.haynesnetwork:443"]
+              target: ["haynesintelligence.haynesnetwork:8006"]
               cluster: ["1"]
               node: ["0"]
           - &pve_node_endpoint

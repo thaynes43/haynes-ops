@@ -72,7 +72,7 @@ spec:
             summary: >-
               Proxmox node {{ $labels.id | reReplaceAll "node/" "" }} is offline.
             description: >-
-              The Proxmox cluster (via the pvedash LB) reports {{ $labels.id }} offline for 5 min.
+              The Proxmox cluster reports {{ $labels.id }} offline for 5 min.
               Guests on it are down with it. Check power/IPMI, then `journalctl -b -1` on the
               node once it is back (watchdog-mux / corosync / pve-ha-lrm = fenced).
           expr: pve_up{id=~"node/.+"} == 0
@@ -98,9 +98,9 @@ spec:
             summary: No Proxmox cluster metrics for 15 min.
             description: >-
               The exporter has not returned cluster series (pve_up{id="cluster/pve-cluster"}) for
-              15 min, so every PVE* alert above is blind. Check the exporter pod log
-              (observability/prometheus-pve-exporter), the pvedash LB (lxc/107 on pve04,
-              pvedash.haynesnetwork:443) and the prometheus@pve!exporter token (1Password "proxmox").
+              15 min, so every PVE* alert above is blind. Check the exporter pod logs
+              (observability/prometheus-pve-exporter), its cluster target in the ServiceMonitor,
+              and exporter authentication.
           expr: absent_over_time(pve_up{id="cluster/pve-cluster"}[15m])
           labels:
             severity: critical
