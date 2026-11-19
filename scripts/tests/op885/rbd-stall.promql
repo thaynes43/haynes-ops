@@ -10,5 +10,7 @@ max by (kubernetes_node, device) (
     == timestamp(node_disk_reads_completed_total{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"})
   and timestamp(node_disk_io_now{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"})
     == timestamp(node_disk_writes_completed_total{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"})
+  and timestamp(node_disk_io_now{job="node-exporter",kubernetes_node="talosm03",device=~"rbd[0-9]+"})
+    == on (job, kubernetes_node, instance, pod) group_left timestamp(up{job="node-exporter",kubernetes_node="talosm03"})
   and on (job, kubernetes_node, instance, pod) (up{job="node-exporter",kubernetes_node="talosm03"} == 1)
 )
