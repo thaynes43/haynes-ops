@@ -179,11 +179,12 @@ data:
             if status not in ("completed", "failed"):
                 return "bot still running"
             ended = parse_dt(meeting.get("end_time"))
-            if ended is None:
-                return "missing capture end time"
-            if ended < window_start:
+            began = parse_dt(meeting.get("start_time"))
+            if began is not None and began >= window_start:
+                return "already captured this window"
+            if ended is None or ended < window_start:
                 continue
-            if status == "completed" or meeting.get("start_time"):
+            if status == "completed" or began is not None:
                 return "already captured this window"
             if not retryable_join_failure(meeting):
                 return "previous join failure requires review"

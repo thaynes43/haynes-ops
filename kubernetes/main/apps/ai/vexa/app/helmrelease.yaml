@@ -71,6 +71,12 @@ spec:
       # (meeting-scribe saga). Revisit with a proper worker-role label.
       nodeSelector:
         kubernetes.io/hostname: talosw01
+      # Preserve the existing bot sizing. The new chart's small-cluster
+      # defaults set both requests and hard limits for each spawned bot.
+      workloadResources:
+        meetingBot:
+          cpu: ""
+          memoryMb: ""
       # BROWSER_IMAGE for the bot Pods the runtime spawns. This is an env var on
       # the runtime Deployment, NOT a container image field, so the postRenderers
       # images transformer above cannot reach it — it is pinned here instead. The
