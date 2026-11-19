@@ -25,6 +25,14 @@ spec:
     config:
       clients:
         - url: http://loki-headless.observability.svc.cluster.local:3100/loki/api/v1/push
+      snippets:
+        pipelineStages:
+          - cri: {}
+          # Reserve these labels for a future reviewed classifier. No input or
+          # discovered target may supply an enforceable retention decision.
+          - labeldrop:
+              - retention_policy
+              - retention_class
     serviceMonitor:
       enabled: true
     # #3389: requests sized from Prometheus (7d p95, 30d peak); no CPU limit.
