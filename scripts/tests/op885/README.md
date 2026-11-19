@@ -86,10 +86,51 @@ Each case holds a synthetic datagram until the stated wall-clock delay, then sen
 
 The 30-second case delivers a subsequent talosm03 RCU report only to a control tenant to model loss of the node's stream after firing. Unrelated host traffic through the same Vector and Loki still reaches the monitored tenant. The rule is still firing at about +282s and becomes inactive at about +342s. The old event remains queryable at its original timestamp. This is expiry and node state is unknown. The synthetic test measures delivery and evaluation in a loopback fixture. The incident replay measures eligibility from records already stored in Loki. Actual production forwarding loss, event queryability delay, and group skips remain open.
 
-### Proposed nonpaging trial
+### Observer verification
 
-With Tom's separate approval, run a 48-hour read-only shadow evaluation for `main/talosm03` from outside that node, using the existing Loki query endpoint. Evaluate the exact LogQL every 60 seconds and record scheduled and actual timestamps, result, and errors. Poll the node's kernel stream every 15 seconds with bounded range queries and deduplication. Keep trial output in the evidence log with no notifier or remediation consumer. Use naturally occurring kernel lines for latency samples and the offline tests as the positive controls.
+The one-shot observer in [observe.py](observe.py) runs on Linux with Python 3.9+ and curl. Run its mock and loopback suite from the repository root. The fake clock exercises the full 48-hour schedule. The loopback fixture exercises the CLI and real HTTP transport, including cancellation, partial and oversized responses, slow responses and the request budgets.
 
-- **Latency and cadence.** For each new kernel record, record its Loki timestamp, the embedded kernel timestamp when available, and the first successful poll that sees it. Use the polling interval to bound visibility and account for clock offset. A proposed gate is at least 20 fresh kernel records, a first-seen p95 of at most 30 seconds, a maximum of 120 seconds, and successful 60-second evaluations within 5 seconds of schedule. Count gaps, failed queries and late records explicitly. A record visible more than four minutes after its event time can miss a 60-second evaluation phase. At five minutes the window can no longer provide firing eligibility.
-- **Expiry and outcome.** Record firing, no recent matching event, and any gap in coverage. Evaluate expiry at the first successful tick after the last matching event becomes five minutes old. A silent input leaves recovery unknown. Confirm recovery with fresh independent evidence of I/O progress and passing service checks. If a genuine RCU header occurs, require one cluster/node result on the first eligible tick before expiry. If no header occurs, live positive detection remains unverified. Too few fresh kernel records or unresolved timestamp/coverage gaps leave the trial inconclusive.
-- **Stop and rollback.** Stop the observer at 48 hours or earlier on unexpected output to a notification or remediation path, recurring query failures or a breach of the agreed query budget. Remove its trial schedule and verify polling has stopped. Keep the measurements for Tom's review of coverage, delay, missed events and expiry before any separate decision about alerting. The draft contains only offline files outside Flux and Loki rule include paths.
+```bash
+env -i PATH=/usr/bin:/bin DEV_ENV_CPU_LIMIT=2 python3 -I -B -m unittest discover \
+  -s scripts/tests/op885 -p test_observer.py -v
+```
+
+### Runtime plan for a separately approved trial
+
+Before launch, Tom must record separate approval in OP885 for one read-only run of up to 48 hours and name its operator, approved commit, UTC window and cutoff. The operator uses a dedicated, already-authorized dev-env v2 local session with the `ops` profile on a node other than talosm03. Keep the command in its foreground terminal and reserve at least 16 MiB of local home-volume space. The existing ops policy admits the Loki SingleBinary service on port 3100 and the observer uses the existing `http://loki.observability.svc.cluster.local:3100` address. Confirm the session and expected clock offset from existing deployment and time-sync evidence before launch. If the approved runtime or route is unavailable, stop the launch. [Existing Loki service address](../../../kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/loki-query.sh) · [Ops egress policy](../../../kubernetes/main/apps/dev-env-system/network/app/session-ops.yaml)
+
+From the approved commit in the dedicated worktree, set `OP885_APPROVED_HEAD` and `OP885_EXPIRES_UTC` to the full commit SHA and UTC cutoff from that approval. The cutoff uses `YYYY-MM-DDTHH:MM:SSZ`. Start once with GNU `timeout` as a cleanup watchdog.
+
+```bash
+(
+  set -eu
+  umask 077
+  test "$(git rev-parse HEAD)" = "${OP885_APPROVED_HEAD:?set the approved full commit}"
+  test -z "$(git status --porcelain)"
+  trial_root="$HOME/.local/state/op885"
+  mkdir -p "$trial_root"
+  trial_dir="$(mktemp -d "$trial_root/run.XXXXXXXX")"
+  printf 'Local ledger %s\n' "$trial_dir/observer.jsonl"
+  exec timeout --signal=TERM --kill-after=2s 172805s \
+    python3 -I -B scripts/tests/op885/observe.py --approved-loki \
+    --expires-at "${OP885_EXPIRES_UTC:?set the approved UTC cutoff}" \
+    --output "$trial_dir/observer.jsonl"
+)
+```
+
+| Limit | Default |
+| --- | --- |
+| Scope | Only `main/talosm03` Talos kernel log streams. Each fourth slot queries the exact LogQL from `rcu-rule.json` at the scheduled timestamp. |
+| Schedule | Three range polls at +0s, +15s and +30s, then an instant evaluation at +45s, every minute. Each slot allows one serial GET. Slots more than 3s late are skipped, with zero catch-up or retries. The rolling limit is five requests in any 60s, with at most 11,520 attempts overall. |
+| Range | 10 minutes before the scheduled poll to 33s after it, with an inclusive start and exclusive end. The short forward allowance lets the previous snapshot test absence even when a stored event timestamp falls between two polls. 128 returned entries, counted before deduplication, is treated as possible truncation. |
+| Per request | 2s connect and 5s total deadline, shortened at run cutoff. 1,024-byte encoded URL, fixed headers and an empty GET body. At most 64 KiB of HTTP headers and body read from curl. Size limits also apply to chunked replies. |
+| Total budget | 128 MiB of response bytes read from curl across all attempts. The 8 MiB ledger cap reserves space for a terminal record. The byte counts describe data read by the observer. HTTP framing and transport buffers are outside those counts. |
+| Stop conditions | Three consecutive failed or missed slots, endpoint refusal or redirect, exhausted budget, clock step beyond 1s, cancellation, or the earlier of 48 elapsed hours and the approved UTC cutoff. The observer stops queries at the cutoff. The watchdog allows five additional seconds for process cleanup. |
+
+The operator retains the mode-0600 JSONL ledger on the session's local home volume for seven days after the run, then removes the private run directory. The ledger holds timestamps, counts, digests, an RCU header flag and result states. The observer writes only this local file and has no notifier, export or remediation consumer. Record the exact commit, stop reason and summarized evidence in OP885. If cancelling early, press Ctrl+C in the foreground terminal or send `SIGTERM` to the observer PID from the start record after verifying it is the same process. Rollback is stopping the observer and checking that the process exited and the ledger stopped growing. An incomplete or missing terminal record makes the run inconclusive.
+
+For each unique stream, Loki timestamp and payload, the ledger records first visibility in a complete poll, deduplicated across the overlap. The upper bracket is the first complete response's receive time. The lower bracket is the previous complete poll's request start, only when its query covered the timestamp, that snapshot lacked the entry, and the schedule between the two was intact. The upper bracket still records observed presence when the lower bound is missing. Warm-up, gaps and timestamps ahead of the observer clock leave the corresponding bracket inconclusive. Saturation, incomplete replies, timeouts and missed slots invalidate coverage. Even complete snapshots only sample records the endpoint returned. An upstream drop or arrival outside the lookback can go unseen.
+
+Use at least 20 fresh bracketed kernel records with event timestamps during the run. Proposed gates are a nearest-rank p95 `upper_delay_ns` of at most 35s, maximum at most 120s, and a full schedule with zero gaps. These are bounds on observed queryability relative to Loki event time. They include polling and response time and depend on the verified clock offset. A record that becomes queryable more than four minutes after its timestamp may miss a one-minute evaluation phase. The five-minute rule window determines event-time eligibility.
+
+Each evaluation records `recent_match` or `no_recent_match`. If a successful match later becomes absent, the ledger records that transition and keeps node health `unknown`. A quiet stream, a window expiry and the run's own expiry all leave health unknown. Separate I/O and service evidence would be needed to determine recovery. If a genuine RCU header is witnessed, inspect the first eligible tick whose request starts after the visibility upper bound and whose scheduled timestamp falls inside the five-minute event window. A tick inside the bracket has uncertain visibility. If there is no RCU header with an eligible tick, production positive detection remains unverified. The observer tests use mocked responses and loopback only. Production queryability, coverage, installation and acceptance remain open under OP885.
