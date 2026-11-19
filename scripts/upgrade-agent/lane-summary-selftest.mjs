@@ -172,6 +172,11 @@ HELD:
   ok(morning.text === expected, 'only the restart window needs action, with CI failures and the hold at their own headings', morning.text);
   ok(morning.lines_cut === 0 && morning.bytes === bytes(morning.text), 'all five rows and both mixed findings fit');
   ok(JSON.stringify(input.records) === before, 'rendering leaves the lane records intact');
+  const outsideWaits = [
+    { pr: 4762, lane: 'EXCLUDED', checks: { failing: ['fixture check'] } },
+    { pr: 4839, lane: 'LANE-B-AGENT', checks: { failing: ['fixture check'] } },
+  ];
+  ok(compose({ ...input, records: [...input.records, ...outsideWaits] }).morning.text === expected, 'only PRs in the digest wait set contribute to its check-failure count');
   const primaryOnly = compose({ ...input, records: input.records.map(({ findings, ...r }) => r) }).morning;
   ok(JSON.stringify(morning.facts) === JSON.stringify(primaryOnly.facts), 'secondary findings are used for text only and leave saved facts intact');
   const major = input.records.find(r => r.pr === 4764);
@@ -186,6 +191,7 @@ HELD:
   const escalation = compose({ records: [major], verify: { overdue } }).morning.text;
   ok(escalation.includes('NEED YOU:\n- #4764 av: open 2 nights; pin pending; check failing; major'), 'explicit verifier escalation retains its action and the other facts');
   ok(lines(escalation).filter(l => l.startsWith('- #4764 ')).length === 1, 'each waiting PR appears once even with verifier and open-PR facts');
+  ok(lines(escalation)[0].includes('1 need you, 1 PR check failures'), 'the #4764 verifier escalation also contributes one known PR check failure');
   const legacy = render({ ...real18.facts, waits: { owner: [{ pr: 1, name: 'registry/pkg' }], blocked: [{ pr: 2 }] } }).text;
   ok(legacy.includes('NEED YOU:\n- #1 pkg: owner decision') && legacy.includes('WAITING:\n- #2 unknown: blocked'), 'partial saved wait fields use bounded fallbacks');
   if (SAMPLE) console.log(`\n----- five-PR fixture 2026-11-19 (${morning.bytes} bytes) -----\n${morning.text}\n-----`);
@@ -271,6 +277,12 @@ section('6. byte limit: upgrades go before any punch-list item');
   ok(lines(t)[0].includes('30 in'), 'summary keeps the total, including upgrades represented by the cut marker');
   ok(!/UPGRADED:\n\+/.test(t), 'no dangling upgraded heading');
   ok(facts.merged.length === 30, 'full list retained in facts');
+  const dense = compose({ records: [
+    { pr: 4999, lane: 'BLOCKED', class: 'facts-incomplete', package: 'registry/unreadable' },
+    ...Array.from({ length: 26 }, (_, i) => ({ pr: 5000 + i, lane: 'LANE-B-OWNER', class: 'major', package: `registry/synthetic-major-update-${i}` })),
+  ] }).morning;
+  ok(dense.bytes <= 1000 && dense.lines_cut > 0 && !dense.text.includes('- #4999 '), 'the dense list cuts the unreadable PR row at the deployed cap');
+  ok(lines(dense.text)[1] === 'UNREADABLE: PR #4999' && lines(dense.text)[0].includes('26 need you, 0 PR check failures, 0 held, 1 waiting'), 'the unreadable PR remains visible above the dense list');
   const big = compose({ records: Array.from({ length: 40 }, (_, i) => ({ pr: 5000 + i, lane: 'BLOCKED', class: 'facts-incomplete', package: `registry/package-${i}` })), doc: doc13, verify: verified13 }).morning;
   ok(bytes(big.text) <= 1000 && big.text.includes('5 in') && big.text.includes('0 need you') && big.text.includes('40 waiting'), 'even an oversized punch list keeps all counts');
   ok(!big.text.includes('UPGRADED:') && big.lines_cut > 0, 'no upgrade survives once a punch-list entry must be cut');
@@ -283,24 +295,31 @@ section('6. byte limit: upgrades go before any punch-list item');
   ok(bytes(u.text) <= 1000 && !u.text.includes('\ufffd') && u.text.endsWith('\n+1 more'), 'UTF-8 byte limit never splits a character');
   const under = S.fit(['summary', 'UPGRADED:', '- p 1'], 1000);
   ok(under.cut === 0 && under.text === 'summary\nUPGRADED:\n- p 1', 'fitting text is unchanged');
+  const capped = (input, max_bytes) => compose({ ...input, rules: { ...rules, night: { ...rules.night, summary: { ...rules.night.summary, max_bytes } } } }).morning;
+  const outage = vrec(4901, 'registry/café', { verdict: 'failed', practice: false, attribution: 'own-regression', failing: [{ fact: 'pods', class: 'crash-loop' }] });
+  const claims = [{ pr: 4901, outcome: 'unreadable' }];
+  const tight = capped({ claims, verify: { outage } }, 200);
+  ok(tight.bytes === 200 && tight.lines_cut === 0, 'the compact warning and lone outage fit in exactly 200 UTF-8 bytes');
+  ok(lines(tight.text)[0].includes('1 failed verification') && lines(tight.text).slice(1).join('\n') === 'UNREADABLE FACTS\nFAILED:\n- #4901 café: pods crashing, by update; owner unreadable', 'the tight digest keeps the coverage flag and the only outage detail');
+  const longer = capped({ claims, verify: { outage: { ...outage, name: 'registry/café-status' } } }, 200);
+  ok(longer.bytes <= 200 && lines(longer.text)[1] === 'UNREADABLE: owner #4901' && longer.text.endsWith('\n+1 more'), 'the detailed warning stays when the compact warning cannot save the outage detail');
   const busy = {
     now: at('2026-11-13T10:30:00Z'),
     doc: null,
-    claims: [{ pr: 4901, outcome: 'unreadable' }],
+    claims,
     verify: {
-      outage: vrec(4901, 'registry/café', { verdict: 'failed', practice: false, attribution: 'own-regression', failing: [{ fact: 'pods', class: 'crash-loop' }] }),
+      outage,
       overdue: vrec(4902, 'registry/🚦status', { verdict: 'not-yet', final: false, needs_person: true, nights: ['2026-11-12', '2026-11-13'] }),
     },
     records: [...waits19.records, ...big.facts.waits.blocked.map(x => ({ ...x, lane: 'BLOCKED', package: 'registry/vérification' }))],
   };
-  const capped = max_bytes => compose({ ...busy, rules: { ...rules, night: { ...rules.night, summary: { ...rules.night.summary, max_bytes } } } }).morning;
-  const crowded = capped(420);
+  const crowded = capped(busy, 420);
   ok(crowded.bytes <= 420 && crowded.lines_cut > 0 && !crowded.text.includes('\ufffd'), 'mixed punch list fits by UTF-8 bytes');
-  ok(lines(crowded.text)[1] === 'NIGHT INCOMPLETE; UNREADABLE: history; UNREADABLE: owner #4901', 'coverage appears before the cuttable sections');
+  ok(lines(crowded.text)[1] === 'NIGHT INCOMPLETE; UNREADABLE: history; PR facts; UNREADABLE: owner #4901', 'coverage appears before the cuttable sections');
   ok(crowded.text.includes('- #4902 🚦status: open 2 nights') && crowded.text.includes('- #4758 httpcore2: v1 restart window'), 'verifier escalation and the window survive routine row cuts');
   ok(crowded.text.includes('FAILED:\n- #4901 café: pods crashing, by update; owner unreadable'), 'real outage and fix ownership survive routine row cuts');
   ok(!/:\n\+\d+ more$/.test(crowded.text) && crowded.text.includes('40 waiting'), 'cut omits empty headings and keeps the full waiting count');
-  const minimum = capped(200);
+  const minimum = capped(busy, 200);
   ok(minimum.bytes <= 200 && lines(minimum.text)[1] === 'NIGHT INCOMPLETE; UNREADABLE FACTS', 'the minimum cap keeps coverage flags when the detailed warning is too long');
 }
 
