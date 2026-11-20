@@ -4,7 +4,18 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main e0ce9958fb1e5395d960765c04a068209bb42ca6 (merge of PR #1179),
+# Source: dev-env v2.113.0 ebcdbff6ece343bdf7c56a89962c37784e3033bb (release PR #1232).
+# Generated document SHA-256 d01d02321367feed9759502293a7ec1ce228f27ab005117522ba3a3a32bd36e7.
+# Two optional status additions since e0ce9958:
+# - dev-env#1234 (OP922, DESIGN-070) adds status.agent.codexHostMemory with
+#   currentBytes, limitBytes and observedAt for a measuring Codex remote host.
+# - dev-env#1236 (OP937, DESIGN-069 slice 2) adds status.claudeAuthHistory and
+#   status.claudeAuthHistoryReportedAt for the bounded snapshot and receipt time.
+# Safe with the current operator. It never writes these fields, and its full
+# status updates can clear them if present. Copy this schema before the operator
+# pin that stores them. Older schemas prune the optional fields.
+#
+# The previous copy was from dev-env main e0ce9958fb1e5395d960765c04a068209bb42ca6 (merge of PR #1179),
 # verified byte for byte (SHA-256 7b289c2c2a5efba037c3787100b7696315bc8be02631a0032a5ed33b77c2c70f
 # below this header). One change since the copy from dc824832:
 # - dev-env e0ce9958, PR #1179, DESIGN-064 6.10, OpenProject #795:
@@ -1026,6 +1037,26 @@ spec:
                     - not-launched
                     maxLength: 12
                     type: string
+                  codexHostMemory:
+                    description: CodexHostMemory is known only for a measuring Codex
+                      remote host.
+                    properties:
+                      currentBytes:
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      limitBytes:
+                        format: int64
+                        minimum: 1
+                        type: integer
+                      observedAt:
+                        format: date-time
+                        type: string
+                    required:
+                    - currentBytes
+                    - limitBytes
+                    - observedAt
+                    type: object
                   conversationId:
                     description: |-
                       ConversationID is the agent's own session id (claude --session-id), the
@@ -1879,6 +1910,304 @@ spec:
                 - message: captured usage receipts do not change
                   rule: '!has(oldSelf.receipts) || oldSelf.receipts.all(old, self.receipts.exists(new,
                     new == old))'
+              claudeAuthHistory:
+                description: |-
+                  ClaudeAuthHistory is the last bounded diagnostic snapshot from agentd.
+                  It is pod-reported evidence and grants no authority over authentication.
+                properties:
+                  clockSkewUnknown:
+                    type: boolean
+                  generations:
+                    items:
+                      properties:
+                        appliedGeneration:
+                          description: |-
+                            AppliedGeneration is decimal so JSON and Kubernetes preserve the entire
+                            unsigned generation range. It describes the applied file generation.
+                          maxLength: 20
+                          pattern: ^[1-9][0-9]{0,19}$
+                          type: string
+                          x-kubernetes-validations:
+                          - message: applied generation must be a positive uint64
+                            rule: uint(self) > uint(0)
+                        confirmedAt:
+                          description: ClaudeAuthTimestamp preserves nanoseconds through
+                            the CRD and JSON readers.
+                          format: date-time
+                          maxLength: 30
+                          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$
+                          type: string
+                        credentialWrittenAt:
+                          description: ClaudeAuthTimestamp preserves nanoseconds through
+                            the CRD and JSON readers.
+                          format: date-time
+                          maxLength: 30
+                          pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$
+                          type: string
+                        errorClass:
+                          enum:
+                          - authentication
+                          maxLength: 14
+                          type: string
+                        firstAccepted:
+                          properties:
+                            at:
+                              description: ClaudeAuthTimestamp preserves nanoseconds
+                                through the CRD and JSON readers.
+                              format: date-time
+                              maxLength: 30
+                              pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$
+                              type: string
+                            precisionNanos:
+                              format: int64
+                              maximum: 1000000000
+                              minimum: 1
+                              type: integer
+                          required:
+                          - at
+                          - precisionNanos
+                          type: object
+                        firstAcceptedAfterLastRejection:
+                          properties:
+                            at:
+                              description: ClaudeAuthTimestamp preserves nanoseconds
+                                through the CRD and JSON readers.
+                              format: date-time
+                              maxLength: 30
+                              pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$
+                              type: string
+                            precisionNanos:
+                              format: int64
+                              maximum: 1000000000
+                              minimum: 1
+                              type: integer
+                          required:
+                          - at
+                          - precisionNanos
+                          type: object
+                        firstRejection:
+                          properties:
+                            at:
+                              description: ClaudeAuthTimestamp preserves nanoseconds
+                                through the CRD and JSON readers.
+                              format: date-time
+                              maxLength: 30
+                              pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$
+                              type: string
+                            precisionNanos:
+                              format: int64
+                              maximum: 1000000000
+                              minimum: 1
+                              type: integer
+                          required:
+                          - at
+                          - precisionNanos
+                          type: object
+                        firstRejectionLaunch:
+                          properties:
+                            bootId:
+                              maxLength: 12
+                              pattern: ^[0-9a-f]{12}$
+                              type: string
+                            createdAt:
+                              description: ClaudeAuthTimestamp preserves nanoseconds
+                                through the CRD and JSON readers.
+                              format: date-time
+                              maxLength: 30
+                              pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$
+                              type: string
+                            source:
+                              enum:
+                              - projection
+                              - static-environment
+                              - pod-owned
+                              - unknown
+                              maxLength: 18
+                              type: string
+                          required:
+                          - bootId
+                          - createdAt
+                          - source
+                          type: object
+                        lastAccepted:
+                          properties:
+                            at:
+                              description: ClaudeAuthTimestamp preserves nanoseconds
+                                through the CRD and JSON readers.
+                              format: date-time
+                              maxLength: 30
+                              pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$
+                              type: string
+                            precisionNanos:
+                              format: int64
+                              maximum: 1000000000
+                              minimum: 1
+                              type: integer
+                          required:
+                          - at
+                          - precisionNanos
+                          type: object
+                        lastAcceptedBeforeFirstRejection:
+                          properties:
+                            at:
+                              description: ClaudeAuthTimestamp preserves nanoseconds
+                                through the CRD and JSON readers.
+                              format: date-time
+                              maxLength: 30
+                              pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$
+                              type: string
+                            precisionNanos:
+                              format: int64
+                              maximum: 1000000000
+                              minimum: 1
+                              type: integer
+                          required:
+                          - at
+                          - precisionNanos
+                          type: object
+                        lastRejection:
+                          properties:
+                            at:
+                              description: ClaudeAuthTimestamp preserves nanoseconds
+                                through the CRD and JSON readers.
+                              format: date-time
+                              maxLength: 30
+                              pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$
+                              type: string
+                            precisionNanos:
+                              format: int64
+                              maximum: 1000000000
+                              minimum: 1
+                              type: integer
+                          required:
+                          - at
+                          - precisionNanos
+                          type: object
+                        lastRejectionLaunch:
+                          properties:
+                            bootId:
+                              maxLength: 12
+                              pattern: ^[0-9a-f]{12}$
+                              type: string
+                            createdAt:
+                              description: ClaudeAuthTimestamp preserves nanoseconds
+                                through the CRD and JSON readers.
+                              format: date-time
+                              maxLength: 30
+                              pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$
+                              type: string
+                            source:
+                              enum:
+                              - projection
+                              - static-environment
+                              - pod-owned
+                              - unknown
+                              maxLength: 18
+                              type: string
+                          required:
+                          - bootId
+                          - createdAt
+                          - source
+                          type: object
+                        mainChain:
+                          type: boolean
+                        rejectionCount:
+                          format: int32
+                          maximum: 64
+                          minimum: 0
+                          type: integer
+                        seenRejections:
+                          items:
+                            properties:
+                              at:
+                                description: ClaudeAuthTimestamp preserves nanoseconds
+                                  through the CRD and JSON readers.
+                                format: date-time
+                                maxLength: 30
+                                pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$
+                                type: string
+                              count:
+                                format: int32
+                                maximum: 63
+                                minimum: 1
+                                type: integer
+                              sidechain:
+                                type: boolean
+                            required:
+                            - at
+                            - count
+                            type: object
+                          maxItems: 63
+                          type: array
+                        sidechain:
+                          type: boolean
+                      required:
+                      - appliedGeneration
+                      - confirmedAt
+                      type: object
+                      x-kubernetes-validations:
+                      - message: rejection keys must account for the count until saturation
+                        rule: '!has(self.rejectionCount) || self.rejectionCount <
+                          64 ? (has(self.rejectionCount) ? self.rejectionCount : 0)
+                          == (has(self.seenRejections) ? self.seenRejections.map(r,
+                          r.count).sum() : 0) : (!has(self.seenRejections) || size(self.seenRejections)
+                          == 0)'
+                    maxItems: 3
+                    type: array
+                    x-kubernetes-validations:
+                    - message: applied generations must increase
+                      rule: (size(self) < 2 || uint(self[0].appliedGeneration) < uint(self[1].appliedGeneration))
+                        && (size(self) < 3 || uint(self[1].appliedGeneration) < uint(self[2].appliedGeneration))
+                  launch:
+                    properties:
+                      bootId:
+                        maxLength: 12
+                        pattern: ^[0-9a-f]{12}$
+                        type: string
+                      createdAt:
+                        description: ClaudeAuthTimestamp preserves nanoseconds through
+                          the CRD and JSON readers.
+                        format: date-time
+                        maxLength: 30
+                        pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$
+                        type: string
+                      source:
+                        enum:
+                        - projection
+                        - static-environment
+                        - pod-owned
+                        - unknown
+                        maxLength: 18
+                        type: string
+                    required:
+                    - bootId
+                    - createdAt
+                    - source
+                    type: object
+                  observationTiming:
+                    enum:
+                    - assistant-transcript-proxy
+                    maxLength: 26
+                    type: string
+                  version:
+                    enum:
+                    - 1
+                    format: int32
+                    type: integer
+                required:
+                - clockSkewUnknown
+                - observationTiming
+                - version
+                type: object
+                x-kubernetes-validations:
+                - message: clock skew must be unknown
+                  rule: self.clockSkewUnknown
+              claudeAuthHistoryReportedAt:
+                description: |-
+                  ClaudeAuthHistoryReportedAt is when the operator received the last
+                  heartbeat with a usable Claude auth history snapshot.
+                format: date-time
+                type: string
               conditions:
                 description: Conditions are the standard conditions.
                 items:
