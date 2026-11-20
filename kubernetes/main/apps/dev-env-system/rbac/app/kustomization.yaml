@@ -16,6 +16,7 @@ resources:
   - ./operator.yaml
   - ./operator-caller-policy.yaml
   - ./operator-standby.yaml
+  - ./operator-codex-host-capacity.yaml
   - ./operator-keeper-login.yaml
   - ./operator-exec-guard.yaml
   - ./common-rules-operator.yaml
