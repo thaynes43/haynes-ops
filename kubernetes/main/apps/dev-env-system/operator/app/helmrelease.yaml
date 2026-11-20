@@ -647,9 +647,16 @@ spec:
               # Keeper stays sha-1ae9c7c; broker and OP922 inputs are unchanged. No CRD,
               # RBAC, admission, Secret, ExternalSecret or network policy change.
               # CRD bodies match this source except the existing held OP503 GrantPolicy copy.
-              # Rollback operator alone to sha-4f3ef3d@sha256:a0fbe601f6cbae67e29c200441effa0bf161eaa41f9aab07eecc6e92f68ec7c9
+              # The rollback target for that pin was sha-4f3ef3d@sha256:a0fbe601f6cbae67e29c200441effa0bf161eaa41f9aab07eecc6e92f68ec7c9
               # with all current args: it refuses new 6.2 requests and its allowance reader
               # cannot read a 0.169.1 host. Agent/hold and any upgraded host package stay put.
+              # dev-env main c2908cb4f9bbd42c28417f74bbd64486879a1979 (OP922, OP937).
+              # publish.yml run 44642820176, operator job 135977897990, signed and verified.
+              # OP922 reserves ordinary Codex remote creates. Apply haynes-ops#4974 first
+              # for the dev-env-codex-host-capacity ConfigMap and its named get/update Role.
+              # OP937 adds the opt-in Claude auth history show view. Keeper stays sha-1ae9c7c.
+              # Rollback operator alone to sha-298841e@sha256:a1903731023f6c7277e68577ba6c4125a5320aea6e216c41d2661e7587060ba9
+              # with all current args. The ledger and any reservations persist. That pin ignores them.
               tag: sha-c2908cb@sha256:aa9ca63ceb6295b930db041ed76e6b45f2323212843c9b23c0fc38c951c2bb9e
               pullPolicy: IfNotPresent
             args:
