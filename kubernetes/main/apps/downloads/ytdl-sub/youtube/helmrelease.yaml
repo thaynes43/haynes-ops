@@ -29,7 +29,7 @@ spec:
           app:
             image:
               repository: ghcr.io/jmbannon/ytdl-sub
-              tag: 2026.11.16
+              tag: 2026.11.19
             command:
               - bash
               - -c
