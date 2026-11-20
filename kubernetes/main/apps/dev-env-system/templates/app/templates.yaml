@@ -200,17 +200,39 @@
 # and any managed host package upgraded to 0.169.1: 2.111.0 agentd requires 0.160.1
 # and CANNOT start that upgraded retained host. An image rollback does not undo the
 # native package update or make 6.2 sessions start on the old agentd; recovery is separate.
-image: ghcr.io/thaynes43/dev-env:2.112.0@sha256:eac1a8a7e88f6968f5c12f6491ae6eb49016a2a8fc459eb8d06c165ebd5992b5
+# v2.113.0 source ebcdbff6ece343bdf7c56a89962c37784e3033bb (release dev-env#1232).
+# publish-agent.yml run 44627535620, agent job 135925240011, built, smoke-tested,
+# signed and verified this digest on refs/tags/v2.113.0.
+# What a session gains after its next start or resume from 2.112.0:
+# - DESIGN-069 slice 1 (dev-env#1233, OP930) records bounded per-generation Claude
+#   auth history on the session volume, including the first acceptance and first
+#   main-chain rejection. Slice 2 (dev-env#1236, OP937) reports it in heartbeats
+#   and ships the opt-in agent-run show --claude-auth-history view.
+# - DESIGN-070 (dev-env#1234, OP922) reports a passive cgroup v2 working-set sample
+#   from ordinary Codex remote hosts and ships the CLI's --fresh-host request.
+#   Capacity decisions need the later operator pin, ConfigMap and gate.
+# The current operator ignores the new heartbeat fields. The opt-in history view
+# refuses against it by design because it cannot acknowledge the requested view.
+# Operator, keeper and broker pins stay in place. The slice 3 keeper source
+# (dev-env#1230, OP931) is outside this agent rollout.
+# Both references are byte-equal. New sessions and resumes use 2.113.0, and
+# running pods stay until their own suspend and resume.
+# Rollback image:
+# ghcr.io/thaynes43/dev-env:2.112.0@sha256:eac1a8a7e88f6968f5c12f6491ae6eb49016a2a8fc459eb8d06c165ebd5992b5
+# To undo this pin, roll back BOTH references together. Slice 1 history files
+# stay on session volumes. The older history exporter refuses volumes holding
+# those files until roll-forward (DESIGN-069 section 6).
+image: ghcr.io/thaynes43/dev-env:2.113.0@sha256:7fe98556e21bc8b65fda6d72732d3dd05ea34085fded1dbe1202bf26c70402f7
 
 # New-sessions-only rollout for THIS image (DESIGN-001 5.2, dev-env#925; Q-03 option B, a
 # per-rollout deviation recorded in the PR that sets it). While this equals `image`, the
-# operator marks no session Draining: new sessions and resumes use the 2.112.0 revision and
+# operator marks no session Draining: new sessions and resumes use the 2.113.0 revision and
 # running sessions keep their pods until their own suspend and resume. It is not part of the
 # revision. It MUST equal `image` exactly: the Renovate rule bumps only the `image:` line, so
 # the next image bump PR must update this line to the new image or delete it (deleting it
 # resumes idle drain), otherwise the templates are invalid and new sessions wait.
 rollout:
-  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.112.0@sha256:eac1a8a7e88f6968f5c12f6491ae6eb49016a2a8fc459eb8d06c165ebd5992b5
+  newSessionsOnlyImage: ghcr.io/thaynes43/dev-env:2.113.0@sha256:7fe98556e21bc8b65fda6d72732d3dd05ea34085fded1dbe1202bf26c70402f7
 
 # DESIGN-001 7.2 (Q-04): requests are typical use, limits cap bursts. A CPU limit is
 # mandatory; the Kyverno policy dev-env-require-cpu-limit refuses a session pod without
