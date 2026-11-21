@@ -11,7 +11,7 @@
 # Authentik-only ingress; saga Hard news #1), not in image minimalism.
 #
 # Debian/glibc (kubectl/claude glibc-linked); amd64-only (all Talos nodes x86_64).
-FROM node:24-slim
+FROM node:26-slim
 
 # ╔══════════════════════════════════════════════════════════════════════════════╗
 # ║ DO NOT put a version number in a comment BETWEEN a `# renovate:` annotation  ║
