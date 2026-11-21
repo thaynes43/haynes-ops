@@ -15,9 +15,10 @@
 #     ClusterRoleBinding only a cluster-wide one (nodes, break-glass); no binding in the
 #     three dev-env namespaces;
 #   - CiliumNetworkPolicies: only grant-* names, and only in dev-agents.
-# AccessGrants, GrantPolicies (read), Leases, Events, pods and pods/exec are not
-# narrowed here: the RBAC already scopes them to dev-agents and dev-env-system, and an
-# exec's target cannot be checked by name (session pods have no fixed prefix).
+#   - Roles and their RoleBindings: only grant-pod-exec-* names, with exact
+#     pod rules and the same-named grant ServiceAccount.
+#   - The broker's own exec connections: only to dev-agents for grant installation.
+#     Its cluster-wide RBAC verb is for creating the grant's Role without escalate.
 #
 # Failure: Fail, matched by username first (a string compare that cannot fail), so an
 # error refuses only the broker's own request. No paramRef (D-19 as built).
@@ -36,7 +37,11 @@ spec:
       - apiGroups: [rbac.authorization.k8s.io]
         apiVersions: ["*"]
         operations: [CREATE, UPDATE, DELETE]
-        resources: [rolebindings, clusterrolebindings]
+        resources: [roles, rolebindings, clusterrolebindings]
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: [CONNECT]
+        resources: [pods/exec]
       - apiGroups: [cilium.io]
         apiVersions: ["*"]
         operations: [CREATE, UPDATE, DELETE]
@@ -56,10 +61,16 @@ spec:
           ['dev-env-grant-nodes', 'dev-env-grant-breakglass'] :
           ['dev-env-grant-workloads', 'dev-env-grant-storage', 'dev-env-grant-secrets-read']
     - name: binding
-      expression: request.resource.group == 'rbac.authorization.k8s.io'
+      expression: request.resource.resource in ['rolebindings', 'clusterrolebindings']
+    - name: role
+      expression: request.resource.resource == 'roles'
+    - name: connect
+      expression: request.operation == 'CONNECT'
+    - name: podExecGrant
+      expression: request.?name.orValue('').startsWith('grant-pod-exec-')
   validations:
     # 1. Only its own grant objects, all named grant-<id> (D-54).
-    - expression: variables.grantName
+    - expression: variables.connect || variables.grantName
       messageExpression: >-
         'dev-env-broker-guard: the broker may ' + request.operation + ' ' + request.resource.resource +
         (request.?subResource.orValue('') == '' ? '' : '/' + request.subResource) +
@@ -67,30 +78,60 @@ spec:
       reason: Forbidden
     # 2. Ordinary identities/network policies stay in dev-agents; admin SAs/tokens may use the issuer.
     - expression: >-
-        variables.binding || request.?namespace.orValue('') == 'dev-agents' || (request.resource.resource == 'serviceaccounts' && request.?namespace.orValue('') == 'dev-env-admin-issuance')
+        variables.connect || variables.binding || variables.role || request.?namespace.orValue('') == 'dev-agents' ||
+        (request.resource.resource == 'serviceaccounts' && request.?namespace.orValue('') == 'dev-env-admin-issuance')
       messageExpression: >-
         'dev-env-broker-guard: grant identities require dev-agents or the dedicated admin issuer; network policies require dev-agents, not ' +
         request.?namespace.orValue('')
       reason: Forbidden
     # 3. A binding never reaches the dev-env namespaces.
     - expression: >-
-        !variables.binding || !(request.?namespace.orValue('') in ['dev-env-system', 'dev-agents', 'dev-tools', 'dev-env-admin-issuance'])
+        !(variables.binding || variables.role) || !(request.?namespace.orValue('') in ['dev-env-system', 'dev-agents', 'dev-tools', 'dev-env-admin-issuance'])
       messageExpression: >-
         'dev-env-broker-guard: no grant binding in ' + request.?namespace.orValue('') + ' (DESIGN-001 6.12)'
       reason: Forbidden
-    # 4. A new binding binds one catalog ClusterRole of its scope to exactly its own grant
-    #    identity.
+    # 4. A new binding binds a catalog ClusterRole or the grant's pod-exec Role
+    #    to exactly its own grant identity.
     - expression: >-
         !variables.binding || request.operation == 'DELETE' || (
-          object.roleRef.kind == 'ClusterRole' && object.roleRef.name in variables.catalog &&
+          (variables.podExecGrant ?
+            (request.resource.resource == 'rolebindings' && object.roleRef.kind == 'Role' && object.roleRef.name == object.metadata.name) :
+            (object.roleRef.kind == 'ClusterRole' && object.roleRef.name in variables.catalog)) &&
           size(object.?subjects.orValue([])) == 1 &&
           object.subjects[0].kind == 'ServiceAccount' &&
           object.subjects[0].?namespace.orValue('') == (object.roleRef.name == 'dev-env-grant-breakglass' ? 'dev-env-admin-issuance' : 'dev-agents') &&
           object.subjects[0].name == object.metadata.name)
       messageExpression: >-
-        'dev-env-broker-guard: a grant ' + request.resource.resource + ' binds one of ' +
-        variables.catalog.join(', ') + ' to its own ServiceAccount in the role-specific credential namespace: ' +
-        request.?name.orValue('<unnamed>') + ', and nothing else'
+        'dev-env-broker-guard: a grant ' + request.resource.resource + ' binds an allowed grant role to its own ServiceAccount: ' +
+        request.?name.orValue('<unnamed>')
+      reason: Forbidden
+    # 5. No grant Role with broader verbs or targets. A delete uses oldObject
+    #    so a same-name object without the broker's grant labels stays alone.
+    - expression: >-
+        !variables.role || (variables.podExecGrant &&
+          (request.operation == 'DELETE' ?
+            (oldObject.metadata.?labels.orValue({})[?'dev-env.haynesops.com/grant'].orValue('') == request.name &&
+             oldObject.metadata.?labels.orValue({})[?'dev-env.haynesops.com/grant-uid'].orValue('') != '') :
+            (size(object.?rules.orValue([])) == 2 &&
+             object.rules[0].apiGroups == [''] && object.rules[0].resources == ['pods'] &&
+             object.rules[0].verbs == ['get'] && size(object.rules[0].?resourceNames.orValue([])) == 1 &&
+             object.rules[0].resourceNames[0] != '' &&
+             object.rules[1].apiGroups == [''] && object.rules[1].resources == ['pods/exec'] &&
+             object.rules[1].verbs == ['create'] && object.rules[1].?resourceNames.orValue([]) == object.rules[0].resourceNames)))
+      message: "dev-env-broker-guard: a pod-exec Role grants get on the pod and create on exec for one pod name"
+      reason: Forbidden
+    # 6. RBAC must let the broker delegate pods/exec, but it can only connect
+    #    directly to the session pods where it installs kube grant credentials.
+    - expression: "!variables.connect || request.namespace == 'dev-agents'"
+      message: "dev-env-broker-guard: the broker can only exec in dev-agents"
+      reason: Forbidden
+    # Kyverno must see every pod-exec grant connection. Identity-guard also
+    # protects the dev-env and controller namespaces from CONNECT.
+    - expression: >-
+        !(variables.podExecGrant && (variables.role || variables.binding)) ||
+        !(request.namespace in ['kube-system', 'kyverno', 'flux-system', 'external-secrets',
+          'cert-manager', 'ceph-csi', 'openebs-system', 'volsync-system', 'k8tz', 'kube-public', 'kube-node-lease'])
+      message: "dev-env-broker-guard: pod-exec grant RBAC requires a namespace covered by the exec guard"
       reason: Forbidden
 ---
 apiVersion: admissionregistration.k8s.io/v1
