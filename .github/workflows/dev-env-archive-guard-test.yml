@@ -8,7 +8,6 @@ on:
       - kubernetes/main/apps/kyverno/policies/app/maintenance-executor.yaml
       - kubernetes/main/apps/kyverno/policies/app/maintenance-exec.yaml
       - kubernetes/main/apps/dev-env-system/rbac/app/identity-guard.yaml
-      - kubernetes/main/apps/dev-env-system/rbac/app/broker-guard.yaml
       - kubernetes/main/apps/dev-env-system/rbac/app/maintenance-annotations.yaml
       - kubernetes/main/apps/kyverno/policies/app/dev-env-exec-guard.yaml
       - kubernetes/main/apps/dev-env-system/caller-policies/**
@@ -22,7 +21,6 @@ on:
       - kubernetes/main/apps/kyverno/policies/app/maintenance-executor.yaml
       - kubernetes/main/apps/kyverno/policies/app/maintenance-exec.yaml
       - kubernetes/main/apps/dev-env-system/rbac/app/identity-guard.yaml
-      - kubernetes/main/apps/dev-env-system/rbac/app/broker-guard.yaml
       - kubernetes/main/apps/dev-env-system/rbac/app/maintenance-annotations.yaml
       - kubernetes/main/apps/kyverno/policies/app/dev-env-exec-guard.yaml
       - kubernetes/main/apps/dev-env-system/caller-policies/**
