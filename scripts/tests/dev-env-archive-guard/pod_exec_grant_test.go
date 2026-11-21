@@ -51,8 +51,8 @@ func TestPodExecGrantAdmission(t *testing.T) {
 		{name: "other grant type", edit: func(_ *fixture, g, _ obj) { g["spec"].(obj)["type"] = "kube" }, lookups: []string{"grant"}},
 		{name: "missing grant", edit: func(f *fixture, _, pod obj) { f.parents = []obj{pod} }, lookups: []string{"grant"}},
 		{name: "missing pod", edit: func(f *fixture, g, _ obj) { f.parents = []obj{g} }, lookups: []string{"grant", "pod"}},
-		{name: "lookup forbidden", edit: func(f *fixture, _, _ obj) { f.fault = "forbidden" }, lookupError: true, lookups: []string{"grant"}},
-		{name: "lookup transport error", edit: func(f *fixture, _, _ obj) { f.fault = "transport" }, lookupError: true, lookups: []string{"grant"}},
+		{name: "lookup forbidden", edit: func(f *fixture, _, _ obj) { f.fault = "forbidden" }, lookupError: true, lookups: []string{"grant", "pod"}},
+		{name: "lookup transport error", edit: func(f *fixture, _, _ obj) { f.fault = "transport" }, lookupError: true, lookups: []string{"grant", "pod"}},
 		{name: "attach", edit: func(f *fixture, _, _ obj) {
 			f.subresource, f.kind = "attach", "PodAttachOptions"
 			f.new["kind"] = f.kind
@@ -70,6 +70,7 @@ func TestPodExecGrantAdmission(t *testing.T) {
 			pod["metadata"].(obj)["namespace"], pod["metadata"].(obj)["uid"] = "fixture", uid
 			pod["spec"].(obj)["hostPID"] = true
 			pod["spec"].(obj)["serviceAccountName"] = "default"
+			pod["spec"].(obj)["containers"] = []any{obj{"name": "app", "image": "fixture"}, obj{"name": "sidecar", "image": "fixture"}}
 			f := podExecRequest("fixture", "target", "app", podExecActor)
 			f.parents = []obj{g, pod}
 			if tc.edit != nil {
