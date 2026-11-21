@@ -135,7 +135,7 @@ spec:
     - expression: >-
         !variables.podExecIdentity || (
           request.subResource == 'exec' &&
-          variables.grant != null &&
+          has(variables.grant.metadata) &&
           variables.grant.spec.type == 'pod-exec' &&
           !has(variables.grant.metadata.deletionTimestamp) &&
           !variables.grant.spec.?release.orValue(false) &&
@@ -147,7 +147,7 @@ spec:
           variables.grant.spec.podExec.namespace == request.namespace &&
           variables.grant.spec.podExec.pod == request.name &&
           variables.grant.spec.podExec.container == object.?container.orValue('') &&
-          variables.pod != null && !has(variables.pod.metadata.deletionTimestamp) &&
+          has(variables.pod.metadata) && !has(variables.pod.metadata.deletionTimestamp) &&
           variables.grant.spec.podExec.podUID == variables.pod.metadata.uid)
       message: pod-exec grants allow new connections only to the approved pod UID and container before expiry
     - expression: variables.podExecIdentity || !(variables.serviceAccount in variables.privilegedServiceAccounts)
