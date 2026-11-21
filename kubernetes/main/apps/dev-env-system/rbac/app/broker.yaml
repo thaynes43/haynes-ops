@@ -5,11 +5,14 @@
 # (dev-env-system, refused to every dev-agents identity by the identity guard), and it
 # takes approvals only from Tom on its page.
 #
-# It may bind the grant role catalog (./grant-catalog.yaml) and nothing else: `bind` by
+# It may bind the grant ClusterRole catalog (./grant-catalog.yaml) and nothing else: `bind` by
 # resourceNames, so the API server's escalation check refuses a binding to any other
 # role, edit, admin and cluster-admin included. RBAC cannot narrow which subjects a
 # binding names or which bindings it deletes; the broker's code binds only its own
 # grant-<id> ServiceAccounts and deletes only bindings named after its own grants.
+# For pod-exec grants, the API server checks that the broker holds the permissions in
+# each new Role. The admission guard limits Role and RoleBinding writes and keeps the
+# broker's own exec connections in dev-agents. No escalate or additional bind.
 #
 # Nothing runs as this ServiceAccount until the broker Deployment lands (plan 07 H2).
 apiVersion: rbac.authorization.k8s.io/v1
@@ -22,6 +25,15 @@ rules:
   - apiGroups: [rbac.authorization.k8s.io]
     resources: [rolebindings, clusterrolebindings]
     verbs: [get, list, watch, create, delete]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles]
+    verbs: [get, create, delete]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
   - apiGroups: [rbac.authorization.k8s.io]
     resources: [clusterroles]
     resourceNames:

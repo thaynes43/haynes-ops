@@ -657,7 +657,10 @@ spec:
               # OP937 adds the opt-in Claude auth history show view. Keeper stays sha-1ae9c7c.
               # Rollback operator alone to sha-298841e@sha256:a1903731023f6c7277e68577ba6c4125a5320aea6e216c41d2661e7587060ba9
               # with all current args. The ledger and any reservations persist. That pin ignores them.
-              tag: sha-c2908cb@sha256:aa9ca63ceb6295b930db041ed76e6b45f2323212843c9b23c0fc38c951c2bb9e
+              # Current pin: dev-env main b113a5051c0dcd5cf38393f0d69134564033fae4 (dev-env#1253, OP945 pod-exec grants); publish.yml run 44952628125, signed and verified.
+              # Operator, broker and keeper move together to this image (OP945, Tom 2026-11-21). The older notes above describe earlier pins.
+              # Rollback target for the operator alone: sha-c2908cb@sha256:aa9ca63ceb6295b930db041ed76e6b45f2323212843c9b23c0fc38c951c2bb9e, with all current args.
+              tag: sha-b113a50@sha256:ba57ece69d3b7f190e1b1b5d8061e0d6bf8730dd6efbd8d4ca95a808b0cd9050
               pullPolicy: IfNotPresent
             args:
               # Provider-neutral reminders (DESIGN-032, dev-env#600; OpenProject #396): serve

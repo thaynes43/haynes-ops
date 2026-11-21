@@ -96,7 +96,10 @@ spec:
               # (haynes-ops#4574); rollback target for the broker alone, with all current args.
               # Rollback leaves grant/Ask records behind; an old broker ignores status.ask and can
               # choose an independent policy/delegate path after activation, so review routes first.
-              tag: sha-4f3ef3d@sha256:a0fbe601f6cbae67e29c200441effa0bf161eaa41f9aab07eecc6e92f68ec7c9
+              # Current pin: dev-env main b113a5051c0dcd5cf38393f0d69134564033fae4 (dev-env#1253, OP945 pod-exec grants); publish.yml run 44952628125, signed and verified.
+              # Adds pod-exec target rechecks and ServiceAccount-first revoke; --enable-grant-asks is set separately (haynes-ops#5000). The older notes above describe earlier pins.
+              # Rollback target for the broker alone: sha-4f3ef3d@sha256:a0fbe601f6cbae67e29c200441effa0bf161eaa41f9aab07eecc6e92f68ec7c9, with all current args.
+              tag: sha-b113a50@sha256:ba57ece69d3b7f190e1b1b5d8061e0d6bf8730dd6efbd8d4ca95a808b0cd9050
               pullPolicy: IfNotPresent
             args:
               - broker
