@@ -96,7 +96,7 @@ spec:
               # (haynes-ops#4574); rollback target for the broker alone, with all current args.
               # Rollback leaves grant/Ask records behind; an old broker ignores status.ask and can
               # choose an independent policy/delegate path after activation, so review routes first.
-              tag: sha-4f3ef3d@sha256:a0fbe601f6cbae67e29c200441effa0bf161eaa41f9aab07eecc6e92f68ec7c9
+              tag: sha-b113a50@sha256:ba57ece69d3b7f190e1b1b5d8061e0d6bf8730dd6efbd8d4ca95a808b0cd9050
               pullPolicy: IfNotPresent
             args:
               - broker

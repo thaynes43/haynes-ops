@@ -83,7 +83,7 @@ spec:
               # 617ed15 (verified), so the helper images keep their pins.
               # Previously source 585692bbe730b0c7d435496d304cffb2276a0d6f (v2.34.0), run 39302323514.
               # The broker pin is separate and unchanged.
-              tag: sha-1ae9c7c@sha256:89f151a003dfdfb1517298c2c2fa8c4ab62e03d73e76fca635e37e630674def3
+              tag: sha-b113a50@sha256:ba57ece69d3b7f190e1b1b5d8061e0d6bf8730dd6efbd8d4ca95a808b0cd9050
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:
