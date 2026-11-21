@@ -1,0 +1,25 @@
+---
+# Grant Ask routing and the optional story link (dev-env docs/asks.md, "Broker verbs on Asks and TaskClaims").
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-broker-asks
+  namespace: dev-agents
+rules:
+  - apiGroups: [coordination.dev-env.haynesops.com]
+    resources: [asks]
+    verbs: [get, list, watch, create, patch]
+  - apiGroups: [coordination.dev-env.haynesops.com]
+    resources: [asks/status]
+    verbs: [update]
+  - apiGroups: [coordination.dev-env.haynesops.com]
+    resources: [taskclaims]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-broker-asks
+  namespace: dev-agents
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: dev-env-broker-asks}
+subjects: [{kind: ServiceAccount, name: dev-env-broker, namespace: dev-env-system}]
