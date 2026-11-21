@@ -35,6 +35,7 @@ resources:
   # dev-agents. Unused until the pager is switched on.
   - ./keeper-summon-pages.yaml
   - ./broker.yaml
+  - ./broker-asks.yaml
   - ./broker-credentials.yaml
   - ./broker-guard.yaml
   - ./credential-job-guard.yaml
