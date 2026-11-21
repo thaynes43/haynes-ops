@@ -1,10 +1,11 @@
 ---
 # The operator, dev-env-system/dev-env-operator (DESIGN-001 6.11, the operator row; D-44,
-# D-45, D-46). Namespaced Roles only, plus TokenReview and, for DESIGN-025 H2 (at the
+# D-45, D-46). Namespaced Roles plus TokenReview and specific cluster-wide reads.
+# These include pod lookup for pod-exec grant requests (OP945) and, for DESIGN-025 H2 (at the
 # end), `get` and `list` on Nodes and `get` on Leases in kube-node-lease, for OP252 a
 # `get` on one named PersistentVolume, and for DESIGN-061 section 1.1 (OpenProject
 # #521) a cluster-wide `get` on PersistentVolumes with no resourceNames: no cluster-wide
-# pod or PVC rights, no Secrets, no bind. The manager's cache is scoped to dev-agents
+# pod write or PVC rights, no Secrets, no bind. The manager's cache is scoped to dev-agents
 # and the one templates ConfigMap (internal/controller/reconciler.go, CacheOptions), so
 # namespaced Roles cover every cached list and watch it makes. The Node list for
 # DESIGN-061 section 1.1 is an uncached APIReader list (taskVolumeReleased), so it
@@ -164,6 +165,30 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: dev-env-operator
+subjects:
+  - kind: ServiceAccount
+    name: dev-env-operator
+    namespace: dev-env-system
+---
+# Resolve the exact target and capture its UID for a pod-exec request. The
+# operator gets individual pods and cannot connect to them with this role.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dev-env-operator-pod-exec-target
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dev-env-operator-pod-exec-target
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dev-env-operator-pod-exec-target
 subjects:
   - kind: ServiceAccount
     name: dev-env-operator

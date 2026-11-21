@@ -370,7 +370,7 @@ func own(child, parent obj) {
 }
 
 func resourceFor(kind string) string {
-	return map[string]string{"Pod": "pods", "PodExecOptions": "pods", "PodAttachOptions": "pods", "PodPortForwardOptions": "pods", "Scale": "deployments", "ReplicationController": "replicationcontrollers", "Deployment": "deployments", "ReplicaSet": "replicasets", "StatefulSet": "statefulsets", "DaemonSet": "daemonsets", "Job": "jobs", "CronJob": "cronjobs", "ControllerRevision": "controllerrevisions"}[kind]
+	return map[string]string{"AccessGrant": "accessgrants", "Pod": "pods", "PodExecOptions": "pods", "PodAttachOptions": "pods", "PodPortForwardOptions": "pods", "Scale": "deployments", "ReplicationController": "replicationcontrollers", "Deployment": "deployments", "ReplicaSet": "replicasets", "StatefulSet": "statefulsets", "DaemonSet": "daemonsets", "Job": "jobs", "CronJob": "cronjobs", "ControllerRevision": "controllerrevisions"}[kind]
 }
 
 func request(o obj, actor, operation string, allow bool) fixture {

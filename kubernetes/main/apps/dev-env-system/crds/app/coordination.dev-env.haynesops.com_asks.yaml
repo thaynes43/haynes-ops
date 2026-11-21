@@ -4,14 +4,8 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main 83428207d7662a079ddcdcfe3a3484442040d115 (merge of PR #1036),
-# verified byte for byte (SHA-256 29aa07e25fb83f93b9f5709aeb06cef094d868360c5e16afff43890b27494e80
-# below this header). The body last changed in d0927fc2353a (PR #1037, ADR-021, OpenProject #525).
-# Adds the grant Ask kind and answer.answeredBy.username, and makes expiresAt optional with
-# rules that keep it required for info and approval Asks. Asks and approvals board
-# (DESIGN-034, Epic #254; activation story #264): immutable spec, a set-once status answer,
-# and its name is its id. Asks live in dev-agents. Only the operator writes them
-# (rbac/app/asks.yaml); the keeper only reads them.
+# Source: dev-env commit 5c7fbb439d8bcfda5eacf3f0397f02ae4e9a8e42 (OpenProject #945).
+# The generated body below the document separator has SHA-256 2bb4dc2a3c6884b72b32366da25dbaef8b3b1584adc8ac918c69d3b4706ddfdf.
 #
 # Keep it in step with the operator: copy a changed file here before (or with) the pin
 # that writes its new fields.
@@ -124,8 +118,9 @@ spec:
                     pattern: ^[A-Za-z0-9_-]{43}$
                     type: string
                   target:
-                    description: Target is one token, 1 to 200 runes. The byte ceiling
-                      is four bytes per rune.
+                    description: |-
+                      Target is one token, up to 253 ASCII characters for a pod name or up to
+                      200 runes for other grant types. The byte ceiling accommodates Unicode.
                     maxLength: 800
                     minLength: 1
                     type: string
@@ -145,6 +140,7 @@ spec:
                     - credential
                     - breakglass
                     - maintenance
+                    - pod-exec
                     maxLength: 11
                     type: string
                   uid:
