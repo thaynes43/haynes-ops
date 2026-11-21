@@ -4,8 +4,8 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env commit 5c7fbb439d8bcfda5eacf3f0397f02ae4e9a8e42 (OpenProject #945).
-# The generated body below the document separator has SHA-256 e8bd7a52f083f6cccba93ce58828d6f8fe470f7a1f84002620832fb71842eb8d.
+# Source: dev-env main commit b113a5051c0dcd5cf38393f0d69134564033fae4 (PR 1253, OpenProject #945).
+# The generated body below the document separator has SHA-256 d5922967f4a3ab4f768e44aa2d643d2385e38e5325dade128fcbdfc5e871b23f.
 #
 # Keep it in step with the operator: copy a changed file here before (or with) the pin
 # that writes its new fields.
