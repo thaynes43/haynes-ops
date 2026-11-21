@@ -83,7 +83,10 @@ spec:
               # 617ed15 (verified), so the helper images keep their pins.
               # Previously source 585692bbe730b0c7d435496d304cffb2276a0d6f (v2.34.0), run 39302323514.
               # The broker pin is separate and unchanged.
-              tag: sha-1ae9c7c@sha256:89f151a003dfdfb1517298c2c2fa8c4ab62e03d73e76fca635e37e630674def3
+              # Current pin: dev-env main b113a5051c0dcd5cf38393f0d69134564033fae4 (dev-env#1253, OP945 pod-exec grants); publish.yml run 44952628125, signed and verified.
+              # Keeper hold released by Tom for this rollout (OP945 Q-945-02, 2026-11-21). The #1230 refresh provenance journal is active; slice 6 early recovery, OP919 raise notices and the summoned-session pager stay off (their flags are not set).
+              # Rollback target for the keeper alone: sha-1ae9c7c@sha256:89f151a003dfdfb1517298c2c2fa8c4ab62e03d73e76fca635e37e630674def3, which understands the ops flags below. The older notes above describe earlier pins.
+              tag: sha-b113a50@sha256:ba57ece69d3b7f190e1b1b5d8061e0d6bf8730dd6efbd8d4ca95a808b0cd9050
               pullPolicy: IfNotPresent
             # The image's entrypoint is the operator.
             command:
