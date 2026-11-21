@@ -28,11 +28,12 @@
 # Grant identities are separately refused by identity-guard rule 2 in flux-system,
 # external-secrets, kube-system and kyverno, including CONNECT (DESIGN-064 5.8).
 #
-# THE PRIVILEGED LIST below is the one place to add a new powerful ServiceAccount outside
+# THE PRIVILEGED LIST below controls exec admission for powerful ServiceAccounts outside
 # those namespaces: any ServiceAccount bound cluster-wide to cluster-admin, a wildcard
 # write, Secret read, serviceaccounts/token, pod create, nodes/proxy or
 # escalate/bind/impersonate, and any pod holding v1's unguarded OPERATOR tier. Built from
-# the cluster's ClusterRoleBindings on 2026-10-06. A new controller namespace goes in the
+# the cluster's ClusterRoleBindings on 2026-10-06. Keep dev-env internal/broker/pod_exec.go
+# in sync so the portal reports this classification on grant Asks. A new controller namespace goes in the
 # identity guard's controllerNamespaces.
 #
 # Summoning callers are listed because their operator API tokens identify the caller
@@ -52,6 +53,8 @@
 # matchConditions into its own fine-grained webhook, so the API server applies the
 # username match first and a Kyverno outage refuses these connections only to matched
 # dev-agents identities. If the pod cannot be read the connection is refused too.
+# A grant-pod-exec-* identity gets only the exact active AccessGrant's exec target.
+# The same check applies even when that pod is not privileged.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -68,7 +71,8 @@ metadata:
       matched dev-agents identity to a pod that runs as a listed ServiceAccount,
       has hostPID, or has a privileged regular or init container where Kyverno
       receives the request. The workbench and identities outside dev-agents are
-      not matched. This policy does not match services/proxy; the identity guard
+      not matched. A pod-exec grant can exec only the approved pod UID and
+      container while its grant is active. This policy does not match services/proxy; the identity guard
       refuses it in upgrade-agent. Elsewhere, where that guard permits it, a
       session can still reach a pod behind a Service even when its account is
       listed here (DESIGN-064 5.8).
@@ -122,16 +126,41 @@ spec:
     - name: serviceAccount
       expression: >-
         request.namespace + '/' + variables.pod.spec.?serviceAccountName.orValue('default')
+    - name: podExecIdentity
+      expression: request.userInfo.username.startsWith('system:serviceaccount:dev-agents:grant-pod-exec-')
+    - name: grantName
+      expression: request.userInfo.username.split(':')[3]
+    - name: grant
+      expression: resource.Get('dev-env.haynesops.com/v1alpha1', 'accessgrants', 'dev-agents', variables.grantName)
   validations:
-    - expression: "!(variables.serviceAccount in variables.privilegedServiceAccounts)"
+    - expression: >-
+        !variables.podExecIdentity || (
+          request.subResource == 'exec' &&
+          has(variables.grant.metadata) &&
+          variables.grant.spec.type == 'pod-exec' &&
+          !has(variables.grant.metadata.deletionTimestamp) &&
+          !variables.grant.spec.?release.orValue(false) &&
+          variables.grant.status.phase == 'Active' &&
+          variables.grant.status.?ask.orValue('') != '' &&
+          variables.grant.status.?approvedBy.orValue('').startsWith('authentik/') &&
+          variables.grant.status.?serviceAccount.orValue('') == variables.grantName &&
+          time.now() < timestamp(variables.grant.status.expiresAt) &&
+          variables.grant.spec.podExec.namespace == request.namespace &&
+          variables.grant.spec.podExec.pod == request.name &&
+          variables.grant.spec.podExec.container == object.?container.orValue('') &&
+          has(variables.pod.metadata) && !has(variables.pod.metadata.deletionTimestamp) &&
+          variables.grant.spec.podExec.podUID == variables.pod.metadata.uid)
+      message: pod-exec grants allow new connections only to the approved pod UID and container before expiry
+    - expression: variables.podExecIdentity || !(variables.serviceAccount in variables.privilegedServiceAccounts)
       messageExpression: >-
         'dev-env-exec-guard: a dev-env agent may not ' + request.subResource + ' to ' + request.name +
         ', which runs as the privileged ServiceAccount ' + variables.serviceAccount +
         ' (haynes-ops #3392, DESIGN-001 D-19; DESIGN-064 5.8, OP859 rule 2)'
     - expression: >-
-        !variables.pod.spec.?hostPID.orValue(false) &&
-        !(variables.pod.spec.?containers.orValue([]) + variables.pod.spec.?initContainers.orValue([])).exists(c,
-          c.?securityContext.?privileged.orValue(false))
+        variables.podExecIdentity || (
+          !variables.pod.spec.?hostPID.orValue(false) &&
+          !(variables.pod.spec.?containers.orValue([]) + variables.pod.spec.?initContainers.orValue([])).exists(c,
+            c.?securityContext.?privileged.orValue(false)))
       messageExpression: >-
         'dev-env-exec-guard: a dev-env agent may not ' + request.subResource + ' to ' + request.name +
         ', a privileged or host-PID pod, which is root on its node (DESIGN-001 D-19; DESIGN-064 5.8, OP859 rule 2)'
