@@ -4,14 +4,8 @@
 # prune-disabled annotation is added by kustomization.yaml, so the body stays
 # byte-identical to the generated file.
 #
-# Source: dev-env main 83a125e6eb1129181048d79ed11e371c9c98f8cc (merge of PR #1077),
-# verified byte for byte (SHA-256 46912d67c8378f767e7f6a0d091a7a22fd3adc24ef514f4115edca8c392d03bd
-# below this header). One line since the copy from 7980695c3605 (PR #1041, OP525):
-# maxLength 8 on spec.requester.agent, an enum whose longest value has 8 characters
-# (dev-env 66201204c557, PR #1079). From PR #1041: status.ask and status.askUnreadAt
-# (ADR-022: a grant's route to its Ask on the board) and the rule that a stored route cannot
-# be removed or changed. Nothing writes them while the broker runs without
-# --enable-grant-asks, and that flag needs both fields here first.
+# Source: dev-env commit 5c7fbb439d8bcfda5eacf3f0397f02ae4e9a8e42 (OpenProject #945).
+# The generated body below the document separator has SHA-256 e8bd7a52f083f6cccba93ce58828d6f8fe470f7a1f84002620832fb71842eb8d.
 #
 # Keep it in step with the operator: copy a changed file here before (or with) the pin
 # that writes its new fields.
@@ -498,6 +492,57 @@ spec:
                     devices
                   rule: '!has(self.runtimeProfile) || (self.resource.matches(''^GPU-[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$'')
                     && (!has(self.devices) || size(self.devices) == 0))'
+              podExec:
+                description: PodExec identifies the exact target resolved by the operator.
+                properties:
+                  container:
+                    maxLength: 63
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                  namespace:
+                    maxLength: 63
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                  pod:
+                    maxLength: 253
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                    type: string
+                  podUID:
+                    maxLength: 36
+                    pattern: ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$
+                    type: string
+                  security:
+                    description: |-
+                      Security records what the operator saw on the same read that resolved
+                      PodUID. Older grants may have no recorded security details.
+                    properties:
+                      hostPID:
+                        type: boolean
+                      powerfulServiceAccount:
+                        type: boolean
+                      privileged:
+                        type: boolean
+                    required:
+                    - hostPID
+                    - powerfulServiceAccount
+                    - privileged
+                    type: object
+                required:
+                - container
+                - namespace
+                - pod
+                - podUID
+                type: object
+                x-kubernetes-validations:
+                - message: immutable pod exec target
+                  rule: self == oldSelf
+                - message: pod-exec requires a namespace covered by Kyverno and outside
+                    the identity guard's exec denies
+                  rule: '!(self.namespace in [''dev-env-system'', ''dev-agents'',
+                    ''dev-tools'', ''dev-env-admin-issuance'', ''kube-system'', ''kyverno'',
+                    ''flux-system'', ''external-secrets'', ''cert-manager'', ''ceph-csi'',
+                    ''openebs-system'', ''volsync-system'', ''k8tz'', ''kube-public'',
+                    ''kube-node-lease''])'
               reason:
                 description: |-
                   Reason is why the agent asks, in its own words. The approval page shows
@@ -580,6 +625,7 @@ spec:
                 - credential
                 - breakglass
                 - maintenance
+                - pod-exec
                 type: string
                 x-kubernetes-validations:
                 - message: immutable after create; only release may change
@@ -599,6 +645,12 @@ spec:
               rule: (self.type == 'maintenance') == has(self.maintenance)
             - message: credential is set for type credential, and only there
               rule: (self.type == 'credential') == has(self.credential)
+            - message: podExec is set for type pod-exec, and only there
+              rule: (self.type == 'pod-exec') == has(self.podExec)
+            - message: pod-exec requires the authenticated session UID and at most
+                one hour
+              rule: self.type != 'pod-exec' || (duration(self.ttl) <= duration('1h')
+                && has(self.requester.sessionUID))
             - message: type breakglass and role dev-env-grant-breakglass go together
                 (D-27)
               rule: '!has(self.kube) || ((self.type == ''breakglass'') == (self.kube.role
@@ -619,7 +671,7 @@ spec:
             - message: immutable after create; only release may change
               rule: has(self.kube) == has(oldSelf.kube) && has(self.egress) == has(oldSelf.egress)
                 && has(self.credential) == has(oldSelf.credential) && has(self.maintenance)
-                == has(oldSelf.maintenance)
+                == has(oldSelf.maintenance) && has(self.podExec) == has(oldSelf.podExec)
             - message: release cannot be taken back
               rule: '!(has(oldSelf.release) && oldSelf.release) || (has(self.release)
                 && self.release)'
@@ -971,6 +1023,9 @@ spec:
         - message: 'metadata.name is grant-<id>, a DNS label: it names the grant''s
             ServiceAccount, and the audit log shows it'
           rule: self.metadata.name.matches('^grant-[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+        - message: the grant-pod-exec name prefix is reserved for pod-exec grants
+          rule: self.metadata.name.startsWith('grant-pod-exec-') == (self.spec.type
+            == 'pod-exec')
         - message: the grant ask route is set once
           rule: '!has(oldSelf.status) || !has(oldSelf.status.ask) || (has(self.status)
             && has(self.status.ask) && self.status.ask == oldSelf.status.ask)'
