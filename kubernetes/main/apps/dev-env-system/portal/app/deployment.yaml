@@ -76,10 +76,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: portal
-          # Source dev-env#1039 413c01c6 (OP523, OP534, OP532); publish run 42778126782 signed and verified this exact digest.
+          # Current pin: dev-env main b113a505 (dev-env#1253, OP945); publish run 44952628125 signed and verified this exact digest.
+          # Adds grant Ask cards (pod-exec target, container and risk facts) with admin approve and decline.
+          # Rollback target: sha-413c01c@sha256:c076eb132abacb326c3917de071ffb22a9e5ecf58cbf810879edbbde59a493ac.
+          # Was source dev-env#1039 413c01c6 (OP523, OP534, OP532); publish run 42778126782 signed and verified that digest.
           # The Usage page leads a session reading with the week's percent, its reset and its age, greys it past
           # 30 minutes, drops the percent after its reset, and gives Cursor a plain tile with a link. Display only.
-          # Rollback target: sha-25b7724@sha256:18ed5a921b41737a3dd821d998b2e8a6ed3fde83bc69f4b8433b5dc8836d05b4.
+          # Its rollback target was sha-25b7724@sha256:18ed5a921b41737a3dd821d998b2e8a6ed3fde83bc69f4b8433b5dc8836d05b4.
           image: ghcr.io/thaynes43/dev-env-portal:sha-b113a50@sha256:167e37390bdd962de6c9e370c10ae424b42c261e5b10374c560276fd8d5148dd
           imagePullPolicy: IfNotPresent
           ports:
