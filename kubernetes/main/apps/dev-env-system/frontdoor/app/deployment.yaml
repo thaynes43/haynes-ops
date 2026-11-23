@@ -112,6 +112,16 @@ spec:
           # signature: this digest, keyless, by publish.yml on main. Previous image, and the
           # rollback target:
           # sha-6bc602c@sha256:c55e85e47503b05564b392fbac6d95896ede831dafc612ee68042702a267c83d
+          # dev-env 941e448 (PR #1256, OP528): adds read-only MCP resources to the
+          # existing /mcp endpoint: a tool catalog, versioned operating rules and a
+          # per-work-item handoff read through opwork. initialize gains one sentence
+          # that points to the catalog. Also carries dev-env #1104 and #1127: an
+          # optional, validated title on coordinator_start, sent only when given
+          # (needs operator 2.107.0 or later). No new argument, mount, credential,
+          # route, limit or authority. Publish run 45213356639, job Publish
+          # (frontdoor), step Verify the signature: this digest, keyless, by
+          # publish.yml on main. Previous image, and the rollback target:
+          # sha-fc89551@sha256:335e8f92ca45f4a0e6d6cd8a25f363c352b7b849f3429d4901ff215ddd0810c9
           image: ghcr.io/thaynes43/dev-env-frontdoor:sha-941e448@sha256:6e66d4798b64e61fd70d4f6f030e173b33766f30b7239b9984e52f62be718b78
           imagePullPolicy: IfNotPresent
           args:
