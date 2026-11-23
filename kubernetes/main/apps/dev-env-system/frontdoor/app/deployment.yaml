@@ -112,7 +112,7 @@ spec:
           # signature: this digest, keyless, by publish.yml on main. Previous image, and the
           # rollback target:
           # sha-6bc602c@sha256:c55e85e47503b05564b392fbac6d95896ede831dafc612ee68042702a267c83d
-          image: ghcr.io/thaynes43/dev-env-frontdoor:sha-fc89551@sha256:335e8f92ca45f4a0e6d6cd8a25f363c352b7b849f3429d4901ff215ddd0810c9
+          image: ghcr.io/thaynes43/dev-env-frontdoor:sha-941e448@sha256:6e66d4798b64e61fd70d4f6f030e173b33766f30b7239b9984e52f62be718b78
           imagePullPolicy: IfNotPresent
           args:
             - --listen=:8080
