@@ -137,7 +137,7 @@ def wav_info(path):
             end = length + 8
             if riff != b"RIFF" or kind != b"WAVE" or not 12 <= end <= size <= MAX_UPLOAD:
                 raise ValueError("Invalid RIFF header")
-            frame_size = 0
+            frame_size = frames = 0
             while source.tell() + 8 <= end:
                 chunk, length = struct.unpack("<4sI", source.read(8))
                 next_chunk = source.tell() + length + (length & 1)
@@ -163,11 +163,15 @@ def wav_info(path):
                     if alignment != frame_size:
                         raise ValueError("Invalid WAV frame alignment")
                 if chunk == b"data":
+                    if frames:
+                        raise ValueError("Duplicate WAV sample data")
                     if not frame_size or not length or length % frame_size:
                         raise ValueError("WAV has missing samples")
-                    return length // frame_size, rate
+                    frames = length // frame_size
                 source.seek(next_chunk)
-            raise ValueError("WAV has no sample data")
+            if not frames or source.tell() != end:
+                raise ValueError("WAV has missing samples or an incomplete RIFF chunk")
+            return frames, rate
         except RequestError:
             raise
         except (ValueError, struct.error) as exc:
@@ -183,20 +187,25 @@ def validate_png(path):
         width, height = struct.unpack(">II", header[16:24])
         if not 1 <= width <= 4096 or not 1 <= height <= 4096:
             raise RequestError("invalid_input", "PNG dimensions are outside the input limit")
+        seen_idat = False
         for _ in range(4096):
             chunk = source.read(8)
             if len(chunk) != 8:
                 break
             length, kind = struct.unpack(">I4s", chunk)
             end = source.tell() + length + 4  # Data and CRC.
-            if end > size or kind == b"IEND":
+            if end > size:
                 break
             if kind == b"acTL":
                 raise RequestError("animated_png", "Use a single-frame PNG")
+            if kind == b"IEND":
+                if seen_idat and length == 0 and end == size:
+                    return
+                break
             if kind == b"IDAT":
-                return
+                seen_idat = True
             source.seek(end)
-        raise RequestError("invalid_input", "PNG must have bounded chunks before its image data")
+        raise RequestError("invalid_input", "PNG must contain image data and end at IEND within 4096 chunks after IHDR")
 
 
 def validate_media(path, suffix):

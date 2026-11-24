@@ -110,6 +110,10 @@ def gpu_sample():
     return {"time": time.time(), "gpus": samples}
 
 
+def gpus_idle(sample):
+    return all(0 <= s["utilization_percent"] <= 5 and 0 <= s["memory_mib"] <= 22000 for s in sample["gpus"])
+
+
 def make_graph(prompt, preset, seed, job_id):
     width, height, frames, steps = PRESETS[preset]
     graph = json.loads((CONFIG / "workflow.json").read_text())
@@ -229,7 +233,7 @@ class PromptRejected(RuntimeError):
 
 
 class PromptSubmissionLost(RuntimeError):
-    """The unacknowledged prompt was absent from all queue and history polls."""
+    """The prompt was unacknowledged and absent throughout an idle GPU window."""
 
 
 def submit_product_prompt(job, graph):
@@ -306,7 +310,7 @@ def generate(job, prompt, lease=None, *, negative=None):
         if lease is None:
             raise RuntimeError("Compute is reserved by another video/audio job")
         sample = gpu_sample()
-        if any(s["utilization_percent"] > 5 or s["memory_mib"] > 22000 for s in sample["gpus"]):
+        if not gpus_idle(sample):
             raise RuntimeError("Rack GPUs are busy; refusing to start a competing job")
         if kind and any(s["temperature_c"] >= 62 for s in sample["gpus"]):
             raise RuntimeError("Rack GPUs must be below 62 C for a product job")
@@ -336,7 +340,17 @@ def generate(job, prompt, lease=None, *, negative=None):
         lost_submission_deadline = poll_start + LOST_SUBMISSION_SECONDS if kind and not acknowledged else None
         misses, first_miss = 0, None
         while time.monotonic() < deadline:
-            job["telemetry"].append(gpu_sample())
+            try:
+                sample = gpu_sample()
+            except (OSError, subprocess.SubprocessError, ValueError, IndexError, RuntimeError, csv.Error):
+                if not kind or acknowledged:
+                    raise
+                # Keep reconciling an unconfirmed submission without the early release path.
+                lost_submission_deadline = None
+            else:
+                job["telemetry"].append(sample)
+                if lost_submission_deadline is not None and not gpus_idle(sample):
+                    lost_submission_deadline = None
             try:
                 if kind and observe_product_queue(job):
                     acknowledged = True

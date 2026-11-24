@@ -5,6 +5,7 @@ import io
 import json
 from pathlib import Path
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
@@ -199,10 +200,37 @@ class ProductTests(unittest.TestCase):
             status, _, response = self.upload(url, truncated, hashlib.sha256(truncated).hexdigest(), "wav")
             self.assertEqual((status, response["code"]), (400, "invalid_input"))
 
+    def test_upload_rejects_duplicate_wav_data_and_allows_metadata(self):
+        pcm = wav(16)
+        format_chunk, data_chunk = pcm[12:36], pcm[36:]
+        list_chunk = b"LIST" + struct.pack("<I", 4) + b"INFO"
+        fact_chunk = b"fact" + struct.pack("<II", 4, 16)
+
+        def riff(chunks):
+            return b"RIFF" + struct.pack("<I", len(chunks) + 4) + b"WAVE" + chunks
+
+        duplicate = riff(format_chunk + data_chunk + list_chunk + wav(1024)[36:])
+        with server(api.Handler) as url:
+            digest = hashlib.sha256(duplicate).hexdigest()
+            status, _, response = self.upload(url, duplicate, digest, "wav")
+            self.assertEqual((status, response["code"]), (400, "invalid_input"))
+            self.assertFalse(product.input_path(self.root, digest, "wav").exists())
+
+            metadata = riff(format_chunk + list_chunk + data_chunk + fact_chunk) + b"trailing bytes"
+            digest = hashlib.sha256(metadata).hexdigest()
+            self.assertEqual(self.upload(url, metadata, digest, "wav")[0], 201)
+            self.assertEqual(product.wav_info(product.input_path(self.root, digest, "wav")), (16, 24000))
+
+            metadata = riff(format_chunk + fact_chunk + data_chunk + list_chunk)
+            self.assertEqual(self.upload(url, metadata, hashlib.sha256(metadata).hexdigest(), "wav")[0], 201)
+
     def test_upload_refuses_animated_png_and_bounds_chunk_walk(self):
         text_chunk = png_chunk(b"tEXt", b"Comment\0acTL is payload here")
+        animation_control = png_chunk(b"acTL", struct.pack(">II", 2, 0))
+        end_chunk = png_chunk(b"IEND")
+        through_image_data = IHDR + png_chunk(b"IDAT", PIXEL)
         animated = (
-            IHDR + text_chunk + png_chunk(b"acTL", struct.pack(">II", 2, 0))
+            IHDR + text_chunk + animation_control
             + png_chunk(b"fcTL", struct.pack(">IIIIIHHBB", 0, 1, 1, 0, 0, 1, 24, 0, 0))
             + png_chunk(b"IDAT", PIXEL)
             + png_chunk(b"fcTL", struct.pack(">IIIIIHHBB", 1, 1, 1, 0, 0, 1, 24, 0, 0))
@@ -210,13 +238,16 @@ class ProductTests(unittest.TestCase):
         )
         with server(api.Handler) as url:
             for body, code in ((animated, "animated_png"), (IHDR, "invalid_input"),
+                               (through_image_data + animation_control + end_chunk, "animated_png"),
+                               (through_image_data, "invalid_input"),
+                               (PNG + animation_control, "invalid_input"),
                                (IHDR + struct.pack(">I4s", 0xffffffff, b"tEXt"), "invalid_input"),
-                               (IHDR + text_chunk * 4096 + PNG[len(IHDR):], "invalid_input")):
+                               (through_image_data + text_chunk * 4095 + end_chunk, "invalid_input")):
                 digest = hashlib.sha256(body).hexdigest()
                 status, _, response = self.upload(url, body, digest, "png")
                 self.assertEqual((status, response["code"]), (400, code))
                 self.assertFalse(product.input_path(self.root, digest, "png").exists())
-            static = IHDR + text_chunk + PNG[len(IHDR):]
+            static = through_image_data + text_chunk * 4094 + end_chunk
             self.assertEqual(self.upload(url, static, hashlib.sha256(static).hexdigest(), "png")[0], 201)
 
     def test_upload_deadline_cleans_up_slow_body_and_releases_slot(self):
@@ -378,7 +409,7 @@ class ProductTests(unittest.TestCase):
         self.assertEqual(graph["111"]["inputs"]["seed"], 43)
         self.assertEqual(graph["8"]["inputs"]["audio"], f"studio-v1/{self.audio_sha}.wav")
 
-    def poll_unconfirmed(self, *, bad_queue=None, bad_history=None):
+    def poll_missing_prompt(self, *, acknowledge=False, queue_at_five=None, bad_history=None, gpu_at_five=None):
         job = self.video_job()
         clock = FakeClock()
         queue_polls = []
@@ -387,10 +418,12 @@ class ProductTests(unittest.TestCase):
         def reply(path, body=None):
             if path == "/queue" and body is None:
                 queue_polls.append(clock.elapsed)
-                if clock.elapsed == 5 and bad_queue is not None:
-                    return bad_queue
+                if clock.elapsed == 5 and queue_at_five is not None:
+                    return queue_at_five
                 return EMPTY
             if path == "/prompt":
+                if acknowledge:
+                    return {"prompt_id": body["prompt_id"]}
                 raise TimeoutError("lost acknowledgment")
             if path.startswith("/history/"):
                 history_polls.append(clock.elapsed)
@@ -400,8 +433,16 @@ class ProductTests(unittest.TestCase):
                     return bad_history
                 return {}
 
+        def sample():
+            if clock.elapsed == 5 and gpu_at_five is not None:
+                if isinstance(gpu_at_five, Exception):
+                    raise gpu_at_five
+                return gpu_at_five
+            return self.sample
+
         with patch.object(api, "engine", side_effect=reply) as engine, \
-                patch.object(api, "gpu_sample", return_value=self.sample), \
+                patch.object(api, "gpu_sample", side_effect=sample), \
+                patch.object(api.uuid, "uuid4", return_value=uuid.UUID(PROMPT_ID)), \
                 patch.object(api.time, "sleep", clock.advance), patch.object(api.time, "monotonic", clock.monotonic):
             api.ACTIVE = job["id"]
             lease = api.acquire_compute()
@@ -415,8 +456,14 @@ class ProductTests(unittest.TestCase):
         self.assert_engine_mutations(engine)
         return job, queue_polls, history_polls
 
-    def test_lost_submission_releases_lease_after_120_seconds_of_clean_polls(self):
-        job, queue_polls, history_polls = self.poll_unconfirmed()
+    def assert_watchdog_timeout(self, job, queue_polls, history_polls):
+        self.assertTrue(job["error"].startswith("TimeoutError: Video exceeded"), job["error"])
+        self.assertEqual(history_polls, list(range(0, 1200, 5)))
+        self.assertEqual(queue_polls, [0] + history_polls + [1200, 1200])
+
+    def test_lost_submission_releases_lease_after_120_seconds_of_clean_idle_polls(self):
+        at_idle_limit = {"gpus": [{**self.sample["gpus"][0], "utilization_percent": 5, "memory_mib": 22000}]}
+        job, queue_polls, history_polls = self.poll_missing_prompt(gpu_at_five=at_idle_limit)
         self.assertFalse(api.UNSAFE)
         self.assertTrue(job["error"].startswith("PromptSubmissionLost:"))
         self.assertEqual(history_polls, list(range(0, 121, 5)))
@@ -424,19 +471,47 @@ class ProductTests(unittest.TestCase):
         with api.acquire_compute():
             pass
 
-    def test_failed_poll_keeps_unconfirmed_submission_on_conservative_watchdog(self):
-        job, queue_polls, history_polls = self.poll_unconfirmed(bad_history=TimeoutError("one slow reply"))
+    def test_acknowledged_submission_keeps_conservative_watchdog(self):
+        job, queue_polls, history_polls = self.poll_missing_prompt(acknowledge=True)
+        self.assert_watchdog_timeout(job, queue_polls, history_polls)
+        self.assertFalse(api.UNSAFE)
+
+    def test_prompt_seen_in_queue_keeps_watchdog_after_it_disappears(self):
+        owned = {**EMPTY, "queue_pending": [[1, PROMPT_ID]]}
+        job, queue_polls, history_polls = self.poll_missing_prompt(queue_at_five=owned)
+        self.assert_watchdog_timeout(job, queue_polls, history_polls)
+        self.assertFalse(api.UNSAFE)
+
+    def test_latched_hold_blocks_lost_submission(self):
+        foreign = {**EMPTY, "queue_running": [[1, "foreign"]]}
+        job, queue_polls, history_polls = self.poll_missing_prompt(queue_at_five=foreign)
+        self.assert_watchdog_timeout(job, queue_polls, history_polls)
+        self.assertEqual(job["unexpected_work_seen"], ["foreign"])
         self.assertTrue(api.UNSAFE)
-        self.assertTrue(job["error"].startswith("TimeoutError: Video exceeded"))
+
+    def test_busy_gpu_sample_blocks_lost_submission(self):
+        busy = {"gpus": [{**self.sample["gpus"][0], "memory_mib": 22001}]}
+        job, queue_polls, history_polls = self.poll_missing_prompt(gpu_at_five=busy)
+        self.assert_watchdog_timeout(job, queue_polls, history_polls)
+        self.assertTrue(api.UNSAFE)
+
+    def test_unreadable_gpu_sample_blocks_lost_submission(self):
+        job, queue_polls, history_polls = self.poll_missing_prompt(
+            gpu_at_five=subprocess.TimeoutExpired("nvidia-smi", 10))
+        self.assert_watchdog_timeout(job, queue_polls, history_polls)
+        self.assertTrue(api.UNSAFE)
+
+    def test_failed_poll_keeps_unconfirmed_submission_on_conservative_watchdog(self):
+        job, queue_polls, history_polls = self.poll_missing_prompt(bad_history=TimeoutError("one slow reply"))
+        self.assert_watchdog_timeout(job, queue_polls, history_polls)
+        self.assertTrue(api.UNSAFE)
         self.assertEqual(job["poll_misses"], 1)
-        self.assertEqual(history_polls, list(range(0, 1200, 5)))
-        self.assertEqual(queue_polls, [0] + history_polls + [1200, 1200])
 
     def test_malformed_queue_or_history_keeps_unconfirmed_submission_held(self):
-        for fault in ({"bad_queue": {"queue_running": []}}, {"bad_history": []},
+        for fault in ({"queue_at_five": {"queue_running": []}}, {"bad_history": []},
                       {"bad_history": {"foreign": {}}}):
             with self.subTest(fault=fault), patch.object(api, "UNSAFE", False):
-                job, queue_polls, _ = self.poll_unconfirmed(**fault)
+                job, queue_polls, _ = self.poll_missing_prompt(**fault)
                 self.assertTrue(api.UNSAFE)
                 self.assertTrue(job["error"].startswith("ValueError: Malformed ComfyUI"))
                 self.assertEqual(queue_polls[-2:], [5, 5])
