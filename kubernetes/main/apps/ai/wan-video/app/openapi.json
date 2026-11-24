@@ -243,7 +243,7 @@
             }
           }
         ],
-        "description": "Upload raw bytes with Content-Length from 1 to 19,999,999. The digest is verified before publication.",
+        "description": "Upload raw bytes with Content-Length from 1 to 19,999,999. Use a single-frame PNG (1 to 4096 pixels per side) or 16-bit PCM WAV (one or two channels at 16000, 22050, 24000, 44100 or 48000 Hz). The digest is verified before publication.",
         "requestBody": {
           "required": true,
           "content": {
@@ -317,7 +317,7 @@
             }
           },
           "400": {
-            "description": "Invalid size, input or digest",
+            "description": "Invalid size, input or digest, including animated_png or unsupported_wav_format",
             "content": {
               "application/json": {
                 "schema": {
@@ -328,6 +328,16 @@
           },
           "409": {
             "description": "Another upload is active or the stored input hash differs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "upload_timeout: the body exceeded 15 seconds without progress or the total budget of 30 seconds plus Content-Length divided by 131072 bytes per second",
             "content": {
               "application/json": {
                 "schema": {

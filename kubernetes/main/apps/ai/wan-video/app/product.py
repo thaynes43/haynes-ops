@@ -7,7 +7,6 @@ import re
 import shutil
 import struct
 import tempfile
-import wave
 
 VERSION = "1.0.0"
 MAX_JSON = 65536  # Two 4096-character prompts, including JSON Unicode escapes.
@@ -23,6 +22,8 @@ JOB_ROUTE = re.compile(r"/v1/jobs/(i2v|s2v|foley)/([0-9a-f]{32})(/file)?")
 INPUT_ROUTE = re.compile(r"/v1/inputs/([0-9a-f]{64})\.(png|wav)")
 SHA256 = re.compile(r"[0-9a-f]{64}")
 PNG = b"\x89PNG\r\n\x1a\n"
+WAV_RATES = {16000, 22050, 24000, 44100, 48000}
+WAV_PCM_SUBFORMAT = bytes.fromhex("01000000 0000 1000 8000 00aa00389b71")
 NEGATIVE = (
     "changing doll identity, changing faces, new faces, extra people, extra dolls, human hands, text, "
     "subtitles, watermark, camera shake, fast motion, cuts, scene change, blurry, distorted, melting"
@@ -128,29 +129,81 @@ def input_path(root, sha256, suffix):
 
 
 def wav_info(path):
-    with path.open("rb") as source, wave.open(source) as reader:
-        frames, rate = reader.getnframes(), reader.getframerate()
-        frame_size = reader.getnchannels() * reader.getsampwidth()
-        size = frames * frame_size
-        if not 0 < size <= MAX_UPLOAD or not rate or len(reader.readframes(frames)) != size:
-            raise ValueError("WAV has missing samples")
-        return frames, rate
+    """Read the exact PCM bit depth and verify the declared samples fit in the file."""
+    with path.open("rb") as source:
+        size = os.fstat(source.fileno()).st_size
+        try:
+            riff, length, kind = struct.unpack("<4sI4s", source.read(12))
+            end = length + 8
+            if riff != b"RIFF" or kind != b"WAVE" or not 12 <= end <= size <= MAX_UPLOAD:
+                raise ValueError("Invalid RIFF header")
+            frame_size = 0
+            while source.tell() + 8 <= end:
+                chunk, length = struct.unpack("<4sI", source.read(8))
+                next_chunk = source.tell() + length + (length & 1)
+                if next_chunk > end:
+                    raise ValueError("Incomplete RIFF chunk")
+                if chunk == b"fmt ":
+                    if frame_size:
+                        raise ValueError("Duplicate WAV format")
+                    fmt = source.read(min(length, 40))
+                    encoding, channels, rate, _, alignment, bits = struct.unpack_from("<HHIIHH", fmt)
+                    # WAVE_FORMAT_EXTENSIBLE names the PCM encoding with a GUID.
+                    pcm = encoding == 1 or (
+                        encoding == 0xfffe and len(fmt) == 40
+                        and struct.unpack_from("<H", fmt, 16)[0] >= 22
+                        and struct.unpack_from("<H", fmt, 18)[0] == 16
+                        and fmt[24:40] == WAV_PCM_SUBFORMAT
+                    )
+                    if not pcm or channels not in (1, 2) or rate not in WAV_RATES or bits != 16:
+                        raise RequestError("unsupported_wav_format",
+                                           "Use 16-bit PCM WAV with one or two channels at "
+                                           "16000, 22050, 24000, 44100 or 48000 Hz")
+                    frame_size = channels * 2
+                    if alignment != frame_size:
+                        raise ValueError("Invalid WAV frame alignment")
+                if chunk == b"data":
+                    if not frame_size or not length or length % frame_size:
+                        raise ValueError("WAV has missing samples")
+                    return length // frame_size, rate
+                source.seek(next_chunk)
+            raise ValueError("WAV has no sample data")
+        except RequestError:
+            raise
+        except (ValueError, struct.error) as exc:
+            raise RequestError("invalid_input", "Malformed or incomplete PCM WAV") from exc
+
+
+def validate_png(path):
+    with path.open("rb") as source:
+        size = os.fstat(source.fileno()).st_size
+        header = source.read(33)
+        if len(header) != 33 or header[:16] != PNG + b"\x00\x00\x00\x0dIHDR":
+            raise RequestError("invalid_input", "Invalid PNG header")
+        width, height = struct.unpack(">II", header[16:24])
+        if not 1 <= width <= 4096 or not 1 <= height <= 4096:
+            raise RequestError("invalid_input", "PNG dimensions are outside the input limit")
+        for _ in range(4096):
+            chunk = source.read(8)
+            if len(chunk) != 8:
+                break
+            length, kind = struct.unpack(">I4s", chunk)
+            end = source.tell() + length + 4  # Data and CRC.
+            if end > size or kind == b"IEND":
+                break
+            if kind == b"acTL":
+                raise RequestError("animated_png", "Use a single-frame PNG")
+            if kind == b"IDAT":
+                return
+            source.seek(end)
+        raise RequestError("invalid_input", "PNG must have bounded chunks before its image data")
 
 
 def validate_media(path, suffix):
-    try:
-        if suffix == "wav":
-            wav_info(path)
-        else:
-            with path.open("rb") as source:
-                header = source.read(33)
-            if len(header) != 33 or header[:16] != PNG + b"\x00\x00\x00\x0dIHDR":
-                raise ValueError("Invalid PNG header")
-            width, height = struct.unpack(">II", header[16:24])
-            if not 1 <= width <= 4096 or not 1 <= height <= 4096:
-                raise ValueError("PNG dimensions are outside the input limit")
-    except (wave.Error, EOFError, ValueError, struct.error) as exc:
-        raise RequestError("invalid_input", "Invalid PNG header or incomplete PCM WAV") from exc
+    if suffix == "wav":
+        wav_info(path)
+    else:
+        validate_png(path)
 
 
 def check_video_inputs(root, kind, request):
@@ -198,20 +251,20 @@ def verify_existing_input(path, sha256):
         raise RequestError("input_conflict", "Stored input failed SHA-256 verification", 409)
 
 
-def stage_input(root, sha256, suffix, source, size):
+def stage_input(root, sha256, suffix, read, size):
     path = input_path(root, sha256, suffix)
     path.parent.mkdir(parents=True, exist_ok=True)
     checksum = hashlib.sha256()
     if path.exists():
         # A replay never needs a temporary file or more persistent space.
-        for chunk in read_blocks(source, size):
+        for chunk in read_blocks(read, size):
             checksum.update(chunk)
         check_input_hash(checksum, sha256)
         verify_existing_input(path, sha256)
         return False
     check_input_capacity(path.parent, size)
     with tempfile.NamedTemporaryFile(dir=path.parent) as temp:
-        for chunk in read_blocks(source, size):
+        for chunk in read_blocks(read, size):
             checksum.update(chunk)
             temp.write(chunk)
         check_input_hash(checksum, sha256)
@@ -224,9 +277,9 @@ def stage_input(root, sha256, suffix, source, size):
     return created
 
 
-def read_blocks(source, size):
+def read_blocks(read, size):
     while size:
-        chunk = source.read(min(size, 1024 * 1024))
+        chunk = read(min(size, 1024 * 1024))
         if not chunk:
             raise RequestError("invalid_input", "Upload ended before Content-Length bytes")
         size -= len(chunk)

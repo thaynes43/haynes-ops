@@ -9,7 +9,7 @@ import sys
 import tempfile
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, call as engine_call, patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import uuid
@@ -23,21 +23,37 @@ sys.path.insert(0, str(REPO / "scripts/controlfoley"))
 import product_foley
 
 
+def png_chunk(kind, data=b""):
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+
 EMPTY = {"queue_running": [], "queue_pending": []}
-PNG = (product.PNG + struct.pack(">I4sIIBBBBB", 13, b"IHDR", 1, 1, 8, 2, 0, 0, 0)
-       + struct.pack(">I", zlib.crc32(struct.pack(">4sIIBBBBB", b"IHDR", 1, 1, 8, 2, 0, 0, 0))))
+IHDR = product.PNG + png_chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
+PIXEL = zlib.compress(b"\0\0\0\0")
+PNG = IHDR + png_chunk(b"IDAT", PIXEL) + png_chunk(b"IEND")
 VIDEO = b"synthetic MP4 contents"
 STORY = "https://work.haynesnetwork.com/work_packages/458"
 JOB = "01" * 16
+PROMPT_ID = "ad7c6943-7d8a-45b6-b0b6-5dd6fbc529a7"
 FRAMES = 120
 
 
-def wav(frames):
+def wav(frames, rate=24000, channels=1, width=2):
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as writer:
-        writer.setparams((1, 2, 24000, frames, "NONE", "not compressed"))
-        writer.writeframes(b"\0\0" * frames)
+        writer.setparams((channels, width, rate, frames, "NONE", "not compressed"))
+        writer.writeframes(bytes(channels * width * frames))
     return buffer.getvalue()
+
+
+class FakeClock:
+    elapsed = 0
+
+    def monotonic(self):
+        return self.elapsed
+
+    def advance(self, seconds):
+        self.elapsed += seconds
 
 
 @contextmanager
@@ -97,6 +113,16 @@ class ProductTests(unittest.TestCase):
     def upload(self, url, body, digest, suffix):
         return call(url, f"/v1/inputs/{digest}.{suffix}", method="PUT", body=body)
 
+    def video_job(self):
+        return {**product.validate("i2v", self.i2v()), "id": JOB, "type": "i2v", "api_version": product.VERSION,
+                "state": "queued", "telemetry": []}
+
+    def assert_engine_mutations(self, engine, *, deletes=(), interrupts=()):
+        self.assertEqual([call.args[1]["delete"] for call in engine.call_args_list
+                          if call.args[0] == "/queue" and len(call.args) > 1], list(deletes))
+        self.assertEqual([call.args[1]["prompt_id"] for call in engine.call_args_list
+                          if call.args[0] == "/interrupt"], list(interrupts))
+
     def test_discovery_and_openapi_agree_on_all_profile_ids(self):
         with server(api.Handler) as url:
             code, _, response = call(url, "/v1/profiles")
@@ -146,6 +172,82 @@ class ProductTests(unittest.TestCase):
                         self.assertFalse(audio_path.exists())
                         self.assertEqual(self.upload(url, PNG, self.image_sha, "png")[0], 200)
             self.assertEqual(self.upload(url, self.audio, self.audio_sha, "wav")[0], 201)
+
+    def test_upload_accepts_only_supported_wav_formats(self):
+        pcm = wav(16)
+        cases = {
+            "1 Hz": wav(16, rate=1),
+            "44,101 Hz": wav(16, rate=44101),
+            "1,000,003 Hz": wav(16, rate=1000003),
+            "64 channels": wav(16, channels=64),
+            "24-bit": wav(16, width=3),
+            "12-bit": pcm[:34] + struct.pack("<H", 12) + pcm[36:],
+            "compressed": pcm[:20] + struct.pack("<H", 6) + pcm[22:],
+        }
+        with server(api.Handler) as url:
+            for label, body in cases.items():
+                with self.subTest(label=label):
+                    digest = hashlib.sha256(body).hexdigest()
+                    status, _, response = self.upload(url, body, digest, "wav")
+                    self.assertEqual((status, response["code"]), (400, "unsupported_wav_format"))
+                    self.assertFalse(product.input_path(self.root, digest, "wav").exists())
+            for rate, channels in ((16000, 1), (22050, 2), (24000, 1), (44100, 2), (48000, 2)):
+                with self.subTest(rate=rate, channels=channels):
+                    body = wav(16, rate=rate, channels=channels)
+                    self.assertEqual(self.upload(url, body, hashlib.sha256(body).hexdigest(), "wav")[0], 201)
+            truncated = pcm[:-1]
+            status, _, response = self.upload(url, truncated, hashlib.sha256(truncated).hexdigest(), "wav")
+            self.assertEqual((status, response["code"]), (400, "invalid_input"))
+
+    def test_upload_refuses_animated_png_and_bounds_chunk_walk(self):
+        text_chunk = png_chunk(b"tEXt", b"Comment\0acTL is payload here")
+        animated = (
+            IHDR + text_chunk + png_chunk(b"acTL", struct.pack(">II", 2, 0))
+            + png_chunk(b"fcTL", struct.pack(">IIIIIHHBB", 0, 1, 1, 0, 0, 1, 24, 0, 0))
+            + png_chunk(b"IDAT", PIXEL)
+            + png_chunk(b"fcTL", struct.pack(">IIIIIHHBB", 1, 1, 1, 0, 0, 1, 24, 0, 0))
+            + png_chunk(b"fdAT", struct.pack(">I", 2) + PIXEL) + png_chunk(b"IEND")
+        )
+        with server(api.Handler) as url:
+            for body, code in ((animated, "animated_png"), (IHDR, "invalid_input"),
+                               (IHDR + struct.pack(">I4s", 0xffffffff, b"tEXt"), "invalid_input"),
+                               (IHDR + text_chunk * 4096 + PNG[len(IHDR):], "invalid_input")):
+                digest = hashlib.sha256(body).hexdigest()
+                status, _, response = self.upload(url, body, digest, "png")
+                self.assertEqual((status, response["code"]), (400, code))
+                self.assertFalse(product.input_path(self.root, digest, "png").exists())
+            static = IHDR + text_chunk + PNG[len(IHDR):]
+            self.assertEqual(self.upload(url, static, hashlib.sha256(static).hexdigest(), "png")[0], 201)
+
+    def test_upload_deadline_cleans_up_slow_body_and_releases_slot(self):
+        clock = FakeClock()
+        handler = api.Handler.__new__(api.Handler)
+        handler.path = f"/v1/inputs/{self.image_sha}.png"
+        handler.headers = {"Content-Length": str(len(PNG))}
+        handler.connection = Mock()
+        handler.respond = Mock()
+        handler.rfile = Mock()
+        path = product.input_path(self.root, self.image_sha, "png")
+
+        def trickle(count):
+            self.assertLessEqual(count, len(PNG))
+            self.assertEqual(len(list(path.parent.iterdir())), 1)
+            clock.advance(12)
+            return b"x"
+
+        handler.rfile.read1.side_effect = trickle
+        with patch.object(api.time, "monotonic", clock.monotonic):
+            handler.do_PUT()
+            handler.respond.assert_called_once_with(408, {"code": "upload_timeout", "error": "Input upload timed out"})
+            self.assertTrue(handler.close_connection)
+            self.assertEqual(handler.rfile.read1.call_count, 3)
+            timeouts = [call.args[0] for call in handler.connection.settimeout.call_args_list]
+            self.assertEqual(timeouts[:2], [15, 15])
+            self.assertAlmostEqual(timeouts[2], 6 + len(PNG) / (128 * 1024))
+            self.assertEqual(timeouts[3:], [15])
+            self.assertEqual(list(path.parent.iterdir()), [])
+            handler.rfile = io.BytesIO(PNG)
+            self.assertEqual(handler.put_input(self.image_sha, "png")[0], 201)
 
     def test_rejects_wrong_profile_unknown_fields_invalid_inputs_and_graph_route(self):
         with server(api.Handler) as url, patch.object(api, "engine") as engine:
@@ -276,30 +378,71 @@ class ProductTests(unittest.TestCase):
         self.assertEqual(graph["111"]["inputs"]["seed"], 43)
         self.assertEqual(graph["8"]["inputs"]["audio"], f"studio-v1/{self.audio_sha}.wav")
 
-    def test_unconfirmed_prompt_holds_after_watchdog_without_retrying_the_post(self):
-        job = {**product.validate("i2v", self.i2v()), "id": JOB, "type": "i2v", "api_version": product.VERSION,
-               "state": "queued", "telemetry": []}
+    def poll_unconfirmed(self, *, bad_queue=None, bad_history=None):
+        job = self.video_job()
+        clock = FakeClock()
+        queue_polls = []
+        history_polls = []
 
         def reply(path, body=None):
             if path == "/queue" and body is None:
+                queue_polls.append(clock.elapsed)
+                if clock.elapsed == 5 and bad_queue is not None:
+                    return bad_queue
                 return EMPTY
             if path == "/prompt":
                 raise TimeoutError("lost acknowledgment")
             if path.startswith("/history/"):
+                history_polls.append(clock.elapsed)
+                if clock.elapsed == 5 and bad_history is not None:
+                    if isinstance(bad_history, Exception):
+                        raise bad_history
+                    return bad_history
                 return {}
-            self.fail("unexpected engine mutation: " + path)
 
         with patch.object(api, "engine", side_effect=reply) as engine, \
-                patch.object(api, "gpu_sample", return_value=self.sample), patch.object(api.time, "sleep"), \
-                patch.object(api.time, "monotonic", side_effect=[0, 1, 1200]):
-            api.generate(job, "p", negative="n")
-        self.assertTrue(api.UNSAFE)
+                patch.object(api, "gpu_sample", return_value=self.sample), \
+                patch.object(api.time, "sleep", clock.advance), patch.object(api.time, "monotonic", clock.monotonic):
+            api.ACTIVE = job["id"]
+            lease = api.acquire_compute()
+            api.generate(job, "p", lease, negative="n")
+        self.assertTrue(lease.closed)
+        self.assertIsNone(api.ACTIVE)
         self.assertEqual(job["state"], "failed")
-        self.assertEqual([c.args[0] for c in engine.call_args_list].count("/prompt"), 1)
+        self.assertEqual(json.loads(api.job_path(JOB).read_text())["error"], job["error"])
+        prompt_posts = [call.args[1] for call in engine.call_args_list if call.args[0] == "/prompt"]
+        self.assertEqual([post["prompt_id"] for post in prompt_posts], [job["prompt_id"]])
+        self.assert_engine_mutations(engine)
+        return job, queue_polls, history_polls
+
+    def test_lost_submission_releases_lease_after_120_seconds_of_clean_polls(self):
+        job, queue_polls, history_polls = self.poll_unconfirmed()
+        self.assertFalse(api.UNSAFE)
+        self.assertTrue(job["error"].startswith("PromptSubmissionLost:"))
+        self.assertEqual(history_polls, list(range(0, 121, 5)))
+        self.assertEqual(queue_polls, [0] + history_polls)
+        with api.acquire_compute():
+            pass
+
+    def test_failed_poll_keeps_unconfirmed_submission_on_conservative_watchdog(self):
+        job, queue_polls, history_polls = self.poll_unconfirmed(bad_history=TimeoutError("one slow reply"))
+        self.assertTrue(api.UNSAFE)
+        self.assertTrue(job["error"].startswith("TimeoutError: Video exceeded"))
+        self.assertEqual(job["poll_misses"], 1)
+        self.assertEqual(history_polls, list(range(0, 1200, 5)))
+        self.assertEqual(queue_polls, [0] + history_polls + [1200, 1200])
+
+    def test_malformed_queue_or_history_keeps_unconfirmed_submission_held(self):
+        for fault in ({"bad_queue": {"queue_running": []}}, {"bad_history": []},
+                      {"bad_history": {"foreign": {}}}):
+            with self.subTest(fault=fault), patch.object(api, "UNSAFE", False):
+                job, queue_polls, _ = self.poll_unconfirmed(**fault)
+                self.assertTrue(api.UNSAFE)
+                self.assertTrue(job["error"].startswith("ValueError: Malformed ComfyUI"))
+                self.assertEqual(queue_polls[-2:], [5, 5])
 
     def test_explicit_engine_rejection_has_no_prompt_retry_or_hold(self):
-        job = {**product.validate("i2v", self.i2v()), "id": JOB, "type": "i2v", "api_version": product.VERSION,
-               "state": "queued", "telemetry": []}
+        job = self.video_job()
         rejection = HTTPError("engine", 400, "rejected", None, None)
         with patch.object(api, "engine", side_effect=[EMPTY, rejection]) as engine, \
                 patch.object(api, "gpu_sample", return_value=self.sample):
@@ -308,26 +451,61 @@ class ProductTests(unittest.TestCase):
         self.assertEqual(job["state"], "failed")
         self.assertEqual([c.args[0] for c in engine.call_args_list], ["/queue", "/prompt"])
 
-    def test_foreign_queue_work_remains_and_latches_hold(self):
-        job = {**product.validate("i2v", self.i2v()), "id": JOB, "type": "i2v", "api_version": product.VERSION,
-               "state": "queued", "telemetry": []}
-        future = {"queue_running": [[1, "foreign", {}, {"client_id": "other"}]], "queue_pending": []}
+    def fail_product_render(self, *queues):
+        job = self.video_job()
+        queue_reads = iter((EMPTY, *queues))
 
         def reply(path, body=None):
-            if path == "/queue":
-                return future if job.get("prompt_id") else EMPTY
+            if path == "/queue" and body is None:
+                return next(queue_reads, EMPTY)
             if path == "/prompt":
                 return {"prompt_id": body["prompt_id"]}
-            if path.startswith("/history/"):
+            if path == "/history/" + PROMPT_ID:
                 return {job["prompt_id"]: {"status": {"status_str": "error"}}}
-            self.fail("unexpected engine mutation: " + path)
 
-        with patch.object(api, "engine", side_effect=reply), patch.object(api, "gpu_sample", return_value=self.sample):
+        with patch.object(api, "engine", side_effect=reply) as engine, \
+                patch.object(api, "gpu_sample", return_value=self.sample), patch.object(api.time, "sleep"), \
+                patch.object(api.uuid, "uuid4", return_value=uuid.UUID(PROMPT_ID)):
             api.generate(job, "p", negative="n")
-        self.assertTrue(api.UNSAFE)
-        self.assertEqual(job["unexpected_work_seen"], ["foreign"])
         self.assertEqual(job["state"], "failed")
         self.assertEqual(json.loads(api.job_path(JOB).read_text())["state"], "failed")
+        return job, engine
+
+    def test_product_poll_records_foreign_work_and_latches_hold(self):
+        foreign = {**EMPTY, "queue_running": [[1, "foreign", {}, {"client_id": "other"}]]}
+        job, engine = self.fail_product_render(foreign, EMPTY, EMPTY)
+        self.assert_engine_mutations(engine)
+        self.assertEqual(job.get("unexpected_work_seen"), ["foreign"])
+        self.assertTrue(api.UNSAFE)
+
+    def test_cleanup_never_interrupts_foreign_running_work(self):
+        mixed = {**EMPTY, "queue_running": [[1, PROMPT_ID], [2, "foreign", {}, {"client_id": "other"}]]}
+        _, engine = self.fail_product_render(EMPTY, mixed)
+        self.assert_engine_mutations(engine)
+        self.assertTrue(api.UNSAFE)
+
+    def test_cleanup_deletes_only_owned_pending_work_and_holds_for_foreign(self):
+        mixed = {**EMPTY, "queue_pending": [[1, PROMPT_ID], [2, "foreign", {}, {"client_id": "other"}]]}
+        _, engine = self.fail_product_render(EMPTY, mixed, EMPTY)
+        self.assert_engine_mutations(engine, deletes=([PROMPT_ID],))
+        self.assertTrue(api.UNSAFE)
+
+    def test_cleanup_holds_for_foreign_work_arriving_after_owned_interrupt(self):
+        owned = {**EMPTY, "queue_running": [[1, PROMPT_ID]]}
+        foreign = {**EMPTY, "queue_pending": [[2, "foreign"]]}
+        _, engine = self.fail_product_render(EMPTY, owned, foreign, EMPTY)
+        self.assert_engine_mutations(engine, interrupts=(PROMPT_ID,))
+        self.assertEqual(engine.call_args_list[-2:], [engine_call("/interrupt", {"prompt_id": PROMPT_ID}),
+                                                      engine_call("/queue")])
+        self.assertTrue(api.UNSAFE)
+
+    def test_cleanup_waits_for_owned_pending_work_to_disappear(self):
+        owned = {**EMPTY, "queue_pending": [[1, PROMPT_ID]]}
+        _, engine = self.fail_product_render(EMPTY, owned, owned, EMPTY)
+        self.assert_engine_mutations(engine, deletes=([PROMPT_ID],))
+        self.assertEqual(engine.call_args_list[-3:], [engine_call("/queue", {"delete": [PROMPT_ID]}),
+                                                      engine_call("/queue"), engine_call("/queue")])
+        self.assertFalse(api.UNSAFE)
 
     def test_restart_marks_typed_jobs_failed_without_replay(self):
         for kind in ("i2v", "s2v", "foley"):
@@ -351,7 +529,7 @@ class ProductTests(unittest.TestCase):
         engine.assert_not_called()
         self.assertEqual(job["state"], "failed")
         retry_id = "0f" * 16
-        product.stage_input(self.root, self.image_sha, "png", io.BytesIO(PNG), len(PNG))
+        product.stage_input(self.root, self.image_sha, "png", io.BytesIO(PNG).read, len(PNG))
         with patch.object(api.threading, "Thread", side_effect=RuntimeError("simulated")):
             code, status = api.submit_product_video("i2v", retry_id, product.validate("i2v", self.i2v()))
         self.assertEqual((code, status["state"]), (503, "failed"))

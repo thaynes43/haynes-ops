@@ -31,6 +31,10 @@ LOCK = threading.Lock()
 ACTIVE = None
 UNSAFE = False
 UPLOAD = threading.BoundedSemaphore(1)
+SOCKET_TIMEOUT = 15
+UPLOAD_GRACE_SECONDS = 30
+UPLOAD_BYTES_PER_SECOND = 128 * 1024
+LOST_SUBMISSION_SECONDS = 120
 FOLEY = "http://127.0.0.1:8189"
 PRESETS = {"preview": (832, 480, 49, 20), "720p": (1280, 704, 81, 20)}
 
@@ -224,6 +228,10 @@ class PromptRejected(RuntimeError):
     """The engine replied to the submission with an explicit client error."""
 
 
+class PromptSubmissionLost(RuntimeError):
+    """The unacknowledged prompt was absent from all queue and history polls."""
+
+
 def submit_product_prompt(job, graph):
     # The installed engine accepts canonical UUIDs on /prompt. Record the
     # UUID and graph before the one submission, so history can settle a
@@ -257,6 +265,18 @@ def observe_product_queue(job):
         UNSAFE = True
         job["unexpected_work_seen"] = sorted(foreign | set(job.get("unexpected_work_seen", [])))
     return job["prompt_id"] in ids
+
+
+def product_history(prompt_id):
+    histories = engine("/history/" + prompt_id)
+    if isinstance(histories, dict):
+        if not histories:
+            return None
+        if histories.keys() == {prompt_id}:
+            history = histories[prompt_id]
+            if isinstance(history, dict) and history:
+                return history
+    raise ValueError("Malformed ComfyUI history response")
 
 
 def store_product_video(job, history):
@@ -311,14 +331,16 @@ def generate(job, prompt, lease=None, *, negative=None):
         if acknowledged:
             job.update(state="running", started_at=time.time())
             save(job)
-        deadline = time.monotonic() + timeout
+        poll_start = time.monotonic()
+        deadline = poll_start + timeout
+        lost_submission_deadline = poll_start + LOST_SUBMISSION_SECONDS if kind and not acknowledged else None
         misses, first_miss = 0, None
         while time.monotonic() < deadline:
             job["telemetry"].append(gpu_sample())
             try:
                 if kind and observe_product_queue(job):
                     acknowledged = True
-                history = engine("/history/" + prompt_id).get(prompt_id)
+                history = product_history(prompt_id) if kind else engine("/history/" + prompt_id).get(prompt_id)
                 acknowledged = acknowledged or bool(history)
                 misses, first_miss = 0, None
             except (OSError, HTTPException):
@@ -326,6 +348,7 @@ def generate(job, prompt, lease=None, *, negative=None):
                 # S2V clip. That is not a failed job: keep polling (the deadline still applies).
                 # Give up after 12 misses in a row or 90 s since the first of them, whichever
                 # comes first, so a dead ComfyUI does not hold the compute lease for long.
+                lost_submission_deadline = None
                 misses += 1
                 if first_miss is None:
                     first_miss = time.monotonic()
@@ -358,14 +381,18 @@ def generate(job, prompt, lease=None, *, negative=None):
                                 save(job)
                                 return
                 raise RuntimeError("ComfyUI completed without an MP4")
+            if (lost_submission_deadline is not None and not acknowledged and not UNSAFE
+                    and time.monotonic() >= lost_submission_deadline):
+                raise PromptSubmissionLost(
+                    f"No prompt in ComfyUI queue or history after {LOST_SUBMISSION_SECONDS} seconds")
             save(job)
             time.sleep(5)
         raise TimeoutError(f"Video exceeded the {timeout // 60}-minute job limit")
     except Exception as exc:
-        definite_rejection = isinstance(exc, PromptRejected)
-        if kind and submission_attempted and not acknowledged and not definite_rejection:
+        safe_to_release = isinstance(exc, (PromptRejected, PromptSubmissionLost))
+        if kind and submission_attempted and not acknowledged and not safe_to_release:
             UNSAFE = True
-        if submission_attempted and not definite_rejection:
+        if submission_attempted and not safe_to_release:
             try:
                 queue = engine_queue()
                 owned = lambda e: (len(e) > 3 and e[3].get("client_id") == job["id"]) or e[1] == job.get("prompt_id")
@@ -475,7 +502,7 @@ def foley_output(job):
 class Handler(BaseHTTPRequestHandler):
     def setup(self):
         super().setup()
-        self.connection.settimeout(15)
+        self.connection.settimeout(SOCKET_TIMEOUT)
 
     def log_message(self, fmt, *args):
         # No request bodies, prompts, query strings, or credentials in access logs.
@@ -567,10 +594,27 @@ class Handler(BaseHTTPRequestHandler):
         if not UPLOAD.acquire(blocking=False):
             raise product.RequestError("upload_busy", "Another input upload is active", 409)
         try:
-            created = product.stage_input(ROOT, sha256, suffix, self.rfile, size)
+            deadline = time.monotonic() + UPLOAD_GRACE_SECONDS + size / UPLOAD_BYTES_PER_SECOND
+            created = product.stage_input(ROOT, sha256, suffix, lambda count: self.read_upload(count, deadline), size)
         finally:
             UPLOAD.release()
+            self.connection.settimeout(SOCKET_TIMEOUT)
         return (201 if created else 200), {"sha256": sha256, "bytes": size}
+
+    def read_upload(self, count, deadline):
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError
+            self.connection.settimeout(min(SOCKET_TIMEOUT, remaining))
+            # read1 performs at most one raw read, even if the caller sends one byte at a time.
+            chunk = self.rfile.read1(count)
+            if time.monotonic() >= deadline:
+                raise TimeoutError
+            return chunk
+        except TimeoutError as exc:
+            self.close_connection = True
+            raise product.RequestError("upload_timeout", "Input upload timed out", 408) from exc
 
     def do_PUT(self):
         try:
