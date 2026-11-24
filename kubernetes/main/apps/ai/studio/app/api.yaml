@@ -1,0 +1,154 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: studio-api
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: studio-api
+  annotations:
+    secret.reloader.stakater.com/reload: studio-runtime-db,studio-oidc-client
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: studio-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: studio-api
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: studio-api
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: studio-api
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: api
+          image: ghcr.io/thaynes43/haynes-studio@sha256:8de1942e806c03146ad9543b0b6720ab439582a060eff5655f05963034565d20
+          command: [sh, -eu, -c]
+          args:
+            - |
+              # /readyz checks directory freshness. Check NFS publication primitives
+              # as this UID before serving, using one directory private to this start.
+              python - <<'PY'
+              import os
+              from pathlib import Path
+              from tempfile import TemporaryDirectory
+
+              from haynes_studio.store.local import LocalStore
+
+              probe = Path(os.environ["STUDIO_STORE_ROOT"]) / ".probe"
+              probe.mkdir(mode=0o700, exist_ok=True)
+              with TemporaryDirectory(dir=probe) as path:
+                  store = LocalStore(path)
+                  data = b"{}"
+                  blob = store.publish(data, scope="library", media_type="application/json")
+                  if store.publish(data, scope="library", media_type="application/json") != blob:
+                      raise OSError("Studio store could not adopt the existing blob")
+                  with store.open(blob.locator) as handle:
+                      if handle.read() != data:
+                          raise OSError("Studio store read-back failed")
+              PY
+              exec studio-api serve --host 0.0.0.0 --port 8000
+          env:
+            - name: STUDIO_DATABASE_SCHEMA
+              value: studio
+            - name: STUDIO_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: studio-runtime-db
+                  key: STUDIO_DATABASE_URL
+            - name: STUDIO_STORE_ROOT
+              value: /studio
+            - name: STUDIO_PUBLIC_ORIGIN
+              value: https://studio.haynesops.com
+            - name: STUDIO_OIDC_ISSUER
+              value: https://authentik.haynesnetwork.com/application/o/haynes-studio/
+            - name: STUDIO_OIDC_CLIENT_ID
+              value: haynes-studio
+            - name: STUDIO_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: studio-oidc-client
+                  key: STUDIO_OIDC_CLIENT_SECRET
+            - name: STUDIO_OIDC_ALLOWED_GROUPS
+              value: '["authentik Admins"]'
+          ports:
+            - name: http
+              containerPort: 8000
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 2
+          readinessProbe:
+            # The first request starts the store check and returns 503.
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 6
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 100m, memory: 160Mi}
+            limits: {memory: 320Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - name: media
+              mountPath: /studio
+              subPath: data/studio/api-store-v1
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: media
+          nfs:
+            server: gasha01.haynesnetwork
+            path: /hdd-nfs-repl
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: studio-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: studio-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: studio-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: studio-api

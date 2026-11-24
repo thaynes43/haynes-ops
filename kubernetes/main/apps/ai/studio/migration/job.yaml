@@ -1,0 +1,123 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: studio-migration
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Change this name and the Flux health check together for a changed Job spec.
+  name: studio-migrate-8de1942e806c
+  labels:
+    app.kubernetes.io/name: studio-migration
+spec:
+  # Keep the completed Job so Flux can continue to check it.
+  activeDeadlineSeconds: 300
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: studio-migration
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: studio-migration
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: migrate
+          image: ghcr.io/thaynes43/haynes-studio@sha256:8de1942e806c03146ad9543b0b6720ab439582a060eff5655f05963034565d20
+          command: [sh, -eu, -c]
+          args:
+            - |
+              python - <<'PY'
+              import os
+              import subprocess
+
+              import psycopg
+
+              def verify_login(dsn):
+                  with psycopg.connect(dsn) as conn:
+                      identity = conn.execute(
+                          "SELECT current_user, current_database(), ssl "
+                          "FROM pg_stat_ssl WHERE pid = pg_backend_pid()"
+                      ).fetchone()
+                      if identity != ("studio_migrator", "studio", True):
+                          raise ValueError("Unexpected migration identity or transport")
+                      for target, override in (
+                          ("other database", {"dbname": "postgres"}),
+                          ("plaintext", {"sslmode": "disable", "channel_binding": "disable"}),
+                      ):
+                          try:
+                              with psycopg.connect(dsn, **override):
+                                  pass
+                          except psycopg.OperationalError as error:
+                              if "pg_hba.conf rejects connection" not in str(error):
+                                  raise ValueError(f"Expected HBA rejection for {target}") from None
+                          else:
+                              raise ValueError(f"Unexpectedly allowed {target}")
+                          print(f"studio_migrator: HBA rejected {target}")
+
+                  print("studio_migrator: connected to studio over TLS")
+
+              def grant_runtime_access(dsn):
+                  with psycopg.connect(dsn) as conn:
+                      conn.execute("SET LOCAL lock_timeout = '5s'")
+                      conn.execute("SET LOCAL statement_timeout = '30s'")
+                      conn.execute("""
+                          GRANT USAGE ON SCHEMA studio TO studio_app;
+                          GRANT SELECT, INSERT ON studio.productions, studio.stories,
+                              studio.boards, studio.selections TO studio_app;
+                          REVOKE UPDATE ON studio.productions, studio.stories,
+                              studio.boards, studio.selections FROM studio_app;
+                          GRANT UPDATE (document) ON studio.productions, studio.stories TO studio_app;
+                          GRANT UPDATE (document, tombstone) ON studio.boards TO studio_app;
+                          GRANT UPDATE (document, revision) ON studio.selections TO studio_app;
+                          GRANT SELECT, INSERT ON studio.media_types, studio.draft_ids, studio.assets,
+                              studio.asset_versions, studio.asset_sources, studio.asset_media,
+                              studio.deliveries, studio.delivery_media TO studio_app;
+                          GRANT SELECT, INSERT, DELETE ON studio.login_attempts, studio.sessions,
+                              studio.story_asset_refs TO studio_app;
+                          GRANT SELECT ON studio.agent_keys, studio.agent_grants,
+                              studio.worker_tokens TO studio_app;
+                      """)
+                      revision = conn.execute("SELECT version_num FROM studio.alembic_version").fetchone()[0]
+                  print("Alembic revision:", revision)
+
+              try:
+                  dsn = os.environ["STUDIO_MIGRATION_DATABASE_URL"]
+                  verify_login(dsn)
+                  subprocess.run(["studio-api-migrate", "upgrade", "head"], check=True)
+                  grant_runtime_access(dsn)
+              except subprocess.CalledProcessError as error:
+                  raise SystemExit(error.returncode) from None
+              except psycopg.Error as error:
+                  raise SystemExit(f"Studio migration verification or grants failed ({type(error).__name__})") from None
+              PY
+          env:
+            - name: STUDIO_DATABASE_SCHEMA
+              value: studio
+            - name: STUDIO_MIGRATION_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: studio-migrator-db
+                  key: STUDIO_MIGRATION_DATABASE_URL
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 96Mi}
+            limits: {memory: 192Mi}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
