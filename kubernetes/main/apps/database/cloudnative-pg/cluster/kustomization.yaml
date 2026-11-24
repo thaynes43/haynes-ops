@@ -9,3 +9,6 @@ resources:
   - ./service.yaml
   - ./portal-runtime-db-externalsecret.yaml
   - ./portal-database.yaml
+  - ./studio-database.yaml
+  - ./studio-db-externalsecrets.yaml
+  - ./studio-db-secret-readers.yaml

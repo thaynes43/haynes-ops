@@ -46,6 +46,14 @@ def load(name):
     return yaml.load((PACKET / name).read_text(), Loader=BlueprintLoader)
 
 
+def load_component_guard():
+    component_path = ROOT / "scripts/tests/portal178-m5d/test_component.py"
+    spec = importlib.util.spec_from_file_location("portal_component_guard", component_path)
+    component = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(component)
+    return component
+
+
 def approved_portal_oidc_violations(path, doc):
     """Allow only the installed OIDC projection, including its exact contents."""
     expected = {
@@ -277,11 +285,14 @@ class Packet(unittest.TestCase):
         # Post-proof (2026-10-26): exactly the reviewed six rejects plus the one
         # runtime-only hostssl allow, before the two "host all" rejects.
         post_proof = load("cluster-portal.patch.yaml")["spec"]["postgresql"]["pg_hba"]
+        registered = load_component_guard().portal_hba_rules(registered, post_proof)
         self.assertEqual(registered, post_proof)
         self.assertEqual(registered, reject[:4] + [allow] + reject[4:])
-        self.assertEqual(reject, expected_reject_hba())
-        self.assertEqual(reject_stage_violations(reject, allow), [])
         self.assertEqual([line for line in registered if not line.endswith(" reject")], [allow])
+        registered_rejects = [line for line in registered if line.endswith(" reject")]
+        self.assertEqual(registered_rejects, expected_reject_hba())
+        self.assertEqual(reject_stage_violations(registered_rejects, allow), [])
+        self.assertEqual(compose_hba(registered_rejects, allow), registered)
         existing = [{"name": "unrelated-managed-role", "ensure": "present"}]
         synthetic_base = {"spec": {"managed": {"roles": existing}, "postgresql": {"pg_hba": reject}}}
         composed = compose_role_stage(synthetic_base, role_stage)
@@ -289,12 +300,42 @@ class Packet(unittest.TestCase):
         self.assertEqual(composed["spec"]["managed"]["roles"][0], existing[0])
         self.assertEqual([role["name"] for role in composed["spec"]["managed"]["roles"]],
                          ["unrelated-managed-role", RUNTIME, MIGRATOR])
-        combined = load("cluster-portal.patch.yaml")["spec"]["postgresql"]["pg_hba"]
-        self.assertNotEqual(reject_stage_violations(combined, allow), [])
+        self.assertNotEqual(reject_stage_violations(registered, allow), [])
         with self.assertRaises(AssertionError):
-            compose_hba(reject[:4] + [allow] + reject[4:], allow)
+            compose_hba(registered, allow)
         with self.assertRaises(AssertionError):
-            compose_hba(reject[:-1], allow)
+            compose_hba(registered_rejects[:-1], allow)
+
+    def test_portal_hba_guard_keeps_rules_in_reviewed_order(self):
+        component = load_component_guard()
+        reviewed = load("cluster-portal.patch.yaml")["spec"]["postgresql"]["pg_hba"]
+        tenant_allow = 'hostssl tenant tenant_runtime, "tenant migration" 10.42.0.0/16 scram-sha-256'
+        tenant_reject = "host all tenant_runtime,tenant_migration all reject"
+        self.assertEqual(component.portal_hba_rules(
+            [tenant_allow, *reviewed[:4], tenant_reject, *reviewed[4:],
+             'hostssl "all" tenant_runtime 10.42.0.0/16 scram-sha-256'], reviewed), reviewed)
+        for change, registered in (
+            ("portal line removed", reviewed[:-1]),
+            ("portal allow and reject swapped", reviewed[:4] + [reviewed[5], reviewed[4], reviewed[6]]),
+        ):
+            with self.subTest(change=change), self.assertRaisesRegex(AssertionError, "reviewed list or order"):
+                component.portal_hba_rules(registered, reviewed)
+
+    def test_portal_hba_guard_rejects_tenant_rules_reaching_portal(self):
+        component = load_component_guard()
+        reviewed = load("cluster-portal.patch.yaml")["spec"]["postgresql"]["pg_hba"]
+        for database, user, reason in (
+            ("tenant", f'tenant_runtime, "{RUNTIME}"', "names a portal role"),
+            ("tenant", "all", "user field must list explicit role names"),
+            ("tenant", "+tenant_group", "user field must list explicit role names"),
+            ("tenant", "/^dev_env_v2_portal_", "user field must list explicit role names"),
+            ("tenant", "@tenant-users", "user field must list explicit role names"),
+            ('tenant, "dev_env_v2_portal"', "tenant_runtime", "names the portal database"),
+            ("all", "tenant_runtime", "only the reviewed allow may admit connections"),
+        ):
+            line = f"hostssl {database} {user} 10.42.0.0/16 scram-sha-256"
+            with self.subTest(line=line), self.assertRaisesRegex(AssertionError, f"pg_hba line 1 .*{reason}"):
+                component.portal_hba_rules([line, *reviewed], reviewed)
 
     def test_live_mapping_semantics(self):
         expression = next(entry["attrs"]["expression"] for entry in load_blueprint()["entries"]
@@ -455,35 +496,24 @@ class Packet(unittest.TestCase):
     def test_staged_registration_surface(self):
         # Share the exact DB-precursor predicate rather than adding a name-only
         # exception or a second definition of its permitted fields/recipient.
-        component_path = ROOT / "scripts/tests/portal178-m5d/test_component.py"
-        spec = importlib.util.spec_from_file_location("portal_component_guard", component_path)
-        component = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(component)
+        component = load_component_guard()
         cluster = yaml.safe_load(CLUSTER.read_text())
         reject = load("hba-stage-reject.yaml")["pg_hba"]
         allow = load("hba-stage-allow.yaml")["rule"]
-        self.assertEqual(cluster["spec"]["postgresql"]["pg_hba"], reject[:4] + [allow] + reject[4:])
-        # Roles-only preproof stage: exactly the reviewed roles and Database;
-        # the six rejects stay, plus the post-proof runtime allow.
-        self.assertEqual(cluster["spec"]["managed"], load("roles-stage-preproof.patch.yaml")["spec"]["managed"])
-        registered_db = CLUSTER.parent / "portal-database.yaml"
-        self.assertEqual(yaml.safe_load(registered_db.read_text()), load("database.yaml"))
+        registered_hba = component.portal_hba_rules(
+            cluster["spec"]["postgresql"]["pg_hba"], reject[:4] + [allow] + reject[4:])
+        self.assertEqual(component.portal_managed_roles(cluster["spec"]["managed"]),
+                         load("roles-stage-preproof.patch.yaml")["spec"]["managed"])
         resources = yaml.safe_load((CLUSTER.parent / "kustomization.yaml").read_text())["resources"]
         self.assertEqual(resources.count("./portal-database.yaml"), 1)
         self.assertEqual(load("database.yaml")["metadata"]["annotations"],
                          {"kustomize.toolkit.fluxcd.io/prune": "disabled"})
         self.assertEqual(load("database.yaml")["spec"]["databaseReclaimPolicy"], "retain")
-        registered_kinds = []
-        for path in (ROOT / "kubernetes").rglob("*.yaml"):
-            text = path.read_text(errors="replace")
-            if "kind: Database" in text:
-                for doc in yaml.safe_load_all(text):
-                    if doc and doc.get("kind") in {"Database", "DatabaseRole"}:
-                        registered_kinds.append((path.resolve(), doc["kind"]))
-        self.assertEqual(registered_kinds, [(registered_db.resolve(), "Database")])
-        self.assertEqual(hba_stage_violations(reject, allow), [])
-        self.assertTrue(hba_stage_violations(reject + [allow], allow))
-        self.assertTrue(hba_stage_violations(reject, allow.replace(RUNTIME, MIGRATOR)))
+        component.assert_portal_database_registration(component.registered_database_documents(), load("database.yaml"))
+        registered_rejects = [line for line in registered_hba if line.endswith(" reject")]
+        self.assertEqual(hba_stage_violations(registered_rejects, allow), [])
+        self.assertTrue(hba_stage_violations(registered_rejects + [allow], allow))
+        self.assertTrue(hba_stage_violations(registered_rejects, allow.replace(RUNTIME, MIGRATOR)))
         # Only the portal's ServiceAccount stays registered. The admission witness,
         # its recovery fence and their Roles and RoleBindings are gone (dev-env#560).
         registered = [doc for doc in yaml.safe_load_all(PORTAL_SA.read_text()) if doc]

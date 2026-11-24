@@ -1,0 +1,56 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: studio-migrator-db-reader
+  namespace: ai
+automountServiceAccountToken: false
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: studio-migrator-db
+  namespace: ai
+spec:
+  provider:
+    kubernetes:
+      remoteNamespace: database
+      server:
+        caProvider:
+          type: ConfigMap
+          name: kube-root-ca.crt
+          key: ca.crt
+      auth:
+        serviceAccount:
+          name: studio-migrator-db-reader
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: studio-migrator-db
+  namespace: ai
+spec:
+  refreshPolicy: Periodic
+  refreshInterval: 1m
+  secretStoreRef:
+    kind: SecretStore
+    name: studio-migrator-db
+  target:
+    name: studio-migrator-db
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      data:
+        STUDIO_MIGRATION_DATABASE_URL: >-
+          host=${STUDIO_PG_CLUSTER}-rw.${STUDIO_PG_NAMESPACE}.svc
+          dbname=studio user={{ .username }} password={{ .password }}
+          sslmode=require channel_binding=require gssencmode=disable connect_timeout=5
+  data:
+    - secretKey: username
+      remoteRef:
+        key: studio-migrator-db
+        property: username
+    - secretKey: password
+      remoteRef:
+        key: studio-migrator-db
+        property: password

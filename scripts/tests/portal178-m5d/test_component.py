@@ -19,6 +19,9 @@ M5A = ROOT / ".agents/reports/portal178-m5a/pending/externalsecret.yaml"
 CONTRACT = ROOT / ".agents/reports/portal178-m5d/DEPLOYMENT-CONTRACT.md"
 CHECKLIST = ROOT / ".agents/reports/portal178-m5d/LAUNCH-CHECKLIST.md"
 CLUSTER = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/cluster16.yaml"
+PORTAL_DATABASE = "dev_env_v2_portal"
+PORTAL_ROLES = {PORTAL_DATABASE + "_runtime", PORTAL_DATABASE + "_migrator"}
+PORTAL_DATABASE_PATH = CLUSTER.parent / "portal-database.yaml"
 PORTAL_OIDC = ROOT / "kubernetes/main/apps/dev-env-system/secrets/app/externalsecret-portal-oidc.yaml"
 PORTAL_DB = ROOT / "kubernetes/main/apps/database/cloudnative-pg/cluster/portal-runtime-db-externalsecret.yaml"
 # Story178 S4+S6: the registered portal inputs.
@@ -349,6 +352,107 @@ def dev_env_properties(tree):
 
 def load(path):
     return yaml.safe_load(path.read_text())
+
+
+# PostgreSQL keeps a comma list in one field when the comma follows a token
+# immediately. Double quotes protect whitespace and commas inside a name.
+HBA_TOKEN = r'(?:[^ \t,#"]+|"(?:[^"]|"")+")'
+HBA_LIST = rf"{HBA_TOKEN}(?:,[ \t]*{HBA_TOKEN})*"
+HBA_RECORD = re.compile(
+    rf"[ \t]*(local|host(?:ssl|nossl|gssenc|nogssenc)?)[ \t]+"
+    rf"({HBA_LIST})[ \t]+({HBA_LIST})[ \t]+(.+)"
+)
+
+
+def hba_names(tokens):
+    return {token[1:-1].replace('""', '"') if token.startswith('"') else token
+            for token in tokens}
+
+
+def portal_hba_rules(registered, reviewed):
+    """Check isolation from other tenants and return the exact reviewed portal rules."""
+    portal = []
+    for number, line in enumerate(registered, 1):
+        location = f"pg_hba line {number} {line!r}"
+        assert not re.search(r"[\r\n\x00]", line) and not line.rstrip().endswith("\\"), (
+            f"{location}: expected one rule without a line continuation"
+        )
+        fields = HBA_RECORD.fullmatch(line)
+        assert fields, f"{location}: expected a rule with explicit database and user fields"
+        connection, database_field, user_field, rest = fields.groups()
+        database_tokens = set(re.findall(HBA_TOKEN, database_field))
+        user_tokens = set(re.findall(HBA_TOKEN, user_field))
+        databases, users = hba_names(database_tokens), hba_names(user_tokens)
+        if PORTAL_DATABASE in databases or PORTAL_ROLES & users:
+            target = "the portal database" if PORTAL_DATABASE in databases else "a portal role"
+            assert line in reviewed, f"{location}: names {target} without a reviewed portal rule"
+            portal.append(line)
+            continue
+
+        # pg_hba uses the first matching line per connection, so a rule for
+        # explicit non-portal users cannot change what a portal role matches,
+        # wherever that rule sits. CNPG appends its default after these rules.
+        assert ("all" not in users and not any(user.startswith("/") for user in users)
+                and not any(token.startswith(("+", "@")) for token in user_tokens)), (
+            f"{location}: user field must list explicit role names (no all, +group, regex or @file)"
+        )
+        assert (not any(database.startswith("/") for database in databases)
+                and not any(token.startswith("@") for token in database_tokens)), (
+            f"{location}: database regex or @file cannot establish portal database isolation"
+        )
+        if (database_tokens & {"all", "samerole", "samegroup"}
+                or "sameuser" in database_tokens and PORTAL_DATABASE in users):
+            address = "" if connection == "local" else rf"{HBA_TOKEN}[ \t]+(?:[0-9a-fA-F:.]+[ \t]+)?"
+            assert re.fullmatch(rf"{address}reject[ \t]*(?:#.*)?", rest), (
+                f"{location}: only the reviewed allow may admit connections to the portal database"
+            )
+    assert portal == reviewed, f"portal pg_hba rules differ from the reviewed list or order: {portal!r}"
+    return portal
+
+
+def portal_managed_roles(managed):
+    portal = []
+    for role in managed["roles"]:
+        name = role["name"]
+        if name in PORTAL_ROLES:
+            portal.append(role)
+        else:
+            assert not name.startswith(PORTAL_DATABASE), f"managed role {name!r} uses the reserved portal prefix"
+            # Membership could grant access to a portal role from the tenant's database.
+            assert PORTAL_ROLES.isdisjoint(role.get("inRoles") or []), f"managed role {name!r} joins a portal role"
+    return {**managed, "roles": portal}
+
+
+def registered_database_documents():
+    for path in (ROOT / "kubernetes").rglob("*.y*ml"):
+        if path.suffix not in {".yaml", ".yml"}:
+            continue
+        text = path.read_text(errors="replace")
+        # Parse candidate manifests as YAML, regardless of how kind is written.
+        if "Database" not in text and "postgresql.cnpg.io" not in text:
+            continue
+        docs = [yaml.safe_load(text)] if path == PORTAL_DATABASE_PATH else yaml.safe_load_all(text)
+        for doc in docs:
+            if isinstance(doc, dict) and doc.get("kind") in {"Database", "DatabaseRole"}:
+                yield path.resolve(), doc
+
+
+def assert_portal_database_registration(registered, reviewed):
+    portal = []
+    for path, doc in registered:
+        assert doc["kind"] == "Database", f"{path}: unexpected DatabaseRole resource"
+        if path == PORTAL_DATABASE_PATH.resolve():
+            portal.append(doc)
+            continue
+
+        spec = doc["spec"]
+        assert spec["name"] != PORTAL_DATABASE and doc["metadata"]["name"] != reviewed["metadata"]["name"], (
+            f"{path}: another Database resource names the portal database"
+        )
+        assert spec["owner"] not in PORTAL_ROLES, f"{path}: database owner is a portal role"
+        for schema in spec.get("schemas", []):
+            assert schema.get("owner") not in PORTAL_ROLES, f"{path}: schema {schema['name']!r} owner is a portal role"
+    assert portal == [reviewed], f"{PORTAL_DATABASE_PATH}: expected exactly the reviewed portal Database resource"
 
 
 def _flux_files(tree):
@@ -1213,15 +1317,12 @@ class ComponentRenderTest(unittest.TestCase):
         rejects = load(PENDING / "hba-stage-reject.yaml")["pg_hba"]
         self.assertEqual(len(rejects), 6)
         allow = yaml.safe_load((PENDING / "hba-stage-allow.yaml").read_text())["rule"]
-        self.assertEqual(cluster["spec"]["postgresql"]["pg_hba"], rejects[:4] + [allow] + rejects[4:])
-        self.assertEqual(cluster["spec"]["managed"], load(PENDING / "roles-stage-preproof.patch.yaml")["spec"]["managed"])
-        self.assertEqual(load(CLUSTER.parent / "portal-database.yaml"), load(PENDING / "database.yaml"))
-        database_kinds = []
+        portal_hba_rules(cluster["spec"]["postgresql"]["pg_hba"], rejects[:4] + [allow] + rejects[4:])
+        self.assertEqual(portal_managed_roles(cluster["spec"]["managed"]),
+                         load(PENDING / "roles-stage-preproof.patch.yaml")["spec"]["managed"])
+        assert_portal_database_registration(registered_database_documents(), load(PENDING / "database.yaml"))
         for path in (ROOT / "kubernetes").rglob("*.yaml"):
             text = path.read_text(errors="replace")
-            if "kind: Database" in text:
-                database_kinds += [(path.resolve(), doc["kind"]) for doc in yaml.safe_load_all(text)
-                                   if doc and doc.get("kind") in {"Database", "DatabaseRole"}]
             self.assertNotIn("portal178-m5d", text, str(path))
             if path.resolve() == CLUSTER.resolve():
                 self.assertEqual(text.count("hostssl dev_env_v2_portal"), 1)
@@ -1239,7 +1340,39 @@ class ComponentRenderTest(unittest.TestCase):
                         self.assertIn(path.resolve(), APPROVED_LIVE_PATHS)
             if "kind: ConfigMap" in text and "name: dev-env-v2-portal-admission" in text:
                 self.fail("CLOSED admission seed is registered in " + str(path))
-        self.assertEqual(database_kinds, [((CLUSTER.parent / "portal-database.yaml").resolve(), "Database")])
+
+    def test_managed_roles_reject_portal_prefix(self):
+        managed = load(PENDING / "roles-stage-preproof.patch.yaml")["spec"]["managed"]
+        managed["roles"].append({"name": "dev_env_v2_portal_x", "ensure": "present"})
+        with self.assertRaisesRegex(AssertionError, "dev_env_v2_portal_x.*reserved portal prefix"):
+            portal_managed_roles(managed)
+
+    def test_managed_tenant_role_cannot_join_portal_roles(self):
+        managed = load(PENDING / "roles-stage-preproof.patch.yaml")["spec"]["managed"]
+        tenant = {"name": "tenant_runtime", "ensure": "present", "inRoles": ["tenant_readonly"]}
+        self.assertEqual(portal_managed_roles({"roles": [tenant, *managed["roles"]]}), managed)
+        for portal_role in sorted(PORTAL_ROLES):
+            member = {**tenant, "inRoles": [*tenant["inRoles"], portal_role]}
+            with self.subTest(role=portal_role), self.assertRaisesRegex(AssertionError, "tenant_runtime.*joins a portal role"):
+                portal_managed_roles({"roles": [member, *managed["roles"]]})
+
+    def test_other_database_cannot_claim_portal_name_or_owners(self):
+        reviewed = load(PENDING / "database.yaml")
+        tenant_path = CLUSTER.with_name("tenant-database.yaml")
+        tenant = {"kind": "Database", "metadata": {"name": "tenant"},
+                  "spec": {"name": "tenant", "owner": "tenant_owner",
+                           "schemas": [{"name": "tenant", "owner": "tenant_owner"}]}}
+        registered = [(PORTAL_DATABASE_PATH.resolve(), reviewed), (tenant_path, tenant)]
+        assert_portal_database_registration(registered, reviewed)
+        for change, reason in (
+            (lambda doc: doc.update(name=PORTAL_DATABASE), "names the portal database"),
+            (lambda doc: doc.update(owner=PORTAL_DATABASE + "_runtime"), "database owner is a portal role"),
+            (lambda doc: doc["schemas"][0].update(owner=PORTAL_DATABASE + "_migrator"), "schema .* owner is a portal role"),
+        ):
+            with self.subTest(reason=reason), self.assertRaisesRegex(AssertionError, "tenant-database.yaml.*" + reason):
+                changed = deepcopy(tenant)
+                change(changed["spec"])
+                assert_portal_database_registration([registered[0], (tenant_path, changed)], reviewed)
 
 
     def test_registered_db_projection_is_exact_and_keeps_other_properties_closed(self):

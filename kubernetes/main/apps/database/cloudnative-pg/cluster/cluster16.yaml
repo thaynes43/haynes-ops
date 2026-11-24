@@ -60,6 +60,33 @@ spec:
         replication: false
         bypassrls: false
         inRoles: []
+      - name: studio_app
+        ensure: present
+        login: true
+        connectionLimit: 16
+        inherit: false
+        superuser: false
+        createdb: false
+        createrole: false
+        replication: false
+        bypassrls: false
+        inRoles: []
+        passwordSecret:
+          name: studio-runtime-db
+      - name: studio_migrator
+        ensure: present
+        login: true
+        # Leave one slot for a retry if the old Job's backend lingers.
+        connectionLimit: 2
+        inherit: false
+        superuser: false
+        createdb: false
+        createrole: false
+        replication: false
+        bypassrls: false
+        inRoles: []
+        passwordSecret:
+          name: studio-migrator-db
   postgresql:
     parameters:
       max_connections: "400"
@@ -77,6 +104,10 @@ spec:
       - hostssl dev_env_v2_portal dev_env_v2_portal_runtime 10.42.0.0/16 scram-sha-256
       - host all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator 0.0.0.0/0 reject
       - host all dev_env_v2_portal_runtime,dev_env_v2_portal_migrator ::/0 reject
+      # Studio roles can connect only to studio, over TLS from the IPv4 pod network.
+      - hostssl studio studio_app,studio_migrator 10.42.0.0/16 scram-sha-256
+      - host replication studio_app,studio_migrator all reject
+      - host all studio_app,studio_migrator all reject
   nodeMaintenanceWindow:
     inProgress: false
     reusePVC: true
