@@ -127,6 +127,26 @@ class ProductTests(unittest.TestCase):
             self.assertEqual((code, error["code"]), (409, "input_conflict"))
             self.assertEqual(path.read_bytes(), b"modified outside API")
 
+    def test_upload_reserves_workspace_and_enforces_quota_without_blocking_replay(self):
+        audio_path = product.input_path(self.root, self.audio_sha, "wav")
+        with server(api.Handler) as url:
+            self.assertEqual(self.upload(url, PNG, self.image_sha, "png")[0], 201)
+            for limit in ("files", "bytes", "reserve"):
+                with self.subTest(limit=limit):
+                    if limit == "files":
+                        cap = patch.object(product, "MAX_INPUT_FILES", 1)
+                    elif limit == "bytes":
+                        cap = patch.object(product, "MAX_INPUT_BYTES", len(PNG) + len(self.audio) - 1)
+                    else:
+                        cap = patch.object(product.shutil, "disk_usage", return_value=unittest.mock.Mock(
+                            free=product.MIN_WORKSPACE_FREE))
+                    with cap:
+                        code, _, error = self.upload(url, self.audio, self.audio_sha, "wav")
+                        self.assertEqual((code, error["code"]), (507, "input_storage_full"))
+                        self.assertFalse(audio_path.exists())
+                        self.assertEqual(self.upload(url, PNG, self.image_sha, "png")[0], 200)
+            self.assertEqual(self.upload(url, self.audio, self.audio_sha, "wav")[0], 201)
+
     def test_rejects_wrong_profile_unknown_fields_invalid_inputs_and_graph_route(self):
         with server(api.Handler) as url, patch.object(api, "engine") as engine:
             for kind, body in (("i2v", self.i2v()), ("s2v", self.s2v()), ("foley", self.foley_request())):

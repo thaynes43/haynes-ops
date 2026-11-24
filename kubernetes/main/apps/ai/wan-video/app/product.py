@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import struct
 import tempfile
 import wave
@@ -11,6 +12,9 @@ import wave
 VERSION = "1.0.0"
 MAX_JSON = 65536  # Two 4096-character prompts, including JSON Unicode escapes.
 MAX_UPLOAD = 19_999_999
+MAX_INPUT_FILES = 4096
+MAX_INPUT_BYTES = 4 * 1024**3
+MIN_WORKSPACE_FREE = 5 * 1024**3
 MAX_SEED = 2**53 - 1
 CHUNK = 77
 MAX_CHUNKS = 3
@@ -164,28 +168,59 @@ def check_video_inputs(root, kind, request):
             raise RequestError("invalid_input", "WAV samples must match board_frames / 24 seconds")
 
 
+def check_input_capacity(directory, size):
+    # The PVC also holds engines, ledgers and results. Serialize checks and
+    # uploads in the API process and include temporary files left by a crash.
+    if size > MAX_INPUT_BYTES:
+        raise RequestError("input_storage_full", "Staged input quota reached", 507)
+    total = size
+    with os.scandir(directory) as entries:
+        for count, entry in enumerate(entries, start=1):
+            total += entry.stat(follow_symlinks=False).st_size
+            if count >= MAX_INPUT_FILES or total > MAX_INPUT_BYTES:
+                raise RequestError("input_storage_full", "Staged input quota reached", 507)
+    if shutil.disk_usage(directory).free - size < MIN_WORKSPACE_FREE:
+        raise RequestError("input_storage_full", "Workspace free-space reserve reached", 507)
+
+
+def check_input_hash(checksum, expected):
+    if checksum.hexdigest() != expected:
+        raise RequestError("input_hash_mismatch", "Body SHA-256 differs from the input URL")
+
+
+def verify_existing_input(path, sha256):
+    try:
+        with path.open("rb") as existing:
+            matches = hashlib.file_digest(existing, "sha256").hexdigest() == sha256
+    except OSError:
+        matches = False
+    if not matches:
+        raise RequestError("input_conflict", "Stored input failed SHA-256 verification", 409)
+
+
 def stage_input(root, sha256, suffix, source, size):
     path = input_path(root, sha256, suffix)
     path.parent.mkdir(parents=True, exist_ok=True)
     checksum = hashlib.sha256()
+    if path.exists():
+        # A replay never needs a temporary file or more persistent space.
+        for chunk in read_blocks(source, size):
+            checksum.update(chunk)
+        check_input_hash(checksum, sha256)
+        verify_existing_input(path, sha256)
+        return False
+    check_input_capacity(path.parent, size)
     with tempfile.NamedTemporaryFile(dir=path.parent) as temp:
         for chunk in read_blocks(source, size):
             checksum.update(chunk)
             temp.write(chunk)
-        if checksum.hexdigest() != sha256:
-            raise RequestError("input_hash_mismatch", "Body SHA-256 differs from the input URL")
+        check_input_hash(checksum, sha256)
         temp.flush()
         validate_media(Path(temp.name), suffix)
         os.fsync(temp.fileno())
         created = publish(Path(temp.name), path)
     if not created:
-        try:
-            with path.open("rb") as existing:
-                matches = hashlib.file_digest(existing, "sha256").hexdigest() == sha256
-        except OSError:
-            matches = False
-        if not matches:
-            raise RequestError("input_conflict", "Stored input failed SHA-256 verification", 409)
+        verify_existing_input(path, sha256)
     return created
 
 

@@ -345,6 +345,16 @@
                 }
               }
             }
+          },
+          "507": {
+            "description": "The staged-input quota or workspace free-space reserve prevents this new upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
           }
         }
       }
