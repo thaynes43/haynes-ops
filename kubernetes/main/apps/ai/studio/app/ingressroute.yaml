@@ -53,7 +53,10 @@ kind: Middleware
 metadata:
   name: studio-auth-rate
 spec:
+  # Every LAN client shares one bucket per Traefik replica (the internal load
+  # balancer hides client addresses), so the limit is set to slow a flood of
+  # sign-in attempts, not so low that one noisy device locks sign-in for all.
   rateLimit:
-    average: 30
+    average: 120
     period: 1m
-    burst: 10
+    burst: 30

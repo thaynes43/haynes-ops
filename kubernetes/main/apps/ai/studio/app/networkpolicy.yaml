@@ -54,12 +54,18 @@ spec:
       app.kubernetes.io/name: studio-mcp
   policyTypes: [Ingress]
   ingress:
+    # Callers are agent sessions (their own egress policy in dev-env decides
+    # whether they can reach this at all) and the studio's own pods. Other
+    # workloads in ai have no business here, key or not.
     - from:
         - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: dev-agents
+        - podSelector:
             matchExpressions:
-              - key: kubernetes.io/metadata.name
+              - key: app.kubernetes.io/name
                 operator: In
-                values: [ai, dev-agents]
+                values: [studio-api, studio-worker]
       ports:
         - port: 8001
           protocol: TCP

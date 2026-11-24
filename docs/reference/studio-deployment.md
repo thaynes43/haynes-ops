@@ -6,12 +6,12 @@
 Traefik sends `/v1/` and `/auth/` to the API and UI paths to nginx. The
 probes, worker paths and MCP paths have no ingress route. A NetworkPolicy
 allows internal Traefik pods to reach the API and web ClusterIP Services.
-The auth route allows a burst of 10 requests and refills at 30 per minute per
+The auth route allows a burst of 30 requests and refills at 120 per minute per
 observed peer address on each Traefik replica. The internal LoadBalancer
 may combine clients behind a shared peer address.
 
 MCP listens at `http://studio-mcp.ai.svc.cluster.local:8001/mcp`. The
-Service accepts callers from pods in `ai` and `dev-agents`, subject to their
+Service accepts callers from pods in `dev-agents` and from the studio's own API and worker pods in `ai`, subject to their
 existing egress policies. MCP sends authenticated requests to
 `http://studio-api.ai.svc.cluster.local:8000` using the caller's agent key.
 Traefik has no route or network access to MCP. Use an approved protected
@@ -178,6 +178,7 @@ From the LAN, verify the anonymous protected families, static UI and
 route exclusions. A zero hash is a synthetic locator.
 
 ```sh
+(
 set -eu
 base=https://studio.haynesops.com
 status() { curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$@"; }
@@ -196,6 +197,8 @@ for path in /healthz /readyz /mcp /internal/v1/work/claim; do
 done
 test "$(status https://video.haynesops.com/v1)" = 404
 test "$(status https://video.haynesops.com/v1/me)" = 404
+echo "LAN route checks passed"
+)
 ```
 
 Confirm that the initial browser redirect points to the configured Authentik
