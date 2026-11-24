@@ -418,6 +418,8 @@ def portal_managed_roles(managed):
             portal.append(role)
         else:
             assert not name.startswith(PORTAL_DATABASE), f"managed role {name!r} uses the reserved portal prefix"
+            # Membership could grant access to a portal role from the tenant's database.
+            assert PORTAL_ROLES.isdisjoint(role.get("inRoles") or []), f"managed role {name!r} joins a portal role"
     return {**managed, "roles": portal}
 
 
@@ -1344,6 +1346,15 @@ class ComponentRenderTest(unittest.TestCase):
         managed["roles"].append({"name": "dev_env_v2_portal_x", "ensure": "present"})
         with self.assertRaisesRegex(AssertionError, "dev_env_v2_portal_x.*reserved portal prefix"):
             portal_managed_roles(managed)
+
+    def test_managed_tenant_role_cannot_join_portal_roles(self):
+        managed = load(PENDING / "roles-stage-preproof.patch.yaml")["spec"]["managed"]
+        tenant = {"name": "tenant_runtime", "ensure": "present", "inRoles": ["tenant_readonly"]}
+        self.assertEqual(portal_managed_roles({"roles": [tenant, *managed["roles"]]}), managed)
+        for portal_role in sorted(PORTAL_ROLES):
+            member = {**tenant, "inRoles": [*tenant["inRoles"], portal_role]}
+            with self.subTest(role=portal_role), self.assertRaisesRegex(AssertionError, "tenant_runtime.*joins a portal role"):
+                portal_managed_roles({"roles": [member, *managed["roles"]]})
 
     def test_other_database_cannot_claim_portal_name_or_owners(self):
         reviewed = load(PENDING / "database.yaml")
