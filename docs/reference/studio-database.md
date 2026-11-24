@@ -31,7 +31,9 @@ projection reads the username and password by property and refreshes every
 minute. Both DSNs require TLS with SCRAM channel binding. The project uses
 the cluster's Postgres TLS setup without distributing the CNPG CA Secret.
 If a source Secret is regenerated, verify CNPG and the projection have
-converged and restart its consumers to pick up the new environment value.
+converged. Reloader rolls the API when its projected Secret changes. The
+completed migration Job stays complete. A new Job pod reads the current
+value from its own projection.
 [ESO 2.15.0 permission validation](https://github.com/external-secrets/external-secrets/blob/v2.15.0/providers/v1/kubernetes/validate.go)
 [PostgreSQL 16 connection options](https://www.postgresql.org/docs/16/libpq-connect.html#LIBPQ-CONNECT-CHANNEL-BINDING)
 
@@ -111,18 +113,28 @@ SQL
 
 ## OP434 migration and grants
 
+Follow the [Studio LAN rollout](studio-deployment.md) for Flux ordering.
+
 Run `studio-api-migrate upgrade head` once in the Job under `studio_migrator`
 using the pinned Studio API image. The command holds a database advisory
 transaction lock. A second connection slot lets a retry connect while a
 previous Job's backend lingers. The lock still serializes schema writes.
-Run these grants in a transaction using the same Job's
-migration connection after the command succeeds. The app's image can use
-psycopg for the grant transaction. Release API replicas after both steps
-succeed. A retry at the same migration head reapplies the same grants.
+The Job verifies the migrator role and its HBA rules, runs the upgrade, then
+applies the runtime grants in a separate transaction. The owner bootstrap
+above grants database CONNECT. The Job grants schema USAGE and the table
+and column privileges below. Flux releases the API replicas after the
+Job completes. A retry at the same migration head reapplies the same grants.
+[Studio API grant contract](https://github.com/thaynes43/haynes-studio/blob/fa5296870ccf11be99b56d9e5a2ee34b37a68a75/docs/reference/studio-api.md#database-privileges)
 
 ```sql
-GRANT SELECT, INSERT, UPDATE ON studio.productions, studio.stories,
+GRANT USAGE ON SCHEMA studio TO studio_app;
+GRANT SELECT, INSERT ON studio.productions, studio.stories,
     studio.boards, studio.selections TO studio_app;
+REVOKE UPDATE ON studio.productions, studio.stories,
+    studio.boards, studio.selections FROM studio_app;
+GRANT UPDATE (document) ON studio.productions, studio.stories TO studio_app;
+GRANT UPDATE (document, tombstone) ON studio.boards TO studio_app;
+GRANT UPDATE (document, revision) ON studio.selections TO studio_app;
 GRANT SELECT, INSERT ON studio.media_types, studio.draft_ids, studio.assets,
     studio.asset_versions, studio.asset_sources, studio.asset_media,
     studio.deliveries, studio.delivery_media TO studio_app;
@@ -136,7 +148,9 @@ runtime role gets no create, temporary table, sequence or Alembic history
 privileges. Credential-table provisioning uses a separate owner-managed path.
 Check the applied Alembic revision with the migration identity. For the
 initial schema in [Studio PR 86](https://github.com/thaynes43/haynes-studio/pull/86)
-the output is `0001_studio_metadata`.
+the output is `0001_studio_metadata`. The OP434 install includes the active
+agent grants revision `0002_active_agent_grants` from
+[Studio PR 92](https://github.com/thaynes43/haynes-studio/pull/92).
 
 ```sql
 SELECT version_num FROM studio.alembic_version;
@@ -159,9 +173,10 @@ SELECT pg_postmaster_start_time(), pg_conf_load_time();
 
 From a permitted `ai` workload with the chosen key injected via
 `secretKeyRef`, run the following with the role argument set to `studio_app`
-or `studio_migrator`. Use the same fragment within the migration Job before
-it exits. The checks print role and outcome only. Run the runtime checks
-after the grants.
+or `studio_migrator`. The OP434 Job runs the migrator checks and prints the
+revision before it exits. Read its results from the completed Job logs. Run
+the runtime checks in the API container after the grants. The checks print
+role and outcome only.
 
 ```sh
 kubectl -n ai exec -i "$verification_pod" -c "$verification_container" -- python - studio_app <<'PY'
@@ -188,9 +203,11 @@ with psycopg.connect(dsn) as connection:
                    has_schema_privilege(current_user, 'studio', 'CREATE'),
                    has_database_privilege(current_user, 'studio', 'TEMP'),
                    has_table_privilege(current_user, 'studio.productions', 'UPDATE'),
+                   has_column_privilege(current_user, 'studio.productions', 'document', 'UPDATE'),
+                   has_column_privilege(current_user, 'studio.productions', 'id', 'UPDATE'),
                    has_table_privilege(current_user, 'studio.agent_keys', 'INSERT')
         """).fetchone()
-        assert privileges == (True, False, False, True, False)
+        assert privileges == (True, False, False, False, True, False, False)
     else:
         version = connection.execute(
             "SELECT version_num FROM studio.alembic_version"

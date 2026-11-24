@@ -1,0 +1,65 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: studio-api-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: studio-api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: traefik-internal-network
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: studio-mcp
+      ports:
+        - port: 8000
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: studio-web-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: studio-web
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: traefik-internal-network
+      ports:
+        - port: 8080
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: studio-mcp-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: studio-mcp
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: [ai, dev-agents]
+      ports:
+        - port: 8001
+          protocol: TCP
