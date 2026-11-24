@@ -76,7 +76,8 @@ spec:
       - name: studio_migrator
         ensure: present
         login: true
-        connectionLimit: 1
+        # Leave one slot for a retry if the old Job's backend lingers.
+        connectionLimit: 2
         inherit: false
         superuser: false
         createdb: false

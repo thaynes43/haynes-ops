@@ -113,7 +113,9 @@ SQL
 
 Run `studio-api-migrate upgrade head` once in the Job under `studio_migrator`
 using the pinned Studio API image. The command holds a database advisory
-transaction lock. Run these grants in a transaction using the same Job's
+transaction lock. A second connection slot lets a retry connect while a
+previous Job's backend lingers. The lock still serializes schema writes.
+Run these grants in a transaction using the same Job's
 migration connection after the command succeeds. The app's image can use
 psycopg for the grant transaction. Release API replicas after both steps
 succeed. A retry at the same migration head reapplies the same grants.
