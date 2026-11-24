@@ -528,9 +528,9 @@ class Packet(unittest.TestCase):
         for path in (ROOT / "kubernetes").rglob("*.yaml"):
             text = path.read_text(errors="replace")
             if path.resolve() == CLUSTER.resolve():
-                self.assertEqual(text.count("hostssl dev_env_v2_portal "), 1)
+                self.assertEqual(text.count("hostssl dev_env_v2_portal"), 1)
             else:
-                self.assertNotIn("hostssl dev_env_v2_portal ", text, str(path))
+                self.assertNotIn("hostssl dev_env_v2_portal", text, str(path))
             self.assertNotIn("98-portal-live-profile", text, str(path))
             self.assertNotIn("cluster-portal.patch.yaml", text, str(path))
             self.assertNotIn("hba-stage-allow.yaml", text, str(path))

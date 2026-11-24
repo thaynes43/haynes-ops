@@ -1325,9 +1325,9 @@ class ComponentRenderTest(unittest.TestCase):
             text = path.read_text(errors="replace")
             self.assertNotIn("portal178-m5d", text, str(path))
             if path.resolve() == CLUSTER.resolve():
-                self.assertEqual(text.count("hostssl dev_env_v2_portal "), 1)
+                self.assertEqual(text.count("hostssl dev_env_v2_portal"), 1)
             else:
-                self.assertNotIn("hostssl dev_env_v2_portal ", text, str(path))
+                self.assertNotIn("hostssl dev_env_v2_portal", text, str(path))
             # Story178 S8+S9 registered the Deployment and its route, each at one path.
             if "kind: Deployment" in text and "name: dev-env-v2-portal" in text:
                 self.assertEqual(path.resolve(), PORTAL_DEPLOYMENT.resolve(), "portal Deployment in " + str(path))
