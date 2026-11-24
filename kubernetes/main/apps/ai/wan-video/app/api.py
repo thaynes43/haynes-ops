@@ -10,8 +10,13 @@ import subprocess
 import threading
 import time
 import uuid
+from http.client import HTTPException
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
+import product
+from product_graphs import image_graph, speech_graph
 
 ENGINE = "http://127.0.0.1:8188"
 ROOT = Path(os.environ.get("VIDEO_WORKSPACE", "/workspace"))
@@ -25,6 +30,12 @@ RANGE = re.compile(r"bytes=(\d{0,19})-(\d{0,19})")
 LOCK = threading.Lock()
 ACTIVE = None
 UNSAFE = False
+UPLOAD = threading.BoundedSemaphore(1)
+SOCKET_TIMEOUT = 15
+UPLOAD_GRACE_SECONDS = 30
+UPLOAD_BYTES_PER_SECOND = 128 * 1024
+LOST_SUBMISSION_SECONDS = 120
+FOLEY = "http://127.0.0.1:8189"
 PRESETS = {"preview": (832, 480, 49, 20), "720p": (1280, 704, 81, 20)}
 
 
@@ -43,7 +54,21 @@ def engine(path, body=None):
     data = None if body is None else json.dumps(body).encode()
     request = Request(ENGINE + path, data=data, headers={"Content-Type": "application/json"})
     with urlopen(request, timeout=20) as response:
-        return json.load(response)
+        raw = response.read()
+    if raw == b"" and body is not None and path in ("/queue", "/interrupt"):
+        return None
+    return json.loads(raw)
+
+
+def foley(path, data=None):
+    request = Request(FOLEY + path, data=data, method="PUT" if data is not None else "GET",
+                      headers={"Content-Type": "application/json"})
+    try:
+        with urlopen(request, timeout=30) as response:
+            return response.status, json.load(response)
+    except HTTPError as response:
+        with response:
+            return response.code, json.load(response)
 
 
 def engine_queue():
@@ -65,6 +90,11 @@ def engine_queue():
     return queue
 
 
+def interrupt_running(prompt_ids):
+    for prompt_id in sorted(prompt_ids):
+        engine("/interrupt", {"prompt_id": prompt_id})
+
+
 def gpu_sample():
     fields = "uuid,memory.used,utilization.gpu,power.draw,temperature.gpu"
     result = subprocess.run(
@@ -78,6 +108,10 @@ def gpu_sample():
     if {s["uuid"] for s in samples} != EXPECTED or len(samples) != 2:
         raise RuntimeError("Expected exactly the two approved rack GPU UUIDs")
     return {"time": time.time(), "gpus": samples}
+
+
+def gpus_idle(sample):
+    return all(0 <= s["utilization_percent"] <= 5 and 0 <= s["memory_mib"] <= 22000 for s in sample["gpus"])
 
 
 def make_graph(prompt, preset, seed, job_id):
@@ -179,7 +213,7 @@ def recover():
         if pending:
             engine("/queue", {"delete": sorted(pending)})
         if running:
-            engine("/interrupt", {})
+            interrupt_running(running)
             for _ in range(12):
                 if not engine_queue()["queue_running"]:
                     break
@@ -194,9 +228,81 @@ def recover():
         UNSAFE = True
 
 
-def generate(job, prompt, lease=None):
+class PromptRejected(RuntimeError):
+    """The engine replied to the submission with an explicit client error."""
+
+
+class PromptSubmissionLost(RuntimeError):
+    """The prompt was unacknowledged and absent throughout an idle GPU window."""
+
+
+def submit_product_prompt(job, graph):
+    # The installed engine accepts canonical UUIDs on /prompt. Record the
+    # UUID and graph before the one submission, so history can settle a
+    # lost acknowledgment even if the queue has already drained.
+    job.update(prompt_id=str(uuid.uuid4()), graph_sha256=product.digest(graph))
+    save(job)
+    body = {"prompt": graph, "client_id": job["id"], "prompt_id": job["prompt_id"]}
+    try:
+        response = engine("/prompt", body)
+    except HTTPError as exc:
+        if 400 <= exc.code < 500:
+            raise PromptRejected(f"ComfyUI rejected the prompt (HTTP {exc.code})") from exc
+        return False
+    except (OSError, ValueError, HTTPException):
+        return False
+    if not isinstance(response, dict) or response.get("prompt_id") != job["prompt_id"]:
+        raise RuntimeError("ComfyUI did not acknowledge the requested prompt UUID")
+    return True
+
+
+def observe_product_queue(job):
+    global UNSAFE
+    try:
+        queue = engine_queue()
+    except ValueError:
+        UNSAFE = True
+        raise
+    ids = {entry[1] for key in ("queue_running", "queue_pending") for entry in queue[key]}
+    foreign = ids - {job["prompt_id"]}
+    if foreign:
+        UNSAFE = True
+        job["unexpected_work_seen"] = sorted(foreign | set(job.get("unexpected_work_seen", [])))
+    return job["prompt_id"] in ids
+
+
+def product_history(prompt_id):
+    histories = engine("/history/" + prompt_id)
+    if isinstance(histories, dict):
+        if not histories:
+            return None
+        if histories.keys() == {prompt_id}:
+            history = histories[prompt_id]
+            if isinstance(history, dict) and history:
+                return history
+    raise ValueError("Malformed ComfyUI history response")
+
+
+def store_product_video(job, history):
+    node = "12" if job["type"] == "i2v" else "15"
+    images = history.get("outputs", {}).get(node, {}).get("images")
+    if not isinstance(images, list) or len(images) != 1 or not isinstance(images[0], dict):
+        raise RuntimeError("ComfyUI completed without the expected MP4")
+    item = images[0]
+    name = item.get("filename")
+    if (item.get("subfolder") != "video" or item.get("type") != "output" or not isinstance(name, str)
+            or not re.fullmatch(job["id"] + r"_\d+_\.mp4", name)):
+        raise RuntimeError("ComfyUI returned an unexpected output name")
+    job["output"] = "video/" + name
+    result = product.result(output_file(job), "video/mp4")
+    job.update(result=result, bytes=result["bytes"], state="succeeded", finished_at=time.time())
+    save(job)
+
+
+def generate(job, prompt, lease=None, *, negative=None):
     global ACTIVE, UNSAFE
-    started = False
+    kind = job.get("type") if job.get("api_version") == product.VERSION else None
+    acknowledged = False
     submission_attempted = False
     try:
         if lease is None:
@@ -204,40 +310,77 @@ def generate(job, prompt, lease=None):
         if lease is None:
             raise RuntimeError("Compute is reserved by another video/audio job")
         sample = gpu_sample()
-        if any(s["utilization_percent"] > 5 or s["memory_mib"] > 22000 for s in sample["gpus"]):
+        if not gpus_idle(sample):
             raise RuntimeError("Rack GPUs are busy; refusing to start a competing job")
+        if kind and any(s["temperature_c"] >= 62 for s in sample["gpus"]):
+            raise RuntimeError("Rack GPUs must be below 62 C for a product job")
         queue = engine_queue()
         if queue["queue_running"] or queue["queue_pending"]:
             raise RuntimeError("ComfyUI already has a job; refusing a competing request")
-        graph = make_graph(prompt, job["preset"], job["seed"], job["id"])
+        timeout = product.PROFILES[kind]["timeout_seconds"] if kind else 1200
+        if kind == "i2v":
+            graph = image_graph(CONFIG / "workflow.json", job, prompt, negative)
+        elif kind == "s2v":
+            graph = speech_graph(job, prompt, negative)
+        else:
+            graph = make_graph(prompt, job["preset"], job["seed"], job["id"])
         submission_attempted = True
-        reply = engine("/prompt", {"prompt": graph, "client_id": job["id"]})
-        prompt_id = reply["prompt_id"]
-        started = True
-        job.update(state="running", started_at=time.time(), prompt_id=prompt_id)
-        save(job)
-        deadline = time.monotonic() + 1200
+        if kind:
+            acknowledged = submit_product_prompt(job, graph)
+            prompt_id = job["prompt_id"]
+        else:
+            reply = engine("/prompt", {"prompt": graph, "client_id": job["id"]})
+            prompt_id = job["prompt_id"] = reply["prompt_id"]
+            acknowledged = True
+        if acknowledged:
+            job.update(state="running", started_at=time.time())
+            save(job)
+        poll_start = time.monotonic()
+        deadline = poll_start + timeout
+        lost_submission_deadline = poll_start + LOST_SUBMISSION_SECONDS if kind and not acknowledged else None
         misses, first_miss = 0, None
         while time.monotonic() < deadline:
-            job["telemetry"].append(gpu_sample())
             try:
-                history = engine("/history/" + prompt_id).get(prompt_id)
+                sample = gpu_sample()
+            except (OSError, subprocess.SubprocessError, ValueError, IndexError, RuntimeError, csv.Error):
+                if not kind or acknowledged:
+                    raise
+                # Keep reconciling an unconfirmed submission without the early release path.
+                lost_submission_deadline = None
+            else:
+                job["telemetry"].append(sample)
+                if lost_submission_deadline is not None and not gpus_idle(sample):
+                    lost_submission_deadline = None
+            try:
+                if kind and observe_product_queue(job):
+                    acknowledged = True
+                history = product_history(prompt_id) if kind else engine("/history/" + prompt_id).get(prompt_id)
+                acknowledged = acknowledged or bool(history)
                 misses, first_miss = 0, None
-            except (TimeoutError, OSError):
+            except (OSError, HTTPException):
                 # ComfyUI can stall a read past the 20 s HTTP timeout while it decodes a long
                 # S2V clip. That is not a failed job: keep polling (the deadline still applies).
                 # Give up after 12 misses in a row or 90 s since the first of them, whichever
                 # comes first, so a dead ComfyUI does not hold the compute lease for long.
+                lost_submission_deadline = None
                 misses += 1
-                first_miss = first_miss or time.monotonic()
+                if first_miss is None:
+                    first_miss = time.monotonic()
                 job["poll_misses"] = job.get("poll_misses", 0) + 1
+                if kind:
+                    save(job)
                 if misses >= 12 or time.monotonic() - first_miss >= 90:
                     raise
                 time.sleep(5)
                 continue
+            if acknowledged and job["state"] != "running":
+                job.update(state="running", started_at=time.time())
             if history:
                 if history.get("status", {}).get("status_str") == "error":
                     raise RuntimeError("ComfyUI generation failed; inspect the worker log")
+                if kind:
+                    store_product_video(job, history)
+                    return
                 for output in history.get("outputs", {}).values():
                     for value in output.values():
                         if not isinstance(value, list):
@@ -252,25 +395,39 @@ def generate(job, prompt, lease=None):
                                 save(job)
                                 return
                 raise RuntimeError("ComfyUI completed without an MP4")
+            if (lost_submission_deadline is not None and not acknowledged and not UNSAFE
+                    and time.monotonic() >= lost_submission_deadline):
+                raise PromptSubmissionLost(
+                    f"No prompt in ComfyUI queue or history after {LOST_SUBMISSION_SECONDS} seconds")
             save(job)
             time.sleep(5)
-        raise TimeoutError("Video exceeded the 20-minute job limit")
+        raise TimeoutError(f"Video exceeded the {timeout // 60}-minute job limit")
     except Exception as exc:
-        if started or submission_attempted:
+        safe_to_release = isinstance(exc, (PromptRejected, PromptSubmissionLost))
+        if kind and submission_attempted and not acknowledged and not safe_to_release:
+            UNSAFE = True
+        if submission_attempted and not safe_to_release:
             try:
                 queue = engine_queue()
                 owned = lambda e: (len(e) > 3 and e[3].get("client_id") == job["id"]) or e[1] == job.get("prompt_id")
                 running = queue["queue_running"]
                 pending = [e[1] for e in queue["queue_pending"] if owned(e)]
+                if kind and len(pending) != len(queue["queue_pending"]):
+                    UNSAFE = True
                 if pending:
                     engine("/queue", {"delete": pending})
                 if running and not all(owned(e) for e in running):
                     UNSAFE = True
                     raise RuntimeError("Unknown backend work requires inspection")
                 if running:
-                    engine("/interrupt", {})
+                    interrupt_running(entry[1] for entry in running)
                 for _ in range(12):
-                    if not engine_queue()["queue_running"]:
+                    queue = engine_queue()
+                    if not queue["queue_running"] and (not kind or not queue["queue_pending"]):
+                        break
+                    if kind and any(not owned(entry) for key in ("queue_running", "queue_pending")
+                                    for entry in queue[key]):
+                        UNSAFE = True
                         break
                     time.sleep(5)
                 else:
@@ -288,10 +445,78 @@ def generate(job, prompt, lease=None):
                 ACTIVE = None
 
 
+def submit_product_video(kind, job_id, request):
+    global ACTIVE
+    path = job_path(job_id)
+    request_hash = product.digest(request)
+    with LOCK:
+        existing = product.read_job(path)
+        if product.replay(existing, kind, request_hash):
+            return 200, product.job_view(existing)
+        if ACTIVE or UNSAFE:
+            raise product.RequestError("worker_busy", "Video worker is busy or requires inspection", 409)
+        product.check_video_inputs(ROOT, kind, request)
+        lease = acquire_compute()
+        if lease is None:
+            raise product.RequestError("worker_busy", "Compute is reserved by another video/audio job", 409)
+        job = {key: value for key, value in request.items() if key not in ("prompt", "negative_prompt")}
+        job.update(id=job_id, type=kind, api_version=product.VERSION, request_sha256=request_hash,
+                   state="queued", created_at=time.time(), telemetry=[])
+        if kind == "s2v":
+            job["frames"] = product.s2v_length(request["board_frames"])
+        started = False
+        try:
+            product.create_job(path, job)
+            ACTIVE = job_id
+            accepted = product.job_view(job)
+            try:
+                threading.Thread(target=generate, args=(job, request["prompt"], lease),
+                                 kwargs={"negative": request["negative_prompt"]}, daemon=True).start()
+            except RuntimeError:
+                job.update(state="failed", error="Could not start worker", finished_at=time.time())
+                save(job)
+                return 503, product.job_view(job)
+            started = True
+            return 202, accepted
+        finally:
+            if not started:
+                lease.close()
+                if ACTIVE == job_id:
+                    ACTIVE = None
+
+
+def foley_job_path(job_id):
+    return ROOT / "foley-jobs" / (job_id + ".json")
+
+
+def submit_product_foley(path, job_id, request):
+    existing = product.read_job(foley_job_path(job_id))
+    if product.replay(existing, "foley", product.digest(request)):
+        return 200, product.job_view(existing)
+    return foley(path, json.dumps(request).encode())
+
+
+def product_job(kind, job_id):
+    path = foley_job_path(job_id) if kind == "foley" else job_path(job_id)
+    job = product.read_job(path)
+    if not job or job.get("type") != kind or job.get("api_version") != product.VERSION:
+        raise product.RequestError("job_not_found", "Job not found", 404)
+    return job
+
+
+def foley_output(job):
+    base = (ROOT / "output" / "foley").resolve()
+    expected = base / job["id"] / "output.wav"
+    path = (ROOT / "output" / job["output"]).resolve()
+    if path != expected:
+        raise ValueError("Invalid Foley output file")
+    return path
+
+
 class Handler(BaseHTTPRequestHandler):
     def setup(self):
         super().setup()
-        self.connection.settimeout(15)
+        self.connection.settimeout(SOCKET_TIMEOUT)
 
     def log_message(self, fmt, *args):
         # No request bodies, prompts, query strings, or credentials in access logs.
@@ -305,8 +530,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def send_file(self, source, job_id):
-        """Answer with the open MP4 `source`, whole or the one byte range asked for."""
+    def send_file(self, source, job_id, media_type="video/mp4", suffix=".mp4"):
+        """Answer with the open media file, whole or the one byte range asked for."""
         size = os.fstat(source.fileno()).st_size
         # If-Range asks for the range only while a validator still matches. This server
         # sends no validator, so none can match and the whole file is the answer.
@@ -321,12 +546,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         first, last = span or (0, size - 1)
         self.send_response(206 if span else 200)
-        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Content-Type", media_type)
         self.send_header("Accept-Ranges", "bytes")
         if span:
             self.send_header("Content-Range", "bytes " + str(first) + "-" + str(last) + "/" + str(size))
         self.send_header("Content-Length", str(last - first + 1))
-        self.send_header("Content-Disposition", 'inline; filename="' + job_id + '.mp4"')
+        self.send_header("Content-Disposition", 'inline; filename="' + job_id + suffix + '"')
         self.end_headers()
         # The answer has started: from here a fault ends the stream short, do_GET sends
         # no second answer into it, and the connection is not used again.
@@ -341,9 +566,97 @@ class Handler(BaseHTTPRequestHandler):
                 return  # The player hung up or stopped reading: how it seeks and how it stops.
             count -= len(chunk)
 
+    def get_product(self):
+        if self.path == "/v1/profiles":
+            self.respond(200, {"api_version": product.VERSION, "profiles": product.PROFILES})
+            return
+        if self.path == "/v1/ready":
+            if UNSAFE:
+                raise product.RequestError("worker_held", "Render hold requires inspection", 503)
+            engine("/system_stats")
+            gpu_sample()
+            status, audio = foley("/v1/ready")
+            if status != 200 or audio.get("api_version") != product.VERSION:
+                raise product.RequestError("worker_unavailable", "Foley product worker is unavailable", 503)
+            self.respond(200, {"api_version": product.VERSION, "ready": True, "active_video_job": ACTIVE,
+                               "active_foley_job": audio["active_job"]})
+            return
+        match = product.JOB_ROUTE.fullmatch(self.path)
+        if not match:
+            raise product.RequestError("not_found", "Not found", 404)
+        kind, job_id, file_route = match.groups()
+        job = product_job(kind, job_id)
+        if not file_route:
+            self.respond(200, product.job_view(job))
+            return
+        if job["state"] != "succeeded":
+            raise product.RequestError("result_unavailable", "Job has no completed result", 409)
+        if kind == "foley":
+            with foley_output(job).open("rb") as source:
+                self.send_file(source, job_id, "audio/wav", ".wav")
+        else:
+            with output_file(job).open("rb") as source:
+                self.send_file(source, job_id)
+
+    def put_input(self, sha256, suffix):
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            size = 0
+        if not 0 < size <= product.MAX_UPLOAD or self.headers.get("Transfer-Encoding"):
+            raise product.RequestError("invalid_input", "Provide 1–19,999,999 bytes with a Content-Length")
+        if not UPLOAD.acquire(blocking=False):
+            raise product.RequestError("upload_busy", "Another input upload is active", 409)
+        try:
+            deadline = time.monotonic() + UPLOAD_GRACE_SECONDS + size / UPLOAD_BYTES_PER_SECOND
+            created = product.stage_input(ROOT, sha256, suffix, lambda count: self.read_upload(count, deadline), size)
+        finally:
+            UPLOAD.release()
+            self.connection.settimeout(SOCKET_TIMEOUT)
+        return (201 if created else 200), {"sha256": sha256, "bytes": size}
+
+    def read_upload(self, count, deadline):
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError
+            self.connection.settimeout(min(SOCKET_TIMEOUT, remaining))
+            # read1 performs at most one raw read, even if the caller sends one byte at a time.
+            chunk = self.rfile.read1(count)
+            if time.monotonic() >= deadline:
+                raise TimeoutError
+            return chunk
+        except TimeoutError as exc:
+            self.close_connection = True
+            raise product.RequestError("upload_timeout", "Input upload timed out", 408) from exc
+
+    def do_PUT(self):
+        try:
+            match = product.INPUT_ROUTE.fullmatch(self.path)
+            if match:
+                status, body = self.put_input(*match.groups())
+            else:
+                match = product.JOB_ROUTE.fullmatch(self.path)
+                if not match or match[3]:
+                    raise product.RequestError("not_found", "Not found", 404)
+                kind, job_id, _ = match.groups()
+                request = product.validate(kind, product.read_json(self))
+                if kind == "foley":
+                    status, body = submit_product_foley(self.path, job_id, request)
+                else:
+                    status, body = submit_product_video(kind, job_id, request)
+        except product.RequestError as exc:
+            status, body = exc.status, exc.body()
+        except Exception:
+            status, body = 503, {"code": "worker_unavailable", "error": "Worker unavailable"}
+        self.respond(status, body)
+
     def do_GET(self):
         self.streaming = False
         try:
+            if self.path.startswith("/v1/"):
+                self.get_product()
+                return
             if self.path == "/health":
                 # Status and completed downloads remain available during a render
                 # hold. New submissions are independently rejected when unsafe.
@@ -365,6 +678,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(404, {"error": "Not found"})
                 return
             job = json.loads(job_path(parts[1]).read_text())
+            if job.get("api_version") == product.VERSION:
+                self.respond(404, {"error": "Not found"})
+                return
             if len(parts) == 2:
                 self.respond(200, job)
             elif parts[2] == "file" and job["state"] == "succeeded":
@@ -372,14 +688,22 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_file(source, job["id"])
             else:
                 self.respond(409, {"error": "Video is not ready"})
+        except product.RequestError as exc:
+            self.respond(exc.status, exc.body())
         except (FileNotFoundError, ValueError):
             if self.streaming:
                 raise
-            self.respond(404, {"error": "Not found"})
+            body = {"error": "Not found"}
+            if self.path.startswith("/v1/"):
+                body["code"] = "not_found"
+            self.respond(404, body)
         except Exception:
             if self.streaming:
                 raise
-            self.respond(503, {"error": "Worker unavailable"})
+            body = {"error": "Worker unavailable"}
+            if self.path.startswith("/v1/"):
+                body["code"] = "worker_unavailable"
+            self.respond(503, body)
 
     def do_POST(self):
         global ACTIVE

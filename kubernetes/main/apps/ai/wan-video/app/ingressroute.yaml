@@ -10,7 +10,7 @@ spec:
   entryPoints: [websecure]
   routes:
     - kind: Rule
-      match: Host(`video.haynesops.com`)
+      match: Host(`video.haynesops.com`) && !Path(`/v1`) && !PathPrefix(`/v1/`)
       services:
         - kind: Service
           name: wan-video

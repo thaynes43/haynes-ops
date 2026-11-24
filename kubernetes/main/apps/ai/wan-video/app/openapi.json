@@ -130,6 +130,921 @@
           }
         }
       }
+    },
+    "/v1/profiles": {
+      "get": {
+        "operationId": "list_product_profiles",
+        "responses": {
+          "200": {
+            "description": "Product API version and the server-owned profile for each job type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "api_version",
+                    "profiles"
+                  ],
+                  "properties": {
+                    "api_version": {
+                      "type": "string",
+                      "enum": [
+                        "1.0.0"
+                      ]
+                    },
+                    "profiles": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ready": {
+      "get": {
+        "operationId": "product_readiness",
+        "responses": {
+          "200": {
+            "description": "Product workers ready. An active job can still hold the lease.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "api_version",
+                    "ready",
+                    "active_video_job",
+                    "active_foley_job"
+                  ],
+                  "properties": {
+                    "api_version": {
+                      "type": "string",
+                      "enum": [
+                        "1.0.0"
+                      ]
+                    },
+                    "ready": {
+                      "type": "boolean"
+                    },
+                    "active_video_job": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{32}$",
+                      "nullable": true
+                    },
+                    "active_foley_job": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{32}$",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Worker unavailable or render hold requires inspection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inputs/{sha256}.{extension}": {
+      "put": {
+        "operationId": "stage_product_input",
+        "parameters": [
+          {
+            "name": "sha256",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          {
+            "name": "extension",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "png",
+                "wav"
+              ]
+            }
+          }
+        ],
+        "description": "Upload raw bytes with Content-Length from 1 to 19,999,999. Use a single-frame PNG (1 to 4096 pixels per side) or 16-bit PCM WAV (one or two channels at 16000, 22050, 24000, 44100 or 48000 Hz). The digest is verified before publication.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "image/png": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "audio/wav": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Input created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sha256",
+                    "bytes"
+                  ],
+                  "properties": {
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "bytes": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "An identical input already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sha256",
+                    "bytes"
+                  ],
+                  "properties": {
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "bytes": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid size, input or digest, including animated_png or unsupported_wav_format",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another upload is active or the stored input hash differs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "upload_timeout: the body exceeded 15 seconds without progress or the total budget of 30 seconds plus Content-Length divided by 131072 bytes per second",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "The staged-input quota or workspace free-space reserve prevents this new upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/i2v/{job_id}": {
+      "put": {
+        "operationId": "submit_product_i2v",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductI2VRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Job accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductJob"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Same request already recorded. Poll the existing job.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, input or unsupported profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Compute unavailable, held, or job ID belongs to another request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Worker unavailable or its start failed. Read this job ID before retrying."
+          },
+          "404": {
+            "description": "Required uploaded input is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/s2v/{job_id}": {
+      "put": {
+        "operationId": "submit_product_s2v",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductS2VRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Job accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductJob"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Same request already recorded. Poll the existing job.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, input or unsupported profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Compute unavailable, held, or job ID belongs to another request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Worker unavailable or its start failed. Read this job ID before retrying."
+          },
+          "404": {
+            "description": "Required uploaded input is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/foley/{job_id}": {
+      "put": {
+        "operationId": "submit_product_foley",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductFoleyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Job accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductJob"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Same request already recorded. Poll the existing job.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, input or unsupported profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Compute unavailable, held, or job ID belongs to another request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Worker unavailable or its start failed. Read this job ID before retrying."
+          }
+        }
+      }
+    },
+    "/v1/jobs/{job_type}/{job_id}": {
+      "get": {
+        "operationId": "product_job_status",
+        "parameters": [
+          {
+            "name": "job_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "i2v",
+                "s2v",
+                "foley"
+              ]
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded job status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductJob"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/{job_type}/{job_id}/file": {
+      "get": {
+        "operationId": "download_product_result",
+        "parameters": [
+          {
+            "name": "job_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "i2v",
+                "s2v",
+                "foley"
+              ]
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "A single byte range."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete result",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "audio/wav": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Requested byte range",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "audio/wav": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown job or missing file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Job has no result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Requested byte range is unsatisfiable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ProductI2VRequest": {
+        "type": "object",
+        "required": [
+          "profile",
+          "prompt",
+          "seed",
+          "story",
+          "image_sha256"
+        ],
+        "properties": {
+          "profile": {
+            "type": "string",
+            "enum": [
+              "wan2.2-ti2v-5b"
+            ]
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "negative_prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "story": {
+            "type": "string",
+            "pattern": "^https://work\\.haynesnetwork\\.com/work_packages/[1-9][0-9]*$"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 64,
+            "maximum": 1280,
+            "multipleOf": 32,
+            "default": 576
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 64,
+            "maximum": 1280,
+            "multipleOf": 32,
+            "default": 1024
+          },
+          "image_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "frames": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 121,
+            "default": 121,
+            "description": "Must be 4k + 1."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductS2VRequest": {
+        "type": "object",
+        "required": [
+          "profile",
+          "prompt",
+          "seed",
+          "story",
+          "image_sha256",
+          "audio_sha256",
+          "board_frames"
+        ],
+        "properties": {
+          "profile": {
+            "type": "string",
+            "enum": [
+              "wan2.2-s2v-14b-lightning"
+            ]
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "negative_prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740989
+          },
+          "story": {
+            "type": "string",
+            "pattern": "^https://work\\.haynesnetwork\\.com/work_packages/[1-9][0-9]*$"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 64,
+            "maximum": 1280,
+            "multipleOf": 32,
+            "default": 576
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 64,
+            "maximum": 1280,
+            "multipleOf": 32,
+            "default": 1024
+          },
+          "image_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "audio_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "board_frames": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 342,
+            "description": "Count at 24 fps. The PCM WAV must match its duration to one sample."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductFoleyRequest": {
+        "type": "object",
+        "required": [
+          "profile",
+          "prompt",
+          "seed",
+          "story",
+          "source_job_id"
+        ],
+        "properties": {
+          "profile": {
+            "type": "string",
+            "enum": [
+              "controlfoley-v1"
+            ]
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "negative_prompt": {
+            "type": "string",
+            "maxLength": 2048,
+            "default": ""
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "story": {
+            "type": "string",
+            "pattern": "^https://work\\.haynesnetwork\\.com/work_packages/[1-9][0-9]*$"
+          },
+          "source_job_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "start_seconds": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 300,
+            "default": 0
+          },
+          "duration": {
+            "type": "number",
+            "minimum": 0.7,
+            "maximum": 8,
+            "default": 8
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductJob": {
+        "type": "object",
+        "required": [
+          "api_version",
+          "type",
+          "id",
+          "state",
+          "profile",
+          "request_sha256",
+          "status_url",
+          "result"
+        ],
+        "properties": {
+          "api_version": {
+            "type": "string",
+            "enum": [
+              "1.0.0"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "i2v",
+              "s2v",
+              "foley"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ]
+          },
+          "profile": {
+            "type": "string"
+          },
+          "request_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "prompt_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "graph_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "error": {
+            "type": "string"
+          },
+          "result": {
+            "type": "object",
+            "required": [
+              "bytes",
+              "sha256",
+              "media_type",
+              "file_url"
+            ],
+            "properties": {
+              "bytes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "media_type": {
+                "type": "string",
+                "enum": [
+                  "video/mp4",
+                  "audio/wav"
+                ]
+              },
+              "file_url": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          }
+        }
+      },
+      "ProductError": {
+        "type": "object",
+        "required": [
+          "code",
+          "error"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

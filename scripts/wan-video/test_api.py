@@ -1,6 +1,7 @@
 """CPU-only protocol and failure tests; never import torch or submit GPU work."""
 import errno
 import importlib.util
+import io
 import json
 from pathlib import Path
 import socket
@@ -15,6 +16,7 @@ from urllib.request import Request, urlopen
 
 REPO = Path(__file__).resolve().parents[2]
 APP = REPO / "kubernetes/main/apps/ai/wan-video/app"
+sys.path.insert(0, str(APP))
 spec = importlib.util.spec_from_file_location("video_api", APP / "api.py")
 api = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(api)
@@ -47,6 +49,13 @@ class VideoTests(unittest.TestCase):
         api.CONFIG = APP
         api.ACTIVE = None
         api.UNSAFE = False
+
+    def test_engine_accepts_empty_mutation_responses_but_requires_queue_json(self):
+        with patch.object(api, "urlopen", side_effect=lambda *a, **kw: io.BytesIO(b"")):
+            self.assertIsNone(api.engine("/queue", {"delete": ["p1"]}))
+            self.assertIsNone(api.engine("/interrupt", {"prompt_id": "p1"}))
+            with self.assertRaises(json.JSONDecodeError):
+                api.engine_queue()
 
     def test_queue_reader_rejects_nontext_client_ids(self):
         for key in ("queue_running", "queue_pending"):
@@ -124,7 +133,7 @@ class VideoTests(unittest.TestCase):
                     api.recover()
                 self.assertTrue(api.UNSAFE)
                 self.assertEqual(engine.call_args_list, [unittest.mock.call("/queue"),
-                                 unittest.mock.call("/interrupt", {}), unittest.mock.call("/queue")])
+                                 unittest.mock.call("/interrupt", {"prompt_id": "p1"}), unittest.mock.call("/queue")])
                 sleep.assert_not_called()
                 self.assertEqual(json.loads(api.job_path(job["id"]).read_text())["state"], "running")
 
@@ -229,7 +238,7 @@ class VideoTests(unittest.TestCase):
             api.generate(job, "test")
         self.assertEqual(job["state"], "succeeded")
         self.assertEqual(job["poll_misses"], 2)
-        self.assertNotIn(unittest.mock.call("/interrupt", {}), engine.call_args_list)
+        self.assertNotIn(unittest.mock.call("/interrupt", {"prompt_id": "p1"}), engine.call_args_list)
 
     def test_persistent_poll_failure_still_fails_the_job(self):
         job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
@@ -239,7 +248,7 @@ class VideoTests(unittest.TestCase):
                 patch.object(api.time, "sleep"):
             api.generate(job, "test")
         self.assertEqual(job["state"], "failed")
-        self.assertIn(unittest.mock.call("/interrupt", {}), engine.call_args_list)
+        self.assertIn(unittest.mock.call("/interrupt", {"prompt_id": "p1"}), engine.call_args_list)
 
     def test_slow_poll_window_bounds_the_retries(self):
         job = {"id": "a" * 32, "telemetry": [], "preset": "preview", "seed": 43}
@@ -260,7 +269,7 @@ class VideoTests(unittest.TestCase):
         with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=replies) as engine:
             api.generate(job, "test")
         self.assertEqual(job["state"], "failed")
-        self.assertIn(unittest.mock.call("/interrupt", {}), engine.call_args_list)
+        self.assertIn(unittest.mock.call("/interrupt", {"prompt_id": "p1"}), engine.call_args_list)
         self.assertFalse(api.UNSAFE)
 
     def test_http_rejects_busy_and_invalid_requests(self):
@@ -456,7 +465,7 @@ class VideoTests(unittest.TestCase):
         queue = {"queue_running": [[1, "p-lost", {}, {"client_id": job["id"]}]], "queue_pending": []}
         with patch.object(api, "engine", side_effect=[queue, {}, {"queue_running": [], "queue_pending": []}]) as engine:
             api.recover()
-        self.assertIn(unittest.mock.call("/interrupt", {}), engine.call_args_list)
+        self.assertIn(unittest.mock.call("/interrupt", {"prompt_id": "p-lost"}), engine.call_args_list)
         self.assertFalse(api.UNSAFE)
 
     def test_submission_timeout_does_not_orphan_owned_render(self):
@@ -465,7 +474,7 @@ class VideoTests(unittest.TestCase):
         sample = {"gpus": [{"utilization_percent": 0, "memory_mib": 0}]}
         with patch.object(api, "gpu_sample", return_value=sample), patch.object(api, "engine", side_effect=[{"queue_running": [], "queue_pending": []}, TimeoutError("submission timeout"), queue, {}, {"queue_running": [], "queue_pending": []}]) as engine:
             api.generate(job, "test")
-        self.assertIn(unittest.mock.call("/interrupt", {}), engine.call_args_list)
+        self.assertIn(unittest.mock.call("/interrupt", {"prompt_id": "p-lost"}), engine.call_args_list)
         self.assertEqual(job["state"], "failed")
         self.assertFalse(api.UNSAFE)
 
