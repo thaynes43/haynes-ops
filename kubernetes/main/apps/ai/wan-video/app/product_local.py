@@ -102,7 +102,7 @@ def check_image(root, request):
 
 
 def bounded_text(text):
-    if type(text) is not str:
+    if type(text) is not str or len(text) > MAX_TEXT_BYTES:
         return False
     try:
         return len(text.encode("utf-8")) <= MAX_TEXT_BYTES
@@ -187,6 +187,10 @@ def exchange(root, data, lease=None, timeout=STATUS_SECONDS):
 
 def view(job):
     return {**job, "status_url": "/v1/local-model/requests/" + job["id"]}
+
+
+class UnknownEngineWork(RuntimeError):
+    """A queue reply was malformed or showed work outside this lease."""
 
 
 def busy(message):
@@ -325,7 +329,7 @@ class Lane:
                     result = receipt.get("result")
                     if not valid_result(self.profile, job, result):
                         error = "backend_failed"
-            elif error not in ("context_limit", "engine_work_unknown"):
+            elif error not in ("context_limit", "engine_work_unknown", "engine_queue_unavailable"):
                 error = "backend_failed"
         elif pending:
             error = "submission_lost"

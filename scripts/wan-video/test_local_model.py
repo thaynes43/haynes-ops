@@ -1,6 +1,8 @@
 """CPU-only handover tests with the real flock, journal, HTTP and Unix protocol."""
+from array import array
 from contextlib import contextmanager
 import hashlib
+from http.client import HTTPException
 import json
 from pathlib import Path
 import signal
@@ -155,7 +157,11 @@ class LocalModelTests(unittest.TestCase):
             queue = self.queue if self.sidecar_queue is None else self.sidecar_queue
             self.events.append(("receiver_queue", queue))
             # This fake uses the actual strict queue parser and records its reply.
-            with patch.object(api, "engine", return_value=queue):
+            if isinstance(queue, Exception):
+                engine = patch.object(api, "engine", side_effect=queue)
+            else:
+                engine = patch.object(api, "engine", return_value=queue)
+            with engine:
                 api.require_empty_queue()
 
         return sidecar.Sidecar(self.root, profile, lambda _: FakeModel(self), check_idle=check_idle,
@@ -318,6 +324,13 @@ class LocalModelTests(unittest.TestCase):
         self.assertEqual(self.work("token_cap"), [("token_cap", 12)])
         self.assertTrue(product.read_job(self.lane.path)["held"])
 
+    def test_output_byte_budget_is_measured_in_utf8(self):
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        self.text = "€" * (local.MAX_TEXT_BYTES // 3 + 1)
+        self.assertEqual(self.perform(INFER, "infer")["error"], "backend_failed")
+        self.assertEqual(self.work("infer"), [("infer", INFER, "running", False)])
+        self.assertTrue(product.read_job(self.lane.path)["held"])
+
     def test_one_card_wan_on_other_card_keeps_residency(self):
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
         self.assertEqual(self.generate("s2v")["state"], "succeeded")
@@ -396,6 +409,26 @@ class LocalModelTests(unittest.TestCase):
                 self.assertEqual(self.engine_calls, [("/queue", None)])
         self.assertEqual(self.work("load", "unload", "infer"), [])
 
+    def test_transient_queue_read_refuses_request_without_latching_hold(self):
+        for job_id, error in ((LOAD, TimeoutError()), (INFER, HTTPException())):
+            with self.subTest(error=type(error).__name__), patch.object(api, "engine", side_effect=error) as engine:
+                self.assertEqual(self.perform(job_id, "load")["error"], "worker_busy")
+                self.assertFalse(api.UNSAFE)
+                engine.assert_called_once_with("/queue")
+        self.assertEqual(self.work("load"), [])
+        self.assertFalse(self.lane.path.exists())
+        self.assertEqual(self.perform(UNLOAD, "load")["state"], "succeeded")
+
+    def test_transient_receiver_queue_read_does_not_create_residency_hold(self):
+        self.sidecar_queue = TimeoutError()
+        self.assertEqual(self.perform(LOAD, "load")["error"], "engine_queue_unavailable")
+        self.assertEqual(self.work("receiver_queue"), [("receiver_queue", self.sidecar_queue)])
+        self.assertEqual(self.work("load"), [])
+        self.assertFalse(self.lane.path.exists())
+        self.assertFalse(api.UNSAFE)
+        self.sidecar_queue = None
+        self.assertEqual(self.perform(UNLOAD, "load")["state"], "succeeded")
+
     def test_sidecar_rechecks_engine_queue_at_dispatch(self):
         self.sidecar_queue = {**EMPTY, "queue_running": [[0, "late-foreign"]]}
         self.assertEqual(self.perform(LOAD, "load")["error"], "engine_work_unknown")
@@ -425,6 +458,14 @@ class LocalModelTests(unittest.TestCase):
         index = self.engine_calls.index(("/free", {"unload_models": True, "free_memory": True}))
         self.assertEqual(self.engine_calls[index - 1], ("/queue", None))
         self.assertEqual(self.engine_calls[index + 1], ("/queue", None))
+
+    def test_changed_profile_cannot_discard_a_resident_reservation(self):
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        self.config.joinpath("local-model.json").write_text(json.dumps({**PROFILE, "max_output_tokens": 10}))
+        with server(api.Handler) as url:
+            self.assertEqual(self.submit(url, INFER, "infer")[2]["code"], "local_model_held")
+        self.assertEqual(self.work("infer", "unload"), [])
+        self.assertEqual(self.lane.read_state()["instance"], self.worker.instance)
 
     def test_api_restarts_with_resident_model_and_keeps_original_epoch(self):
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
@@ -549,11 +590,31 @@ class LocalModelTests(unittest.TestCase):
                 local.exchange(self.root, message, lease)
             with self.assertRaises(ValueError):
                 local.exchange(self.root, {**message, "request": self.body("unload")}, lease)
+            with (self.root / "not-the-lease").open("a") as wrong_inode, self.assertRaises(ValueError):
+                local.exchange(self.root, message, wrong_inode)
             with (self.root / "compute.lock").open("rb") as unrelated, self.assertRaises(ValueError):
                 local.exchange(self.root, message, unrelated)
         with (self.root / "compute.lock").open("rb") as unlocked, self.assertRaises(ValueError):
             local.exchange(self.root, message, unlocked)
         self.assertEqual(self.work("load", "unload"), [])
+
+    def test_private_receiver_rejects_truncated_packet_and_extra_fds(self):
+        request = self.body("load")
+        with api.acquire_compute() as lease:
+            job = self.lane.create(LOAD, request)
+            job.update(state="running")
+            local.write_record(local.job_path(self.root, LOAD), job)
+            self.lane.write_state(self.worker.instance, False, pending=LOAD)
+            payload = json.dumps({"action": "run", "id": LOAD, "request": request}).encode()
+            fd = lease.fileno()
+            for packet, fds in ((payload + b" " * local.MAX_PACKET, [fd]), (payload, [fd, fd])):
+                with self.subTest(size=len(packet), fds=len(fds)), \
+                        socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as conn:
+                    conn.connect(str(local.socket_path(self.root)))
+                    conn.sendmsg([packet], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array("i", fds))])
+                    with self.assertRaises(ValueError):
+                        local.receive_packet(conn)
+        self.assertEqual(self.work("load"), [])
 
     def test_sidecar_rejects_changed_inference_body_before_prepare(self):
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")

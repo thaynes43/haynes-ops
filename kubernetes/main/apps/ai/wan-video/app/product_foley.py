@@ -1,5 +1,6 @@
 """Loopback adapter for the pinned ControlFoley worker in the Wan pod."""
 import os
+from http.client import HTTPException
 from pathlib import Path
 import sys
 import threading
@@ -26,7 +27,7 @@ def acquire_with_local():
         if lane:
             lane.prepare_other({service.CARD}, lease, service.idle)
         return lease
-    except (OSError, ValueError, RuntimeError):
+    except (OSError, ValueError, RuntimeError, HTTPException):
         lease.close()
         return None
 

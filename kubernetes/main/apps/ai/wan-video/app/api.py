@@ -521,10 +521,10 @@ def foley_output(job):
 def require_empty_queue():
     try:
         queue = engine_queue()
-    except (OSError, ValueError, HTTPException) as exc:
-        raise local.busy("ComfyUI queue is unknown") from exc
+    except (ValueError, RecursionError) as exc:
+        raise local.UnknownEngineWork("ComfyUI queue is malformed") from exc
     if queue["queue_running"] or queue["queue_pending"]:
-        raise local.busy("ComfyUI already has a job; preserving engine work")
+        raise local.UnknownEngineWork("ComfyUI already has a job; preserving engine work")
 
 
 def check_local_queue():
@@ -533,9 +533,11 @@ def check_local_queue():
         raise local.busy("Render hold requires inspection")
     try:
         require_empty_queue()
-    except product.RequestError:
+    except local.UnknownEngineWork as exc:
         UNSAFE = True
-        raise
+        raise local.busy(str(exc)) from exc
+    except (OSError, HTTPException) as exc:
+        raise local.busy("ComfyUI queue is temporarily unavailable") from exc
 
 
 def local_profile():

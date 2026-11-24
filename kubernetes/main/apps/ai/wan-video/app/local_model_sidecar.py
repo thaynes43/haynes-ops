@@ -7,6 +7,7 @@ The backend must not spawn a process or service with its own GPU lifetime.
 from contextlib import closing, contextmanager
 import csv
 import fcntl
+from http.client import HTTPException
 import io
 import os
 import signal
@@ -138,8 +139,10 @@ class Sidecar:
         with self.deadline(self.profile[operation + "_timeout_seconds"]):
             try:
                 self.check_idle()
-            except product.RequestError:
+            except local.UnknownEngineWork:
                 outcome = {"error": "engine_work_unknown"}
+            except (OSError, HTTPException):
+                outcome = {"error": "engine_queue_unavailable"}
             else:
                 try:
                     outcome = self.execute(job, request)
