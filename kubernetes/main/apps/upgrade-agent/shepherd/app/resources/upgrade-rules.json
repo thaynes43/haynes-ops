@@ -1351,6 +1351,7 @@
           "kubernetes/main/apps/ai/ollama/assist02/app",
           "kubernetes/main/apps/ai/ollama/prime/app",
           "kubernetes/main/apps/ai/stable-diffusion/comfyui",
+          "kubernetes/main/apps/ai/studio/app",
           "kubernetes/main/apps/ai/wan-video/app",
           "kubernetes/main/apps/frontend/headlamp/app",
           "kubernetes/main/apps/frontend/homepage/app",
