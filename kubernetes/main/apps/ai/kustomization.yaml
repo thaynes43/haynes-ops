@@ -10,6 +10,7 @@ resources:
   - ./wan-video/ks.yaml
   - ./studio-render/ks.yaml
   - ./studio-database/ks.yaml
+  - ./studio-oidc/ks.yaml
   - ./ollama/
   - ./wyoming-protocol/ks.yaml
   - ./open-webui/ks.yaml
