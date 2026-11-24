@@ -11,6 +11,9 @@ configMapGenerator:
   - name: wan-video-config
     files:
       - api.py
+      - product.py
+      - product_graphs.py
+      - product_foley.py
       - workflow.json
       - openapi.json
       - models.yaml
