@@ -21,7 +21,7 @@ spec:
         kubernetes.io/hostname: talosw01
       containers:
         - name: canary
-          image: ghcr.io/nicolaka/netshoot:v0.16
+          image: ghcr.io/nicolaka/netshoot:v0.17
           command: ["/bin/bash", "/opt/canary/canary.sh"]
           resources:
             requests:
