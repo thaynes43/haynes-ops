@@ -748,6 +748,176 @@
           }
         }
       }
+    },
+    "/v1/local-model/profile": {
+      "get": {
+        "operationId": "local_model_profile",
+        "summary": "Discover the configured local-model profile and limits",
+        "responses": {
+          "200": {
+            "description": "Configured profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalModelProfile"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Local model is unconfigured or configuration is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/local-model/requests/{request_id}": {
+      "parameters": [
+        {
+          "name": "request_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "submit_local_model_request",
+        "summary": "Load, infer or unload under the shared Wan compute lease",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/LocalModelLoadRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LocalModelInferRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LocalModelUnloadRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Existing request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalModelStatus"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Request recorded before dispatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalModelStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or staged PNG",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Staged PNG is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request ID conflict, staged digest conflict or compute busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Model admission unavailable or task could not start",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ProductError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocalModelStatus"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "get_local_model_request",
+        "summary": "Read a request by its original ID, reconciling lost acknowledgments when possible",
+        "responses": {
+          "200": {
+            "description": "Request status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalModelStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown request ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Local model is unconfigured or configuration is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1042,6 +1212,266 @@
           },
           "error": {
             "type": "string"
+          }
+        }
+      },
+      "LocalModelLoadRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operation",
+          "profile"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "load"
+            ]
+          },
+          "profile": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+          }
+        }
+      },
+      "LocalModelInferRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operation",
+          "profile",
+          "prompt"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "infer"
+            ]
+          },
+          "profile": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "image_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096,
+            "description": "At most the profile limit"
+          }
+        }
+      },
+      "LocalModelUnloadRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operation",
+          "profile"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "unload"
+            ]
+          },
+          "profile": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+          }
+        }
+      },
+      "LocalModelProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "api_version",
+          "profile"
+        ],
+        "properties": {
+          "api_version": {
+            "type": "string",
+            "enum": [
+              "1.0.0"
+            ]
+          },
+          "profile": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "model",
+              "gpu_uuid",
+              "context_tokens",
+              "max_output_tokens",
+              "load_timeout_seconds",
+              "infer_timeout_seconds",
+              "unload_timeout_seconds",
+              "unloaded_max_mib",
+              "resident_min_mib",
+              "resident_max_mib"
+            ],
+            "properties": {
+              "model": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+              },
+              "gpu_uuid": {
+                "type": "string",
+                "pattern": "^GPU-[0-9a-f-]{36}$"
+              },
+              "context_tokens": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 262144
+              },
+              "max_output_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4096
+              },
+              "load_timeout_seconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 300
+              },
+              "infer_timeout_seconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 300
+              },
+              "unload_timeout_seconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 300
+              },
+              "unloaded_max_mib": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2048
+              },
+              "resident_min_mib": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 22000
+              },
+              "resident_max_mib": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 22000
+              },
+              "s2v_gpu_uuid": {
+                "type": "string",
+                "pattern": "^GPU-[0-9a-f-]{36}$",
+                "description": "Verified single-card ComfyUI placement, when configured"
+              }
+            }
+          }
+        }
+      },
+      "LocalModelStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "api_version",
+          "operation",
+          "profile",
+          "request_sha256",
+          "state",
+          "created_at",
+          "status_url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "api_version": {
+            "type": "string",
+            "enum": [
+              "1.0.0"
+            ]
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "load",
+              "infer",
+              "unload"
+            ]
+          },
+          "profile": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+          },
+          "request_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ]
+          },
+          "created_at": {
+            "type": "number"
+          },
+          "status_url": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "number"
+          },
+          "finished_at": {
+            "type": "number"
+          },
+          "image_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "error": {
+            "type": "string"
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text",
+              "input_tokens",
+              "output_tokens"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "At most 32768 UTF-8 bytes"
+              },
+              "input_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "output_tokens": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
           }
         }
       }

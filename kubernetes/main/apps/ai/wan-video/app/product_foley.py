@@ -1,14 +1,34 @@
 """Loopback adapter for the pinned ControlFoley worker in the Wan pod."""
+import os
+from pathlib import Path
 import sys
 import threading
 import time
 from http.server import ThreadingHTTPServer
 
 import product
+import product_local as local
 
 # Use the sidecar image's own generation, lease, GPU guards and legacy routes.
 sys.path.insert(0, "/opt/controlfoley-tools")
 import service
+
+CONFIG = Path(os.environ.get("VIDEO_CONFIG", "/config/video"))
+acquire_foley = service.acquire
+
+
+def acquire_with_local():
+    lease = acquire_foley()
+    if lease is None:
+        return None
+    try:
+        lane = local.enabled_lane(service.ROOT, CONFIG)
+        if lane:
+            lane.prepare_other({service.CARD}, lease, service.idle)
+        return lease
+    except (OSError, ValueError, RuntimeError):
+        lease.close()
+        return None
 
 
 def submit(job_id, request):
@@ -93,4 +113,5 @@ def recover():
 
 if __name__ == "__main__":
     recover()
+    service.acquire = acquire_with_local
     ThreadingHTTPServer(("127.0.0.1", 8189), Handler).serve_forever()
