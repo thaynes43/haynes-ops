@@ -1,0 +1,25 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: studio-database
+  namespace: ai
+spec:
+  targetNamespace: ai
+  dependsOn:
+    - name: cloudnative-pg-cluster
+      namespace: database
+  path: ./kubernetes/main/apps/ai/studio-database/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  postBuild:
+    substitute:
+      STUDIO_PG_CLUSTER: postgres16
+      STUDIO_PG_NAMESPACE: database
+  wait: true
+  interval: 15m
+  retryInterval: 1m
+  timeout: 2m

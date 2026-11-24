@@ -1,0 +1,19 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: studio
+  namespace: database
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  name: studio
+  owner: postgres
+  cluster:
+    name: postgres16
+  ensure: present
+  databaseReclaimPolicy: retain
+  schemas:
+    - name: studio
+      owner: studio_migrator
+      ensure: present

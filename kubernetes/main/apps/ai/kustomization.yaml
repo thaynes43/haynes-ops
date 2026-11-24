@@ -9,6 +9,7 @@ resources:
   - ./llama-server/ks.yaml
   - ./wan-video/ks.yaml
   - ./studio-render/ks.yaml
+  - ./studio-database/ks.yaml
   - ./ollama/
   - ./wyoming-protocol/ks.yaml
   - ./open-webui/ks.yaml

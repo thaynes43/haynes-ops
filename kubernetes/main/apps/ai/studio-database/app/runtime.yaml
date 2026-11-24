@@ -1,0 +1,56 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: studio-runtime-db-reader
+  namespace: ai
+automountServiceAccountToken: false
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: studio-runtime-db
+  namespace: ai
+spec:
+  provider:
+    kubernetes:
+      remoteNamespace: database
+      server:
+        caProvider:
+          type: ConfigMap
+          name: kube-root-ca.crt
+          key: ca.crt
+      auth:
+        serviceAccount:
+          name: studio-runtime-db-reader
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: studio-runtime-db
+  namespace: ai
+spec:
+  refreshPolicy: Periodic
+  refreshInterval: 1m
+  secretStoreRef:
+    kind: SecretStore
+    name: studio-runtime-db
+  target:
+    name: studio-runtime-db
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      data:
+        STUDIO_DATABASE_URL: >-
+          host=${STUDIO_PG_CLUSTER}-rw.${STUDIO_PG_NAMESPACE}.svc
+          dbname=studio user={{ .username }} password={{ .password }}
+          sslmode=require channel_binding=require gssencmode=disable connect_timeout=5
+  data:
+    - secretKey: username
+      remoteRef:
+        key: studio-runtime-db
+        property: username
+    - secretKey: password
+      remoteRef:
+        key: studio-runtime-db
+        property: password
