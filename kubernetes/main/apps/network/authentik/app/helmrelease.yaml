@@ -171,6 +171,9 @@ spec:
          - name: studio-oidc
            secret:
              secretName: studio-oidc-client
+             # The household's sign-in must never wait on a Studio Secret: if it is
+             # missing, the worker still starts and only the Studio blueprint fails.
+             optional: true
              items:
                - key: STUDIO_OIDC_CLIENT_SECRET
                  path: client-secret

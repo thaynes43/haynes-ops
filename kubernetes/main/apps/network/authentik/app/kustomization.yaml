@@ -64,7 +64,7 @@ configMapGenerator:
     options:
       disableNameSuffixHash: true
     files:
-      - blueprints/98-studio-oidc.yaml
+      - blueprints/99-studio-oidc.yaml
   # PLAN-042 Option A — CSS-nesting lowering of the served web assets (old-WebKit
   # login crash, upstream goauthentik#19814 / WebKit #290102). The server pod's
   # web-dist-lower initContainer (helmrelease.yaml) runs this script over a copy
