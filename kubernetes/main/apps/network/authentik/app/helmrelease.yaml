@@ -51,6 +51,8 @@ spec:
     blueprints:
       configMaps:
         - authentik-hnet-blueprints
+        # Only workers with the Studio Secret mount can discover this blueprint.
+        - authentik-studio-blueprints
     authentik:
       log_level: debug # TODO info once working
       error_reporting:
@@ -165,6 +167,20 @@ spec:
         enabled: false
     worker:
        replicas: 3
+       volumes:
+         - name: studio-oidc
+           secret:
+             secretName: studio-oidc-client
+             # The household's sign-in must never wait on a Studio Secret: if it is
+             # missing, the worker still starts and only the Studio blueprint fails.
+             optional: true
+             items:
+               - key: STUDIO_OIDC_CLIENT_SECRET
+                 path: client-secret
+       volumeMounts:
+         - name: studio-oidc
+           mountPath: /run/secrets/studio-oidc
+           readOnly: true
        # #3385: see server.resources above. Its liveness probe is the exec
        # `ak healthcheck`, which also needs CPU to answer within 3s.
        # Sized from Prometheus, 7 days to 2026-10-06: CPU p95 5m-rate 60m,

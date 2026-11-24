@@ -1,0 +1,21 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: studio-oidc
+  namespace: ai
+spec:
+  targetNamespace: ai
+  dependsOn:
+    - name: authentik
+      namespace: network
+  path: ./kubernetes/main/apps/ai/studio-oidc/app
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  wait: true
+  interval: 15m
+  retryInterval: 1m
+  timeout: 2m
