@@ -44,22 +44,10 @@ replacements:
   - source:
       kind: ConfigMap
       name: studio-segmentation-release
-      fieldPath: data.measurementRequest
+      fieldPath: data.servingRequest
     targets:
       - select: {kind: Job, name: studio-segmentation-smoke-00}
         fieldPaths: ["spec.template.spec.containers.[name=segmentation].resources.requests.memory"]
-  - source:
-      kind: ConfigMap
-      name: studio-segmentation-release
-      fieldPath: data.measurementLimit
-    targets:
-      - select: {kind: Job, name: studio-segmentation-smoke-00}
-        fieldPaths: ["spec.template.spec.containers.[name=segmentation].resources.limits.memory"]
-  - source:
-      kind: ConfigMap
-      name: studio-segmentation-release
-      fieldPath: data.servingRequest
-    targets:
       - select: {kind: HelmRelease, name: studio-render}
         fieldPaths: [spec.values.controllers.studio-render.containers.segmentation.resources.requests.memory]
   - source:
@@ -67,6 +55,8 @@ replacements:
       name: studio-segmentation-release
       fieldPath: data.servingLimit
     targets:
+      - select: {kind: Job, name: studio-segmentation-smoke-00}
+        fieldPaths: ["spec.template.spec.containers.[name=segmentation].resources.limits.memory"]
       - select: {kind: HelmRelease, name: studio-render}
         fieldPaths: [spec.values.controllers.studio-render.containers.segmentation.resources.limits.memory]
   - source:

@@ -1,4 +1,4 @@
-# Dormant. Apply only after OP460's measured serving memory has a published pin.
+# Dormant. Activate after the serving smoke on the published CR-51 pin passes.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: ai
