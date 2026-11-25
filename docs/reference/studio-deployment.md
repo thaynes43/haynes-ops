@@ -237,13 +237,16 @@ Confirm OP957's successful proof and key revocations before retiring the stages.
 )
 ```
 
-Run this block with `phase=preflight` and keep the baseline file on the
-coordinator's machine. After verifying the new pod pins, run it again with
-`phase=postflight` and the same file. It requires an exact match for each
+Run this block as a Bash script with `preflight` as its first argument and
+keep the baseline file on the coordinator's machine. After verifying the
+new pod pins, run it again with `postflight` and the same baseline path.
+It requires an exact match for each
 film's production, story, run, delivery and playback index counts and the
 durable store's file count and total bytes. The store count excludes `.probe`.
-Use `phase=compare` for the counts alone on a rollback, against a fresh
+Use `compare` for the counts alone on a rollback, against a fresh
 `preflight` baseline taken immediately before rollback at a separate path.
+Save this block as a Bash script to call it with a phase, baseline path
+and API pod target during the [OP437 recovery check](#op437-one-api-pod-recovery).
 
 Every mode uses the API's runtime database connection in a read-only
 transaction. Postflight also calls the pinned application's `_check_approval`
@@ -256,14 +259,15 @@ It exits unsuccessfully on any difference.
 ```bash
 (
   set -euo pipefail
-  phase=preflight
-  baseline="${XDG_RUNTIME_DIR:?}/studio-op959-baseline.json"
+  phase=${1:-preflight}
+  baseline=${2:-"${XDG_RUNTIME_DIR:?}/studio-op959-baseline.json"}
+  target=${3:-deploy/studio-api}
   expected=
-  if [[ $phase != preflight ]]; then
+  if [[ $phase != preflight && $phase != recovery-baseline ]]; then
     expected=$(<"$baseline")
     test -n "$expected"
   fi
-  report=$(kubectl -n ai exec -i deploy/studio-api -c api -- python -I -B - "$phase" "$expected" <<'PY'
+  report=$(kubectl -n ai exec -i "$target" -c api -- python -I -B - "$phase" "$expected" <<'PY'
 import json
 import os
 import sys
@@ -323,8 +327,47 @@ def check_import(conn, production, story, run, delivery, has_snapshot, expected_
     print(story, "boards", board_count)
 
 
+def recovery_reads(conn):
+    from haynes_studio.store.local import LocalStore
+
+    store = LocalStore(os.environ["STUDIO_STORE_ROOT"])
+    selections, selection_rows = sha256(), 0
+    for (row,) in conn.exec_driver_sql("SELECT to_jsonb(s)::text FROM studio.selections s ORDER BY iss, sub"):
+        selections.update(row.encode() + b"\n")
+        selection_rows += 1
+
+    proxies = {}
+    for _, _, run, delivery, _, _ in films:
+        proxy = conn.exec_driver_sql(
+            "SELECT document->'proxy' FROM studio.deliveries WHERE id = %s AND run_id = %s",
+            (delivery, run),
+        ).scalar_one()
+        with store.open(proxy["locator"]) as handle:
+            digest = sha256()
+            size = 0
+            while chunk := handle.read(1024 * 1024):
+                digest.update(chunk)
+                size += len(chunk)
+        assert (digest.hexdigest(), size) == (proxy["sha256"], proxy["bytes"]), (run, size)
+        proxies[run] = [digest.hexdigest(), size]
+
+    queued = {}
+    for run, pin in conn.exec_driver_sql(
+        "SELECT id, document->'snapshot' FROM studio.runs WHERE document->>'status' = 'queued' ORDER BY id"
+    ):
+        limit = 16 * 1024 * 1024
+        with store.open(pin["locator"]) as handle:
+            data = handle.read(limit + 1)
+        digest = sha256(data).hexdigest()
+        assert len(data) <= limit and digest == pin["sha256"], run
+        queued[run] = digest
+    return {"proxy SHA-256/bytes": proxies, "selection rows/SHA-256": [selection_rows, selections.hexdigest()],
+            "queued snapshot SHA-256": queued}
+
+
 phase, expected = sys.argv[1:]
-assert phase in {"preflight", "postflight", "compare"}, phase
+assert phase in {"preflight", "postflight", "compare", "recovery-baseline", "recovery-compare"}, phase
+recovery = phase.startswith("recovery-")
 if phase == "postflight":
     assert os.environ["STUDIO_BUILD_REVISION"] == "git:393fe1d66070ac726739b4cdb001a9e6b2c467db"
 engine = connect_engine(os.environ["STUDIO_DATABASE_URL"], os.getenv("STUDIO_DATABASE_SCHEMA", "studio"))
@@ -337,7 +380,22 @@ with snapshot(engine) as conn:
     statuses = dict(conn.exec_driver_sql(
         "SELECT document->>'status', count(*) FROM studio.runs GROUP BY 1 ORDER BY 1"
     ).tuples().all())
-    assert not {"queued", "running", "held"}.intersection(statuses), statuses
+    forbidden_run_states = {"running", "held"} if recovery else {"queued", "running", "held"}
+    assert not forbidden_run_states.intersection(statuses), statuses
+    if recovery:
+        media_counts = conn.exec_driver_sql(
+            "SELECT lane, document->>'status', count(*) FROM studio.media_jobs "
+            "WHERE document->>'status' IN ('queued', 'running') GROUP BY 1, 2"
+        ).all()
+        assert not any(status == "running" for _, status, _ in media_counts), media_counts
+        waiting = {lane for lane, _, _ in media_counts}
+        if "queued" in statuses:
+            waiting.add("run")
+        paused = set(conn.exec_driver_sql(
+            "SELECT lane FROM (SELECT DISTINCT ON (lane) lane, paused FROM studio.queue_lane_events "
+            "ORDER BY lane, sequence DESC) latest WHERE paused"
+        ).scalars())
+        assert waiting <= paused, ("queued work in unpaused lanes", sorted(waiting - paused))
     for production, story, run, delivery, has_snapshot, expected_boards in films:
         counts = list(conn.exec_driver_sql("""
             SELECT (SELECT count(*) FROM studio.productions WHERE id = %s),
@@ -350,6 +408,7 @@ with snapshot(engine) as conn:
         imports[run] = counts
         if phase == "postflight":
             check_import(conn, production, story, run, delivery, has_snapshot, expected_boards)
+    recovered = recovery_reads(conn) if recovery else {}
 
 
 def fail_walk(error):
@@ -364,8 +423,8 @@ for directory, subdirs, names in os.walk(store, onerror=fail_walk):
     for name in names:
         size += os.stat(os.path.join(directory, name), follow_symlinks=False).st_size
         files += 1
-report = {"production/story/run/delivery/index counts": imports, "store files/bytes": [files, size]}
-if phase != "preflight":
+report = {"production/story/run/delivery/index counts": imports, "store files/bytes": [files, size], **recovered}
+if phase not in {"preflight", "recovery-baseline"}:
     baseline = json.loads(expected)
     assert report == baseline, {"expected": baseline, "actual": report}
     print("runs by status", statuses)
@@ -373,7 +432,7 @@ print(json.dumps(report, sort_keys=True))
 PY
   )
   printf '%s\n' "$report"
-  if [[ $phase == preflight ]]; then
+  if [[ $phase == preflight || $phase == recovery-baseline ]]; then
     (umask 077; set -o noclobber; printf '%s\n' "$report" > "$baseline")
   fi
 )
@@ -1403,4 +1462,231 @@ absent.
   fi
   printf 'PASS OP961 rollback verification\n'
 )
+```
+
+## OP437 one API pod recovery
+
+**Expected.** The saga coordinator runs this check once from a LAN client
+with existing Studio read access to Kubernetes and authority to delete a
+single API pod. Use a quiet window without Studio submissions or draft or
+selection edits. The baseline refuses active runs or media jobs and requires
+any queued work to be in an already-paused lane. Record the number of
+selections and queued snapshots in the baseline. A zero count leaves that
+installed preservation case open.
+Do not create test records or change queue controls to fill it.
+
+Save the [OP959 read-only data probe](#before-reconciliation) as a local Bash
+file. The recovery modes read the same rows and store totals. They also
+fingerprint selections, verify queued snapshot hashes and read and hash both
+imported proxies through the API container's store mount. The comparison
+executes on the replacement API pod. The signed-out ingress requests
+establish route availability and access boundaries. Source integration tests
+cover authenticated draft CRUD and ranged media. This installed check cannot
+establish node-loss recovery, PostgreSQL failover, loss of `talosw01`
+(simulated in the source tests), or completion of a real media job.
+
+Declare the activity first and end it with the returned ID after the block,
+including after a failure. Save that ID as `activity_id` in your shell.
+
+```bash
+agent-run declare-activity start 'OP437 Studio API pod replacement' --scope ai,studio-api --ttl 30m
+```
+
+Save the block below as a Bash file and pass the path to the data probe as
+its first argument. It requires two Ready API, web and MCP replicas on
+distinct nodes per Deployment and one available replica per budget. A direct
+pod deletion bypasses PDB enforcement, so the block rechecks both API pods
+immediately before deleting the named target. Keep the printed evidence and
+the sample file. The loop samples at most one request per second for
+300 requests, starting before deletion, with no HTTP retries. At least one
+sample must return after the replacement Ready check. The tolerance is **zero**
+unexpected statuses or transport errors. The surviving API is Ready at
+the start, so even a brief ingress failure is evidence to keep and investigate.
+On any refusal or failed check, record it and stop without a second deletion.
+
+```bash
+(
+  set -uo pipefail
+  data_probe=${1:?Pass the OP959 data probe file}
+  [[ -r $data_probe ]] || { printf 'FAIL data probe file is unreadable\n' >&2; exit 1; }
+  evidence=$(mktemp -d "${XDG_RUNTIME_DIR:?}/studio-op437.XXXXXX") || exit 1
+  base=https://studio.haynesops.com
+  k=(kubectl -n ai --request-timeout=15s)
+  workers=(studio-worker studio-voice-worker studio-image-worker)
+  routes=(/v1/me /v1/productions /v1/queue/lanes)
+  samples=300
+  failed=0
+  sampler=
+  trap 'if [[ -n $sampler ]]; then kill "$sampler" 2>/dev/null || true; wait "$sampler" 2>/dev/null || true; fi' EXIT
+  trap 'exit 130' INT TERM
+
+  check() {
+    local label=$1
+    shift
+    if "$@"; then
+      printf 'PASS %s\n' "$label"
+    else
+      printf 'FAIL %s\n' "$label" >&2
+      failed=1
+    fi
+  }
+  gate() {
+    if (( failed )); then
+      printf 'FAIL OP437 API recovery (evidence %s)\n' "$evidence" >&2
+      exit 1
+    fi
+  }
+  ready_pods() {
+    "${k[@]}" get pods -l "app.kubernetes.io/name=$1" -o json | jq -ce '
+      [.items[] | select(.metadata.deletionTimestamp == null)
+       | select(any(.status.conditions[]?; .type == "Ready" and .status == "True"))
+       | {name: .metadata.name, uid: .metadata.uid, node: .spec.nodeName,
+          containers: [.status.containerStatuses[]? | select(.ready) | .name]}]
+      | sort_by(.name) | select(all(.[]; .node != null and .node != ""))'
+  }
+  ready_pair() {
+    ready_pods "$1" | jq -ce 'select(length == 2 and (map(.node) | unique | length == 2))'
+  }
+  worker_placement() {
+    ready_pods "$1" | jq -ce --arg worker "$1" '
+      select(length == 1 and (.[0].node == "talosw01") == ($worker == "studio-worker"))'
+  }
+  deployment_ready() {
+    "${k[@]}" get "deploy/$1" -o json | jq -e --argjson replicas "$2" '
+      .status.observedGeneration == .metadata.generation and .spec.replicas == $replicas
+      and .status.readyReplicas == $replicas and .status.updatedReplicas == $replicas' >/dev/null
+  }
+  budget_ready() {
+    "${k[@]}" get "pdb/$1" -o json | jq -e '
+      .status.observedGeneration == .metadata.generation and .spec.minAvailable == 1
+      and .status.currentHealthy == 2 and .status.disruptionsAllowed >= 1' >/dev/null
+  }
+  listener_ready() {
+    jq -e 'all(.[]; (.containers | index("api")) != null
+                    and (.containers | index("media-worker-routes")) != null)' <<<"$1" >/dev/null
+  }
+  status() {
+    local expected=$1 route=$2 actual rc=0
+    actual=$(curl --disable --silent --show-error --max-time 3 --output /dev/null \
+                  --write-out '%{http_code}' "$base$route") || rc=$?
+    printf '%s %s HTTP %s expected %s curl %s\n' "$(date -u +%FT%TZ)" "$route" "${actual:-000}" "$expected" "$rc"
+    [[ $rc == 0 && $actual == "$expected" ]]
+  }
+  signed_out() {
+    local route rc=0
+    status 200 / || rc=1
+    for route in "${routes[@]}" /v1/formats \
+      /v1/runs/run_01M7ZHNZJ2PWA8XR8K7KKWP17V/delivery \
+      /v1/runs/run_01M7C5CJA7XKBCRPM0ZRP2P5RS/delivery \
+      /v1/media/63dbb1e26287360ed6c4a0422dbdbfa250ad981c74e9719133d4dfe72d809d1b \
+      /v1/media/0212a7de9d6b7816c4c4d3c98bfd6d8e80fc112163944152e399b3e980a6748d; do
+      status 401 "$route" || rc=1
+    done
+    for route in /healthz /readyz /mcp /internal/v1/work/claim; do
+      status 404 "$route" || rc=1
+    done
+    return "$rc"
+  }
+  first_sample() {
+    status 401 /v1/me | tee "$evidence/ingress.log"
+  }
+  sample() {
+    local i errors=0
+    for ((i=1; i<samples; ++i)); do
+      sleep 1
+      status 401 "${routes[i % ${#routes[@]}]}" || ((errors+=1))
+    done
+    printf 'ingress samples=%s unexpected=%s tolerance=0\n' "$samples" "$errors"
+    (( errors == 0 ))
+  }
+  api_before=
+  read_api_pair() {
+    api_before=$(ready_pair studio-api) && printf '%s\n' "$api_before"
+  }
+  pod_name() {
+    jq -er --argjson i "$1" '.[$i].name' <<<"$api_before"
+  }
+  delete_one() {
+    local current
+    current=$(ready_pair studio-api) && [[ $current == "$api_before" ]] &&
+      budget_ready studio-api &&
+      "${k[@]}" delete pod "$victim" --wait=false
+  }
+  replacement=
+  find_replacement() {
+    local after candidate deadline=$((SECONDS + 150))
+    while (( SECONDS < deadline )); do
+      after=$(ready_pods studio-api) || return 1
+      if candidate=$(jq -er --argjson before "$api_before" '
+        select(length == 2 and (map(.node) | unique | length == 2))
+        | select(any(.[]; .uid == $before[1].uid and .node == $before[1].node))
+        | .[] | select(.uid != $before[0].uid and .uid != $before[1].uid)
+        | .name' <<<"$after") && listener_ready "$after"; then
+        replacement=$candidate
+        printf '%s\n' "$after"
+        return 0
+      fi
+      sleep 2
+    done
+    printf 'API replacement did not become Ready with both listeners within 150s\n' >&2
+    return 1
+  }
+  idle_claims_since() {
+    local count
+    count=$("${k[@]}" logs "deploy/$1" -c worker --since-time="$2" |
+      awk '/\/work\/claim "HTTP\/1\.1 204/ {n++} END {print n+0}') &&
+      printf '%s idle claims=%s\n' "$1" "$count" &&
+      (( count > 0 ))
+  }
+
+  printf 'Evidence directory %s\n' "$evidence"
+  for app in studio-api studio-mcp studio-web; do
+    check "$app deployment replicas" deployment_ready "$app" 2
+    check "$app PDB" budget_ready "$app"
+  done
+  check 'API placements and identities' read_api_pair
+  check 'MCP placements' ready_pair studio-mcp
+  check 'web placements' ready_pair studio-web
+  check 'both API listeners Ready' listener_ready "$api_before"
+  for worker in "${workers[@]}"; do
+    check "$worker deployment replica" deployment_ready "$worker" 1
+    check "$worker placement" worker_placement "$worker"
+  done
+  check 'signed-out ingress routes before deletion' signed_out
+  gate
+  victim=$(pod_name 0) && survivor=$(pod_name 1) || exit 1
+  check 'imported proxies, selections and queue baseline' timeout 45s bash "$data_probe" recovery-baseline \
+    "$evidence/baseline.json" "pod/$survivor"
+  check 'continuity sample before deletion' first_sample
+  gate
+  sample >>"$evidence/ingress.log" &
+  sampler=$!
+  check "delete pod/$victim once" delete_one
+  gate
+  check 'deleted pod is gone' kubectl -n ai wait --for=delete "pod/$victim" --timeout=90s
+  check 'replacement and survivor Ready on different nodes with both listeners' find_replacement
+  ready_at=$(date -u +%FT%TZ)
+  if [[ -n $replacement ]]; then
+    check 'unchanged data probe on replacement' timeout 45s bash "$data_probe" recovery-compare \
+      "$evidence/baseline.json" "pod/$replacement"
+  else
+    check 'unchanged data probe requires a replacement' false
+  fi
+  check 'ingress continuity during replacement' wait "$sampler"
+  sampler=
+  check 'continuity sample spans replacement readiness' awk -v ready="$ready_at" \
+    '$3 == "HTTP" && $1 > ready { covered=1 } END { exit !covered }' "$evidence/ingress.log"
+  check 'continuity sample summary' tail -n 1 "$evidence/ingress.log"
+  check 'signed-out ingress routes after replacement' signed_out
+  sleep 10  # Two normal worker claim intervals after the replacement Ready timestamp.
+  for worker in "${workers[@]}"; do
+    check "$worker claims after replacement" idle_claims_since "$worker" "$ready_at"
+  done
+  gate
+  printf 'PASS OP437 API recovery (evidence %s)\n' "$evidence"
+)
+```
+
+```bash
+agent-run declare-activity end "${activity_id:?Set this to the ID printed by the start command}"
 ```
