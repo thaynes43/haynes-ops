@@ -11,7 +11,7 @@ resources:
   - ./studio-render/ks.yaml
   - ./studio-database/ks.yaml
   - ./studio-oidc/ks.yaml
-  - ./studio/ks.yaml
+  - ./studio/ks.yaml # Includes the standalone matte policy stage.
   - ./ollama/
   - ./wyoming-protocol/ks.yaml
   - ./open-webui/ks.yaml

@@ -47,6 +47,10 @@ MIGRATION_0013_SHA256 = "6e68c22881ed4129b9557402accaee5a054eb490bb3fc58b3d04b39
 FLUX_ROOT = Path("kubernetes/main/flux/config/cluster.yaml")
 # Flux Kustomization v1 CRD defaults. A field explicitly set in Git must match.
 FLUX_SPEC_DEFAULTS = {"force": False}
+MATTE_POLICY_STAGE = "studio-matte-policy"
+MATTE_POLICY = "studio-matte-worker"
+MATTE_POLICY_PATH = f"./{STUDIO_PATH}/matting-pending/worker-policy"
+FLUX_PRUNE_ANNOTATION = "kustomize.toolkit.fluxcd.io/prune"
 STALE_MATTING_DIGESTS = {
     "sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f",
     "sha256:5c431978f3bfe7a48deb062c6b2854ca8b086d1a5d9c600e2db4b1e26d702d72",
@@ -325,6 +329,36 @@ def check_live_flux_spec(name, live, reviewed):
     compare(live, {**implicit, **reviewed}, "spec")
 
 
+def audit_matte_policy(repo, revision, snapshot):
+    """Read back the policy stage independently of the other Studio stages."""
+    live_stage, live_policy, pods = snapshot
+    _, _, _, stages = studio_inventory(repo)
+    reviewed_stage = stages[MATTE_POLICY_STAGE]
+    reviewed_policy, = flux_build(repo, reviewed_stage)
+    check_live_flux_spec(MATTE_POLICY_STAGE, live_stage["spec"], reviewed_stage["spec"])
+    status = live_stage["status"]
+    if (not flux_ready(live_stage)
+            or any(status.get(field) != f"main@sha1:{revision}"
+                   for field in ("lastAppliedRevision", "lastAttemptedRevision"))):
+        raise ValueError(f"{MATTE_POLICY_STAGE} must be Ready at {revision}")
+    if status["inventory"]["entries"] != [{"id": f"ai_{MATTE_POLICY}_networking.k8s.io_NetworkPolicy", "v": "v1"}]:
+        raise ValueError(f"{MATTE_POLICY_STAGE} must own only NetworkPolicy/ai/{MATTE_POLICY}")
+
+    metadata = live_policy["metadata"]
+    labels = metadata.get("labels", {})
+    if (metadata.get("deletionTimestamp")
+            or metadata.get("annotations", {}).get(FLUX_PRUNE_ANNOTATION) != "disabled"
+            or labels.get("kustomize.toolkit.fluxcd.io/name") != MATTE_POLICY_STAGE
+            or labels.get("kustomize.toolkit.fluxcd.io/namespace") != "ai"):
+        raise ValueError(f"{MATTE_POLICY} is missing its Flux owner or prune protection, or is being deleted")
+    # The Kubernetes API omits the empty ingress list from its response.
+    if {"ingress": [], **live_policy["spec"]} != reviewed_policy["spec"]:
+        raise ValueError(f"{MATTE_POLICY} live spec differs from the reviewed render")
+    if pods["items"]:
+        raise ValueError(f"{MATTE_POLICY} selects an existing pod")
+    print(f"{MATTE_POLICY_STAGE} Ready at {revision}, reviewed policy retained, zero matching pods")
+
+
 def audit_flux(expected, snapshot):
     """Return 0 when ready, 2 while stages converge, or 3 before source pickup."""
     source, inventory, stages = snapshot
@@ -596,9 +630,11 @@ def check_matting(path, flux):
     policy_stage = resource(flux, "Kustomization", "studio-matting-policy")
     policy_path = f"./{STUDIO_PATH}/matting-pending/policy"
     if policy_stage["spec"]["path"] != policy_path or not policy_stage["spec"]["prune"]:
-        raise ValueError("the Studio matting policy is the only applied matting stage and must prune")
+        raise ValueError("the Studio matting provisioning policy must use its policy path and prune")
+    policy_paths = {"studio-matting-policy": policy_path, MATTE_POLICY_STAGE: MATTE_POLICY_PATH}
     if any(
-        "matting-pending" in stage["spec"]["path"] and stage is not policy_stage
+        "matting-pending" in stage["spec"]["path"]
+        and policy_paths.get(stage["metadata"]["name"]) != stage["spec"]["path"]
         for stage in flux if stage["kind"] == "Kustomization"
     ):
         raise ValueError("matting provisioning, smoke, quality trial and worker activation must stay staged")
@@ -1375,12 +1411,22 @@ def main():
                         help="verify the published image pair and update all release references")
     parser.add_argument("--audit-flux", metavar="OPS_REVISION",
                         help="compare applied Flux inputs against the selected merge")
+    parser.add_argument("--audit-matte-policy", metavar="OPS_REVISION",
+                        help="compare the live matte policy and its Flux stage against the merged checkout")
     args = parser.parse_args()
     try:
         if args.audit_flux:
             if not re.fullmatch(r"[0-9a-f]{40}", args.audit_flux):
                 raise ValueError("Flux comparison requires the full selected Ops merge SHA")
             raise SystemExit(audit_flux(args.audit_flux, json.load(sys.stdin)))
+        if args.audit_matte_policy:
+            revision = args.audit_matte_policy
+            if (not re.fullmatch(r"[0-9a-f]{40}", revision)
+                    or subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() != revision
+                    or subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], text=True)):
+                raise ValueError("matte policy read-back requires a clean checkout at the full Ops merge SHA")
+            audit_matte_policy(Path.cwd(), revision, json.load(sys.stdin))
+            return
         if args.pin:
             repin(args.studio_path, *args.pin)
         check(args.studio_path)

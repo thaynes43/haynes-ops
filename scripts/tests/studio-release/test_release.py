@@ -179,7 +179,7 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
     def test_active_flux_inventory_keeps_matte_staged(self):
         repo = Path.cwd()
         _, _, _, stages = guard.studio_inventory(repo)
-        self.assertFalse(any(name.startswith("studio-matte-") for name in stages))
+        self.assertEqual({name for name in stages if name.startswith("studio-matte-")}, {guard.MATTE_POLICY_STAGE})
         for name in ("studio", "studio-worker", "studio-media-workers", "studio-media-worker-registration"):
             with self.subTest(stage=name):
                 active = guard.flux_build(repo, stages[name])
