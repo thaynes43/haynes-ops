@@ -103,7 +103,7 @@ check that their directory sync and write/cache flush functions match.
   if (( status )); then exit "$status"; fi
   check 'Provision Job created' kubectl -n ai create -f - <<< "$provision"
   check 'Provision Job completed' bash scripts/studio-segmentation/wait-job.sh "$job" 660 || status=1
-  report=$(kubectl -n ai --request-timeout=10s logs "job/$job" -c segmentation | tail -n 1) || report=
+  report=$(kubectl -n ai --request-timeout=10s logs "job/$job" -c segmentation | grep '^{' | tail -n 1) || report=
   printf '%s\n' "$report"
   check 'Provision report matches both model pins and release' jq -e --arg allocation "$allocation" \
     --arg image "${image##*@}" '
@@ -150,6 +150,13 @@ PY
 )
 ```
 
+**Proven (2026-11-25).** `studio-segmentation-provision-02` ran 11:41:39Z to
+11:42:19Z on talosw01 and published allocation
+`segmentation-op460-dino-sam-v1-02`: 846,220,082 bytes, profile
+`7d39bb26ab9166ad79f7b0ab4f9cd2e7e068de6efbb5048c7b8839346efebf44`. The
+read-back block passed for the profile and all 12 files of both models.
+[Story 460, comment 10083](https://work.haynesnetwork.com/work_packages/460).
+
 ## Measure the first offline smoke
 
 Reserve an exclusive heavy-job window on talosw01. The idle gate requires
@@ -191,7 +198,7 @@ with urlopen(sys.argv[1], timeout=5) as response:
   status=0
   check 'Provision Job complete' bash scripts/studio-segmentation/wait-job.sh "$provision" 15 || status=1
   profile=$(kubectl -n ai --request-timeout=10s logs "job/$provision" -c segmentation |
-    tail -n 1 | jq -r '.profile_sha256 // ""') || profile=
+    grep '^{' | tail -n 1 | jq -r '.profile_sha256 // ""') || profile=
   check 'Provision profile digest available' test "${#profile}" -eq 64 || status=1
   node=$(kubectl top node talosw01 --no-headers) || node=
   render=$(kubectl -n ai top pod --containers -l app.kubernetes.io/name=studio-render --no-headers) || render=
@@ -215,7 +222,7 @@ with urlopen(sys.argv[1], timeout=5) as response:
   job=$(yq '.metadata.name' <<< "$smoke")
   check 'Smoke Job created' kubectl -n ai create -f - <<< "$smoke"
   check 'Smoke Job completed' bash scripts/studio-segmentation/wait-job.sh "$job" 960 || status=1
-  report=$(kubectl -n ai --request-timeout=10s logs "job/$job" -c segmentation | tail -n 1) || report=
+  report=$(kubectl -n ai --request-timeout=10s logs "job/$job" -c segmentation | grep '^{' | tail -n 1) || report=
   printf '%s\n' "$report"
   check 'Exact image, profile and two tested settings' jq -e --arg image "${image##*@}" --arg profile "$profile" '
     .image_digest == $image and .profile_sha256 == $profile and [.runs[].weight_load] == ["mmap", "buffered"]
@@ -239,6 +246,32 @@ wait prints the Job, pod termination state when available and container logs.
 The visible-face and hidden-prop fractions exercise the fixed
 synthetic arrangement. Story [452](https://work.haynesnetwork.com/work_packages/452)
 owns real fixture quality and the adapter's build-time layout decision.
+
+**Proven (2026-11-25), and Changed: reports are read by their JSON line.**
+`studio-segmentation-smoke-02` ran 11:43:12Z to 11:44:47Z on talosw01 and
+exited 0. The idle gate before it read node CPU 4%, node memory 12%, the
+render app at 3m CPU, Wan with no active job and an empty shared ComfyUI
+queue.
+
+| Measured | Memory-mapped (first) | Buffered (second) |
+|---|---|---|
+| Cold load | 23.6 s, from a cold share | 7.9 s, page cache warm |
+| Job cgroup peak by the end of the run | 2,970,984,448 bytes | 3,707,191,296 bytes |
+| Worker RSS peak | 2,850,689,024 bytes | 2,865,315,840 bytes |
+| Text-grounded detection and mask | 8.7 s and 11.1 s | 8.9 s and 11.3 s |
+| Point, foreground, face and prop masks | 2.4 to 2.5 s | 2.4 to 2.5 s |
+
+The cgroup limit was 17,179,869,184 bytes. Every verdict was true, including
+byte parity between the two settings and create-only replay. The cold loads
+are not a comparison of the two settings: the first run also paid for reading
+the weights from the share.
+
+As first written, the block read each report from the last log line. Python's
+multiprocessing resource tracker printed a shutdown warning after the smoke's
+report, so the last line was not JSON and the four report checks printed FAIL
+although the Job had succeeded. The same four expressions pass on the report
+line itself. The blocks above now take the last line that starts with `{`.
+[Story 460, comment 10083](https://work.haynesnetwork.com/work_packages/460).
 
 ## Set serving memory and activate in a follow-up
 

@@ -2409,7 +2409,22 @@ count fails after a later pin, correct the query before trusting the block.
 
 ## OP437 one API pod recovery
 
-**Expected.** The saga coordinator runs this check once from a LAN client
+**Proven (2026-11-25), with two changes.** Run once against the third pin,
+11:35:27Z to 11:41:01Z: 32 checks passed and none failed. All 300 ingress
+samples answered 401 as expected, with no 502 and no transport error, while
+`studio-api-5ccf9956c6-2cw6s` was deleted and its replacement became Ready on
+another node. The data probe was unchanged on the replacement, and the
+surviving API pod and the three workers kept their identities and restart
+counts. **Changed:** the coordinator's pod has no LAN route, so each request
+was made from an MCP pod through the internal ingress Service, with the public
+host name and the certificate verified; this covers the ingress-to-pod path
+and not the LAN-to-ingress hop. One check was added: the pod chosen for
+deletion carries the drain on both containers. **Still open:** the baseline
+held no saved selection and no queued snapshot, so that preservation case is
+proven in the source tests only.
+[Story 437, comments 10077 and 10078](https://work.haynesnetwork.com/work_packages/437).
+
+**As written.** The saga coordinator runs this check once from a LAN client
 with existing Studio read access to Kubernetes and authority to delete a
 single API pod. Use a quiet window without Studio submissions or draft or
 selection edits. The baseline refuses active runs or media jobs and requires
