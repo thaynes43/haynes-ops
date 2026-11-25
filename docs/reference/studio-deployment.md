@@ -175,6 +175,11 @@ registered worker token. The release provisions zero agent keys.
 
 ### Before reconciliation
 
+This upgrade assumes the existing NFS store and build-stage directories.
+For a fresh installation, prepare `api-store-v1` and `build-stage-v1` as
+UID/GID 1000 on the Studio export before rolling the app. Check the existing
+store mount and the database and OIDC prerequisites.
+
 Run the checks before merging the GitOps change. Flux can reconcile as soon
 as it sees the merged commit. Ask Studio users to keep Studio idle until
 postflight completes. The previous pin has no queue-pause routes, so check
@@ -610,13 +615,15 @@ and separately enforce the retained OP959 Job digest and names. Restoring
 the whole OP957 deployment would reintroduce the retired stages and the
 older migration Job, whose Alembic cannot resolve the new head.
 
-The same additive schema reasoning allows `f30445f` to serve existing
-drafts and imported playback at `0007_escalation_packages`. Once a new
-client has set a relational format pin, keep recipe changes paused during
-a rollback. An old API update of that story's JSON pin cannot update the
-relational column and can fail its consistency check. Fix forward if that
-workflow is needed. Leave the database at the new head and keep the retained
-jobs Complete. Reconcile the app and worker in the same dependency order.
+The same additive schema reasoning allows `f30445f` to serve pre-upgrade
+data and imported playback at `0007_escalation_packages`. Prefer fixing
+forward after the new app begins writing. The older API validates draft
+writes against a board schema that rejects the new `created_by` stamp.
+An old edit of a story's JSON format pin cannot update the new relational
+column and can fail its consistency check. Keep affected drafts and
+recipe changes paused during a rollback. Leave the database at the new
+head and keep the retained Jobs Complete. Reconcile the app and worker in
+the same dependency order.
 Repeat the baseline counts, ready pod and digest checks for the restored
 images, the pre-existing LAN routes, and signed-in imported playback. Use
 the retained migration Job's head evidence and rerun the runtime privilege
