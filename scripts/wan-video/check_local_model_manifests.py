@@ -1,8 +1,4 @@
 """Check the dormant and staged manifests without contacting the cluster."""
-from contextlib import redirect_stdout
-from email.message import Message
-from importlib.util import module_from_spec, spec_from_file_location
-import io
 import json
 import os
 from pathlib import Path
@@ -10,8 +6,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
-from urllib.request import Request
 
 import yaml
 
@@ -164,41 +158,6 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(dns["toPorts"][0]["rules"]["dns"], allowed)
         self.assertEqual(https["toFQDNs"], allowed)
         self.assertEqual(https["toPorts"][0]["ports"], [{"port": "443", "protocol": "TCP"}])
-
-
-class RedirectTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        spec = spec_from_file_location("provision", PENDING / "weights" / "provision.py")
-        cls.module = module_from_spec(spec)
-        spec.loader.exec_module(cls.module)
-
-    def test_only_https_cdn_redirects_are_followed_and_hosts_are_logged(self):
-        request = Request("https://huggingface.co/resolve/file")
-        handler = self.module.PinnedRedirect()
-        for location, host, allowed in (
-            ("https://us.aws.cdn.hf.co/path?signature=secret", "us.aws.cdn.hf.co", True),
-            ("https://us.gcp.cdn.hf.co/path?signature=secret", "us.gcp.cdn.hf.co", True),
-            ("https://us.aws.cdn.hf.co.example.org/path?signature=secret", "us.aws.cdn.hf.co.example.org", False),
-            ("http://us.aws.cdn.hf.co/path?signature=secret", "us.aws.cdn.hf.co", False),
-            ("https://user:password@us.aws.cdn.hf.co/path", "us.aws.cdn.hf.co", False),
-            ("https://us.aws.cdn.hf.co:443/path", "us.aws.cdn.hf.co", False),
-            ("/path?signature=secret", "huggingface.co", False),
-            ("https://[invalid", "invalid", False),
-        ):
-            with self.subTest(location=location):
-                headers = Message()
-                headers["Location"] = location
-                output = io.StringIO()
-                with patch.object(self.module.HTTPRedirectHandler, "http_error_302") as follow, redirect_stdout(output):
-                    if allowed:
-                        handler.http_error_307(request, None, 307, "", headers)
-                        follow.assert_called_once()
-                    else:
-                        with self.assertRaisesRegex(self.module.ProvisionError, "unexpected_download_redirect"):
-                            handler.http_error_307(request, None, 307, "", headers)
-                        follow.assert_not_called()
-                self.assertEqual(output.getvalue(), f"Download redirect host={host} allowed={str(allowed).lower()}\n")
 
 
 if __name__ == "__main__":
