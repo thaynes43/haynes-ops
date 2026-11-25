@@ -45,6 +45,7 @@ class ManifestTests(unittest.TestCase):
         cls.activation = documents("kustomize", "build", PENDING / "activation")
         cls.policy = documents("kustomize", "build", PENDING / "download-policy")
         cls.weights = documents("kustomize", "build", PENDING / "weights")
+        cls.diagnostic = yaml.safe_load((PENDING / "diagnostic/job.yaml").read_text())
         cls.ai = documents("kustomize", "build", WAN.parent)
         cls.provisioning_flux = [
             yaml.safe_load((PENDING / f"{name}-ks.yaml").read_text()) for name in ("download-policy", "weights")
@@ -88,7 +89,9 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(flux["timeout"], "5m")
         self.assertNotIn("healthChecks", flux)
         names = {doc["metadata"]["name"] for doc in self.ai}
-        self.assertFalse(names & {"wan-local-model-download-policy", "wan-local-model-weights"})
+        self.assertFalse(names & {
+            "wan-local-model-download-policy", "wan-local-model-weights", self.diagnostic["metadata"]["name"],
+        })
         self.assertFalse({doc["kind"] for doc in self.activation} & {"Job", "CiliumNetworkPolicy"})
         dormant_pvc = resource(self.dormant, "PersistentVolumeClaim", "wan-video")
         active_pvc = resource(self.activation, "PersistentVolumeClaim", "wan-video")
@@ -139,10 +142,9 @@ class ManifestTests(unittest.TestCase):
 
     def test_sidecar_probes_only_check_the_listener_with_time_to_start(self):
         container, = [c for c in self.active_pod["containers"] if c["name"] == "local-model"]
-        self.assertEqual(container["image"],
-                         "ghcr.io/thaynes43/studio-local-model:"
-                         "b12679-79fa01b5ff27b2b7aeacc78b079be7d99864d252-45545041495-1"
-                         "@sha256:e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03")
+        self.assertRegex(container["image"], r"^ghcr\.io/thaynes43/studio-local-model:"
+                         r"(pending-op442-startup-proof|b12679-[0-9a-f]{40}-[0-9]+-[0-9]+@sha256:[0-9a-f]{64})$")
+        self.assertNotIn("e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03", container["image"])
         for name in ("startupProbe", "readinessProbe"):
             with self.subTest(probe=name):
                 probe = container[name]
@@ -150,6 +152,41 @@ class ManifestTests(unittest.TestCase):
                 self.assertEqual(probe["exec"]["command"], [
                     "python3", "-m", "studio_local_backend", "ready", "--workspace", "/workspace",
                 ])
+
+    def test_active_api_and_foley_expect_profile_even_when_mount_is_missing(self):
+        marker = {"name": "WAN_LOCAL_MODEL_ENABLED", "value": "1"}
+        for container in self.active_pod["containers"]:
+            if container["name"] in {"api", "foley"}:
+                self.assertIn(marker, container["env"])
+        for container in self.dormant_pod["containers"]:
+            self.assertNotIn("WAN_LOCAL_MODEL_ENABLED", {entry["name"] for entry in container["env"]})
+
+    def test_diagnostic_matches_runtime_and_has_only_read_only_wan_subpaths(self):
+        spec = self.diagnostic["spec"]
+        self.assertEqual(spec["backoffLimit"], 0)
+        self.assertEqual(spec["activeDeadlineSeconds"], 120)
+        pod = spec["template"]["spec"]
+        self.assertEqual(pod["restartPolicy"], "Never")
+        for field in ("nodeSelector", "securityContext", "runtimeClassName", "automountServiceAccountToken"):
+            self.assertEqual(pod[field], self.active_pod[field])
+        diagnostic, = pod["containers"]
+        sidecar, = [c for c in self.active_pod["containers"] if c["name"] == "local-model"]
+        self.assertEqual(diagnostic["securityContext"], sidecar["securityContext"])
+        self.assertEqual({entry["name"]: entry["value"] for entry in diagnostic["env"]},
+                         {entry["name"]: entry["value"] for entry in sidecar["env"]})
+        self.assertNotIn("nvidia.com/gpu", diagnostic["resources"]["limits"])
+        self.assertEqual(diagnostic["image"], "studio-local-model:pending-op442-startup-proof")
+        self.assertEqual(diagnostic["command"], [
+            "python3", "-m", "startup_check", "--driver-lock", "/lease/compute.lock",
+        ])
+        self.assertEqual(workspace_mounts(diagnostic), {
+            ("/workspace/local-model-weights", "local-model-weights", True),
+            ("/lease/compute.lock", "compute.lock", True),
+        })
+        self.assertIn({"name": "private", "mountPath": "/workspace"}, diagnostic["volumeMounts"])
+        self.assertIn({"name": "private", "emptyDir": {"sizeLimit": "32Mi"}}, pod["volumes"])
+        self.assertIn({"name": "workspace", "persistentVolumeClaim": {"claimName": "wan-video", "readOnly": True}},
+                      pod["volumes"])
 
     def test_provisioner_can_only_write_its_weights_directory(self):
         flux = resource(self.provisioning_flux, "Kustomization",

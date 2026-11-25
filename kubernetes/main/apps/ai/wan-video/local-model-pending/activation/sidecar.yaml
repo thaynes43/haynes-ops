@@ -1,9 +1,16 @@
 - op: add
+  path: /spec/values/controllers/wan-video/containers/api/env/WAN_LOCAL_MODEL_ENABLED
+  value: "1"
+- op: add
+  path: /spec/values/controllers/wan-video/containers/foley/env/WAN_LOCAL_MODEL_ENABLED
+  value: "1"
+- op: add
   path: /spec/values/controllers/wan-video/containers/local-model
   value:
     image:
       repository: ghcr.io/thaynes43/studio-local-model
-      tag: b12679-79fa01b5ff27b2b7aeacc78b079be7d99864d252-45545041495-1@sha256:e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03
+      # Set to the published, verified tag@digest before the activation PR.
+      tag: pending-op442-startup-proof
     command: [python3, -m, studio_local_backend, serve]
     env:
       NVIDIA_VISIBLE_DEVICES: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a

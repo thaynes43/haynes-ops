@@ -1,0 +1,66 @@
+# Staged only. Render with the verified activation image and diagnostic profile.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wan-local-model-start-check
+  namespace: ai
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 120
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: wan-local-model-start-check
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      runtimeClassName: nvidia
+      nodeSelector:
+        kubernetes.io/hostname: talosw01
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: local-model
+          image: studio-local-model:pending-op442-startup-proof
+          command: [python3, -m, startup_check, --driver-lock, /lease/compute.lock]
+          env:
+            - {name: NVIDIA_VISIBLE_DEVICES, value: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a}
+            - {name: CUDA_VISIBLE_DEVICES, value: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a}
+            - {name: NVIDIA_DRIVER_CAPABILITIES, value: "compute,utility"}
+            - {name: OMP_NUM_THREADS, value: "2"}
+            - {name: OPENBLAS_NUM_THREADS, value: "1"}
+            - {name: CUDA_CACHE_DISABLE, value: "1"}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: "2", memory: 256Mi}
+          volumeMounts:
+            - {name: private, mountPath: /workspace}
+            - {name: tmp, mountPath: /tmp}
+            - {name: profile, mountPath: /config/video, readOnly: true}
+            - name: workspace
+              mountPath: /workspace/local-model-weights
+              subPath: local-model-weights
+              readOnly: true
+            - name: workspace
+              mountPath: /lease/compute.lock
+              subPath: compute.lock
+              readOnly: true
+      volumes:
+        - name: workspace
+          persistentVolumeClaim: {claimName: wan-video, readOnly: true}
+        - name: profile
+          configMap: {name: wan-local-model-start-check}
+        - {name: private, emptyDir: {sizeLimit: 32Mi}}
+        - {name: tmp, emptyDir: {sizeLimit: 32Mi}}

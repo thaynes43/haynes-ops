@@ -80,6 +80,12 @@ and model behavior. The Wan CPU suite covers the private protocol, request
 limits, recovery and fake inference. CI also renders the staged manifests and
 validates the projected profile with the production loader.
 
+**Expected for the startup repair.** Its merge updates the same dormant
+ConfigMap and Reloader recreates Wan. Run the prechecks and post-rollout gate
+above, including one Ready Service endpoint on the new pod and the unchanged
+PVC UID. Keep Studio and direct producers paused across that window. The main
+workflow publishes a new signed digest. Leave the activation path staged.
+
 ## Part 2b activation
 
 **Expected.** Merge A, B and C in order, after each preceding health gate. A
@@ -90,15 +96,16 @@ calibrated profile. Flux can pick up a merge on its interval. Do each merge
 with its prechecks complete and the lane quiesced, and reconcile to capture the
 exact revision.
 
-After A and B squash-merge, merge `origin/main` into C's existing branch and
-push normally. Verify C's diff against main removes both temporary references
-from `kubernetes/main/apps/ai/kustomization.yaml`. Require checks on the exact
-merge and calibration head.
+A and B completed during the first attempt and their Flux references are retired.
+Keep their weights and read-back evidence. For the next C, start from current
+main and verify both temporary references stay absent from
+`kubernetes/main/apps/ai/kustomization.yaml`. Require checks on the exact
+activation and calibration head.
 
 ### Prepare evidence and verify the image
 
-Run from the PR C checkout throughout, including before merging A and B. Use one shell and set `OP442_EVIDENCE` to the
-printed directory for the commands below. Set `OP442_LEGACY_ID` to a known
+Run from the PR C checkout throughout. Set `OP442_EVIDENCE` to the printed
+directory for the commands below. Set `OP442_LEGACY_ID` to a known
 completed legacy video ID and keep its read private. Keep Studio dispatch and
 other direct producers quiesced from preflight through the smoke or rollback.
 Confirm OP410 and the queue worker are ready and no Studio dispatch is active.
@@ -115,13 +122,31 @@ Confirm OP410 and the queue worker are ready and no Studio dispatch is active.
 Use installed cosign or the pinned Linux amd64 tool below. The registry checks
 use an anonymous public pull token. They fetch the index, platform descriptors
 and attestation only. The signature binds the index, which binds the platform
-manifest and the provenance descriptor. Stop if any check fails.
+manifest and the provenance descriptor. In the activation patch, replace
+`pending-op442-startup-proof` with the `tag@sha256:...` from the signed main
+build. That image line also supplies the diagnostic Job and deployment health
+gate. The check below requires the latest image source revision on main and
+refuses the first activation's digest. Stop if any check fails.
 
 ```bash
 (
   set -euo pipefail
   umask 077
   evidence=${OP442_EVIDENCE:?Set OP442_EVIDENCE to the private rollout directory}
+  rm -f "$evidence/verified-image"
+  base=kubernetes/main/apps/ai/wan-video
+  git fetch origin main
+  image_inputs=(scripts/studio-local-model "$base/app"
+    "$base/local-model-pending/weights/weights.json" .github/workflows/studio-local-model-build.yml)
+  revision=$(git log -1 --format=%H FETCH_HEAD -- "${image_inputs[@]}")
+  git grep -Fq 'STARTUP_LOG = "local-model-listening"' "$revision" -- "$base/app/local_model_sidecar.py"
+  git diff --quiet "$revision" -- "${image_inputs[@]}"
+  pin=$(awk '$1 == "tag:" {print $2}' "$base/local-model-pending/activation/sidecar.yaml")
+  [[ $pin =~ ^b12679-([0-9a-f]{40})-[0-9]+-[0-9]+@sha256:[0-9a-f]{64}$ ]]
+  [[ ${BASH_REMATCH[1]} == "$revision" ]]
+  tag=${pin%@*}
+  digest=${pin#*@}
+  [[ $digest != sha256:e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03 ]]
   cosign_bin=$(command -v cosign || true)
   if [[ -z "$cosign_bin" ]]; then
     [[ $(uname -m) == x86_64 ]]
@@ -143,9 +168,6 @@ manifest and the provenance descriptor. Stop if any check fails.
   export GOMAXPROCS=2
 
   repo=thaynes43/studio-local-model
-  revision=79fa01b5ff27b2b7aeacc78b079be7d99864d252
-  tag="b12679-$revision-45545041495-1"
-  digest=sha256:e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03
   image="ghcr.io/$repo@$digest"
   "$cosign_bin" verify \
     --certificate-identity https://github.com/thaynes43/haynes-ops/.github/workflows/studio-local-model-build.yml@refs/heads/main \
@@ -177,6 +199,7 @@ manifest and the provenance descriptor. Stop if any check fails.
     (.predicate.metadata["https://mobyproject.org/buildkit@v1#metadata"].vcs |
       .source == "https://github.com/thaynes43/haynes-ops" and .revision == $revision)
   ' "$evidence/provenance.json"
+  printf '%s\n' "ghcr.io/$repo:$pin" > "$evidence/verified-image"
 )
 ```
 
@@ -382,28 +405,50 @@ ran in the dormant pod (15 samples on the model's card, all 266 MiB; ceiling
 270) and PR 5050 was merged at 06:15Z. The Wan pod was recreated with the
 sidecar at 06:17Z. Its three existing containers became Ready; the
 `local-model` container never did. It exited with status 1 immediately on
-every start (six restarts in eight minutes) after logging
-`ERROR: init 250 result=11` and
-`ValueError: Local-model sidecar must be pinned to its configured GPU UUID`
-from `local_model_sidecar.serve`. With the sidecar not Ready the pod had no
-Ready endpoint, so the Wan API was off its Service. The coordinator confirmed
-under the compute lease that the engine and workers were idle and that no
-residency journal existed, and used the direct revert below: the Wan
-Kustomization is back on the dormant `app` path. The weights, the image and
-this overlay are kept. The cause is not yet established: the sidecar has no
-device allocation of its own and is pinned by environment variable, as the
-Foley container is, and the check that failed reads the card's identity from
-inside the sidecar's image. Do not activate again before that check has been
-reproduced and fixed, and before a way to test the sidecar's start without
-taking Wan off its Service exists (the follow-up proposed in PR 5050's
-description).
+every observed start. The process raised
+`Local-model sidecar must be pinned to its configured GPU UUID`, so it never
+bound the private socket. The pod had no Ready Service endpoint. The
+coordinator proved the queue and workers idle under the lease and found no
+residency journal. PR 5056 (`0a521b75`) restored the dormant path. The active
+Flux health wait delayed that revert until its 35-minute timeout. The
+provisioned weights and activation configuration were retained.
+
+**Proven on CPU.** Anonymous GHCR extraction of the failed digest selected
+the Linux amd64 manifest `sha256:34336c097119df5ebecad0f5d5ba58a1bd0062a07a0c1ecdd89edba217706f1b`.
+The three Python modules matched `79fa01b5` byte for byte. Its CPython
+3.12.16 ran the real `serve` module with the staged profile. The weights
+fixture used the pinned manifest and sparse regular files of the pinned sizes.
+Startup checks that manifest, file type and size. The provisioning Job verifies
+the actual file hashes. Neither the fixture nor the test loads a model.
+With both process variables set to the profile UUID, `ready` passed and
+residency reported no child. Setting only `NVIDIA_VISIBLE_DEVICES=all` or only
+`CUDA_VISIBLE_DEVICES=0` reproduced the original Python traceback. The
+archived ReplicaSet records the correct named pins, and the failed process
+did not log its effective values. The specific live mismatch remains
+unverified. Foley retained both pins according to the coordinator. Its server
+starts independently of that comparison. Its leased worker verifies Card A
+through NVML and supplies the exact CUDA pin to its inference subprocess.
+[ControlFoley worker source](../../scripts/controlfoley/service.py)
+
+The NVIDIA toolkit warning `ERROR: init 250 result=11` did not occur in the
+extracted runtime. The archived logs show it in the same pod's healthy ComfyUI
+container, immediately before normal startup output. The Talos toolkit
+upstream report attributes this string to the host-side NVIDIA sandbox
+initialization. The Python pin guard ran before loading any model library or querying the GPU. [Talos extensions issue 940](https://github.com/siderolabs/extensions/issues/940)
+
+**Expected after the repair.** The sidecar binds its private socket after a
+profile, pin or weights check fails. `ready` checks the listener and
+`residency` reports that this instance never started a child. Local discovery
+and new local requests return HTTP 503 `local_model_unavailable` with a
+`reason_code`. Fixing the input takes effect on restart. With no older
+reservation and the lease and queue guards satisfied, Wan and Foley can
+proceed. A retained reservation still requires its normal release proof. A
+listener outage still blocks admission. Use the diagnostic below to verify the
+effective pins before changing the Wan pod.
 
 Check the Job succeeded, the read-back and disk/inode reserves pass and Wan
 is still dormant. Check node headroom for an 8 GiB request and 16 GiB limit,
-including other workloads. Starting with C, the Wan pod is Ready only when
-its local-model sidecar is Ready. Any sidecar restart briefly removes Wan
-from its Service, including access from the Studio worker, Open WebUI and the
-viewing route. A persistent sidecar failure keeps it off the Service.
+including other workloads.
 Run the [Wan-pod change check](#wan-pod-change-check) before every subsequent
 Wan-pod change. With producers paused, confirm known card ownership, drain
 ordinary ComfyUI cache under the existing lease, and collect Card A readings
@@ -515,20 +560,81 @@ hold-clearing command needs that exact profile if the mount has been removed.
 )
 ```
 
-After the calibrated PR checks pass, declare activity with
+#### Run the one-shot startup diagnostic
+
+**Expected.** The coordinator decides whether to run the staged Job. Before
+creating it, run the dormant Wan-pod change check with producers paused.
+Confirm the queue and workers are empty, both GPU owners are known and idle,
+and the existing compute-lock file is present. Keep dispatch paused through
+the check. The Job uses the same container image, GPU environment, runtime
+class and security context as the sidecar. The NVIDIA runtime can expose Card A
+by UUID before the process acquires the lease, even without a device-plugin
+allocation. That gives the exact image a compute-capable device. Under this
+reviewed command, `serve` uses a private `emptyDir` without a dispatch lease
+path. Its wrapper takes the original lease by inode for the loader and
+read-only NVML identity probe. It calls no CUDA initialization or model
+operation. The Wan PVC is mounted read-only. The operator's idle and ownership
+checks and the nonblocking flock are required together. If the check cannot run under these controls, keep the overlay dormant.
+An authorized equivalent is an isolated maintenance test on talosw01 with
+Wan stopped and proven idle, using the same container spec. The CPU smoke
+covers listener behavior and effective pins off the NVIDIA runtime.
+
+Keep the Job and profile outside Flux. Use only the verified image from the
+step above. Save the logs and compare the pins, listener, no-child state,
+driver load and card identity. Absent or differing evidence stops C. Collect
+failed Job logs before cleanup. Remove the diagnostic resources after the
+evidence is saved and repeat the dormant health gate.
+
+```bash
+(
+  set -euo pipefail
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  base=kubernetes/main/apps/ai/wan-video/local-model-pending
+  name=wan-local-model-start-check
+  pin=$(awk '$1 == "tag:" {print $2}' "$base/activation/sidecar.yaml")
+  image=$(cat "$evidence/verified-image")
+  [[ $image == "ghcr.io/thaynes43/studio-local-model:$pin" ]]
+  profile="$evidence/c-approved-profile.json"
+  card=$(jq -er .gpu_uuid "$profile")
+  kubectl -n ai exec deploy/wan-video -c api -- test -f /workspace/compute.lock
+  kubectl -n ai set image --local -f "$base/diagnostic/job.yaml" local-model="$image" -o yaml > "$evidence/start-check.yaml"
+  kubectl -n ai create configmap "$name" --from-file="local-model.json=$profile"
+  kubectl -n ai create -f "$evidence/start-check.yaml"
+  result=0
+  kubectl -n ai wait --for=condition=complete "job/$name" --timeout=150s || result=$?
+  kubectl -n ai logs "job/$name" > "$evidence/start-check.log"
+  [[ $result == 0 ]]
+  sed -n 's/^[^{]*\({".*}\)$/\1/p' "$evidence/start-check.log" |
+    jq -se --arg card "$card" '
+      any(.[]; .event == "local-model-listening" and .startup_error == null and
+        .gpu_uuid == $card and .pins.NVIDIA_VISIBLE_DEVICES == $card and .pins.CUDA_VISIBLE_DEVICES == $card) and
+      any(.[]; .ready == true and .residency.resident == false and .residency.receipt == null and
+        (.residency | has("startup_error") | not)) and
+      any(.[]; .cuda_library_loaded == true and .nvml_gpu_uuid == $card)
+    '
+  kubectl -n ai delete "job/$name" "configmap/$name"
+)
+```
+
+#### Activate and verify the Service
+
+After the diagnostic and calibrated PR checks pass, declare activity with
 `agent-run declare-activity start "Wan local model activation" --scope ai,talosw01,wan-video`.
-Merge C and reconcile the parent and existing Wan Kustomization. Each of the
-four containers must be Ready on the new pod, and init containers must have
-completed. The sidecar must answer its private listener probe, and the
-Service must have a Ready endpoint for that pod. A sidecar restart briefly
-removes the Ready endpoint even if the other containers stay healthy. Mounted profile discovery and the legacy `/health` can respond
-while the sidecar is starting. An otherwise admissible legacy Wan, typed I2V,
-S2V or Foley request then reaches the ledger as failed with
-`local_model_unavailable` before engine work. Check the CPU outage test
-`test_mounted_outage_refuses_without_latching_even_with_engine_cache` in the PR
-results and the live Ready and listener gates below. Keep producers paused
-for any unavailable sidecar. Use the activity ID to end the declaration once
-settled.
+In the Wan Flux Kustomization, change the path to the reviewed activation
+overlay. Keep `wait: false`, the 5-minute apply timeout, and the absence of
+`healthChecks`. Flux can then apply a revert while the workload is unhealthy.
+Flux Ready confirms reconciliation of the manifests. The operator must watch
+the Deployment, EndpointSlice and discovery gates for workload readiness.
+
+Merge C and reconcile the parent and existing Wan Kustomization. Require four
+Ready containers on the new pod, completed init containers, a Ready Service
+endpoint, and healthy local discovery. The private probe remains Ready in the
+served failure state. Any complete listener outage can briefly remove Wan
+from the Service. While the listener is unavailable, an otherwise admissible
+legacy Wan, typed I2V, S2V or Foley request fails before engine work. Keep
+producers paused until the applicable gate passes. Use the activity ID to end
+the declaration once settled.
 
 ```bash
 (
@@ -536,9 +642,9 @@ settled.
   umask 077
   evidence=${OP442_EVIDENCE:?}
   flux reconcile kustomization cluster-apps -n flux-system --with-source
-  flux --timeout=36m reconcile kustomization wan-video -n ai
+  flux reconcile kustomization wan-video -n ai
   kubectl -n ai rollout status deploy/wan-video --timeout=35m
-  image=ghcr.io/thaynes43/studio-local-model:b12679-79fa01b5ff27b2b7aeacc78b079be7d99864d252-45545041495-1@sha256:e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03
+  image=$(cat "$evidence/verified-image")
   kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
     jq -e --arg old "$(cat "$evidence/dormant.uid")" --arg image "$image" '
       .items | select(length == 1) | .[0] |
@@ -568,7 +674,13 @@ settled.
   ceiling=$(awk -F '[: ,]+' '/"unloaded_max_mib"/ {print $3}' "$profile")
   [[ $ceiling =~ ^[0-9]+$ ]]
   jq -e --argjson ceiling "$ceiling" '.discovery.unloaded_max_mib == $ceiling' "$evidence/c-health.json"
-  kubectl -n ai exec deploy/wan-video -c local-model -- printenv NVIDIA_VISIBLE_DEVICES CUDA_VISIBLE_DEVICES
+  kubectl -n ai logs deploy/wan-video -c local-model > "$evidence/c-local-model.log"
+  card=$(jq -er .gpu_uuid "$evidence/c-approved-profile.json")
+  sed -n 's/^[^{]*\({".*}\)$/\1/p' "$evidence/c-local-model.log" |
+    jq -se --arg card "$card" '
+      any(.[]; .event == "local-model-listening" and .startup_error == null and
+        .gpu_uuid == $card and .pins.NVIDIA_VISIBLE_DEVICES == $card and .pins.CUDA_VISIBLE_DEVICES == $card)
+    '
   kubectl -n ai get deployment wan-video -o json |
     jq -e '[.spec.template.spec.containers[] | select(.resources.limits["nvidia.com/gpu"] != null) |
       {name, limit:.resources.limits["nvidia.com/gpu"]}] == [{"name":"app","limit":"2"}]'
@@ -672,6 +784,44 @@ only after the health gate for the resulting active or dormant state.
 )
 ```
 
+#### Rollback C after a served startup refusal
+
+A Ready listener and HTTP 503 with a startup reason trigger this gate.
+Keep producers paused. Under the existing lease, confirm the queue and workers
+are idle, the journal path is absent, and the listener attests to a startup
+refusal with no child. Save that evidence and proceed to the GitOps revert.
+An existing journal or uncertain evidence requires the tracked rollback or
+hold-clearing path and the original release proof.
+
+```bash
+(
+  set -euo pipefail
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  kubectl -n ai exec -i deploy/wan-video -c api -- env PYTHONPATH=/config/video python -B - \
+    > "$evidence/start-refusal-rollback.json" <<'PYTHON'
+import json
+import api
+from clear_local_model_hold import check_idle, path_present
+
+lease = api.acquire_compute()
+if lease is None:
+    raise SystemExit("Compute is reserved")
+with lease:
+    check_idle()
+    if path_present(api.local.state_path(api.ROOT)):
+        raise SystemExit("Residency journal exists. Use tracked rollback or hold clearing.")
+    lane = api.local.enabled_lane(api.ROOT, api.CONFIG)
+    if lane is None:
+        raise SystemExit("Expected an active local-model lane")
+    status = lane.status(residency_only=True, allow_unbound=True)
+    if not status.get("startup_error") or status["resident"]:
+        raise SystemExit("The listener did not report a startup refusal with no model child")
+    print(json.dumps(status))
+PYTHON
+)
+```
+
 #### Rollback C after the sidecar served
 
 Quiesce producers and check Wan, Foley, queue and sidecar listener health.
@@ -698,8 +848,8 @@ the dormant recovery gate for any retained journal before resuming dispatch.
 
 #### Rollback C when the sidecar never became Ready
 
-A bad image or missing weights can keep the sidecar from listening and leave
-the Service without a Ready endpoint. If rollout observation from pod creation
+An image that cannot run or a listener it cannot bind can leave the Service
+without a Ready endpoint. For a served startup refusal, use its leased no-child gate above. If rollout observation from pod creation
 shows the sidecar never became Ready, and the API container confirms
 `state.json` is absent, proceed directly to the GitOps revert. Every model load
 writes state before it starts a child. This path works without a sidecar
@@ -764,9 +914,9 @@ PY
 
 #### GitOps revert and dormant gate
 
-For either rollback, merge a reviewed revert of C's activation settings in
+After the applicable rollback proof, merge a reviewed revert of C's activation settings in
 `wan-video/ks.yaml`. Restore the dormant `./kubernetes/main/apps/ai/wan-video/app`
-path and 5-minute timeout and remove the activation health checks. Retain the
+path. Keep the 5-minute timeout and operator readiness gate. Retain the
 Wan app ConfigMap helper and keep both completed provisioning inventories
 retired. Reconcile the parent and existing Wan Kustomization. Set
 `OP442_ACTIVE_POD_UID` to the UID of the pod being replaced. Require a new
@@ -871,7 +1021,7 @@ window incomplete.
 | Dormant recovery finds a socket, an unresolvable process name or an unavailable process query | The helper archives a socket only after a refused connection under the lease. A live listener, non-socket, ambiguous probe or process proof failure stops recovery. Keep dispatch paused and preserve any moved socket. An empty process list still requires all three memory readings to pass. |
 | Release receipt missing, failed or inconsistent without a confirmed hold | Hold status unknown. Preserve the request and journal, and inspect under the lease. Use [hold clearing](#clear-a-local-model-hold) if held, or resume tracked cleanup only after ownership and residency are known. |
 | Unknown ownership, malformed queue, unsettled request or failed lease proof | Foreign work or lease contention alone does not latch the local-model hold. A malformed queue may latch a separate render hold or a local-model hold after dispatch. Resolve ownership and any Wan render hold first. Use [hold clearing](#clear-a-local-model-hold) for a latched local-model hold. |
-| Bad image, weights, reserve failure or unavailable listener | These preflight failures do not themselves latch a hold. Use the [direct rollback](#rollback-c-when-the-sidecar-never-became-ready) only with evidence of no Ready transition and no state file. If state is present, use the tracked rollback and [hold clearing](#clear-a-local-model-hold) if held. |
+| Startup refusal, reserve failure or unavailable listener | The startup refusal creates no hold. With a listening but unavailable process, verify prior residency under the lease before reverting. Use the [direct rollback](#rollback-c-when-the-sidecar-never-became-ready) only with evidence of no Ready transition and no state file. With state present, use the tracked rollback and [hold clearing](#clear-a-local-model-hold) if held. |
 | Access denial | The denial does not itself latch a hold. The state of any earlier request may be unknown. Stop without retrying through another route. An authorized operator can inspect and follow [hold clearing](#clear-a-local-model-hold) if held. |
 | Output check, cap or budget failure | No hold from the stop itself. Finish verified cleanup within the reserve if safe. If the API latches a hold during release, use [hold clearing](#clear-a-local-model-hold). |
 

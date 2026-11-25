@@ -17,6 +17,8 @@ spec:
     kind: GitRepository
     name: haynes-ops
     namespace: flux-system
+  # Keep workload readiness in the operator gate on both paths. Waiting here
+  # can hold a Git revert behind a failing deployment.
   wait: false
   interval: 30m
   timeout: 5m
