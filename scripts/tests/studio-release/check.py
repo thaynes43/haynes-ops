@@ -14,6 +14,7 @@ import yaml
 STUDIO_PATH = Path("kubernetes/main/apps/ai/studio")
 API_IMAGE = "ghcr.io/thaynes43/haynes-studio"
 MATTING_IMAGE = f"{API_IMAGE}-matting"
+SEGMENTATION_IMAGE = f"{API_IMAGE}-segmentation"
 STALE_MATTING_DIGESTS = {
     "sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f",
     "sha256:5c431978f3bfe7a48deb062c6b2854ca8b086d1a5d9c600e2db4b1e26d702d72",
@@ -85,28 +86,32 @@ def check_packaged_register(app, deployments):
             raise ValueError(f"{deployment['metadata']['name']} must use the packaged licence register")
 
 
-def published_matting_memory(digest):
-    """Read the profile resource contract from the exact published image config."""
-    repository = MATTING_IMAGE.removeprefix("ghcr.io/")
+def published_config(image, digest):
+    """Read the digest-verified OCI config from the public Studio registry."""
+    repository = image.removeprefix("ghcr.io/")
     base = f"https://ghcr.io/v2/{repository}"
 
     def fetch(endpoint, expected, accept="application/json"):
         if not re.fullmatch(r"sha256:[a-f0-9]{64}", expected):
-            raise ValueError("invalid OCI digest in matting image")
+            raise ValueError("invalid Studio OCI digest")
         request = Request(f"{base}/{endpoint}/{expected}", headers={"Accept": accept})
         request.add_unredirected_header("Authorization", "Bearer " + token)
         with urlopen(request, timeout=15) as response:
             data = response.read(1024 * 1024 + 1)
         if len(data) > 1024 * 1024 or "sha256:" + sha256(data).hexdigest() != expected:
-            raise ValueError("matting image manifest or config SHA-256 differs from its pin")
+            raise ValueError("Studio image manifest or config SHA-256 differs from its pin")
         return json.loads(data)
 
+    with urlopen(f"https://ghcr.io/token?service=ghcr.io&scope=repository:{repository}:pull", timeout=15) as response:
+        token = json.loads(response.read(65536))["token"]
+    manifest = fetch("manifests", digest, "application/vnd.docker.distribution.manifest.v2+json, "
+                                         "application/vnd.oci.image.manifest.v1+json")
+    return fetch("blobs", manifest["config"]["digest"])
+
+
+def published_matting_memory(digest):
     try:
-        with urlopen(f"https://ghcr.io/token?service=ghcr.io&scope=repository:{repository}:pull", timeout=15) as response:
-            token = json.loads(response.read(65536))["token"]
-        manifest = fetch("manifests", digest, "application/vnd.docker.distribution.manifest.v2+json, "
-                                            "application/vnd.oci.image.manifest.v1+json")
-        config = fetch("blobs", manifest["config"]["digest"])
+        config = published_config(MATTING_IMAGE, digest)
         label = config["config"]["Labels"]["io.haynes-studio.matting.resources"]
         memory = json.loads(label)
         request, limit = memory["request_gib"], memory["limit_gib"]
@@ -130,22 +135,35 @@ IDENTITY_EXCLUDED_LABELS = (
 )
 
 
-def check_policy_selectors(documents):
+def check_policy_selectors(documents, *, app_labels_only=False):
     def keys(selector):
         selector = selector or {}
         yield from (selector.get("matchLabels") or {})
         yield from (item["key"] for item in selector.get("matchExpressions") or [])
 
-    for policy in (doc for doc in documents if doc["kind"] == "NetworkPolicy"):
-        spec = policy["spec"]
-        selectors = [spec.get("podSelector")]
-        for rule in [*(spec.get("ingress") or []), *(spec.get("egress") or [])]:
-            for peer in [*(rule.get("to") or []), *(rule.get("from") or [])]:
-                selectors += [peer.get("podSelector"), peer.get("namespaceSelector")]
-        used = {key for selector in selectors for key in keys(selector)}
+    for policy in documents:
+        spec = policy["spec"] if policy["kind"] in {"NetworkPolicy", "CiliumNetworkPolicy"} else None
+        if spec is None:
+            continue
+        selectors = []
+        if policy["kind"] == "NetworkPolicy":
+            selectors.append(spec.get("podSelector"))
+            for rule in [*(spec.get("ingress") or []), *(spec.get("egress") or [])]:
+                for peer in [*(rule.get("to") or []), *(rule.get("from") or [])]:
+                    selectors += [peer.get("podSelector"), peer.get("namespaceSelector")]
+        else:
+            selectors.append(spec.get("endpointSelector"))
+            for direction, peers in (("ingress", "fromEndpoints"), ("egress", "toEndpoints")):
+                for rule in [*spec.get(direction, []), *spec.get(direction + "Deny", [])]:
+                    selectors.extend(rule.get(peers, []))
+        used = {key.removeprefix("k8s:") for selector in selectors for key in keys(selector)}
         if bad := sorted(used.intersection(IDENTITY_EXCLUDED_LABELS)):
             raise ValueError(f"{policy['metadata']['name']} selects by {bad[0]}, which Cilium leaves "
                              "out of pod identities; the rule would never match")
+        if app_labels_only and any(
+            key != "io.kubernetes.pod.namespace" and not key.startswith("app.kubernetes.io/") for key in used
+        ):
+            raise ValueError(f"{policy['metadata']['name']} must select pods by app.kubernetes.io labels")
 
 
 def check_matting(path, flux):
@@ -300,10 +318,198 @@ def check_matting_mounts(spec, pod, subpath, scratch_name, memory):
                          "and read-only pinned weights")
 
 
+def segmentation_memory(memory):
+    request, limit = memory["request_gib"], memory["limit_gib"]
+    if type(request) is not int or type(limit) is not int or not 0 < request <= limit:
+        raise ValueError("invalid segmentation image memory contract")
+    return f"{request}Gi", f"{limit}Gi"
+
+
+def _check_segmentation_policy(policy):
+    check_policy_selectors(policy, app_labels_only=True)
+    if sorted(doc["kind"] for doc in policy) != ["CiliumNetworkPolicy", "CiliumNetworkPolicy", "ConfigMap"]:
+        raise ValueError("the segmentation policy stage may include only two policies and the provisioner")
+    download = resource(policy, "CiliumNetworkPolicy", "studio-segmentation-provision")["spec"]
+    smoke = resource(policy, "CiliumNetworkPolicy", "studio-segmentation-smoke")["spec"]
+    hosts = [{"matchName": "huggingface.co"}, {"matchName": "us.aws.cdn.hf.co"}]
+    for name, spec, egress in (
+        ("provision", download, {"egress": [
+            {
+                "toEndpoints": [{"matchLabels": {
+                    "k8s:io.kubernetes.pod.namespace": "kube-system", "k8s:app.kubernetes.io/name": "coredns",
+                }}],
+                "toPorts": [{"ports": [{"port": "53", "protocol": "ANY"}], "rules": {"dns": hosts}}],
+            },
+            {"toFQDNs": hosts, "toPorts": [{"ports": [{"port": "443", "protocol": "TCP"}]}]},
+        ]}),
+        ("smoke", smoke, {"egressDeny": [{"toEntities": ["all"]}]}),
+    ):
+        if spec != {
+            "endpointSelector": {"matchLabels": {"app.kubernetes.io/name": f"studio-segmentation-{name}"}},
+            "ingressDeny": [{"fromEntities": ["all"]}], **egress,
+        }:
+            raise ValueError(f"segmentation {name} has an unexpected network rule")
+
+
+def _check_segmentation_jobs(pending, policy, pin, image, allocation):
+    nfs = {"server": "gasha01.haynesnetwork", "path": "/hdd-nfs-repl"}
+    hardening = {"allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True, "capabilities": {"drop": ["ALL"]}}
+    pod_security = {"runAsNonRoot": True, "runAsUser": 1000, "runAsGroup": 1000,
+                    "seccompProfile": {"type": "RuntimeDefault"}}
+    weight_path = f"data/studio/jobs/{allocation}/weights"
+    suffix = allocation.rsplit("-", 1)[1]
+    settings = {"STUDIO_SEGMENTATION_IMAGE": image}
+    for stage, deadline, security, arguments, resources, mounts, volumes, expected_env in (
+        (
+            "provision", 600, pod_security, ["python", "-B", "/config/provision.py"],
+            {"requests": {"cpu": "100m", "memory": "128Mi"}, "limits": {"cpu": "500m", "memory": "1Gi"}},
+            [
+                {"name": "media", "mountPath": "/jobs", "subPath": "data/studio/jobs"},
+                {"name": "config", "mountPath": "/config", "readOnly": True},
+            ],
+            [{"name": "media", "nfs": nfs}, {"name": "config", "configMap": {
+                "name": resource(policy, "ConfigMap")["metadata"]["name"],
+            }}],
+            {**settings, "STUDIO_SEGMENTATION_ALLOCATION": allocation},
+        ),
+        (
+            "smoke", 900, {**pod_security, "fsGroup": 1000},
+            ["studio-segmentation", "smoke", "--load-strategy", "mmap", "--compare-load-strategy", "buffered"],
+            {"requests": {"cpu": "250m", "memory": pin["measurementRequest"]},
+             "limits": {"cpu": "2", "memory": pin["measurementLimit"]}},
+            [
+                {"name": "scratch", "mountPath": "/segmentation"},
+                {"name": "weights", "mountPath": "/opt/studio-models", "subPath": weight_path, "readOnly": True},
+            ],
+            [{"name": "scratch", "emptyDir": {"sizeLimit": "256Mi"}},
+             {"name": "weights", "nfs": {**nfs, "readOnly": True}}],
+            settings,
+        ),
+    ):
+        job = resource(render(pending / stage), "Job", f"studio-segmentation-{stage}-{suffix}")
+        spec = job["spec"]
+        pod = spec["template"]["spec"]
+        container_spec = container(job)
+        if (job["metadata"]["namespace"] != "ai" or spec["activeDeadlineSeconds"] != deadline
+                or spec["backoffLimit"] != 0 or spec["ttlSecondsAfterFinished"] != 86400
+                or spec["template"]["metadata"]["labels"] != {"app.kubernetes.io/name": f"studio-segmentation-{stage}"}
+                or pod != {
+                    "automountServiceAccountToken": False, "enableServiceLinks": False, "restartPolicy": "Never",
+                    "nodeSelector": {"kubernetes.io/hostname": "talosw01"}, "priorityClassName": "dev-env-agent",
+                    "securityContext": security, "containers": [container_spec], "volumes": volumes,
+                }
+                or container_spec != {
+                    "name": "segmentation", "command": arguments, "image": image, "resources": resources,
+                    "securityContext": hardening, "volumeMounts": mounts,
+                    "env": [{"name": name, "value": value} for name, value in expected_env.items()],
+                }):
+            raise ValueError(f"unsafe segmentation {stage} Job envelope")
+
+
+def _check_segmentation_activation(path, pending, pin, image, digest, allocation):
+    render_path = path.with_name("studio-render")
+    base = resource(render(render_path / "app"), "HelmRelease", "studio-render")["spec"]["values"]
+    values = resource(render(pending / "activation"), "HelmRelease", "studio-render")["spec"]["values"]
+    controller = values["controllers"]["studio-render"]
+    sidecar = controller["containers"].pop("segmentation")
+    render_app = controller["containers"]["app"]
+    if render_app["resources"]["limits"] != {"cpu": "18", "memory": pin["renderMemoryLimit"]}:
+        raise ValueError("segmentation activation must reserve two CPU cores and its measured share of 32 GiB")
+    render_app["resources"]["limits"] = {"cpu": "20", "memory": "32Gi"}
+    nfs = values["persistence"].pop("segmentation-weights")
+    scratch = values["persistence"].pop("segmentation-scratch")
+    mount = {"path": "/segmentation"}
+    if nfs != {
+        "type": "nfs", "server": "gasha01.haynesnetwork", "path": "/hdd-nfs-repl",
+        "advancedMounts": {"studio-render": {"segmentation": [{
+            "path": "/opt/studio-models", "subPath": f"data/studio/jobs/{allocation}/weights", "readOnly": True,
+        }]}},
+    } or scratch != {
+        "type": "emptyDir", "sizeLimit": "256Mi",
+        "advancedMounts": {"studio-render": {"app": [mount], "segmentation": [mount]}},
+    }:
+        raise ValueError("segmentation activation needs read-only weights and a dedicated shared scratch")
+    for name in ("studio", "config", "tmp"):
+        volume = values["persistence"][name]
+        volume["globalMounts"] = volume.pop("advancedMounts")["studio-render"]["app"]
+    if values != base:
+        raise ValueError("segmentation activation must preserve the base render workload")
+    if (sidecar["image"] != {"repository": SEGMENTATION_IMAGE, "tag": f"pinned@{digest}"}
+            or sidecar["env"] != {"STUDIO_SEGMENTATION_IMAGE": image}
+            or sidecar["command"] != ["studio-segmentation", "serve"]
+            or sidecar.get("ports")
+            or sidecar["securityContext"] != {
+                "runAsUser": 1000, "runAsGroup": 1000, "runAsNonRoot": True, "allowPrivilegeEscalation": False,
+                "readOnlyRootFilesystem": True, "capabilities": {"drop": ["ALL"]},
+            }
+            or sidecar["resources"] != {
+                "requests": {"cpu": "250m", "memory": pin["servingRequest"]},
+                "limits": {"cpu": "2", "memory": pin["servingLimit"]},
+            }):
+        raise ValueError("unsafe segmentation serving container")
+    for probe in ("startup", "readiness", "liveness"):
+        config = sidecar["probes"][probe]
+        if not (config["enabled"] and config["custom"]
+                and config["spec"]["exec"] == {"command": ["studio-segmentation", "ready"]}):
+            raise ValueError(f"segmentation {probe} must use Unix HTTP readiness")
+
+
+def check_segmentation_stage(path, flux):
+    pending = path / "segmentation-pending"
+    pin = yaml.safe_load((pending / "release/release.yaml").read_text())["data"]
+    image = pin["image"]
+    match = re.fullmatch(rf"{re.escape(SEGMENTATION_IMAGE)}@(sha256:[a-f0-9]{{64}})", image)
+    if not match or not re.fullmatch(r"segmentation-op460-dino-sam-v1-[0-9]{2}", pin["allocation"]):
+        raise ValueError("invalid segmentation release image or create-only allocation")
+    digest = match[1]
+    policy_stage = resource(flux, "Kustomization", "studio-segmentation-policy")
+    if (policy_stage["spec"]["path"] != f"./{STUDIO_PATH}/segmentation-pending/policy"
+            or not policy_stage["spec"]["prune"]
+            or any("segmentation-pending" in stage["spec"]["path"] and stage is not policy_stage
+                   for stage in flux if stage["kind"] == "Kustomization")):
+        raise ValueError("Flux may apply only the segmentation policy stage")
+    policy = render(pending / "policy")
+    _check_segmentation_policy(policy)
+    _check_segmentation_jobs(pending, policy, pin, image, pin["allocation"])
+    _check_segmentation_activation(path, pending, pin, image, digest, pin["allocation"])
+    return pin, digest
+
+
+def check_segmentation(path, flux):
+    if not (path / "segmentation-pending").exists():
+        return
+    pin, digest = check_segmentation_stage(path, flux)
+    if digest == "sha256:" + "0" * 64:
+        raise ValueError("set segmentation-pending/release/release.yaml data.image to the published segmentation digest")
+    try:
+        config = published_config(SEGMENTATION_IMAGE, digest)
+        labels = config["config"]["Labels"]
+        memory = json.loads(labels["io.haynes-studio.segmentation.resources"])
+        if ((config["os"], config["architecture"]) != ("linux", "amd64")
+                or labels["org.opencontainers.image.source"] != "https://github.com/thaynes43/haynes-studio"
+                or memory["schema"] != "studio.segmentation-resources/v1"):
+            raise ValueError("invalid segmentation image resource label")
+        measurement = segmentation_memory(memory["measurement"])
+        serving = memory["serving"]
+        if serving is None:
+            expected_serving = ("unmeasured", "unmeasured", "unmeasured")
+        else:
+            request, limit = segmentation_memory(serving)
+            if serving["limit_gib"] > 31:
+                raise ValueError("segmentation serving must leave memory for render")
+            expected_serving = request, limit, f"{32 - serving['limit_gib']}Gi"
+    except (KeyError, OSError, TypeError, ValueError) as error:
+        raise ValueError("published segmentation image must carry the Studio profile resource contract") from error
+    if ((pin["measurementRequest"], pin["measurementLimit"]) != measurement
+            or (pin["servingRequest"], pin["servingLimit"], pin["renderMemoryLimit"]) != expected_serving):
+        raise ValueError("segmentation stage resources must match the pinned image's measured/measurement contract")
+
+
 def check(path):
     release = yaml.safe_load((path / "release.yaml").read_text(encoding="utf-8"))
     flux = list(yaml.safe_load_all((path / "ks.yaml").read_text(encoding="utf-8")))
     check_matting(path, flux)
+    check_segmentation(path, flux)
     app = render(path / "app")
     api = resource(app, "Deployment", "studio-api")
     mcp = resource(app, "Deployment", "studio-mcp")

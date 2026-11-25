@@ -1,0 +1,87 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - release.yaml
+replacements:
+  - source:
+      kind: ConfigMap
+      name: studio-segmentation-release
+      fieldPath: data.image
+    targets:
+      - select: {kind: Job, name: studio-segmentation-provision-00|studio-segmentation-smoke-00}
+        fieldPaths:
+          - spec.template.spec.containers.[name=segmentation].image
+          - spec.template.spec.containers.[name=segmentation].env.[name=STUDIO_SEGMENTATION_IMAGE].value
+      - select: {kind: HelmRelease, name: studio-render}
+        fieldPaths:
+          - spec.values.controllers.studio-render.containers.segmentation.env.STUDIO_SEGMENTATION_IMAGE
+  - source:
+      kind: ConfigMap
+      name: studio-segmentation-release
+      fieldPath: data.image
+      options: {delimiter: "@", index: 1}
+    targets:
+      - select: {kind: HelmRelease, name: studio-render}
+        fieldPaths:
+          - spec.values.controllers.studio-render.containers.segmentation.image.tag
+        options: {delimiter: "@", index: 1}
+  - source:
+      kind: ConfigMap
+      name: studio-segmentation-release
+      fieldPath: data.allocation
+    targets:
+      - select: {kind: Job, name: studio-segmentation-provision-00}
+        fieldPaths:
+          - spec.template.spec.containers.[name=segmentation].env.[name=STUDIO_SEGMENTATION_ALLOCATION].value
+      - select: {kind: Job, name: studio-segmentation-smoke-00}
+        fieldPaths:
+          - spec.template.spec.containers.[name=segmentation].volumeMounts.[name=weights].subPath
+        options: {delimiter: /, index: 3}
+      - select: {kind: HelmRelease, name: studio-render}
+        fieldPaths:
+          - spec.values.persistence.segmentation-weights.advancedMounts.studio-render.segmentation.0.subPath
+        options: {delimiter: /, index: 3}
+  - source:
+      kind: ConfigMap
+      name: studio-segmentation-release
+      fieldPath: data.measurementRequest
+    targets:
+      - select: {kind: Job, name: studio-segmentation-smoke-00}
+        fieldPaths: ["spec.template.spec.containers.[name=segmentation].resources.requests.memory"]
+  - source:
+      kind: ConfigMap
+      name: studio-segmentation-release
+      fieldPath: data.measurementLimit
+    targets:
+      - select: {kind: Job, name: studio-segmentation-smoke-00}
+        fieldPaths: ["spec.template.spec.containers.[name=segmentation].resources.limits.memory"]
+  - source:
+      kind: ConfigMap
+      name: studio-segmentation-release
+      fieldPath: data.servingRequest
+    targets:
+      - select: {kind: HelmRelease, name: studio-render}
+        fieldPaths: [spec.values.controllers.studio-render.containers.segmentation.resources.requests.memory]
+  - source:
+      kind: ConfigMap
+      name: studio-segmentation-release
+      fieldPath: data.servingLimit
+    targets:
+      - select: {kind: HelmRelease, name: studio-render}
+        fieldPaths: [spec.values.controllers.studio-render.containers.segmentation.resources.limits.memory]
+  - source:
+      kind: ConfigMap
+      name: studio-segmentation-release
+      fieldPath: data.renderMemoryLimit
+    targets:
+      - select: {kind: HelmRelease, name: studio-render}
+        fieldPaths: [spec.values.controllers.studio-render.containers.app.resources.limits.memory]
+  - source:
+      kind: ConfigMap
+      name: studio-segmentation-release
+      fieldPath: data.allocation
+      options: {delimiter: "-", index: 5}
+    targets:
+      - select: {kind: Job, name: studio-segmentation-provision-00|studio-segmentation-smoke-00}
+        fieldPaths: [metadata.name]
+        options: {delimiter: "-", index: 3}

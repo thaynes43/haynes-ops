@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: studio-segmentation-release
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  # Replace this sentinel with the digest from the Studio main publish.
+  image: ghcr.io/thaynes43/haynes-studio-segmentation@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  allocation: segmentation-op460-dino-sam-v1-01
+  measurementRequest: 16Gi
+  measurementLimit: 16Gi
+  servingRequest: unmeasured
+  servingLimit: unmeasured
+  renderMemoryLimit: unmeasured
