@@ -377,6 +377,27 @@ calibration. C will prune the completed Job, ConfigMap and download policy.
 
 ### C. Calibrate, activate and check ready
 
+**Changed: the first activation was reverted.** On 2026-11-25 the calibration
+ran in the dormant pod (15 samples on the model's card, all 266 MiB; ceiling
+270) and PR 5050 was merged at 06:15Z. The Wan pod was recreated with the
+sidecar at 06:17Z. Its three existing containers became Ready; the
+`local-model` container never did. It exited with status 1 immediately on
+every start (six restarts in eight minutes) after logging
+`ERROR: init 250 result=11` and
+`ValueError: Local-model sidecar must be pinned to its configured GPU UUID`
+from `local_model_sidecar.serve`. With the sidecar not Ready the pod had no
+Ready endpoint, so the Wan API was off its Service. The coordinator confirmed
+under the compute lease that the engine and workers were idle and that no
+residency journal existed, and used the direct revert below: the Wan
+Kustomization is back on the dormant `app` path. The weights, the image and
+this overlay are kept. The cause is not yet established: the sidecar has no
+device allocation of its own and is pinned by environment variable, as the
+Foley container is, and the check that failed reads the card's identity from
+inside the sidecar's image. Do not activate again before that check has been
+reproduced and fixed, and before a way to test the sidecar's start without
+taking Wan off its Service exists (the follow-up proposed in PR 5050's
+description).
+
 Check the Job succeeded, the read-back and disk/inode reserves pass and Wan
 is still dormant. Check node headroom for an 8 GiB request and 16 GiB limit,
 including other workloads. Starting with C, the Wan pod is Ready only when

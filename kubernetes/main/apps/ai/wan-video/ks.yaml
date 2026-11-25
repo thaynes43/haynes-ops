@@ -11,7 +11,7 @@ spec:
   dependsOn:
     - name: nvidia-device-plugin
       namespace: kube-system
-  path: ./kubernetes/main/apps/ai/wan-video/local-model-pending/activation
+  path: ./kubernetes/main/apps/ai/wan-video/app
   prune: true
   sourceRef:
     kind: GitRepository
@@ -19,16 +19,7 @@ spec:
     namespace: flux-system
   wait: false
   interval: 30m
-  timeout: 35m
-  healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2
-      kind: HelmRelease
-      name: wan-video
-      namespace: ai
-    - apiVersion: apps/v1
-      kind: Deployment
-      name: wan-video
-      namespace: ai
+  timeout: 5m
   postBuild:
     substitute:
       APP: wan-video

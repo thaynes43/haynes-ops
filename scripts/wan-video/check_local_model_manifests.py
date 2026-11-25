@@ -79,13 +79,14 @@ class ManifestTests(unittest.TestCase):
                     with self.assertRaisesRegex(product.RequestError, "Invalid local-model profile"):
                         local.load_profile(directory)
 
-    def test_activation_switches_only_the_existing_wan_inventory(self):
+    def test_wan_inventory_is_dormant_and_the_activation_overlay_stays_staged(self):
+        # Reverted on 2026-11-25: the sidecar never became Ready on activation (see
+        # "Changed" in docs/reference/local-model-hosting.md). The overlay is kept,
+        # unreferenced, for the next attempt; the checks on it below still run.
         flux = resource(self.ai, "Kustomization", "wan-video")["spec"]
-        self.assertEqual(flux["path"], "./kubernetes/main/apps/ai/wan-video/local-model-pending/activation")
-        self.assertEqual(flux["healthChecks"], [
-            {"apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease", "name": "wan-video", "namespace": "ai"},
-            {"apiVersion": "apps/v1", "kind": "Deployment", "name": "wan-video", "namespace": "ai"},
-        ])
+        self.assertEqual(flux["path"], "./kubernetes/main/apps/ai/wan-video/app")
+        self.assertEqual(flux["timeout"], "5m")
+        self.assertNotIn("healthChecks", flux)
         names = {doc["metadata"]["name"] for doc in self.ai}
         self.assertFalse(names & {"wan-local-model-download-policy", "wan-local-model-weights"})
         self.assertFalse({doc["kind"] for doc in self.activation} & {"Job", "CiliumNetworkPolicy"})
