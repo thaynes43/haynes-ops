@@ -6,6 +6,9 @@ spec:
   values:
     controllers:
       studio-render:
+        pod:
+          # Allow a 60s request, bounded worker recovery, and cleanup on SIGTERM.
+          terminationGracePeriodSeconds: 150
         containers:
           app:
             resources:

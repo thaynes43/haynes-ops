@@ -252,18 +252,52 @@ class ReleaseTests(unittest.TestCase):
                 guard.check_segmentation_stage(STUDIO, self.flux)
 
     def test_activation_refuses_limits_over_the_combined_budget(self):
-        stage = STUDIO / "matting-pending/activation"
+        stage = PENDING / "activation"
         render = guard.render
         documents = render(stage)
-        for resource, excess in (("cpu", "5"), ("memory", "9Gi")):
+        for resource, excess in (("cpu", "17"), ("cpu", "16500m"), ("memory", "33280Mi")):
             with self.subTest(resource=resource):
                 mutated = copy.deepcopy(documents)
-                deployment = guard.resource(mutated, "Deployment", "studio-worker")
-                guard.container(deployment, "worker")["resources"]["limits"][resource] = excess
+                values = guard.resource(mutated, "HelmRelease", "studio-render")["spec"]["values"]
+                values["controllers"]["studio-render"]["containers"]["app"]["resources"]["limits"][resource] = excess
                 with patch.object(guard, "render",
                                   side_effect=lambda path: mutated if path == stage else render(path)):
-                    with self.assertRaisesRegex(ValueError, "combined 24 CPU or 55 GiB budget"):
+                    with self.assertRaisesRegex(ValueError, "matting with segmentation exceeds.*24 CPU or 55 GiB"):
                         guard.check_segmentation_stage(STUDIO, self.flux)
+
+    def test_activation_checks_matting_alone_and_accepts_equivalent_quantities(self):
+        stage = STUDIO.with_name("studio-render") / "matting-pending"
+        render = guard.render
+        documents = render(stage)
+        for cpu, memory, refusal in (
+            ("18000m", "32768Mi", None),
+            ("19", "32Gi", "matting alone exceeds.*24 CPU or 50 GiB"),
+            ("18", "33Gi", "matting alone exceeds.*24 CPU or 50 GiB"),
+            ("500m", "32Gi", "offline render must keep 32 GiB"),
+            ("18mcpu", "32Gi", "invalid Kubernetes CPU limit"),
+            ("18", "32GB", "invalid Kubernetes memory limit"),
+        ):
+            with self.subTest(cpu=cpu, memory=memory):
+                mutated = copy.deepcopy(documents)
+                values = guard.resource(mutated, "HelmRelease", "studio-render")["spec"]["values"]
+                app = values["controllers"]["studio-render"]["containers"]["app"]
+                app["resources"]["limits"] = {"cpu": cpu, "memory": memory}
+                with patch.object(guard, "render", side_effect=lambda path: mutated if path == stage else render(path)):
+                    if refusal:
+                        with self.assertRaisesRegex(ValueError, refusal):
+                            guard.check_segmentation_stage(STUDIO, self.flux)
+                    else:
+                        guard.check_segmentation_stage(STUDIO, self.flux)
+
+    def test_activation_checks_termination_grace(self):
+        stage = PENDING / "activation"
+        render = guard.render
+        documents = render(stage)
+        values = guard.resource(documents, "HelmRelease", "studio-render")["spec"]["values"]
+        values["controllers"]["studio-render"]["pod"]["terminationGracePeriodSeconds"] = 30
+        with patch.object(guard, "render", side_effect=lambda path: documents if path == stage else render(path)):
+            with self.assertRaisesRegex(ValueError, "150 s pod grace period"):
+                guard.check_segmentation_stage(STUDIO, self.flux)
 
     def test_workload_rejects_weight_owner_or_writable_weights(self):
         render = guard.render
@@ -313,6 +347,55 @@ class ReleaseTests(unittest.TestCase):
         extra["spec"]["path"] = extra["spec"]["path"].replace("/policy", "/smoke")
         with self.assertRaisesRegex(ValueError, "Flux may apply only"):
             guard.check_segmentation_stage(STUDIO, [*flux, extra])
+
+
+class RenderOverlayTests(unittest.TestCase):
+    def setUp(self):
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        self.studio = Path(directory) / "ai/studio"
+        self.render = self.studio.with_name("studio-render")
+        self.pending = self.studio / "segmentation-pending"
+        self.write(self.render / "app")
+        self.write(self.render / "matting-pending", "../app")
+        self.write(self.pending / "activation", "render")
+        self.write(self.pending / "activation/render", "../../../../studio-render/matting-pending")
+        (self.render / "ks.yaml").write_text(f"spec:\n  path: ./{guard.STUDIO_PATH.with_name('studio-render')}/app\n")
+
+    def write(self, path, base=None, patches=()):
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "kustomization.yaml").write_text(yaml.safe_dump({
+            "apiVersion": "kustomize.config.k8s.io/v1beta1", "kind": "Kustomization",
+            "resources": [base] if base else [], "patches": list(patches),
+        }))
+
+    def test_unknown_render_overlay_with_different_cpu_split_is_refused(self):
+        guard._check_render_overlays(self.studio, self.pending)
+        split = {"target": {"kind": "HelmRelease", "name": "studio-render"}, "patch": yaml.safe_dump([{
+            "op": "replace", "path": "/spec/values/controllers/studio-render/containers/app/resources/limits/cpu",
+            "value": "17",
+        }])}
+        for root, base in ((self.render, "../app"), (self.studio, "../../studio-render/matting-pending")):
+            with self.subTest(root=root):
+                extra = root / "other-pending"
+                self.write(extra, base, [split])
+                with self.assertRaisesRegex(ValueError, "unknown studio-render overlay.*other-pending"):
+                    guard._check_render_overlays(self.studio, self.pending)
+                (extra / "kustomization.yaml").unlink()
+
+    def test_segmentation_without_matting_is_refused(self):
+        self.write(self.pending / "activation/render", "../../../../studio-render/app")
+        with self.assertRaisesRegex(ValueError, "segmentation activation must build on the matting render overlay"):
+            guard._check_render_overlays(self.studio, self.pending)
+
+    def test_unknown_render_overlay_can_supply_its_own_helmrelease(self):
+        extra = self.studio.parent.parent / "other/render"
+        self.write(extra, "release.json")
+        (extra / "release.json").write_text(json.dumps({
+            "apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease",
+            "metadata": {"name": "studio-render", "namespace": "ai"},
+        }))
+        with self.assertRaisesRegex(ValueError, "unknown studio-render overlay.*other/render"):
+            guard._check_render_overlays(self.studio, self.pending)
 
 
 class JobWaitTests(unittest.TestCase):

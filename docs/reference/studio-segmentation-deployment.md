@@ -253,9 +253,29 @@ with urlopen(sys.argv[1], timeout=5) as response:
         ([.peak_rss_bytes, .resident_rss_bytes, .cgroup_resident_bytes, .cgroup_peak_since_start_bytes] |
           all(.[]; type == "number" and . > 0 and . <= $limit)))))
   ' <<< "$report" || status=1
-  check 'Both fixture passes, replay and readiness' jq -e '
+  check 'Resident memory growth is at most 64 MiB' jq -e --argjson limit "$limit_bytes" '
+    def stable($first; $second):
+      ([$first, $second] | all(.[]; type == "number" and . > 0 and . <= $limit)) and
+      ($second <= $first + 67108864);
+    .runs[0] |
+    .memory.requests as $requests | .memory.passes as $passes |
+    $passes.cgroup_resident_bytes as $cgroup |
+    .verdicts.memory_stable == true and $passes.tolerance_bytes == 67108864 and
+    ($cgroup | type == "array" and length == 2) and stable($cgroup[0]; $cgroup[1]) and
+    all(range(6); . as $case |
+      $requests[$case] as $first | $requests[$case + 6] as $second |
+      ($first | keys) == ($second | keys) and all($first | keys[]; . as $phase |
+        stable($first[$phase].resident_rss_bytes; $second[$phase].resident_rss_bytes) and
+        stable($first[$phase].cgroup_resident_bytes; $second[$phase].cgroup_resident_bytes)))
+  ' <<< "$report" || status=1
+  check 'Exact readiness before and after both passes' jq -e --arg profile "$profile" '
+    {profile_id: "grounding-dino-tiny-sam2.1-tiny-cpu-v1", profile_sha256: $profile, device: "cpu"} as $ready |
+    .runs[0] | .readiness == {initial: $ready, after: $ready} and
+    .verdicts.ready_initial == true and .verdicts.ready_after == true
+  ' <<< "$report" || status=1
+  check 'Both fixture passes and create-only replay' jq -e '
     .passed == true and (.runs[0] | (.cases | length == 12) and
-      .verdicts.create_only_replay == true and .verdicts.ready_initial == true and .verdicts.ready_after == true and
+      .verdicts.create_only_replay == true and
       .verdicts.visibility == true and .verdicts.visibility_repeat == true)
   ' <<< "$report" || status=1
   check 'Offline render ready after smoke' kubectl -n ai rollout status deploy/studio-render --timeout=30s || status=1
@@ -265,7 +285,10 @@ with urlopen(sys.argv[1], timeout=5) as response:
 
 Keep the final JSON report with the story. Record the cold start, per-case
 wall times, per-phase worker peak and resident RSS, and container cgroup
-peak and limit bytes. The Job waits stop on `Complete` or `Failed`.
+peak, limit and resident bytes. Save both passes' phase samples and the
+cgroup resident samples at the end of each pass. The 64 MiB tolerance
+allows allocator and page-cache variation. The Job waits stop on `Complete`
+or `Failed`.
 A failed poll can recover at the next read. On failure or timeout, the
 wait prints the Job, pod termination state when available and container logs.
 The visible-face and hidden-prop fractions exercise the fixed
@@ -308,21 +331,25 @@ recorded experimental load setting.
 
 ## Activate in a follow-up
 
-**Expected.** CR-51 stages a two-CPU segmentation sidecar on
-`studio-render`. The CR-43 matting sidecar takes two CPUs on
-`studio-worker`. Use the segmentation overlay for the render Flux path
-when both companions are staged and ready for activation. It sets offline
-render to 16 CPUs and keeps its 32 GiB limit. Cap manual render at
-`--workers 14`. The sidecar runs at 10001:10001 with read-only weights
-and shares scratch with the render app via fsGroup 1000.
+**Expected.** Activate matting first in the fourth deployment pin
+([story 967](https://work.haynesnetwork.com/work_packages/967)). Follow the
+[matting runbook](studio-matting-deployment.md#activation-retries-and-rollback)
+to activate the `studio-render/matting-pending` render split and the matting
+sidecar on `studio-worker`. After matting is ready and the segmentation smoke
+passes, point the render Flux Kustomization at `studio/segmentation-pending/activation`.
+That overlay builds on `studio-render/matting-pending`. It adds the segmentation
+sidecar while the queue stays on its matting overlay. The release guard checks
+both combinations below. Cap manual render at `--workers 16` with matting and
+`--workers 14` with both. Segmentation runs at 10001:10001 with read-only
+weights and shares scratch with the render app via fsGroup 1000.
 
-| Staged container on talosw01 | CPU limit | Memory limit |
+| Container on talosw01 | Matting alone CPU / memory | Matting and segmentation CPU / memory |
 |---|---:|---:|
-| Offline render app | 16 | 32 GiB |
-| Segmentation sidecar | 2 | 5 GiB |
-| Queue worker | 4 | 8 GiB |
-| Matting sidecar | 2 | 10 GiB |
-| Both Studio pods | 24 | 55 GiB |
+| Offline render app | 18 / 32 GiB | 16 / 32 GiB |
+| Queue worker | 4 / 8 GiB | 4 / 8 GiB |
+| Matting sidecar | 2 / 10 GiB | 2 / 10 GiB |
+| Segmentation sidecar | — | 2 / 5 GiB |
+| Both Studio pods | 24 / 50 GiB | 24 / 55 GiB |
 
 The 2026-11-25 read of `talosw01` showed 39 CPUs and 111,129,616 KiB
 (105.98 GiB) allocatable. Existing memory requests totalled 55,482 MiB,
@@ -331,7 +358,44 @@ requests would total 67,770 MiB and limits 254,784 MiB (248.81 GiB) at
 that baseline. The node cannot sustain all configured peaks simultaneously.
 Keep heavy work serialized and check current headroom before activation.
 
-Roll out from Git, then verify both containers, the exact profile hash via
-Unix readiness and existing render health. For rollback, stop dispatch and
-revert the render Flux path to its last known-good revision. Keep the
-verified immutable allocations and smoke reports for later comparison.
+The segmentation overlay gives the pod 150 s on termination so the service
+can keep its 60 s request deadline and finish bounded worker recovery and
+cleanup. An expired request returns a failed receipt. The client uses a mask
+only after a matching successful reply and file read-back.
+
+After GitOps rollout, set `STUDIO_SEGMENTATION_PROFILE_SHA256` to the
+manifest hash from the verified provisioning and serving reports. Check the
+render rollout and the exact Unix readiness response. The v1 selector names
+the model pair. The hash pins the v2 serving manifest.
+
+```bash
+(
+  set -euo pipefail
+  profile=${STUDIO_SEGMENTATION_PROFILE_SHA256:?Set the verified manifest SHA-256}
+  [[ $profile =~ ^[a-f0-9]{64}$ ]]
+  kubectl -n ai rollout status deploy/studio-render --timeout=30s
+  kubectl -n ai exec -i deploy/studio-render -c app -- python -B - "$profile" <<'PY'
+import http.client
+import json
+import socket
+import sys
+
+with socket.socket(socket.AF_UNIX) as connection:
+    connection.settimeout(3)
+    connection.connect("/segmentation/segment.sock")
+    connection.sendall(b"GET /v1/ready HTTP/1.0\r\n\r\n")
+    with http.client.HTTPResponse(connection) as response:
+        response.begin()
+        if response.status != 200 or json.loads(response.read(8193)) != {
+            "profile_id": "grounding-dino-tiny-sam2.1-tiny-cpu-v1",
+            "profile_sha256": sys.argv[1],
+            "device": "cpu",
+        }:
+            raise SystemExit("segmentation readiness pin mismatch")
+PY
+)
+```
+
+For rollback, stop dispatch and revert the render Flux path to its last
+known-good revision. Keep the verified immutable allocations and smoke reports
+for later comparison.

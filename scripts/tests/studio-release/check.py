@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 import subprocess
+from fractions import Fraction
 from hashlib import sha256
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -35,6 +36,36 @@ STALE_SEGMENTATION_DIGESTS = {
     "sha256:58b037970810333c5ca1350d7acc32e113e06494ab49b69c184c0a8a93458e53",
     "sha256:" + "0" * 64,
 }
+GIB = 1024**3
+DECIMAL_SI = {"n": -9, "u": -6, "m": -3, "": 0, "k": 3, "M": 6, "G": 9, "T": 12, "P": 15, "E": 18}
+BINARY_SI = {f"{unit}i": 1024**power for power, unit in enumerate("KMGTPE", start=1)}
+
+
+def quantity_units(value, units_per_base, name):
+    """Parse a Kubernetes quantity into whole millicores or bytes."""
+    text = str(value)
+    match = re.fullmatch(r"([+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+))([A-Za-z]+|[eE][+-]?[0-9]+)?", text)
+    if match is not None and len(text) <= 100:
+        magnitude, suffix = match.groups()
+        suffix = suffix or ""
+        exponent = DECIMAL_SI.get(suffix)
+        if re.fullmatch(r"[eE][+-]?[0-9]+", suffix):
+            exponent = int(suffix[1:])
+        if suffix in BINARY_SI:
+            scale = BINARY_SI[suffix]
+        elif exponent is not None and -100 <= exponent <= 100:
+            scale = Fraction(10) ** exponent
+        else:
+            raise ValueError(f"invalid Kubernetes {name} limit {value!r}")
+        units = Fraction(magnitude) * scale * units_per_base
+        if units > 0 and units.denominator == 1:
+            return units.numerator
+    raise ValueError(f"invalid Kubernetes {name} limit {value!r}")
+
+
+def resource_limits(spec):
+    limits = spec["resources"]["limits"]
+    return quantity_units(limits["cpu"], 1000, "CPU"), quantity_units(limits["memory"], 1, "memory")
 
 
 def studio_image_digest(image, revision):
@@ -388,7 +419,7 @@ def check_matting(path, flux):
     for overlay, cores in (("app", "20"), ("matting-pending", "18")):
         release = resource(render(render_path / overlay), "HelmRelease", "studio-render")
         render_app = release["spec"]["values"]["controllers"]["studio-render"]["containers"]["app"]
-        if render_app["resources"]["limits"] != {"cpu": cores, "memory": "32Gi"}:
+        if resource_limits(render_app) != (int(cores) * 1000, 32 * GIB):
             raise ValueError(f"offline render {overlay} must limit CPU to {cores} and memory to 32Gi")
 
 
@@ -580,24 +611,78 @@ def _check_segmentation_jobs(pending, policy, pin, image, allocation):
             raise ValueError(f"unsafe segmentation {stage} Job envelope")
 
 
+def _check_render_overlays(path, pending):
+    apps_path = path.parent.parent.resolve()
+    render_path = path.with_name("studio-render").resolve()
+    activation = (pending / "activation").resolve()
+    approved = {render_path / "app", render_path / "matting-pending", activation, activation / "render"}
+    # Track both render replacements and any Kustomization that brings one in as a base.
+    owners = set()
+    references = {}
+    for candidate in apps_path.rglob("*"):
+        if candidate.name not in {"kustomization.yaml", "kustomization.yml", "Kustomization"}:
+            continue
+        config = yaml.safe_load(candidate.read_text())
+        directory = candidate.parent.resolve()
+        dependencies = {
+            (directory / item).resolve()
+            for key in ("resources", "bases", "components") for item in config.get(key, [])
+        }
+        references[directory] = dependencies
+        if directory.is_relative_to(render_path):
+            owners.add(directory)
+            continue
+        for dependency in dependencies:
+            if dependency.is_file():
+                source = dependency.read_text()
+                if "HelmRelease" in source and "studio-render" in source and any(
+                    isinstance(document, dict) and document.get("kind") == "HelmRelease"
+                    and document.get("metadata", {}).get("name") == "studio-render"
+                    for document in yaml.safe_load_all(source)
+                ):
+                    owners.add(directory)
+    while extra := {directory for directory, deps in references.items() if deps & owners} - owners:
+        owners.update(extra)
+    if unknown := owners - approved:
+        names = ", ".join(str(directory.relative_to(apps_path)) for directory in sorted(unknown))
+        raise ValueError(f"unknown studio-render overlay outside the composed set: {names}")
+    if (render_path / "matting-pending" not in references.get(activation / "render", set())
+            or activation / "render" not in references.get(activation, set())):
+        raise ValueError("segmentation activation must build on the matting render overlay")
+    live = yaml.safe_load((render_path / "ks.yaml").read_text())
+    if live["spec"]["path"] != f"./{STUDIO_PATH.with_name('studio-render')}/app":
+        raise ValueError("the live studio-render Flux path must stay on the base until a deployment pin")
+
+
+def _check_render_budget(name, containers, memory_gib):
+    cpu, memory = map(sum, zip(*(resource_limits(spec) for spec in containers), strict=True))
+    if cpu > 24000 or memory > memory_gib * GIB:
+        raise ValueError(f"{name} exceeds the talosw01 budget of 24 CPU or {memory_gib} GiB")
+
+
 def _check_segmentation_activation(path, pending, pin, image, digest, allocation):
+    _check_render_overlays(path, pending)
     render_path = path.with_name("studio-render")
     base = resource(render(render_path / "app"), "HelmRelease", "studio-render")["spec"]["values"]
+    matting = resource(render(render_path / "matting-pending"), "HelmRelease", "studio-render")["spec"]["values"]
     values = resource(render(pending / "activation"), "HelmRelease", "studio-render")["spec"]["values"]
     controller = values["controllers"]["studio-render"]
-    sidecar = controller["containers"].pop("segmentation")
-    render_app = controller["containers"]["app"]
-    if render_app["resources"]["limits"] != {"cpu": "16", "memory": pin["renderMemoryLimit"]}:
-        raise ValueError("segmentation activation must reserve two CPU cores per companion and keep render at 32 GiB")
+    matting_containers = matting["controllers"]["studio-render"]["containers"]
     stage = render(path / "matting-pending/activation")
     worker_pod = resource(stage, "Deployment", "studio-worker")["spec"]["template"]["spec"]
-    limits = [c["resources"]["limits"] for c in (render_app, sidecar, *worker_pod["containers"])]
-    # CR-43 and CR-51 cover these four containers across two pods on talosw01.
-    if (any(not re.fullmatch(r"[1-9][0-9]*Gi", limit["memory"]) for limit in limits)
-            or sum(int(limit["cpu"]) for limit in limits) > 24
-            or sum(int(limit["memory"].removesuffix("Gi")) for limit in limits) > 55):
-        raise ValueError("staged Studio limits on talosw01 exceed the combined 24 CPU or 55 GiB budget")
-    render_app["resources"]["limits"] = {"cpu": "20", "memory": "32Gi"}
+    workers = worker_pod["containers"]
+    if {spec["name"] for spec in workers} != {"worker", "matting"} or len(workers) != 2:
+        raise ValueError("segmentation requires the staged matting queue companion")
+    _check_render_budget("matting alone", [*matting_containers.values(), *workers], 50)
+    _check_render_budget("matting with segmentation", [*controller["containers"].values(), *workers], 55)
+    matting_app = matting_containers["app"]
+    render_app = controller["containers"]["app"]
+    if resource_limits(matting_app) != (18000, 32 * GIB) or resource_limits(render_app) != (16000, 32 * GIB):
+        raise ValueError("offline render must keep 32 GiB with 18 CPUs for matting and 16 for both companions")
+    if controller["pod"].pop("terminationGracePeriodSeconds", None) != 150:
+        raise ValueError("segmentation activation needs a 150 s pod grace period for drain and recovery")
+    sidecar = controller["containers"].pop("segmentation")
+    matting_app["resources"]["limits"] = base["controllers"]["studio-render"]["containers"]["app"]["resources"]["limits"]
     nfs = values["persistence"].pop("segmentation-weights")
     scratch = values["persistence"].pop("segmentation-scratch")
     mount = {"path": "/segmentation"}
@@ -614,8 +699,9 @@ def _check_segmentation_activation(path, pending, pin, image, digest, allocation
     for name in ("studio", "config", "tmp"):
         volume = values["persistence"][name]
         volume["globalMounts"] = volume.pop("advancedMounts")["studio-render"]["app"]
-    if values != base:
-        raise ValueError("segmentation activation must preserve the base render workload")
+    render_app["resources"]["limits"] = matting_app["resources"]["limits"]
+    if values != matting or matting != base:
+        raise ValueError("both render activation stages must preserve the base render workload")
     if values["defaultPodOptions"]["securityContext"]["fsGroup"] != 1000:
         raise ValueError("segmentation activation needs fsGroup 1000 for shared scratch and socket access")
     if (sidecar["image"] != {"repository": SEGMENTATION_IMAGE, "tag": f"pinned@{digest}"}
@@ -626,10 +712,8 @@ def _check_segmentation_activation(path, pending, pin, image, digest, allocation
                 "runAsUser": 10001, "runAsGroup": 10001, "runAsNonRoot": True, "allowPrivilegeEscalation": False,
                 "readOnlyRootFilesystem": True, "capabilities": {"drop": ["ALL"]},
             }
-            or sidecar["resources"] != {
-                "requests": {"cpu": "250m", "memory": pin["servingRequest"]},
-                "limits": {"cpu": "2", "memory": pin["servingLimit"]},
-            }):
+            or sidecar["resources"]["requests"] != {"cpu": "250m", "memory": pin["servingRequest"]}
+            or resource_limits(sidecar) != (2000, quantity_units(pin["servingLimit"], 1, "memory"))):
         raise ValueError("unsafe segmentation serving container")
     for probe in ("startup", "readiness", "liveness"):
         config = sidecar["probes"][probe]
