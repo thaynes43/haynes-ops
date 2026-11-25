@@ -1,0 +1,70 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Keep this name and its Flux health check tied to the image digest.
+  name: studio-register-voice-worker-4787d14f98a4
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: studio-media-worker-registration
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: studio-media-worker-registration
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: register
+          image: ghcr.io/thaynes43/haynes-studio@sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
+          command: [studio-api-admin]
+          args:
+            - worker-token
+            - register
+            - --worker-id
+            - studio-voice-worker
+            - --token-file
+            - /run/studio-credentials/token
+            # The same token is a no-op. A different token (a deliberate rotation:
+            # a new Job name with an -rN suffix) revokes the old one and registers
+            # the new one, instead of failing with a conflict.
+            - --replace
+          env:
+            - name: STUDIO_DATABASE_SCHEMA
+              value: studio
+            - name: STUDIO_MIGRATION_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: studio-migrator-db
+                  key: STUDIO_MIGRATION_DATABASE_URL
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 192Mi}
+          volumeMounts:
+            - name: token
+              mountPath: /run/studio-credentials
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: token
+          secret:
+            secretName: studio-voice-worker-token
+            defaultMode: 0440
+            items:
+              - key: STUDIO_WORKER_TOKEN
+                path: token
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

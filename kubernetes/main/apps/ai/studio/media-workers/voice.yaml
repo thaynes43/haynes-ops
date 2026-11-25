@@ -1,0 +1,129 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: studio-voice-worker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  minReadySeconds: 20
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: studio-voice-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: studio-voice-worker
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      serviceAccountName: studio-media-worker
+      priorityClassName: dev-env-agent
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: [talosw01]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: worker
+          image: ghcr.io/thaynes43/haynes-studio@sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
+          command: [studio-worker]
+          args: [--lane, voice]
+          env:
+            - name: STUDIO_API_URL
+              value: http://studio-api.ai.svc.cluster.local:8002
+            - name: STUDIO_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: studio-voice-worker-token
+                  key: STUDIO_WORKER_TOKEN
+            - name: STUDIO_TTS_HOST
+              value: kokoro.ai.svc.cluster.local
+            - name: STUDIO_STORE_ROOT
+              value: /studio
+            - name: STUDIO_WORKER_PROGRESS_FILE
+              value: /run/studio/worker-progress
+            - name: OMP_NUM_THREADS
+              value: "1"
+          startupProbe:
+            exec:
+              command: [studio-worker, --check-progress, "120"]
+            periodSeconds: 10
+            timeoutSeconds: 8
+            failureThreshold: 12
+          # One Kokoro call is capped at 45 seconds. The marker also covers
+          # in-memory track assembly, store I/O and 15-second API calls.
+          livenessProbe:
+            exec:
+              command: [studio-worker, --check-progress, "120"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: "1", memory: 384Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - name: store
+              mountPath: /studio
+              subPath: data/studio/api-store-v1
+            - name: progress
+              mountPath: /run/studio
+      volumes:
+        - name: store
+          nfs:
+            server: gasha01.haynesnetwork
+            path: /hdd-nfs-repl
+        - name: progress
+          emptyDir:
+            sizeLimit: 1Mi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: studio-voice-worker
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: studio-voice-worker
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {port: 53, protocol: UDP}
+        - {port: 53, protocol: TCP}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: studio-api
+      ports:
+        - {port: 8002, protocol: TCP}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kokoro
+              app.kubernetes.io/instance: kokoro
+              app.kubernetes.io/controller: kokoro
+      ports:
+        - {port: 10210, protocol: TCP}
