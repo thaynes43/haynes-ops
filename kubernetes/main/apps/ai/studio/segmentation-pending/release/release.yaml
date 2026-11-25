@@ -5,9 +5,9 @@ metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
 data:
-  # Serving image with the three-pass smoke, from Studio main 035ff2c.
-  image: ghcr.io/thaynes43/haynes-studio-segmentation@sha256:3261efedf5d52baa4c53aa0ce6fc8f538b40cb0675fc2dc7a0c2ca74fd8184be
-  allocation: segmentation-op460-dino-sam-v1-04
+  # Serving image with the pass-level memory verdict, from Studio main 5ba75d2.
+  image: ghcr.io/thaynes43/haynes-studio-segmentation@sha256:644c34c52905c00bb6044c1d0f0479eb1b150d9979f6508eea8631e796b45d0e
+  allocation: segmentation-op460-dino-sam-v1-05
   servingRequest: 4Gi
   servingLimit: 5Gi
   renderMemoryLimit: 32Gi
