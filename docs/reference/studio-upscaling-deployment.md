@@ -8,6 +8,12 @@ Tom's verdict are pending.
 [Story 461](https://work.haynesnetwork.com/work_packages/461) ·
 [Studio profile](https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/upscaling-backend-profile.md)
 
+Provisional CR-55 removes the dormant upscaling sidecar on the Studio worker,
+the separate render overlay, and its CPU split. Upscaling is staged only for
+the private comparison, so delivery stays on Lanczos and the matting and
+segmentation render overlays can compose in order. The comparison result and
+Tom's choice determine whether to write a serving story.
+
 ## Pin and reconcile the policy
 
 1. Merge the Studio source PR. Read the full revision and upscaling digest in
@@ -18,9 +24,8 @@ Tom's verdict are pending.
    comparison capability. Provision the new profile under the fresh `-02`
    allocation. The first smoke requests
    2 GiB and caps at 8 GiB for measurement on talosw01. The 2 GiB quality
-   budget from CR-35 is checked against the observed peak. Serving memory
-   stays unset until measured, and the sidecar and offline CPU split stay
-   outside Flux. Merge after the release guard passes with the published pin.
+   budget from CR-35 is checked against the observed peak. Merge after the
+   release guard passes with the published pin.
 3. Run the following in Bash from that Ops revision. Flux owns just the
    ConfigMap with the provisioner and the three targeted policies. The
    download pod can use CoreDNS and HTTPS for the immutable raw GitHub URL.
@@ -181,8 +186,8 @@ node and render load, checks Wan health and checks the queue from
 compares the default and compact glibc allocator across the same frames and
 runs the deliberate timeout and fresh-worker replay. Capture the last JSON
 line even if Kubernetes recorded a failed Job. Record the measuring and
-quality verdicts separately. Use the observed worker RSS and cgroup peaks
-by phase to propose serving resources in a second change. The allowance check
+quality verdicts separately. Record the observed worker RSS and cgroup peaks
+by phase. The allowance check
 reads the running container’s cgroup limit from `/sys/fs/cgroup/memory.max`.
 
 ```bash
@@ -406,13 +411,9 @@ fuller authorized excerpt and Tom's delivery review are tracked by
 
 Record the Git revisions, published digest, Jobs and final reports in OP461.
 Installation evidence belongs to the coordinator. The comparison status
-stays pending until the private review. The offline 20-vCPU split remains in
-effect. A later serving change can budget two of those CPUs across the chosen
-sidecars and update the serving memory contract using measurements.
+stays pending until the private review.
 
 Keep a failed allocation and its report. A deliberate fresh retry gets a new
-Job name and allocation. Before activation, rollback withdraws the policy
+Job name and allocation. Rollback withdraws the policy
 stage in Git and stops new Job launches. Allow existing Jobs to reach their
-bounds and preserve files and evidence. After a later activation, withdraw
-profile selection, return the worker's Flux path to its previous overlay,
-and restore the associated offline CPU split through Git before reconciling.
+bounds and preserve files and evidence.

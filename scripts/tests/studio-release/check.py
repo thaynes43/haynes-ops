@@ -943,33 +943,7 @@ def check_upscaling(path, flux):
             raise ValueError(f"unexpected traffic or identity labels for {name}")
 
     measuring = pin["memoryRequest"], pin["memoryLimit"]
-    serving = pin["servingMemoryRequest"], pin["servingMemoryLimit"]
     check_upscaling_jobs(stage, image, allocation, measuring, policies)
-    activation = render(stage / "activation")
-    check_policy_selectors(activation)
-    worker = resource(activation, "Deployment", "studio-worker")
-    pod = worker["spec"]["template"]["spec"]
-    sidecar = container(worker, "upscaling")
-    check_upscaling_container(sidecar, image, ["studio-upscaling", "serve"])
-    scratch = {"name": "upscale-scratch", "mountPath": "/upscaling"}
-    check_upscaling_mounts(sidecar, pod, {
-        "upscale-scratch": scratch,
-        "weights": {"name": "weights", "mountPath": "/weights",
-                    "subPath": f"data/studio/jobs/{allocation}/weights", "readOnly": True},
-    }, {"weights": True})
-    if (pod["securityContext"]["fsGroup"] != 10001 or pod["automountServiceAccountToken"]
-            or (sidecar["securityContext"]["runAsUser"], sidecar["securityContext"]["runAsGroup"]) != (10001, 10001)
-            or scratch not in container(worker, "worker")["volumeMounts"]
-            or resource_volume(pod, "upscale-scratch").get("emptyDir") != {"sizeLimit": "256Mi"}
-            or sidecar["resources"]["limits"] != {"cpu": "2", "memory": serving[1]}
-            or sidecar["resources"]["requests"]["memory"] != serving[0]
-            or any(sidecar[key]["exec"]["command"] != ["studio-upscaling", "ready"]
-                   for key in ("startupProbe", "readinessProbe", "livenessProbe"))):
-        raise ValueError("dormant upscaling sidecar must share bounded scratch and only use local readiness")
-    render_worker = resource(render(path.parent / "studio-render/upscaling-pending"), "HelmRelease", "studio-render")
-    limits = render_worker["spec"]["values"]["controllers"]["studio-render"]["containers"]["app"]["resources"]["limits"]
-    if limits != {"cpu": "18", "memory": "32Gi"}:
-        raise ValueError("the dormant upscaling render split must reserve two of the 20 offline CPUs")
 
     match = re.fullmatch(rf"{re.escape(UPSCALING_IMAGE)}@(sha256:[0-9a-f]{{64}})", image)
     if not match or match[1] == "sha256:" + "0" * 64:
@@ -986,9 +960,7 @@ def check_upscaling(path, flux):
                 or type(memory["quality_peak_gib"]) is not int or memory["quality_peak_gib"] <= 0
                 or not re.fullmatch(r"[a-f0-9]{40}", published["org.opencontainers.image.revision"])):
             raise ValueError("invalid upscaling profile resource contract")
-        measured_serving = (("measured-request-required", "measured-limit-required")
-                            if memory["serving"] is None else gibibytes(memory["serving"]))
-        if measuring != gibibytes(memory["measuring"]) or serving != measured_serving:
+        if measuring != gibibytes(memory["measuring"]):
             raise ValueError("upscaling release memory differs from the pinned image contract")
     except (KeyError, OSError, TypeError, ValueError) as error:
         raise ValueError(f"published upscaling image resource contract failed verification: {error}") from error

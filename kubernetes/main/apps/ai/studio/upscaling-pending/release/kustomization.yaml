@@ -9,8 +9,8 @@ replacements:
       fieldPath: data.image
     targets:
       - select:
-          kind: Job|Deployment
-          name: studio-upscaling-provision-00|studio-upscaling-smoke-00|studio-upscaling-compare|studio-worker
+          kind: Job
+          name: studio-upscaling-provision-00|studio-upscaling-smoke-00|studio-upscaling-compare
         fieldPaths:
           - spec.template.spec.containers.[name=upscaling].image
           - spec.template.spec.containers.[name=upscaling].env.[name=STUDIO_UPSCALING_IMAGE].value
@@ -30,8 +30,8 @@ replacements:
         fieldPaths:
           - spec.template.spec.containers.[name=upscaling].env.[name=STUDIO_UPSCALING_ALLOCATION].value
       - select:
-          kind: Job|Deployment
-          name: studio-upscaling-smoke-00|studio-upscaling-compare|studio-worker
+          kind: Job
+          name: studio-upscaling-smoke-00|studio-upscaling-compare
         fieldPaths:
           - spec.template.spec.containers.[name=upscaling].volumeMounts.[name=weights].subPath
         options:
@@ -73,24 +73,3 @@ replacements:
         options:
           delimiter: "-"
           index: 3
-
-  - source:
-      kind: ConfigMap
-      name: studio-upscaling-release
-      fieldPath: data.servingMemoryRequest
-    targets:
-      - select:
-          kind: Deployment
-          name: studio-worker
-        fieldPaths:
-          - spec.template.spec.containers.[name=upscaling].resources.requests.memory
-  - source:
-      kind: ConfigMap
-      name: studio-upscaling-release
-      fieldPath: data.servingMemoryLimit
-    targets:
-      - select:
-          kind: Deployment
-          name: studio-worker
-        fieldPaths:
-          - spec.template.spec.containers.[name=upscaling].resources.limits.memory

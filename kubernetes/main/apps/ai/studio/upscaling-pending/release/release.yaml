@@ -8,8 +8,6 @@ data:
   # Set to the published Studio main digest before merging this stage.
   image: ghcr.io/thaynes43/haynes-studio-upscaling@sha256:0000000000000000000000000000000000000000000000000000000000000000
   allocation: upscaling-op461-fsrcnn-x2-v1-02
-  # Generous first-smoke measuring allowance. Serving values require measured evidence.
+  # First-smoke measuring allowance.
   memoryRequest: 2Gi
   memoryLimit: 8Gi
-  servingMemoryRequest: measured-request-required
-  servingMemoryLimit: measured-limit-required

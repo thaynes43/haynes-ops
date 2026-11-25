@@ -223,7 +223,7 @@ class ReleaseGuardTest(unittest.TestCase):
         def render(path):
             docs = real_render(path)
             for doc in docs:
-                if doc["kind"] in {"Job", "Deployment"}:
+                if doc["kind"] == "Job":
                     pod = doc["spec"]["template"]["spec"]
                     for init in pod.get("initContainers", []):
                         if init["name"] == "reserve-output":
@@ -383,7 +383,6 @@ class ReleaseGuardTest(unittest.TestCase):
             "io.haynes-studio.upscaling.resources": json.dumps({
                 "schema": "studio.upscaling-resources/v1",
                 "measuring": {"request_gib": 2, "limit_gib": 8},
-                "serving": None,
                 "quality_peak_gib": 2,
             }),
         }
