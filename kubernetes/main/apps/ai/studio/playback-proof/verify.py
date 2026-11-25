@@ -203,7 +203,10 @@ def verify_film(conn, film, key, other_key):
 
     approval = verify_denial(
         conn, "POST", run_path + "/go-live-approvals", key,
-        {403: "approval.approver_not_permitted", 422: "approval.legacy_run"},
+        # An agent key must be stopped by the people-only gate before the handler
+        # runs. Accepting the legacy refusal too would hide a regression that let a
+        # key reach the handler, because an imported run is refused there anyway.
+        {403: "approval.approver_not_permitted"},
         body={"master_sha256": master_hash, "platform_setting": True},
     )
     story_path = f"/v1/stories/{film.story}"

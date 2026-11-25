@@ -618,10 +618,31 @@ approver receives 422 `approval.legacy_run`. The API uses the shared, read-only
 licence register described above. No additional go-live environment value is
 needed.
 
-Quiesce the queue and let the worker finish its current run before changing
-the build revision. Check the existing database and OIDC projections and
-the LAN route before reconciliation. While the migration runs, check from
-the LAN that the old app still serves 200 at `/` and 401 at `/v1/me`.
+Change the build revision only while the queue is empty. This build has no
+pause route (it arrives with a later pin), so check instead that no run is
+queued or running and that the worker is idle, and do not queue anything until
+the roll-out is done:
+
+```sh
+(
+  set -eu
+  kubectl -n ai exec -i deploy/studio-api -c api -- python - <<'PY'
+import os, psycopg
+with psycopg.connect(os.environ["STUDIO_DATABASE_URL"]) as conn:
+    rows = conn.execute(
+        "SELECT document->>'status', count(*) FROM studio.runs GROUP BY 1 ORDER BY 1").fetchall()
+print("runs by status:", rows or "none")
+assert not [status for status, _ in rows if status in ("queued", "running", "held")], rows
+PY
+  kubectl -n ai logs deploy/studio-worker -c worker --since=2m | grep -c 'work/claim "HTTP/1.1 204'
+)
+```
+
+The first command must print no queued, running or held run; the second counts
+the worker's idle polls in the last two minutes and must be above zero. Check
+the existing database and OIDC projections and the LAN route before
+reconciliation. While the migration runs, check from the LAN that the old app
+still serves 200 at `/` and 401 at `/v1/me`.
 
 The cluster reconciles `ai/studio-migration` after the database and OIDC
 dependencies. The application rollout and worker registration follow the
@@ -648,6 +669,7 @@ record evidence. Flux may begin dependent stages automatically. Once proof
 and registration begin, keep them together within the keys' expiry window.
 
 ```sh
+(
 set -eu
 suffix=1aa9b4736da9
 flux reconcile kustomization cluster-apps -n flux-system --with-source
@@ -679,6 +701,7 @@ kubectl -n ai logs "job/studio-verify-playback-$suffix" -c verify
 flux get kustomizations -n ai
 kubectl -n ai get pod -l 'app.kubernetes.io/name in (studio-api,studio-web,studio-mcp,studio-worker)' \
   -o 'custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,READY:.status.containerStatuses[0].ready,IMAGE:.status.containerStatuses[0].imageID'
+)
 ```
 
 Expect Alembic `0004_go_live_approvals`, migration TLS and HBA checks, and
@@ -735,6 +758,7 @@ the same pinned image and restricted DB policy and mounts only its scratch
 directory. Leave the archived films, registered worker token and media intact.
 
 ```sh
+(
 set -eu
 suffix=1aa9b4736da9
 registration="studio-register-playback-$suffix"
@@ -767,6 +791,7 @@ kubectl -n ai get job "$registration" -o json | jq --arg name "$revoke" --argjso
 ' | kubectl create -f -
 kubectl -n ai wait --for=condition=complete --timeout=2m "job/$revoke"
 kubectl -n ai logs "job/$revoke" -c revoke
+)
 ```
 
 For a retried registration, set `registration` to its actual Job name and use
@@ -774,9 +799,14 @@ a fresh `revoke` Job name. The API enforces the five-minute expiry on each
 authentication, including when a revocation Job fails or is delayed. Revoke
 explicitly after the attempt and record the Job's key IDs and `revoked_at`
 timestamps on OP957. A registration that issued zero IDs needs no revocation
-Job. The ESO generators and ExternalSecrets are exempt from Flux pruning and
-their target Secrets are orphaned. The API refuses revoked or expired keys
-while those resources remain.
+Job. Revoking is required even though the keys have expired: an expired key
+that was never revoked could be given a new expiry by an operator's
+`register --replace-grants`, and a revoked one cannot. The proof keys' Secrets
+are owned by their ExternalSecrets and nothing in that stage is exempt from
+pruning, so the follow-up change that removes the one-shot stages from Git
+(the two imports, key registration and the proof, with their release-guard
+entries) also removes the generators, the ExternalSecrets and the Secrets.
+Make that change once the proof is recorded.
 
 ### Roll back the OP957 pin
 
@@ -796,7 +826,21 @@ and web digest
 Both resolved anonymously under that revision. Update the Job names and
 health checks with the pin, reconcile migration, app, registration and worker
 in the same order, and verify `0004_go_live_approvals`, app readiness and LAN
-responses. The earlier OP956 migration image cannot resolve revision `0004`.
+responses. The earlier OP956 migration image cannot resolve revision `0004`:
+never restore its migration Job, or `studio-migration` fails and the app stays
+on whatever it had.
+
+**After an import has committed, prefer fixing forward.** The imported rows use
+record shapes that first exist in `f30445f`: the recovered delivery of The
+Winter Menu, the archive-import marker on both runs and the
+`recorded_without_media` marker on One More Meeting's pinned versions. A build
+older than `f30445f`, the `df6929a` pair above included, was never tested
+against them, and its reads of the two imported productions may fail
+validation with a 500 while the rest of the app keeps serving. The import is
+create-only and is not undone by any rollback. If the pin must go back, say on
+the story that the imported productions may be unreadable until the pin moves
+forward again, and check `GET /v1/productions` and one imported story with a
+signed-in session before leaving it there.
 
 This rolls back the running code and reconciles its workload configuration.
 The imported rows, hashes and content-addressed blobs stay in PostgreSQL and
