@@ -297,16 +297,15 @@ class Sidecar:
         self.instance = uuid.uuid4().hex
         self.receipt = None
 
-    def retry_pin(self, *, lease_verified=False):
+    def prove_pending_pin(self):
         if self.startup_error != PIN_UNPROVEN:
             return
         proof = check_startup_pin(self.profile["gpu_uuid"], self.lane.root / "compute.lock",
-                                  lease_verified=lease_verified)
+                                  lease_verified=True)
         self.startup_error = proof["reason_code"]
         if self.startup_error is None:
             self.model = ModelProcess(self.lane.root, self.profile, self.backend_factory)
-        if self.startup_error != PIN_UNPROVEN:
-            print(json.dumps({"event": PIN_PROOF_LOG, **proof}), flush=True)
+        print(json.dumps({"event": PIN_PROOF_LOG, **proof}), flush=True)
 
     def status(self, *, residency_only=False):
         if self.startup_error:
@@ -354,7 +353,7 @@ class Sidecar:
         if not local.valid_id(job_id) or message.keys() != {"action", "id", "request"}:
             raise ValueError("Invalid local-model dispatch")
         verify_lease(self.lane.root, fd)
-        self.retry_pin(lease_verified=True)
+        self.prove_pending_pin()
         if self.startup_error:
             raise local.StartupUnavailable(self.startup_error)
         state = self.lane.read_state()
@@ -403,8 +402,7 @@ class Sidecar:
                         not fds and message == {"action": "status"}):
                     if fds:
                         verify_lease(self.lane.root, fds[0])
-                    if message["action"] == "residency":
-                        self.retry_pin(lease_verified=bool(fds))
+                        self.prove_pending_pin()
                     reply = self.status(residency_only=message["action"] == "residency")
                 elif len(fds) == 1 and message.get("action") == "run":
                     socket_fds = (conn.fileno(),) if listener_fd is None else (conn.fileno(), listener_fd)

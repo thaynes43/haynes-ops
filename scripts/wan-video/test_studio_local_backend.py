@@ -251,6 +251,9 @@ class StartupTests(unittest.TestCase):
                 self.assertIs(initial["resident"], False)
                 self.assertIsNone(initial["receipt"])
                 if leased_retry is not None:
+                    fcntl.flock(leased_retry, fcntl.LOCK_UN)
+                    self.assertEqual(local.exchange(self.workspace, {"action": "residency"}), initial)
+                    fcntl.flock(leased_retry, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     proved = local.exchange(self.workspace, {"action": "residency"}, leased_retry)
                     self.assertNotIn("startup_error", proved)
                     self.assertIs(proved["resident"], False)

@@ -29,7 +29,7 @@ and known idle ownership. Confirm the PVC is bound and the current init
 containers are healthy. Collect the previous revision, pod UID and code hashes.
 The Bash verification blocks run in their own shell. Each gate reports its
 result and a failed check stops the block, after collecting failure evidence
-where the block calls for it.
+where the block calls for it. Export the `OP442_*` inputs before running a block.
 
 ```bash
 bash -s <<'BASH'
@@ -534,11 +534,12 @@ and new local requests return HTTP 503 `local_model_unavailable` with a
 that UUID or `void`. The same bounded NVML read used for card status queries
 all visible device UUIDs under the existing compute lease. Exactly one must
 match the profile. If the lease is occupied at startup, the listener reports
-`gpu_pin_unproven` immediately. The first local request with the existing lease
-or discovery that can acquire it nonblocking completes the pin check. A
-terminal refusal requires a restart after correcting the cause. With no older
-reservation and the lease and queue guards satisfied, Wan and Foley can
-proceed. A retained reservation still requires its normal release proof.
+`gpu_pin_unproven` immediately. The first local request or operator probe
+that passes the already-held lease completes the pin check. Discovery only
+reads the current verdict. A terminal refusal requires a restart after
+correcting the cause. With no older reservation and the lease and queue
+guards satisfied, Wan and Foley can proceed. A retained reservation still
+requires its normal release proof.
 Use the diagnostic below before changing the Wan pod.
 
 Check the Job succeeded, the read-back and disk/inode reserves pass and Wan
@@ -793,6 +794,10 @@ legacy Wan, typed I2V, S2V or Foley request fails before engine work. Keep
 producers paused until the applicable gate passes. Use the activity ID to end
 the declaration once settled.
 
+The leased startup proof below resolves `gpu_pin_unproven` before discovery
+if the sidecar started while the API held the lease. The probe cannot
+dispatch model work.
+
 ```bash
 bash -s <<'BASH'
   set -euo pipefail
@@ -843,6 +848,20 @@ bash -s <<'BASH'
   [[ -z "$job" && -z "$policy" ]]
   kubectl -n ai get configmaps -o name |
     awk '/^configmap\/wan-local-model-provision-/ { found=1 } END { exit found }'
+  gate_passed
+  gate='Local-model startup proof under the compute lease'
+  kubectl -n ai exec -i deploy/wan-video -c api -- env PYTHONPATH=/config/video python -B - <<'PY'
+import api
+
+lease = api.acquire_compute()
+if lease is None:
+    raise SystemExit("Compute is reserved")
+with lease:
+    lane = api.local.enabled_lane(api.ROOT, api.CONFIG)
+    if lane is None:
+        raise SystemExit("Expected an active local-model lane")
+    api.local.require_started(lane.status(residency_only=True, allow_unbound=True, lease=lease))
+PY
   gate_passed
   gate='Wan, Foley, queue and local discovery health'
   python3 -B scripts/wan-video/op442_smoke.py active > "$evidence/c-health.json"
