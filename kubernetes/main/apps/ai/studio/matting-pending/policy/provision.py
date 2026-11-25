@@ -21,6 +21,7 @@ GRAPH_SHA256 = "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333
 BUDGET = 1024**3
 RESERVE = 32 * 1024**3
 CHUNK = 1024**2
+FLUSH_EVERY = 64 * CHUNK
 READ_SECONDS = 15
 DOWNLOAD_SECONDS = 240
 ALLOCATION = re.compile(r"matting-op459-birefnet-lite-v1-[0-9]{2}")
@@ -33,7 +34,10 @@ class ProvisionError(ValueError):
 class PinnedRedirect(HTTPRedirectHandler):
     def redirect_request(self, request, response, code, message, headers, new_url):
         destination = urlsplit(new_url)
-        if destination.scheme != "https" or destination.netloc != CDN:
+        allowed = destination.scheme == "https" and destination.netloc == CDN
+        # The host is the evidence an operator needs when a redirect is refused.
+        print(json.dumps({"redirect_host": destination.hostname, "allowed": allowed}), file=sys.stderr)
+        if not allowed:
             raise ProvisionError("unexpected_download_redirect")
         return super().redirect_request(request, response, code, message, headers, new_url)
 
@@ -54,9 +58,27 @@ def sync_dir(path: Path) -> None:
         os.close(fd)
 
 
+def settle(fd: int) -> None:
+    """Commit what has been written and let its cached pages go.
+
+    A file written with one fsync at the end keeps its pages in the container's
+    memory account until then: pages not yet committed to the server cannot be
+    reclaimed. The first GGUF attempt of story 442 was killed for memory that way
+    (haynes-ops PR 5053). Settling every FLUSH_EVERY bytes bounds it to one
+    interval, and dropping the cache before hashing makes the read-back come
+    from the server and not from this client's cache.
+    """
+    os.fsync(fd)
+    os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+
+
 def digest_file(path: Path) -> str:
-    with path.open("rb") as source:
-        return hashlib.file_digest(source, "sha256").hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb", buffering=0) as source:
+        os.posix_fadvise(source.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+        while block := source.read(CHUNK):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def download(opener, target: Path, deadline: float) -> None:
@@ -66,7 +88,7 @@ def download(opener, target: Path, deadline: float) -> None:
         if (source.status != 200 or source.headers.get("Content-Encoding", "identity") != "identity"
                 or (length is not None and length != str(GRAPH_BYTES))):
             raise ProvisionError("unexpected_download_length")
-        count = 0
+        count = settled = 0
         with target.open("xb", buffering=0) as output:
             while True:
                 if monotonic() >= deadline:
@@ -81,7 +103,10 @@ def download(opener, target: Path, deadline: float) -> None:
                     raise ProvisionError("short_write")
                 count += len(block)
                 capacity(target.parent, count)
-            os.fsync(output.fileno())
+                if count - settled >= FLUSH_EVERY:
+                    settle(output.fileno())
+                    settled = count
+            settle(output.fileno())
         if count != GRAPH_BYTES:
             raise ProvisionError("unexpected_download_length")
     if digest_file(target) != GRAPH_SHA256:

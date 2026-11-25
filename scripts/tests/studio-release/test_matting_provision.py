@@ -53,6 +53,18 @@ class ProvisioningTest(unittest.TestCase):
     def stage(self, opener):
         return provision(self.root, ALLOCATION, opener, MANIFEST, NOTICE)
 
+    def test_download_settles_at_intervals_and_before_hashing(self):
+        # Written pages must not accumulate until one final fsync (the failure of
+        # story 442's first weights Job). With a 4-byte chunk and an 8-byte
+        # interval the 37-byte fixture settles four times inside the loop and once
+        # at the end, and still publishes the verified bytes.
+        calls = []
+        real = constants["settle"]
+        with patch.dict(constants, CHUNK=4, FLUSH_EVERY=8, settle=lambda fd: (calls.append(fd), real(fd))[1]):
+            proof = self.stage(Opener(headers={"Content-Length": str(len(GRAPH))}))
+        self.assertEqual(len(calls), len(GRAPH) // 8 + 1)
+        self.assertEqual(proof["graph_sha256"], sha256(GRAPH).hexdigest())
+
     def test_verified_create_only_publication(self):
         proof = self.stage(Opener(headers={"Content-Length": str(len(GRAPH))}))
         self.assertEqual(proof, {
