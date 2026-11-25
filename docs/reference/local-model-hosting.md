@@ -684,6 +684,14 @@ bash -s <<'BASH'
   awk 'found { sub(/^    /, ""); print } /^  local-model.json: \|$/ { found=1 }' "$profile" |
     jq -e . > "$evidence/c-approved-profile.json"
   gate_passed
+  # The dormant pod may have been recreated since A saved its UID. The
+  # activation gates compare the new pod with this one.
+  gate='Save the current dormant pod UID'
+  kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
+    jq -er '.items | select(length == 1) | .[0] |
+      select(([.status.containerStatuses[].name] | sort) == ["api","app","foley"]) | .metadata.uid' \
+    > "$evidence/dormant.uid"
+  gate_passed
 BASH
 ```
 
