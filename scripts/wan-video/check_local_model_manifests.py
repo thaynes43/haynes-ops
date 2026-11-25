@@ -73,7 +73,7 @@ class ManifestTests(unittest.TestCase):
                 with self.subTest(valid=value):
                     path.write_text(json.dumps({**profile, "unloaded_max_mib": value}))
                     self.assertEqual(local.load_profile(directory)["unloaded_max_mib"], value)
-            for value in (-1, 513, 266.0, True, None, "266"):
+            for value in (-1, 0, 513, 266.0, True, None, "266"):
                 with self.subTest(invalid=value):
                     path.write_text(json.dumps({**profile, "unloaded_max_mib": value}))
                     with self.assertRaisesRegex(product.RequestError, "Invalid local-model profile"):

@@ -363,9 +363,9 @@ and other attempts in place.
 )
 ```
 
-**Rollback B.** Keep producers paused. Capture the Job UID, terminal state and
-logs. If the Job is still running, capture its current state and merge a
-revert that removes the weights Kustomization from the `ai` inventory, then
+**Rollback B.** Keep producers paused. Capture the
+`wan-local-model-provision-r2` Job UID, state and logs. Merge a revert that
+removes the weights Kustomization from the `ai` inventory, then
 reconcile `cluster-apps`. Flux prunes the Job and hashed ConfigMap. Check that
 the Job and its pods are gone, the policy is still present, the PVC UID is the
 same and the dormant health gate passes. Use the [hold-clearing step](#clear-a-local-model-hold)
@@ -386,14 +386,22 @@ viewing route. A persistent sidecar failure keeps it off the Service.
 Run the [Wan-pod change check](#wan-pod-change-check) before every subsequent
 Wan-pod change. With producers paused, confirm known card ownership, drain
 ordinary ComfyUI cache under the existing lease, and collect Card A readings
-and its engine process baseline. Choose the highest stable drained reading rounded up as an
-integer in 1–512 MiB. Edit the marked `unloaded_max_mib` line in
+and its engine process baseline. Round the highest drained memory reading up
+to the next integer if needed, add the 4 MiB release allowance, and cap the
+ceiling at 512 MiB. Set the marked `unloaded_max_mib` line in
 [the profile](../../kubernetes/main/apps/ai/wan-video/local-model-pending/activation/profile.yaml)
-in PR C before merging. If no stable readings fit, keep Wan dormant. Review
-every Card A PID and process name in `calibration.json` against the engine
-ownership checks and record the attribution in the private operator note.
-An empty process list is valid. Unknown or unidentifiable processes stop
-calibration. Keep the unedited JSON with the approved profile for rollback.
+to the value printed below before merging PR C. Keep Wan dormant if the
+readings are unstable or their rounded maximum exceeds 512 MiB. The cap can
+leave less than 4 MiB of headroom. Save the unedited calibration JSON with
+the approved profile for rollback.
+
+Review every Card A PID and process name in `calibration.json` against the
+engine ownership checks and record its attribution privately. Refuse rows
+with unresolvable process names. The API container's
+`nvidia-smi --query-compute-apps` can miss processes in other containers.
+An empty process list proves nothing by itself. The release guard is the
+idle card's memory against both the load baseline plus 4 MiB and the
+calibrated ceiling.
 
 ```bash
 (
@@ -402,7 +410,7 @@ calibration. Keep the unedited JSON with the approved profile for rollback.
   evidence=${OP442_EVIDENCE:?}
   kubectl -n ai exec -i deploy/wan-video -c api -- env PYTHONPATH=/config/video python -B - \
     > "$evidence/calibration.json" <<'PY'
-import json, subprocess, time
+import json, math, subprocess, time
 from pathlib import Path
 from urllib.request import urlopen
 import api
@@ -451,11 +459,17 @@ with lease:
     api.require_empty_queue()
     if compute_apps() != processes:
         raise SystemExit("Card A compute processes changed during calibration")
+    rounded = math.ceil(max(sample["memory_mib"] for sample in samples))
+    if rounded > api.local.MAX_UNLOADED_MIB:
+        raise SystemExit("Rounded drained memory exceeds the 512 MiB cap")
+    ceiling = min(api.local.MAX_UNLOADED_MIB, rounded + api.local.RELEASE_DRIFT_MIB)
     print(json.dumps({"gpu_uuid": card, "samples": samples, "compute_apps_csv": processes,
-                      "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip()}))
+                      "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
+                      "unloaded_max_mib": ceiling}))
 PY
   jq -r '.samples[].memory_mib' "$evidence/calibration.json"
   jq -r '.compute_apps_csv' "$evidence/calibration.json"
+  jq -r '"Set unloaded_max_mib to \(.unloaded_max_mib) MiB"' "$evidence/calibration.json"
 )
 ```
 
@@ -580,29 +594,47 @@ after the replacement pod starts.
 
 Keep all producers quiesced. Run the reviewed helper in the API container
 when a release latched `local_model_held`, or when a retained journal blocks
-the dormant path. When the profile is still mounted, the helper requires its
-sidecar to answer that no child exists. With the profile removed, it requires
-the socket path to be absent and three compute-process reads to show only the
-engine PIDs and names reviewed in the calibration for that boot, within their
-recorded memory. It requires three idle Card A memory readings at or below both
-the calibrated ceiling and the recorded memory baseline plus 4 MiB. The
-journal's load baseline takes precedence. If the hold predates a load
-baseline, the helper uses the highest recorded dormant calibration sample.
-The helper refuses an unavailable listener while the profile is mounted, a
-live child, ambiguous ownership, an occupied lease, a nonempty or unreadable
+the dormant path. The guard is three idle Card A memory readings at or below
+both the calibrated ceiling and the recorded memory baseline plus 4 MiB. The
+journal's load baseline takes precedence. For a hold that predates a load
+baseline, use the highest recorded dormant calibration sample.
+
+With the profile mounted, the helper requires the matching sidecar to report
+no child. With the profile removed, it checks `sidecar.sock` under the compute
+lease. A live listener, a non-socket path or an inconclusive probe is a
+refusal. If the socket refuses a connection, the helper moves it in the same
+directory to `sidecar.stale.<UTC timestamp>-<id>.sock`. It records the name in
+the receipt and requires the original path to stay absent through the rest
+of the proof. Keep the moved socket as evidence even if a later check fails.
+
+The dormant path checks three compute-process lists against the engine PIDs
+and names reviewed in the calibration for that boot, within their recorded
+memory. The API container may miss processes in other containers. An empty
+list proves nothing by itself. A row with an unresolvable process name causes
+refusal. The helper also refuses an occupied lease, a nonempty or unreadable
 queue, an active Wan or Foley job, or a separate render hold. For a Wan render
 hold, use the existing Wan recovery procedure first.
 
-Use the original reviewed calibration and the exact approved C profile. Keep
-the receipt and archived journal on the original PVC and link the receipt's
-ID and state hash in the private operator note. Record the operator, pod UID
-and reason for recovery there. The helper writes its proof before renaming
-`state.json` in place to `state.<UTC timestamp>-<id>.json`. On refusal,
-preserve the files and resolve the stated proof failure. On an interrupted
-command, read back the named receipt and archived journal before another
-attempt. This procedure leaves local request receipts in the ledger. Reuse
-of an unresolved request ID is unsafe. Start new work only after the health
-gate for the resulting active or dormant state.
+Use the original reviewed calibration and save the exact approved C profile.
+The helper accepts ceilings from the rounded-up drained maximum through that
+maximum plus 4 MiB, within 1–512 MiB. If the original ceiling was too low,
+calculate the corrected ceiling from the original samples using the same
+formula and review it through GitOps. Keep both profile artifacts. For a mounted profile the helper reads the
+corrected mount and requires the sidecar to match. For dormant recovery, point
+`OP442_RECOVERY_PROFILE` to the private copy of the reviewed corrected JSON.
+The helper reconstructs the earlier digest from the corrected profile and
+accepts the journal only when a lower ceiling in the same range reproduces
+that digest exactly. It records both digests and the ceiling change. The
+journal's load baseline still applies.
+
+Keep the receipt and archived journal on the original PVC. Link the receipt
+ID and state hash in the private operator note with the operator, pod UID and
+reason for recovery. The helper writes its proof before renaming `state.json`
+in place to `state.<UTC timestamp>-<id>.json`. On refusal, preserve the files
+and resolve the stated proof failure. On interruption, check the receipt,
+archived journal and any moved socket before another attempt. Keep the local
+request receipts and avoid reusing an unresolved request ID. Start new work
+only after the health gate for the resulting active or dormant state.
 
 ```bash
 (
@@ -610,8 +642,9 @@ gate for the resulting active or dormant state.
   umask 077
   evidence=${OP442_EVIDENCE:?}
   receipt=$(mktemp "$evidence/hold-clear.XXXXXXXX")
+  profile=${OP442_RECOVERY_PROFILE:-"$evidence/c-approved-profile.json"}
   jq -en --slurpfile calibration "$evidence/calibration.json" \
-    --slurpfile profile "$evidence/c-approved-profile.json" \
+    --slurpfile profile "$profile" \
     '{calibration: $calibration[0], profile: $profile[0]}' |
     kubectl -n ai exec -i deploy/wan-video -c api -- python -B /config/video/clear_local_model_hold.py |
     tee "$receipt"
@@ -626,8 +659,13 @@ has a local-model hold, run [hold clearing](#clear-a-local-model-hold) first.
 If it has ordinary residency, the rollback helper submits the tracked unload,
 validates its receipt and proves no child, reservation or pending operation
 remains under the lease. It drains ordinary ComfyUI cache only after proving
-residency is clear. If the release latches a hold, preserve the journal and
-return to the hold-clearing step before continuing to the GitOps revert.
+residency is clear. If release latches a hold, preserve the journal and
+return to hold clearing before continuing to the GitOps revert. If the
+ceiling lacks the calibrated headroom, preserve the original profile and
+review the ceiling-only correction against the original calibration. If the
+listener is unavailable, a stale socket becomes eligible to move only after
+the profile has been removed through the reviewed dormant revert. Follow
+the dormant recovery gate for any retained journal before resuming dispatch.
 
 ```bash
 (
@@ -649,6 +687,10 @@ that readiness was never reached. Cross-check the observed rollout with the
 pod's container states, events, current and previous sidecar logs, and
 EndpointSlices. A previous successful listener, a state file, or uncertain
 history requires the tracked rollback and, if held, the hold-clearing step.
+A stale socket can survive a crash. Use rollout history and journal absence
+for the direct revert and leave the socket in place. If a retained journal
+is found, keep dispatch paused and use the applicable hold-clearing path with
+the original calibration and approved profile or reviewed ceiling correction.
 
 Keep dispatch paused. Copy the exact failed pod name from the first command
 into `OP442_FAILED_POD`. A container that never started has no logs. When
@@ -711,8 +753,11 @@ three-container Ready pod with a Ready Service endpoint, the same PVC UID,
 empty queues, idle workers, and `local_model_not_installed`. Repeat the private
 legacy read from the dormant gate and verify rack ownership before resuming
 dispatch. If an already-dormant pod still has a journal, run
-[hold clearing](#clear-a-local-model-hold) with its socket and GPU process
-proof before resuming. End the activity declaration once settled.
+[hold clearing](#clear-a-local-model-hold) before resuming. Supply the
+original calibration and approved profile or reviewed ceiling correction.
+The dormant helper moves only a refused socket under the lease, then requires
+the memory proof and the remaining gates. End the activity declaration once
+settled.
 
 ```bash
 (
@@ -801,7 +846,8 @@ window incomplete.
 
 | Stop | Hold state and next action |
 | --- | --- |
-| Measured release exceeds 4 MiB drift or the calibrated ceiling and the API fails its release proof, or the API reports `local_model_held` | Local-model hold latched on failed memory proof. Save the failed receipt and diagnostic reading, then use [hold clearing](#clear-a-local-model-hold). |
+| Release exceeds the load baseline plus 4 MiB or the calibrated ceiling and fails the API's memory proof, or the API reports `local_model_held` | Save the receipt, journal and memory readings. Use [hold clearing](#clear-a-local-model-hold). If the ceiling was set too low, preserve the original profile and review a ceiling-only correction within the original calibration range. |
+| Dormant recovery finds a socket, an unresolvable process name or an unavailable process query | The helper archives a socket only after a refused connection under the lease. A live listener, non-socket, ambiguous probe or process proof failure stops recovery. Keep dispatch paused and preserve any moved socket. An empty process list still requires all three memory readings to pass. |
 | Release receipt missing, failed or inconsistent without a confirmed hold | Hold status unknown. Preserve the request and journal, and inspect under the lease. Use [hold clearing](#clear-a-local-model-hold) if held, or resume tracked cleanup only after ownership and residency are known. |
 | Unknown ownership, malformed queue, unsettled request or failed lease proof | Foreign work or lease contention alone does not latch the local-model hold. A malformed queue may latch a separate render hold or a local-model hold after dispatch. Resolve ownership and any Wan render hold first. Use [hold clearing](#clear-a-local-model-hold) for a latched local-model hold. |
 | Bad image, weights, reserve failure or unavailable listener | These preflight failures do not themselves latch a hold. Use the [direct rollback](#rollback-c-when-the-sidecar-never-became-ready) only with evidence of no Ready transition and no state file. If state is present, use the tracked rollback and [hold clearing](#clear-a-local-model-hold) if held. |

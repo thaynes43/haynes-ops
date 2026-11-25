@@ -995,6 +995,30 @@ class LocalModelTests(unittest.TestCase):
         self.assertEqual(released["baseline_memory_mib"], 96)
         self.assertFalse(self.lane.path.exists())
 
+    def test_unload_with_two_or_four_mib_drift_passes_at_calibrated_ceiling(self):
+        # PROFILE's ceiling is 128 MiB for a drained baseline of 124 MiB.
+        for drift in (2, 4):
+            with self.subTest(drift=drift):
+                self.memory = self.drained_memory = 124
+                loaded = self.perform(f"{10 + drift:032x}", "load")
+                self.assertEqual((loaded["state"], loaded["baseline_memory_mib"]), ("succeeded", 124))
+                self.drained_memory = 124 + drift
+                with patch.object(local.time, "sleep"):
+                    released = self.perform(f"{20 + drift:032x}", "unload")
+                self.assertEqual((released["state"], released["released_memory_mib"]), ("succeeded", 124 + drift))
+                self.assertFalse(self.lane.path.exists())
+
+    def test_unload_with_five_mib_drift_latches_hold_at_calibrated_ceiling(self):
+        self.memory = self.drained_memory = 124
+        loaded = self.perform(LOAD, "load")
+        self.assertEqual((loaded["state"], loaded["baseline_memory_mib"]), ("succeeded", 124))
+        self.drained_memory = 129
+        with patch.object(local.time, "sleep"):
+            released = self.perform(UNLOAD, "unload")
+        self.assertEqual(released["error"], "residency_unverified")
+        self.assertFalse(self.worker.model.alive())
+        self.assertTrue(product.read_job(self.lane.path)["held"])
+
     def test_load_rechecks_queue_before_evicting_cache_and_after_post(self):
         self.memory = 5600
         foreign = {**EMPTY, "queue_running": [[0, "late-foreign"]]}

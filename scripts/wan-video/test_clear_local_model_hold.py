@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -130,8 +131,50 @@ class HoldRecoveryTests(unittest.TestCase):
         self.assert_refused("no latched hold")
 
     def test_different_profile_refused(self):
-        self.profile.write_text(json.dumps({**PROFILE, "unloaded_max_mib": 127}))
+        self.profile.write_text(json.dumps({**PROFILE, "max_output_tokens": 13}))
         self.assert_refused("Profile does not match")
+
+    def test_ceiling_raise_matches_earlier_digest_and_preserves_load_baseline(self):
+        corrected = {**PROFILE, "unloaded_max_mib": 132}
+        self.evidence["profile"] = corrected
+        for mounted in (True, False):
+            with self.subTest(mounted=mounted):
+                self.lane.write_state(INSTANCE, False, baseline=126, hold=True)
+                if mounted:
+                    self.profile.write_text(json.dumps(corrected))
+                    reply = self.exchange.side_effect()
+                    self.exchange.side_effect = None
+                    self.exchange.return_value = {**reply, "profile_sha256": fixtures.product.digest(corrected)}
+                else:
+                    self.profile.unlink()
+                self.sample.return_value = dict(SAMPLE, memory_mib=130)
+                result = self.assert_archived(self.evidence)
+                self.assertEqual(result["profile_sha256"], fixtures.product.digest(corrected))
+                self.assertEqual(result["journal_profile_sha256"], self.lane.profile_hash)
+                self.assertEqual(result["ceiling_correction"], {
+                    "previous_unloaded_max_mib": 128, "unloaded_max_mib": 132,
+                })
+                self.assertEqual(result["baseline_memory_mib"], 126)
+                self.assertEqual(result["calibration_ceiling_range_mib"], [128, 132])
+
+    def test_ceiling_raise_refuses_non_ceiling_change_or_out_of_range_ceiling(self):
+        self.profile.unlink()
+        corrected = {**PROFILE, "unloaded_max_mib": 132}
+        for previous, current, reason in (
+            (PROFILE, {**corrected, "max_output_tokens": 13}, "does not match"),
+            ({**PROFILE, "unloaded_max_mib": 127}, corrected, "does not match"),
+            ({**PROFILE, "unloaded_max_mib": 131}, {**corrected, "unloaded_max_mib": 130}, "does not match"),
+            (PROFILE, {**corrected, "unloaded_max_mib": 133}, "outside the recorded calibration range"),
+        ):
+            with self.subTest(previous=previous, current=current):
+                local.Lane(self.root, previous).write_state(INSTANCE, False, baseline=64, hold=True)
+                self.evidence["profile"] = current
+                self.assert_refused(reason)
+
+    def test_ceiling_raise_requires_original_calibration(self):
+        self.profile.write_text(json.dumps({**PROFILE, "unloaded_max_mib": 132}))
+        del self.evidence["calibration"]
+        self.assert_refused("no calibration was supplied")
 
     def test_live_child_refused(self):
         self.resident.return_value = True
@@ -160,16 +203,104 @@ class HoldRecoveryTests(unittest.TestCase):
         for changes, reason in (
             ({"gpu_uuid": fixtures.OTHER}, "different GPU"),
             ({"samples": [SAMPLE]}, "Invalid calibration samples"),
-            ({"samples": [dict(SAMPLE, memory_mib=127)] * 3}, "ceiling does not match"),
+            ({"samples": [dict(SAMPLE, memory_mib=128.1)] * 3}, "outside the recorded calibration range"),
+            ({"samples": [dict(SAMPLE, memory_mib=123)] * 3}, "outside the recorded calibration range"),
         ):
             with self.subTest(reason=reason):
                 self.evidence["calibration"] = {**original, **changes}
                 self.assert_refused(reason)
 
-    def test_dormant_socket_even_dangling_refused(self):
+    def test_calibration_range_rounds_up_and_caps_the_allowance(self):
+        for memory, minimum, maximum in ((0, 1, 4), (123.2, 124, 128), (510.1, 511, 512)):
+            calibration = {**self.evidence["calibration"], "samples": [dict(SAMPLE, memory_mib=memory)] * 3}
+            for ceiling in range(minimum, maximum + 1):
+                with self.subTest(memory=memory, ceiling=ceiling):
+                    self.assertEqual(
+                        recovery.calibration_baseline(calibration, {**PROFILE, "unloaded_max_mib": ceiling}),
+                        (memory, minimum, maximum),
+                    )
+
+    def test_dormant_live_socket_refused(self):
         self.profile.unlink()
-        local.socket_path(self.root).symlink_to(self.root / "missing")
-        self.assert_refused("socket path still exists")
+        path = local.socket_path(self.root)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as listener:
+            listener.bind(str(path))
+            listener.listen()
+            self.assert_refused("live listener")
+        self.assertTrue(path.exists())
+        self.assertEqual(list(path.parent.glob("sidecar.stale.*.sock")), [])
+        self.nvidia.assert_not_called()
+
+    def test_dormant_stale_socket_is_archived_under_lease_before_remaining_proof(self):
+        self.profile.unlink()
+        path = local.socket_path(self.root)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as connection:
+            connection.bind(str(path))
+        entry = path.stat()
+        original = self.nvidia.return_value
+
+        def check_lease(*args, **kwargs):
+            self.assertIsNone(api.acquire_compute())
+            self.assertFalse(path.exists())
+            return original
+
+        self.nvidia.side_effect = check_lease
+        result = self.assert_archived(self.evidence)
+        archived = path.with_name(result["stale_socket_archive"])
+        self.assertRegex(archived.name, r"^sidecar\.stale\.\d{8}T\d{6}\.\d{6}Z-[a-f0-9]{32}\.sock$")
+        self.assertTrue(archived.is_socket())
+        self.assertEqual(archived.stat().st_ino, entry.st_ino)
+
+    def test_dormant_inconclusive_socket_probe_refused(self):
+        self.profile.unlink()
+        path = local.socket_path(self.root)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as connection:
+            connection.bind(str(path))
+        with patch.object(socket.socket, "connect", side_effect=TimeoutError("Socket probe timed out")):
+            self.assert_refused("Socket probe timed out")
+        self.assertTrue(path.is_socket())
+        self.assertEqual(list(path.parent.glob("sidecar.stale.*.sock")), [])
+        self.nvidia.assert_not_called()
+
+    def test_dormant_stale_socket_preserved_if_memory_proof_fails(self):
+        self.profile.unlink()
+        path = local.socket_path(self.root)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as connection:
+            connection.bind(str(path))
+        self.sample.return_value = dict(SAMPLE, memory_mib=69)
+        self.assert_refused("Card is busy or memory exceeds")
+        self.assertFalse(path.exists())
+        archived, = list(path.parent.glob("sidecar.stale.*.sock"))
+        self.assertTrue(archived.is_socket())
+
+    def test_dormant_socket_replaced_during_probe_refused(self):
+        self.profile.unlink()
+        path = local.socket_path(self.root)
+        replacement = path.with_name("replacement.sock")
+        for entry in (path, replacement):
+            with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as connection:
+                connection.bind(str(entry))
+        replacement_inode = replacement.stat().st_ino
+
+        def refuse(*args):
+            replacement.rename(path)
+            raise ConnectionRefusedError
+
+        with patch.object(socket.socket, "connect", side_effect=refuse):
+            self.assert_refused("socket changed during the probe")
+        self.assertEqual(path.stat().st_ino, replacement_inode)
+        self.nvidia.assert_not_called()
+
+    def test_dormant_non_socket_or_dangling_link_refused(self):
+        self.profile.unlink()
+        path = local.socket_path(self.root)
+        path.touch()
+        self.assert_refused("is not a socket")
+        self.assertTrue(path.is_file())
+        path.unlink()
+        path.symlink_to(self.root / "missing")
+        self.assert_refused("is not a socket")
+        self.assertTrue(path.is_symlink())
         self.nvidia.assert_not_called()
 
     def test_dormant_unreadable_socket_cannot_prove_absence(self):
@@ -190,10 +321,29 @@ class HoldRecoveryTests(unittest.TestCase):
         self.profile.unlink()
         self.nvidia.return_value.stdout = "bad row"
         self.assert_refused("Malformed GPU compute-process")
-        self.nvidia.return_value.stdout = f"{CARD}, 11, [Not Found], 30"
-        self.assert_refused("Unverifiable GPU compute-process")
         self.nvidia.side_effect = subprocess.CalledProcessError(1, "nvidia-smi")
         self.assert_refused("process query failed")
+
+    def test_dormant_unresolvable_process_name_refused_even_if_baseline_matches(self):
+        self.profile.unlink()
+        for name in ("", "[Not Found]", "[Insufficient Permissions]", "N/A", "[Unknown]"):
+            with self.subTest(name=name):
+                # Even a matching row in the original calibration is no proof.
+                raw = f"{CARD}, 11, {name}, 30"
+                self.evidence["calibration"]["compute_apps_csv"] = raw
+                self.nvidia.return_value.stdout = raw
+                self.assert_refused("Unverifiable GPU compute-process")
+
+    def test_dormant_empty_process_list_still_requires_memory_proof(self):
+        self.profile.unlink()
+        self.nvidia.return_value.stdout = ""
+        self.sample.return_value = dict(SAMPLE, memory_mib=69)
+        self.assert_refused("Card is busy or memory exceeds")
+        self.sample.return_value = dict(SAMPLE, memory_mib=68)
+        result = self.assert_archived(self.evidence)
+        self.assertIn("empty process list proves nothing", result["process_visibility"])
+        self.assertIn("unresolvable process names", result["process_visibility"])
+        self.assertEqual(result["memory_guard"]["release_allowance_mib"], 4)
 
     def test_dormant_unattributed_process_refused(self):
         self.profile.unlink()
@@ -224,6 +374,28 @@ class HoldRecoveryTests(unittest.TestCase):
                 self.sample.side_effect = [SAMPLE, SAMPLE, sample]
                 self.assert_refused("Card is busy or memory exceeds")
 
+    def test_release_at_two_and_four_mib_above_load_baseline_clears(self):
+        self.evidence["calibration"]["samples"] = [dict(SAMPLE, memory_mib=123.5)] * 3
+        for mounted in (True, False):
+            if not mounted:
+                self.profile.unlink()
+            for drift in (2, 4):
+                with self.subTest(mounted=mounted, drift=drift):
+                    self.lane.write_state(INSTANCE, False, baseline=124, hold=True)
+                    self.sample.return_value = dict(SAMPLE, memory_mib=124 + drift)
+                    result = self.assert_archived(self.evidence)
+                    self.assertEqual(result["unloaded_max_mib"], 128)
+                    self.assertEqual(result["calibration_ceiling_range_mib"], [124, 128])
+                    self.assertNotIn("ceiling_correction", result)
+
+    def test_release_at_five_mib_above_load_baseline_holds_at_calibrated_ceiling(self):
+        self.evidence["calibration"]["samples"] = [dict(SAMPLE, memory_mib=123.5)] * 3
+        self.lane.write_state(INSTANCE, False, baseline=124, hold=True)
+        self.sample.return_value = dict(SAMPLE, memory_mib=129)
+        self.assert_refused("Card is busy or memory exceeds")
+        self.profile.unlink()
+        self.assert_refused("Card is busy or memory exceeds")
+
     def test_queue_rechecked_before_evidence(self):
         self.queue.side_effect = [fixtures.EMPTY, {**fixtures.EMPTY, "queue_running": [[0, "new"]]}]
         self.assert_refused("already has a job")
@@ -238,7 +410,7 @@ class HoldRecoveryTests(unittest.TestCase):
             return SAMPLE
 
         self.sample.side_effect = sample
-        self.assert_refused("socket path still exists")
+        self.assert_refused("socket path appeared during proof")
 
     def test_changed_state_rechecked_before_evidence(self):
         def sample(_):

@@ -7,6 +7,7 @@ import json
 import math
 import os
 from pathlib import Path
+import socket
 import stat
 import subprocess
 import sys
@@ -21,6 +22,10 @@ import product_local as local
 
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
 COMPUTE_QUERY = "--query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory"
+UNRESOLVED_PROCESS_NAMES = {
+    "", "n/a", "not available", "not found", "insufficient permissions",
+    "no permission", "not supported", "unknown", "unknown error",
+}
 
 
 def require(condition, message):
@@ -58,7 +63,7 @@ def compute_apps(raw, card):
         require(len(row) == 4, "Malformed GPU compute-process row")
         uuid, pid, name, memory = (field.strip() for field in row)
         require(uuid == card and pid.isascii() and pid.isdecimal() and int(pid) > 0
-                and name and name not in {"N/A", "[N/A]", "[Not Found]", "[Insufficient Permissions]"}
+                and name.strip("[]").strip().casefold() not in UNRESOLVED_PROCESS_NAMES
                 and memory.isascii() and memory.isdecimal() and int(memory) <= 32768
                 and (pid, name) not in apps, "Unverifiable GPU compute-process row")
         apps[pid, name] = int(memory)
@@ -73,8 +78,30 @@ def calibration_baseline(calibration, profile):
             and all(local.valid_card_sample(sample, card) and sample["utilization_percent"] <= 5
                     for sample in samples), "Invalid calibration samples")
     baseline = max(sample["memory_mib"] for sample in samples)
-    require(max(1, math.ceil(baseline)) == ceiling, "Profile ceiling does not match the recorded calibration")
-    return baseline
+    rounded = math.ceil(baseline)
+    minimum = max(1, rounded)
+    maximum = min(local.MAX_UNLOADED_MIB, rounded + local.RELEASE_DRIFT_MIB)
+    require(minimum <= ceiling <= maximum, "Profile ceiling is outside the recorded calibration range")
+    return baseline, minimum, maximum
+
+
+def profile_binding(profile, journal_digest, minimum_ceiling):
+    current_digest = product.digest(profile)
+    binding = {"profile_sha256": current_digest, "journal_profile_sha256": journal_digest}
+    if current_digest == journal_digest:
+        return binding
+
+    require(minimum_ceiling is not None, "Profile does not match the journal and no calibration was supplied")
+    # Reconstruct the old profile by varying only its ceiling within the
+    # reviewed range. The journal digest binds every other field.
+    current_ceiling = profile["unloaded_max_mib"]
+    for earlier_ceiling in range(minimum_ceiling, current_ceiling):
+        if product.digest({**profile, "unloaded_max_mib": earlier_ceiling}) == journal_digest:
+            binding["ceiling_correction"] = {
+                "previous_unloaded_max_mib": earlier_ceiling, "unloaded_max_mib": current_ceiling,
+            }
+            return binding
+    raise ValueError("Profile does not match the residency journal or an allowed ceiling increase")
 
 
 def path_present(path):
@@ -85,10 +112,31 @@ def path_present(path):
     return True
 
 
+def archive_stale_socket(tag):
+    """Probe and move a dormant socket while the caller holds the compute lease."""
+    path = local.socket_path(api.ROOT)
+    try:
+        entry = path.lstat()
+    except FileNotFoundError:
+        return None
+    require(stat.S_ISSOCK(entry.st_mode), "Sidecar socket path is not a socket")
+    with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as probe:
+        probe.settimeout(1)
+        try:
+            probe.connect(os.fspath(path))
+        except ConnectionRefusedError:
+            pass
+        else:
+            raise ValueError("Sidecar socket has a live listener")
+    require(os.path.samestat(entry, path.lstat()), "Sidecar socket changed during the probe")
+    archive = path.with_name(f"sidecar.stale.{tag}.sock")
+    path.rename(archive)
+    local.sync_directory(path.parent)
+    return archive.name
+
+
 def require_no_socket():
-    # Stale sockets and symlinks still occupy the path. An unreadable path
-    # propagates the error because it cannot establish absence.
-    require(not path_present(local.socket_path(api.ROOT)), "Sidecar socket path still exists")
+    require(not path_present(local.socket_path(api.ROOT)), "Sidecar socket path appeared during proof")
 
 
 def dormant_process_proof(calibration, card):
@@ -133,21 +181,25 @@ def clear(evidence):
         profile = mounted if mounted is not None else evidence["profile"]
         require(profile.get("gpu_uuid") in local.APPROVED_CARDS
                 and type(profile.get("unloaded_max_mib")) is int
-                and 1 <= profile["unloaded_max_mib"] <= local.MAX_UNLOADED_MIB
-                and product.digest(profile) == state.get("profile_sha256"),
-                "Profile does not match the residency journal")
-        lane = local.Lane(api.ROOT, profile)
+                and 1 <= profile["unloaded_max_mib"] <= local.MAX_UNLOADED_MIB,
+                "Invalid recovery profile card or ceiling")
         card = profile["gpu_uuid"]
         calibration = evidence.get("calibration")
-        baseline = state.get("baseline_memory_mib")
-        baseline_source = "residency_journal"
-        if mounted is None or "baseline_memory_mib" not in state:
+        calibrated = minimum_ceiling = maximum_ceiling = None
+        if mounted is None or "baseline_memory_mib" not in state or calibration is not None:
             require(isinstance(calibration, dict), "Reviewed dormant calibration is required")
-            calibrated = calibration_baseline(calibration, profile)
-            if "baseline_memory_mib" not in state:
-                baseline, baseline_source = calibrated, "dormant_calibration"
+            calibrated, minimum_ceiling, maximum_ceiling = calibration_baseline(calibration, profile)
+        binding = profile_binding(profile, state.get("profile_sha256"), minimum_ceiling)
+        if "baseline_memory_mib" in state:
+            baseline, baseline_source = state["baseline_memory_mib"], "residency_journal"
+        else:
+            baseline, baseline_source = calibrated, "dormant_calibration"
         require(local.gpu_range(baseline, 0, profile["unloaded_max_mib"]), "Invalid recorded memory baseline")
 
+        lane = local.Lane(api.ROOT, profile)
+        now = datetime.now(timezone.utc)
+        tag = now.strftime("%Y%m%dT%H%M%S.%fZ") + "-" + uuid4().hex
+        stale_socket = archive_stale_socket(tag) if mounted is None else None
         samples = []
         residency = []
         for index in range(3):
@@ -171,20 +223,30 @@ def clear(evidence):
         if mounted is None:
             require_no_socket()
         require(path.read_bytes() == raw, "Residency journal changed during proof")
-        now = datetime.now(timezone.utc)
-        tag = now.strftime("%Y%m%dT%H%M%S.%fZ") + "-" + uuid4().hex
         archive = path.with_name(f"state.{tag}.json")
         receipt = path.with_name(f"hold-clear.{tag}.json")
         lock = os.fstat(lease.fileno())
         record = {
-            "time": now.isoformat(), "lease": {"path": "compute.lock", "device": lock.st_dev, "inode": lock.st_ino},
+            "time": datetime.now(timezone.utc).isoformat(),
+            "lease": {"path": "compute.lock", "device": lock.st_dev, "inode": lock.st_ino},
             "state_sha256": hashlib.sha256(raw).hexdigest(), "archive": archive.name, "receipt": receipt.name,
             "profile_mounted": mounted is not None, "baseline_memory_mib": baseline,
             "baseline_source": baseline_source, "unloaded_max_mib": profile["unloaded_max_mib"],
-            "samples": samples, "residency": residency,
+            "memory_guard": {
+                "release_allowance_mib": local.RELEASE_DRIFT_MIB,
+                "rule": "Idle card memory must be at or below both the baseline plus the allowance and the ceiling.",
+            },
+            "samples": samples, "residency": residency, **binding,
         }
-        if mounted is None or baseline_source == "dormant_calibration":
+        if calibration is not None:
             record["calibration_sha256"] = product.digest(calibration)
+            record["calibration_ceiling_range_mib"] = [minimum_ceiling, maximum_ceiling]
+        if mounted is None:
+            record["stale_socket_archive"] = stale_socket
+            record["process_visibility"] = (
+                "The API container may miss other containers' processes. An empty process list proves nothing "
+                "by itself. Rows with unresolvable process names cause refusal."
+            )
         local.write_record(receipt, record)
         path.rename(archive)
         local.sync_directory(path.parent)
