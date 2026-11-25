@@ -3,8 +3,9 @@
 CR-35 keeps Pillow Lanczos in delivery and permits a private CPU comparison
 with FSRCNN ×2 followed by Lanczos. Provisional CR-49 adds stored proxy frames
 and an optional master reference. Allocation `-02` was provisioned and its
-measuring smoke failed two quality verdicts. The `-03` Jobs and the private
-comparison are **Expected** under provisional CR-56. Tom's verdict is pending.
+measuring smoke failed two quality verdicts. Allocation `-03` was provisioned
+and its measuring smoke passed under provisional CR-56. The private
+comparison attempt is **Changed**. Tom's verdict is pending.
 [Story 461](https://work.haynesnetwork.com/work_packages/461) ·
 [Studio profile](https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/upscaling-backend-profile.md)
 
@@ -64,26 +65,26 @@ with urlopen(sys.argv[1], timeout=5) as response:
 }
 
 idle_gate() {
-  local node render status=0
+  local node render
   node=$(kubectl top node talosw01 --no-headers) || node=
-  render=$(kubectl -n ai top pod --containers --no-headers -l app.kubernetes.io/name=studio-render) || render=
-  printf '%s\n%s\n' "$node" "$render" >&2
+  printf '%s\n' "$node" >&2
   check 'talosw01 CPU at most 10% and memory at most 25%' awk '
     $1 == "talosw01" && NF == 5 && $3 ~ /^[0-9]+%$/ && $5 ~ /^[0-9]+%$/ &&
     $3+0 <= 10 && $5+0 <= 25 {pass=1}
     END {exit !pass}
-  ' <<< "$node" || status=1
+  ' <<< "$node" || return 1
+  render=$(kubectl -n ai top pod --containers --no-headers -l app.kubernetes.io/name=studio-render) || render=
+  printf '%s\n' "$render" >&2
   check 'render app CPU at most 250m' awk '
     $2 == "app" {n++; if ($3 ~ /^[0-9]+m$/ && $3+0 <= 250) pass++}
     END {exit !(n == 1 && pass == 1)}
-  ' <<< "$render" || status=1
+  ' <<< "$render" || return 1
   read_endpoint deploy/wan-video api http://127.0.0.1:8080/v1/ready |
     check_json 'Wan idle' '.ready == true and
       has("active_video_job") and .active_video_job == null and
-      has("active_foley_job") and .active_foley_job == null' || status=1
+      has("active_foley_job") and .active_foley_job == null' || return 1
   read_endpoint comfyui-0 app http://127.0.0.1:8188/queue |
-    check_json 'shared ComfyUI queue empty' '.queue_running == [] and .queue_pending == []' || status=1
-  return "$status"
+    check_json 'shared ComfyUI queue empty' '.queue_running == [] and .queue_pending == []'
 }
 
 wait_for_job() {
@@ -108,11 +109,13 @@ final_report() {
 
 (
   set -euo pipefail
-  python3 scripts/tests/studio-release/check.py
-  flux reconcile kustomization cluster-apps -n flux-system --with-source
-  flux reconcile kustomization studio-upscaling-policy -n ai
-  check 'upscaling policy revision ready' kubectl -n ai wait --for=condition=ready     kustomization/studio-upscaling-policy --timeout=2m
-  check 'all three targeted policies present' kubectl -n ai get ciliumnetworkpolicy     studio-upscaling-provision studio-upscaling-smoke studio-upscaling-compare -o name
+  python3 scripts/tests/studio-release/check.py || exit 1
+  flux reconcile kustomization cluster-apps -n flux-system --with-source || exit 1
+  flux reconcile kustomization studio-upscaling-policy -n ai || exit 1
+  check 'upscaling policy revision ready' kubectl -n ai wait --for=condition=ready \
+    kustomization/studio-upscaling-policy --timeout=2m || exit 1
+  check 'all three targeted policies present' kubectl -n ai get ciliumnetworkpolicy \
+    studio-upscaling-provision studio-upscaling-smoke studio-upscaling-compare -o name
 )
 ```
 
@@ -139,20 +142,21 @@ the reserve with `OP461_INODE_RESERVE_CONFIRMED=yes`.
 ```bash
 (
   set -euo pipefail
-  provision=$(kustomize build "$stage/provision")
-  job=$(yq 'select(.kind == "Job") | .metadata.name' <<< "$provision")
-  config=$(yq 'select(.kind == "Job") | .spec.template.spec.volumes[] |
-    select(.name == "config") | .configMap.name' <<< "$provision")
-  allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
-  check 'Flux provisioner ConfigMap present' kubectl -n ai get "configmap/$config" -o name
+  provision=$(kustomize build "$stage/provision" | yq -e 'select(.kind == "Job")') || exit 1
+  job=$(yq -e '.metadata.name' <<< "$provision") || exit 1
+  config=$(yq -e '.spec.template.spec.volumes[] |
+    select(.name == "config") | .configMap.name' <<< "$provision") || exit 1
+  allocation=$(yq -e '.data.allocation' "$stage/release/release.yaml") || exit 1
+  check 'Flux provisioner ConfigMap present' kubectl -n ai get "configmap/$config" -o name || exit 1
   check '40 GiB free on the Studio jobs filesystem' kubectl -n ai exec deploy/studio-render -c app -- sh -ec '
     df -Pk /studio/jobs | awk "NR == 2 { print; if (\$4 >= 41943040) good = 1 } END { exit !good }"
-  '
-  entries=$(kubectl -n ai exec deploy/studio-render -c app -- sh -ec 'df -Pi /studio/jobs' | awk 'NR == 2 {print $4}')
+  ' || exit 1
+  entries=$(kubectl -n ai exec deploy/studio-render -c app -- sh -ec 'df -Pi /studio/jobs' |
+    awk 'NR == 2 {print $4}') || exit 1
   check 'jobs inode budget and reserve confirmed' bash -ec '
     [[ $1 =~ ^[0-9]+$ ]] && (( $1 >= 2048 )) || [[ $1 == "-" && $2 == "yes" ]]
-  ' -- "$entries" "${OP461_INODE_RESERVE_CONFIRMED:-}"
-  yq 'select(.kind == "Job")' <<< "$provision" | kubectl -n ai create -f -
+  ' -- "$entries" "${OP461_INODE_RESERVE_CONFIRMED:-}" || exit 1
+  check 'provision Job created' kubectl -n ai create -f - <<< "$provision" || exit 1
   status=0
   check 'provision Job complete' wait_for_job "$job" || status=1
   report=$(final_report "$job") || report=
@@ -231,20 +235,26 @@ measurements for both scalers, with diagnostic booleans in
 worst mean residual. The smoke must pass before the comparison can run.
 Delivery stays on Lanczos under CR-35.
 
+**Proven, 2026-11-25 15:15Z to 15:16Z.** `studio-upscaling-smoke-03` passed
+every verdict on talosw01 with allocation `upscaling-op461-fsrcnn-x2-v1-03` and
+image `sha256:59de528c04f908f8ee92281fa7c9b12f3a8fbcaaeb487ea8777250d2a28b143e`.
+Whole-Job cgroup peak was 1,291,743,232 bytes.
+[Smoke evidence](https://work.haynesnetwork.com/work_packages/461#activity-10208)
+
 ```bash
 (
   set -euo pipefail
-  allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
+  allocation=$(yq -e '.data.allocation' "$stage/release/release.yaml") || exit 1
   provision="studio-upscaling-provision-${allocation##*-}"
-  profile=$(final_report "$provision" | jq -er '.profile_sha256 | select(test("^[0-9a-f]{64}$"))')
-  pin=$(yq '.data.image' "$stage/release/release.yaml")
-  allowance=$(yq '.data.memoryLimit' "$stage/release/release.yaml")
-  [[ $allowance =~ ^[1-9][0-9]*Gi$ ]]
+  profile=$(final_report "$provision" | jq -er '.profile_sha256 | select(test("^[0-9a-f]{64}$"))') || exit 1
+  pin=$(yq -e '.data.image' "$stage/release/release.yaml") || exit 1
+  allowance=$(yq -e '.data.memoryLimit' "$stage/release/release.yaml") || exit 1
+  [[ $allowance =~ ^[1-9][0-9]*Gi$ ]] || exit 1
   allowance_bytes=$(( ${allowance%Gi} * 1024**3 ))
-  idle_gate
-  smoke=$(kustomize build "$stage/smoke")
-  job=$(yq '.metadata.name' <<< "$smoke")
-  kubectl -n ai create -f - <<< "$smoke"
+  idle_gate || exit 1
+  smoke=$(kustomize build "$stage/smoke") || exit 1
+  job=$(yq -e '.metadata.name' <<< "$smoke") || exit 1
+  check 'smoke Job created' kubectl -n ai create -f - <<< "$smoke" || exit 1
   status=0
   check 'smoke Job complete' wait_for_job "$job" || status=1
   report=$(final_report "$job") || report=
@@ -299,12 +309,27 @@ inputs have a 1280 px long-edge limit and a 921,600 pixel limit. Set
 
 A locator is `library/sha256/<first-two-hex>/<sha256>.<ext>` or
 `productions/<prd_id>/sha256/<first-two-hex>/<sha256>.<ext>`, relative to
-`/studio`. The hash comes from the filename. If set, `OP461_INPUT_SHA256`
-must match it. Set `OP461_RUN` to a fresh 12-hex suffix. For optional ROIs,
+the canonical store root. The release's `storeSubPath` names that root
+within the NFS export. The API mounts it at `/studio`, and the render worker
+sees it at `/studio/api-store-v1`. The hash comes from the filename.
+If set, `OP461_INPUT_SHA256` must match it. Set `OP461_RUN` to a fresh
+12-hex suffix. For optional ROIs,
 add `--lettering-roi`, `--face-roi` or `--hair-roi` and output coordinates
 `X0 Y0 X1 Y1` to `options` before rendering. The lower-right bounds are exclusive.
 Allocation `-03` renders the comparison as `studio-upscaling-compare-03-<suffix>`.
 Each run reserves its output directory using the fresh suffix.
+
+**Changed, 2026-11-25 15:16Z to 15:18Z.** The API verified the requested
+proxy and master against one delivery. Both content checks then failed
+because they resolved the locators against the render worker's `/studio`.
+The probe and comparison mounts also targeted the parent of the canonical
+store. The comparison block was sourced in a context where Bash ignored
+`errexit` and continued after the failed checks. Probe
+`studio-upscaling-probe-869404168e63` reached its deadline before starting a
+container. No comparison Job was created. The runbook now exits on the
+first failed precondition, and both Jobs use the release's canonical store
+prefix. The `-03` allocation, pinned image and passed smoke still apply.
+[Attempt evidence](https://work.haynesnetwork.com/work_packages/461#activity-10208)
 
 The gate checks the store shape and verifies the bytes. For an MP4 input,
 the probe runs before the idle gate and heavy window. It reads the clock
@@ -324,7 +349,7 @@ provides bounded worker scratch. Keep the rendered Job private.
 ```bash
 (
   set -euo pipefail
-  : "${OP461_INPUT:?set the approved Studio-relative store path}"
+  : "${OP461_INPUT:?set the approved canonical store locator}"
   : "${OP461_RUN:?set a fresh 12-hex suffix}"
 
   input_matches_store_hash() {
@@ -339,76 +364,79 @@ provides bounded worker scratch. Keep the rendered Job private.
       test "$bytes" -gt 0 && test "$bytes" -le "$3" || exit 1
       sum=$(sha256sum -- "$path")
       test "${sum%% *}" = "$2"
-    ' sh "/studio/$locator" "${name%.*}" "$limit" >/dev/null 2>&1
+    ' sh "$store_root/$locator" "${name%.*}" "$limit" >/dev/null 2>&1
   }
 
   source=$OP461_INPUT
   master=${OP461_MASTER:-}
   delivery_id=${OP461_DELIVERY_ID:-}
   if [[ -n $master ]]; then
-    check 'approved delivery ID supplied for the master' test -n "$delivery_id"
+    check 'approved delivery ID supplied for the master' test -n "$delivery_id" || exit 1
     if ! delivery=$(kubectl -n ai exec -i deploy/studio-api -c api -- python -I -B - \
         "$source" "$master" "$delivery_id" < "$stage/compare/verify_delivery.py"); then
       printf 'FAIL verified delivery required for a master\n' >&2
       exit 1
     fi
-    source=$(jq -er '.proxy' <<< "$delivery")
-    master=$(jq -er '.master' <<< "$delivery")
-    delivery_id=$(jq -er '.id' <<< "$delivery")
+    source=$(jq -er '.proxy' <<< "$delivery") || exit 1
+    master=$(jq -er '.master' <<< "$delivery") || exit 1
+    delivery_id=$(jq -er '.id' <<< "$delivery") || exit 1
   else
-    check 'delivery ID is used only with a master' test -z "$delivery_id"
+    check 'delivery ID is used only with a master' test -z "$delivery_id" || exit 1
   fi
   options=(--input "$source" --run "$OP461_RUN" --orientation "${OP461_ORIENTATION:-portrait}")
   [[ -z ${OP461_FRAME_INDEX:-} ]] || options+=(--frame-index "$OP461_FRAME_INDEX")
   [[ -z ${OP461_TIMESTAMP:-} ]] || options+=(--timestamp "$OP461_TIMESTAMP")
   [[ -z $master ]] || options+=(--master "$master" --delivery-id "$delivery_id")
   [[ ${OP461_PLATE:-} != yes ]] || options+=(--plate)
-  template=$(kustomize build "$stage/compare" | yq -o=json 'select(.kind == "Job")')
-  job_spec=$(python3 -B "$stage/compare/render.py" "${options[@]}" <<< "$template")
-  job=$(jq -er '.metadata.name' <<< "$job_spec")
+  template=$(kustomize build "$stage/compare" | yq -e -o=json 'select(.kind == "Job")') || exit 1
+  job_spec=$(python3 -B "$stage/compare/render.py" "${options[@]}" <<< "$template") || exit 1
+  job=$(jq -er '.metadata.name' <<< "$job_spec") || exit 1
+  store_sub_path=$(jq -er '.metadata.annotations["studio.haynesops.com/store-sub-path"]' <<< "$job_spec") || exit 1
+  store_root="/studio/${store_sub_path#data/studio/}"
   source_name=${source##*/}
   source_hash=${source_name%.*}
-  check 'supplied input digest agrees with the locator' test "${OP461_INPUT_SHA256:-$source_hash}" = "$source_hash"
-  check 'content-addressed regular single-link input matches SHA-256' input_matches_store_hash "$source"
+  check 'supplied input digest agrees with the locator' test "${OP461_INPUT_SHA256:-$source_hash}" = "$source_hash" || exit 1
+  check 'content-addressed regular single-link input matches SHA-256' input_matches_store_hash "$source" || exit 1
   master_hash=
   if [[ -n $master ]]; then
-    check 'content-addressed regular single-link master matches SHA-256' input_matches_store_hash "$master"
+    check 'content-addressed regular single-link master matches SHA-256' input_matches_store_hash "$master" || exit 1
     master_name=${master##*/}
     master_hash=${master_name%.*}
   fi
-  allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
+  allocation=$(yq -e '.data.allocation' "$stage/release/release.yaml") || exit 1
   final_report "studio-upscaling-smoke-${allocation##*-}" |
-    check_json 'synthetic install smoke passed' '.passed == true'
+    check_json 'synthetic install smoke passed' '.passed == true' || exit 1
   kubectl -n ai get ciliumnetworkpolicy studio-upscaling-compare -o json |
     check_json 'dedicated deny-all comparison policy is installed' '.spec == {
       "endpointSelector":{"matchLabels":{"app.kubernetes.io/name":"studio-upscaling-compare"}},
-      "ingressDeny":[{"fromEntities":["all"]}], "egressDeny":[{"toEntities":["all"]}]}'
+      "ingressDeny":[{"fromEntities":["all"]}], "egressDeny":[{"toEntities":["all"]}]}' || exit 1
   if [[ $source == *.mp4 ]]; then
-    probe_spec=$(python3 -B "$stage/compare/render.py" "${options[@]}" --probe <<< "$template")
-    probe=$(jq -er '.metadata.name' <<< "$probe_spec")
-    kubectl -n ai create -f - <<< "$probe_spec"
-    status=0
-    check 'probe Job complete' wait_for_job "$probe" || status=1
-    report=$(final_report "$probe") || report=
-    check 'probe JSON report present' test -n "$report" || status=1
+    probe_spec=$(python3 -B "$stage/compare/render.py" "${options[@]}" --probe <<< "$template") || exit 1
+    probe=$(jq -er '.metadata.name' <<< "$probe_spec") || exit 1
+    check 'probe Job created' kubectl -n ai create -f - <<< "$probe_spec" || exit 1
+    if ! check 'probe Job complete' wait_for_job "$probe"; then
+      final_report "$probe" || :
+      exit 1
+    fi
+    report=$(final_report "$probe") || exit 1
+    check 'probe JSON report present' test -n "$report" || exit 1
     printf '%s\n' "$report"
     check_json 'proxy frame resolves on the zero-based delivery clock' '
       .passed == true and .source.sha256 == $input and .source.resolved == true and
       .source.first_timestamp_seconds == 0 and .source.fps == 24 and
       (.source.frame_count > .source.frame_index) and (.source.size | length) == 2
-    ' --arg input "$source_hash" <<< "$report" || status=1
+    ' --arg input "$source_hash" <<< "$report" || exit 1
     if [[ -n $master_hash ]]; then
       check_json 'verified master resolves at the same frame' '
         .delivery_id == $delivery and .reference.sha256 == $master and .reference.resolved == true and
         .reference.first_timestamp_seconds == 0 and .reference.fps == 24 and
         .reference.frame_index == .source.frame_index and .reference.frame_count == .source.frame_count and
         (.reference.size | length) == 2
-      ' --arg delivery "$delivery_id" --arg master "$master_hash" <<< "$report" || status=1
+      ' --arg delivery "$delivery_id" --arg master "$master_hash" <<< "$report" || exit 1
     fi
-    (( status == 0 )) || exit "$status"
   fi
-  idle_gate
-  kubectl -n ai create -f - <<< "$job_spec"
+  idle_gate || exit 1
+  check 'comparison Job created' kubectl -n ai create -f - <<< "$job_spec" || exit 1
   status=0
   check 'comparison Job complete' wait_for_job "$job" || status=1
   report=$(final_report "$job" 2>/dev/null) || report=

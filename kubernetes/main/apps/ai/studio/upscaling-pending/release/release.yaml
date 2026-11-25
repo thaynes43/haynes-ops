@@ -8,6 +8,7 @@ data:
   # Image with the baseline-relative smoke verdicts (CR-56), from Studio main 24799a5.
   image: ghcr.io/thaynes43/haynes-studio-upscaling@sha256:59de528c04f908f8ee92281fa7c9b12f3a8fbcaaeb487ea8777250d2a28b143e
   allocation: upscaling-op461-fsrcnn-x2-v1-03
+  storeSubPath: data/studio/api-store-v1
   # Measuring allowance.
   memoryRequest: 2Gi
   memoryLimit: 8Gi

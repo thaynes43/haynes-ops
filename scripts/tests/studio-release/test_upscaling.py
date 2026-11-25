@@ -6,8 +6,10 @@ from hashlib import sha1, sha256
 from io import BytesIO, StringIO
 from pathlib import Path
 import os
+import re
 import runpy
 import sqlite3
+import subprocess
 import sys
 from contextlib import nullcontext, redirect_stderr, redirect_stdout
 from copy import deepcopy
@@ -364,6 +366,7 @@ class ReleaseGuardTest(unittest.TestCase):
         spec.loader.exec_module(self.guard)
         self.studio = STAGE.parent
         self.flux = list(yaml.safe_load_all((self.studio / "ks.yaml").read_text()))
+        self.api = self.guard.resource(self.guard.render(self.studio / "app"), "Deployment", "studio-api")
 
     def configured_image(self, image):
         real_load, real_render = yaml.safe_load, self.guard.render
@@ -394,14 +397,14 @@ class ReleaseGuardTest(unittest.TestCase):
 
     def test_missing_upscaling_stage_requires_no_registry_lookup(self):
         with TemporaryDirectory() as directory, patch.object(self.guard, "published_labels") as fetch:
-            self.guard.check_upscaling(Path(directory), [])
+            self.guard.check_upscaling(Path(directory), [], None)
             fetch.assert_not_called()
 
     def test_placeholder_is_refused_without_registry_lookup(self):
         self.configured_image(f"{self.guard.UPSCALING_IMAGE}@sha256:" + "0" * 64)
         with patch.object(self.guard, "published_labels") as fetch:
             with self.assertRaisesRegex(ValueError, "published Studio main digest"):
-                self.guard.check_upscaling(self.studio, self.flux)
+                self.guard.check_upscaling(self.studio, self.flux, self.api)
             fetch.assert_not_called()
 
     def test_failed_smoke_image_is_refused_without_registry_lookup(self):
@@ -409,14 +412,14 @@ class ReleaseGuardTest(unittest.TestCase):
         self.configured_image(f"{self.guard.UPSCALING_IMAGE}@{stale}")
         with patch.object(self.guard, "published_labels") as fetch:
             with self.assertRaisesRegex(ValueError, "stale upscaling image digest"):
-                self.guard.check_upscaling(self.studio, self.flux)
+                self.guard.check_upscaling(self.studio, self.flux, self.api)
             fetch.assert_not_called()
 
     def test_malformed_image_reference_is_refused_before_registry_lookup(self):
         self.configured_image(f"{self.guard.UPSCALING_IMAGE}:latest")
         with patch.object(self.guard, "published_labels") as fetch:
             with self.assertRaisesRegex(ValueError, "published Studio main digest"):
-                self.guard.check_upscaling(self.studio, self.flux)
+                self.guard.check_upscaling(self.studio, self.flux, self.api)
             fetch.assert_not_called()
 
     def test_flux_policy_path_and_prune_cannot_drift(self):
@@ -425,7 +428,7 @@ class ReleaseGuardTest(unittest.TestCase):
             stage = self.guard.resource(flux, "Kustomization", "studio-upscaling-policy")
             stage["spec"][key] = value
             with self.subTest(field=key), self.assertRaisesRegex(ValueError, "only the upscaling policy stage"):
-                self.guard.check_upscaling(self.studio, flux)
+                self.guard.check_upscaling(self.studio, flux, self.api)
 
     def test_flux_policy_stage_rejects_extra_work_and_changed_egress(self):
         render = self.guard.render
@@ -447,7 +450,7 @@ class ReleaseGuardTest(unittest.TestCase):
                 ),
                 self.assertRaisesRegex(ValueError, error),
             ):
-                self.guard.check_upscaling(self.studio, self.flux)
+                self.guard.check_upscaling(self.studio, self.flux, self.api)
 
     def test_registry_config_must_identify_the_studio_linux_amd64_image(self):
         labels = {"org.opencontainers.image.source": self.guard.STUDIO_REPO}
@@ -472,6 +475,7 @@ class ReleaseGuardTest(unittest.TestCase):
         def verify():
             self.guard.check_upscaling_jobs(
                 STAGE, pin["image"], pin["allocation"], (pin["memoryRequest"], pin["memoryLimit"]), policies,
+                pin["storeSubPath"],
             )
 
         verify()
@@ -493,6 +497,8 @@ class ReleaseGuardTest(unittest.TestCase):
         main = (*pod, "containers", 0)
         init = (*pod, "initContainers", 0)
         self.assert_job_mutations_refused("compare", (
+            ("store prefix", ("metadata", "annotations", "studio.haynesops.com/store-sub-path"),
+             "data/studio", "comparison Job store sub-path must match"),
             ("TTL", ("spec", "ttlSecondsAfterFinished"), 86400, "Job envelope"),
             ("label", ("spec", "template", "metadata", "labels"), {"app.kubernetes.io/name": "studio-upscaling-smoke"},
              "Job envelope"),
@@ -537,6 +543,7 @@ class ReleaseGuardTest(unittest.TestCase):
         ):
             self.guard.check_upscaling_jobs(
                 STAGE, pin["image"], pin["allocation"], (pin["memoryRequest"], pin["memoryLimit"]), policies,
+                pin["storeSubPath"],
             )
 
     def test_smoke_job_refuses_unsafe_envelope_and_container(self):
@@ -600,7 +607,8 @@ class ReleaseGuardTest(unittest.TestCase):
 
     def test_comparison_renders_each_input_form_and_mounts_only_used_shards(self):
         template = self.guard.resource(self.guard.render(STAGE / "compare"), "Job")
-        allocation = yaml.safe_load((STAGE / "release/release.yaml").read_text())["data"]["allocation"]
+        pin = yaml.safe_load((STAGE / "release/release.yaml").read_text())["data"]
+        allocation, store_sub_path = pin["allocation"], pin["storeSubPath"]
         suffix = allocation.rsplit("-", 1)[1]
         source_shard = PROXY.rsplit("/", 1)[0]
         master_shard = MASTER.rsplit("/", 1)[0]
@@ -625,17 +633,18 @@ class ReleaseGuardTest(unittest.TestCase):
                 mounts = {mount["name"]: mount for mount in self.guard.container(job)["volumeMounts"]}
                 self.assertEqual(mounts["jobs"]["subPath"], f"data/studio/jobs/{COMPARE_ALLOCATION}")
                 self.assertEqual(mounts["source"]["mountPath"], "/input" if source == still else f"/store/{source_shard}")
-                self.assertEqual(mounts["source"]["subPath"], f"data/studio/{source_shard}")
+                self.assertEqual(mounts["source"]["subPath"], f"{store_sub_path}/{source_shard}")
                 self.assertTrue(mounts["source"]["readOnly"])
                 self.assertEqual({v["name"] for v in pod["volumes"]}, set(mounts))
                 if other_shard:
                     self.assertEqual(mounts["master"], {"name": "master", "mountPath": f"/store/{other_shard}",
-                                                        "subPath": f"data/studio/{other_shard}", "readOnly": True})
+                                                        "subPath": f"{store_sub_path}/{other_shard}", "readOnly": True})
                 else:
                     self.assertNotIn("master", mounts)
 
     def test_probe_uses_comparison_inputs_and_only_read_only_shards(self):
         template = self.guard.resource(self.guard.render(STAGE / "compare"), "Job")
+        store_sub_path = yaml.safe_load((STAGE / "release/release.yaml").read_text())["data"]["storeSubPath"]
         options = {"source": PROXY, "run": "000000000001", "timestamp": "0.125",
                    "master": MASTER, "delivery_id": DELIVERY}
         compare = COMPARE_JOB(template, **options)
@@ -658,9 +667,96 @@ class ReleaseGuardTest(unittest.TestCase):
         self.assertEqual(container["volumeMounts"], [
             mount for mount in comparison["volumeMounts"] if mount["name"] in {"source", "master"}
         ])
+        self.assertEqual([mount["subPath"] for mount in container["volumeMounts"]], [
+            f"{store_sub_path}/{locator.rsplit('/', 1)[0]}" for locator in (PROXY, MASTER)
+        ])
         self.assertEqual({v["name"] for v in pod["volumes"]}, {"source", "master"})
         self.assertTrue(all(mount["readOnly"] for mount in container["volumeMounts"]))
         self.assertTrue(all(v["nfs"]["readOnly"] for v in pod["volumes"]))
+
+    def test_locators_outside_the_canonical_store_are_refused(self):
+        template = self.guard.resource(self.guard.render(STAGE / "compare"), "Job")
+        base = {"source": PROXY, "run": "000000000001", "index": "0", "master": MASTER, "delivery_id": DELIVERY}
+        for role in ("source", "master"):
+            locator = base[role]
+            for outside in (f"/studio/{locator}", f"jobs/{locator}", f"../{locator}",
+                            locator.replace("/sha256/", "/../sha256/")):
+                for probe in (False, True):
+                    with self.subTest(role=role, outside=outside, probe=probe), self.assertRaises(ValueError):
+                        COMPARE_JOB(template, **{**base, role: outside}, probe=probe)
+
+    def test_comparison_admission_and_probe_failure_with_errexit_ignored(self):
+        runbook = Path("docs/reference/studio-upscaling-deployment.md").read_text()
+        blocks = re.findall(r"(?ms)^```bash\n(.*?)^```$", runbook)
+        helpers = next(block for block in blocks if "check_json() {" in block).split("\n(\n", 1)[0]
+        comparison = next(block for block in blocks if "input_matches_store_hash() {" in block)
+        template = self.guard.resource(self.guard.render(STAGE / "compare"), "Job")
+        pin = yaml.safe_load((STAGE / "release/release.yaml").read_text())["data"]
+        store_root = "/studio/" + pin["storeSubPath"].removeprefix("data/studio/")
+        proxy_path, master_path = (f"{store_root}/{locator}" for locator in (PROXY, MASTER))
+        trace = Path(self.enterContext(TemporaryDirectory())) / "kubectl.trace"
+        stubs = r"""
+kustomize() { printf '%s\n' "$TEMPLATE"; }
+yq() {
+  case "$2" in
+    -o=json) cat ;;
+    .data.allocation) printf '%s\n' "$ALLOCATION" ;;
+    *) return 99 ;;
+  esac
+}
+kubectl() {
+  case "$3:$4" in
+    exec:-i) cat >/dev/null; printf '%s\n' "$VERIFIED_DELIVERY" ;;
+    exec:deploy/studio-render)
+      local path=${@: -3:1}
+      printf '%s\n' "$path" >> "$TRACE"
+      [[ $path != "$FAIL_PATH" ]]
+      ;;
+    get:ciliumnetworkpolicy)
+      printf '%s\n' '{"spec":{"endpointSelector":{"matchLabels":{"app.kubernetes.io/name":"studio-upscaling-compare"}},
+        "ingressDeny":[{"fromEntities":["all"]}],"egressDeny":[{"toEntities":["all"]}]}}'
+      ;;
+    create:-f)
+      jq -er '.metadata.name' >> "$TRACE" || return 99
+      return "$CREATE_STATUS"
+      ;;
+    *) return 99 ;;
+  esac
+}
+final_report() {
+  case "$1" in
+    studio-upscaling-smoke-*) printf '{"passed":true}\n' ;;
+    studio-upscaling-probe-*) printf '{"passed":false,"code":"fixture_probe_failure"}\n' ;;
+    *) return 99 ;;
+  esac
+}
+wait_for_job() { return 1; }
+"""
+        probe = "studio-upscaling-probe-000000000001"
+        for verdict, fail_path, create_status, expected in (
+            ("content-addressed regular single-link input matches SHA-256", proxy_path, 0, [proxy_path]),
+            ("content-addressed regular single-link master matches SHA-256", master_path, 0, [proxy_path, master_path]),
+            ("probe Job created", "", 1, [proxy_path, master_path, probe]),
+            ("probe Job complete", "", 0, [proxy_path, master_path, probe]),
+        ):
+            with self.subTest(verdict=verdict):
+                trace.write_text("")
+                result = subprocess.run(
+                    ["bash", "--noprofile", "--norc"],
+                    input=f"{helpers}\n{stubs}\nif (\n{comparison}\n); then exit 0; else exit \"$?\"; fi\n",
+                    env={"PATH": os.environ["PATH"], "TRACE": str(trace), "FAIL_PATH": fail_path,
+                         "CREATE_STATUS": str(create_status),
+                         "OP461_INPUT": PROXY, "OP461_MASTER": MASTER, "OP461_DELIVERY_ID": DELIVERY,
+                         "OP461_FRAME_INDEX": "1", "OP461_RUN": "000000000001", "ALLOCATION": pin["allocation"],
+                         "TEMPLATE": json.dumps(template),
+                         "VERIFIED_DELIVERY": json.dumps({"id": DELIVERY, "proxy": PROXY, "master": MASTER})},
+                    text=True, capture_output=True, timeout=5,
+                )
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn(f"FAIL {verdict}", result.stderr)
+                self.assertEqual(trace.read_text().splitlines(), expected)
+                if verdict == "probe Job complete":
+                    self.assertEqual(json.loads(result.stdout)["code"], "fixture_probe_failure")
 
     def test_comparison_renderer_refuses_bad_arguments(self):
         template = self.guard.resource(self.guard.render(STAGE / "compare"), "Job")
@@ -696,7 +792,7 @@ class ReleaseGuardTest(unittest.TestCase):
             resource_label: json.dumps(resources),
         }
         with patch.object(self.guard, "published_labels", return_value=published) as fetch:
-            self.guard.check_upscaling(self.studio, self.flux)
+            self.guard.check_upscaling(self.studio, self.flux, self.api)
             fetch.assert_called_once_with(self.guard.UPSCALING_IMAGE, DIGEST)
         for changes, error in (
             ({comparison_label: None}, "support the stored-proxy frame comparison"),
@@ -717,7 +813,7 @@ class ReleaseGuardTest(unittest.TestCase):
                 patch.object(self.guard, "published_labels", return_value={**published, **changes}),
                 self.assertRaisesRegex(ValueError, error),
             ):
-                self.guard.check_upscaling(self.studio, self.flux)
+                self.guard.check_upscaling(self.studio, self.flux, self.api)
 
     def test_cilium_rejects_excluded_identity_labels(self):
         document = {

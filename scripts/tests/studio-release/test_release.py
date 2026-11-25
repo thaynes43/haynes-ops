@@ -106,6 +106,24 @@ class EntryPointTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, error):
                     guard.check(STUDIO)
 
+    def test_check_refuses_upscaling_store_drift_from_studio_api(self):
+        render = guard.render
+
+        def render_with_different_api_store(path):
+            documents = render(path)
+            if path == STUDIO / "app":
+                api = guard.resource(documents, "Deployment", "studio-api")
+                store_root = guard.env(api, "api")["STUDIO_STORE_ROOT"]
+                mounts = guard.container(api, "api")["volumeMounts"]
+                next(mount for mount in mounts if mount["mountPath"] == store_root)["subPath"] = "data/studio"
+            return documents
+
+        with (
+            patch.object(guard, "render", side_effect=render_with_different_api_store),
+            self.assertRaisesRegex(ValueError, "upscaling store sub-path must match the studio-api Deployment"),
+        ):
+            guard.check(STUDIO)
+
 
 class IdleGateTest(unittest.TestCase):
     def test_runbook_gates_require_ready_video_and_foley_idle(self):
