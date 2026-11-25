@@ -431,10 +431,16 @@ through NVML and supplies the exact CUDA pin to its inference subprocess.
 [ControlFoley worker source](../../scripts/controlfoley/service.py)
 
 The NVIDIA toolkit warning `ERROR: init 250 result=11` did not occur in the
-extracted runtime. The archived logs show it in the same pod's healthy ComfyUI
-container, immediately before normal startup output. The Talos toolkit
-upstream report attributes this string to the host-side NVIDIA sandbox
-initialization. The Python pin guard ran before loading any model library or querying the GPU. [Talos extensions issue 940](https://github.com/siderolabs/extensions/issues/940)
+extracted image runtime. The archived logs show it in the same pod's healthy
+ComfyUI container, immediately before normal startup output. The
+talosw01 extension version `580.178.04-v1.19.1` contains
+`libnvidia-sandboxutils.so.580.178.04`. Its `Management::init` failure
+branch passes `init`, line 250 and the driver-initialization result to the
+log formatter. NVIDIA defines result 11 as a missing file path. The exact
+path was absent from the logs. The Python pin guard ran before loading a
+model library or querying the GPU.
+[NVIDIA status definitions](https://github.com/NVIDIA/nvidia-container-toolkit/blob/v1.19.1/internal/nvsandboxutils/nvsandboxutils.h)
+[Talos extensions issue 940](https://github.com/siderolabs/extensions/issues/940)
 
 **Expected after the repair.** The sidecar binds its private socket after a
 profile, pin or weights check fails. `ready` checks the listener and
