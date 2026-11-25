@@ -121,10 +121,10 @@ class ManifestTests(unittest.TestCase):
         flux = resource(self.ai, "Kustomization", "wan-local-model-weights")["spec"]
         self.assertEqual(flux["dependsOn"], [{"name": "wan-local-model-download-policy"}, {"name": "wan-video"}])
         self.assertEqual(flux["healthChecks"], [{
-            "apiVersion": "batch/v1", "kind": "Job", "name": "wan-local-model-provision", "namespace": "ai",
+            "apiVersion": "batch/v1", "kind": "Job", "name": "wan-local-model-provision-r2", "namespace": "ai",
         }])
         self.assertTrue(flux["prune"])
-        job = resource(self.weights, "Job", "wan-local-model-provision")
+        job = resource(self.weights, "Job", "wan-local-model-provision-r2")
         self.assertEqual(job["spec"]["activeDeadlineSeconds"], 1800)
         self.assertEqual(job["spec"]["backoffLimit"], 0)
         self.assertEqual(job["spec"]["podReplacementPolicy"], "Failed")
