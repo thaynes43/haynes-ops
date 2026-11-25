@@ -200,8 +200,9 @@ retest `studio-matting-smoke-02-r3` passed all 13 verdicts with the CPU
 arena disabled and byte-identical cutouts and masks. Its worker peaked at
 7,538,561,024 bytes, with a 7,691,853,824-byte bound for the sum of process
 peaks. CR-43 sets the new request and limit from these measurements. The
-plain smoke with the pinned serving profile is pending.
-[OP459, comments 9969 and 9985](https://work.haynesnetwork.com/work_packages/459)
+plain smoke with the pinned serving profile passed all 13 verdicts in
+48 s with a 7,626,436,608-byte upper bound.
+[OP459, comments 9969, 9985 and 10004](https://work.haynesnetwork.com/work_packages/459)
 
 Record the Ops Git revision, both Job names and statuses, published image
 digest, verified graph and profile hashes, smoke JSON and deployed health
@@ -209,6 +210,200 @@ on OP459. Record the private
 allocation in the story handoff. The synthetic result establishes installed
 smoke behavior. [OP451](https://work.haynesnetwork.com/work_packages/451)
 owns the private cast quality and serving integration. Tom owns acceptance.
+
+## Run the private cast quality trial
+
+**Expected.** The saga coordinator chooses one existing cast photo of an
+imported production under CR-46 and uses its read-only path and recorded
+SHA-256. Choose a representative still with eyes, lashes and hair visible,
+and use the target height for its pinned cast slot. Keep the path, asset
+IDs and output locator private. Mark the iris interiors and visible hair
+before the trial. Run in an exclusive heavy-job window as for the smoke,
+including no concurrent Foley or heavy render. The block checks fresh
+node load, render load, Wan health and the shared image queue.
+
+The staged template emits one Job with its script inline. It uses the
+smoke's deny-all policy, pinned image, pinned read-only weights and
+non-root sandbox, with the provisioner's UID/GID 1000 for the jobs
+directory's existing write permission. The input directory has one
+read-only subPath mount and must be outside the jobs tree. The only
+persistent write is a new `/studio/jobs/<job>` directory
+with `cutout.png`, `mask.png` and completed `report.json`. Raw paths
+stay out of the Job log. As in the provisioning budget, leave 32 GiB
+free after allowing 1 GiB and 32 filesystem entries. The NFS inode
+reading may be unavailable under CR-33.
+
+Set `STUDIO_TRIAL_INPUT` to the absolute Studio-share path,
+`STUDIO_TRIAL_SOURCE_SHA256` to the pinned byte digest,
+`STUDIO_TRIAL_ASSET_VERSION` to the `asv_` ID,
+`STUDIO_TRIAL_PRODUCTION` to the `prd_` ID (or `-` for global scope),
+`STUDIO_TRIAL_JOB_ID` to the evidence's `job_` ID and
+`STUDIO_TRIAL_TARGET_HEIGHT` to the slot height in pixels. Run from
+the checked-out Ops revision.
+
+```bash
+(
+  set -euo pipefail
+  : "${STUDIO_TRIAL_INPUT:?Set the private input path}"
+  : "${STUDIO_TRIAL_SOURCE_SHA256:?Set the pinned byte digest}"
+  : "${STUDIO_TRIAL_ASSET_VERSION:?Set the pinned asset version}"
+  : "${STUDIO_TRIAL_PRODUCTION:?Set the production or - for global scope}"
+  : "${STUDIO_TRIAL_JOB_ID:?Set the canonical job ID for the receipt}"
+  : "${STUDIO_TRIAL_TARGET_HEIGHT:?Set the pinned slot height}"
+
+  check() {
+    local label=$1
+    shift
+    if "$@"; then
+      printf 'PASS %s\n' "$label"
+    else
+      printf 'FAIL %s\n' "$label" >&2
+      return 1
+    fi
+  }
+  assert_json() {
+    jq -es "$@" >/dev/null
+  }
+  read_endpoint() {
+    kubectl -n ai exec "$1" -c "$2" -- python -B -c '
+import sys
+from urllib.request import urlopen
+with urlopen(sys.argv[1], timeout=5) as response:
+    sys.stdout.buffer.write(response.read())
+' "$3"
+  }
+  node_idle() {
+    kubectl top node talosw01 --no-headers | awk '
+      {print} $1 == "talosw01" && $3 ~ /^[0-9]+%$/ && $5 ~ /^[0-9]+%$/ &&
+       $3+0 <= 10 && $5+0 <= 25 {ok=1} END {exit !ok}'
+  }
+  render_idle() {
+    kubectl -n ai top pod --containers -l app.kubernetes.io/name=studio-render --no-headers |
+      awk '{print} $2 == "app" && $3 ~ /^[0-9]+m$/ {
+        seen=1; if ($3+0 > 250) busy=1
+      } END {exit (!seen || busy)}'
+  }
+  room_on_share() {
+    kubectl -n ai exec deploy/studio-render -c app -- sh -ec '
+      df -Pk /studio/jobs | awk "NR == 2 { print; if (\$4 >= 34603008) ok=1 } END { exit !ok }"
+      df -Pi /studio/jobs | awk "NR == 2 { print; if (\$4 == \"-\" || \$4 >= 32) ok=1 } END { exit !ok }"
+    '
+  }
+  input_is_canonical() {
+    [[ $STUDIO_TRIAL_INPUT == /studio/*/* && $STUDIO_TRIAL_INPUT != /studio/jobs/* &&
+       $(kubectl -n ai exec deploy/studio-render -c app -- realpath -e -- "$STUDIO_TRIAL_INPUT" 2>/dev/null) == "$STUDIO_TRIAL_INPUT" ]]
+  }
+  deny_all() {
+    kubectl -n ai get ciliumnetworkpolicy studio-matting-smoke -o json |
+      assert_json 'length == 1 and (.[0].spec |
+        .endpointSelector == {"matchLabels":{"app.kubernetes.io/name":"studio-matting-smoke"}} and
+        .ingressDeny == [{"fromEntities":["all"]}] and .egressDeny == [{"toEntities":["all"]}])'
+  }
+  wan_idle() {
+    read_endpoint deploy/wan-video api http://127.0.0.1:8080/health |
+      assert_json 'length == 1 and (.[0] | has("active_job") and .active_job == null)'
+  }
+  images_idle() {
+    read_endpoint comfyui-0 app http://127.0.0.1:8188/queue |
+      assert_json 'length == 1 and (.[0] | .queue_running == [] and .queue_pending == [])'
+  }
+  gate=0
+  check 'Canonical private input path' input_is_canonical || gate=1
+  check 'Share byte and inode budget' room_on_share || gate=1
+  check 'Deny-all network policy' deny_all || gate=1
+  check 'talosw01 CPU at most 10% and memory at most 25%' node_idle || gate=1
+  check 'Render app CPU at most 250m' render_idle || gate=1
+  check 'Wan idle' wan_idle || gate=1
+  check 'Shared image queue empty' images_idle || gate=1
+  if (( gate != 0 )); then
+    printf 'FAIL quality trial admission\n' >&2
+    exit 1
+  fi
+  printf 'PASS quality trial admission\n'
+
+  stage=kubernetes/main/apps/ai/studio/matting-pending
+  allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
+  pin=$(yq '.data.image' "$stage/release/release.yaml")
+  profile=$(kubectl -n ai exec deploy/studio-render -c app -- cat     "/studio/jobs/$allocation/weights/profile.sha256")
+  is_sha256() { [[ $1 =~ ^[0-9a-f]{64}$ ]]; }
+  check 'Installed profile hash present' is_sha256 "$profile"
+  private_path=${STUDIO_TRIAL_INPUT#/studio/}
+  export TRIAL_INPUT_DIR="data/studio/${private_path%/*}" TRIAL_INPUT_NAME="${private_path##*/}"
+  TRIAL_PATH_SHA=$(printf '%s' "$STUDIO_TRIAL_INPUT" | sha256sum)
+  export TRIAL_PATH_SHA=${TRIAL_PATH_SHA%% *} TRIAL_PROFILE="$profile"
+  export STUDIO_TRIAL_SOURCE_SHA256 STUDIO_TRIAL_ASSET_VERSION STUDIO_TRIAL_PRODUCTION
+  export STUDIO_TRIAL_JOB_ID STUDIO_TRIAL_TARGET_HEIGHT
+  export TRIAL_OUTPUT="studio-matting-quality-$(openssl rand -hex 6)"
+  manifest=$(kustomize build "$stage/quality" | yq '
+    .metadata.name = strenv(TRIAL_OUTPUT) |
+    (.spec.template.spec.containers[0].volumeMounts[] | select(.name == "input").subPath) =
+      strenv(TRIAL_INPUT_DIR) |
+    .spec.template.spec.containers[0].args += [
+      strenv(TRIAL_INPUT_NAME), strenv(STUDIO_TRIAL_SOURCE_SHA256), strenv(TRIAL_PATH_SHA),
+      strenv(STUDIO_TRIAL_ASSET_VERSION), strenv(STUDIO_TRIAL_PRODUCTION), strenv(STUDIO_TRIAL_JOB_ID),
+      strenv(STUDIO_TRIAL_TARGET_HEIGHT), strenv(TRIAL_OUTPUT), strenv(TRIAL_PROFILE)
+    ]')
+  kubectl -n ai create -f - <<< "$manifest"
+
+  wait_terminal() {
+    local condition deadline=$((SECONDS + 330))
+    while (( SECONDS < deadline )); do
+      condition=$(kubectl -n ai --request-timeout=10s get "job/$TRIAL_OUTPUT" -o json |
+        jq -r '[.status.conditions[]? | select(.status == "True" and
+          (.type == "Complete" or .type == "Failed" or .type == "FailureTarget"))][0].type // ""') || return 1
+      case $condition in
+        Complete) return 0 ;;
+        Failed|FailureTarget) return 1 ;;
+      esac
+      sleep 5
+    done
+    return 1
+  }
+  gate=0
+  check 'Job completed successfully' wait_terminal || gate=1
+  report=$(kubectl -n ai --request-timeout=10s logs "job/$TRIAL_OUTPUT" | tail -n 1) || report=
+  final_report() {
+    assert_json 'length == 1 and (.[0] | type == "object")' <<< "$report"
+  }
+  report_check() {
+    local predicate=$1
+    shift
+    assert_json "$@" "length == 1 and (.[0] | ($predicate))" <<< "$report"
+  }
+  check 'Final log line is a JSON report' final_report || gate=1
+  check 'Expected source, image and profile hashes on CPU with arena off' report_check '
+    .source_sha256 == $source and .source_path_sha256 == $path and .profile_sha256 == $profile and
+    .image_digest == $digest and .provider == "CPUExecutionProvider" and .cpu_arena == false
+  ' --arg source "$STUDIO_TRIAL_SOURCE_SHA256" --arg path "$TRIAL_PATH_SHA"     --arg profile "$profile" --arg digest "${pin##*@}" || gate=1
+  check 'Cold load and request within limits with both memory phases measured' report_check '
+    .startup_seconds > 0 and .startup_seconds <= 120 and .request_seconds > 0 and .request_seconds <= 35 and
+    .worker_memory.session_creation.peak_rss_bytes > 0 and
+    (.worker_memory.requests | length) == 1 and .worker_memory.requests[0].peak_rss_bytes > 0 and
+    .peak_rss_upper_bound_bytes > 0 and .peak_rss_upper_bound_bytes <= .memory_limit_bytes and
+    .memory_limit_bytes == 10737418240' || gate=1
+  check 'Verified cutout, mask and size ratio' report_check '
+    .passed == true and .shape.alpha_threshold == 128 and
+    .shape.scale.numerator == $target and .shape.scale.denominator == .shape.bbox_height_px and
+    ([.artifacts.cutout, .artifacts.mask] |
+      all((.sha256 | test("^[0-9a-f]{64}$")) and .bytes > 0 and .media_type == "image/png"))
+  ' --argjson target "$STUDIO_TRIAL_TARGET_HEIGHT" || gate=1
+  if final_report; then
+    printf '%s\n' "$report"
+  fi
+  if (( gate != 0 )); then
+    printf 'FAIL quality trial technical checks\n' >&2
+    exit 1
+  fi
+  printf 'PASS quality trial technical checks\n'
+)
+```
+
+Within the private Studio workflow, composite the cutout over light and
+dark plates and inspect both at source zoom. Record the per-eye retention,
+both lash lines, at least 8 of 10 premarked visible flyaways, any halo and
+the hand corrections that would be needed. Save the numerical report
+and private locator on [OP451](https://work.haynesnetwork.com/work_packages/451).
+Keep quality acceptance pending until Tom judges the private result.
 
 ## Activation, retries and rollback
 
@@ -224,7 +419,7 @@ Keep heavy jobs serialized unless measured headroom shows the second
 fits. Follow the Wan, Foley and local-model lease rules.
 [Matting profile](https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/matting-backend-profile.md)
 
-Story 451 can promote the dormant overlays after the smoke. First move the
+Sidecar activation is a separate deployment pin after the smoke. First move the
 offline worker's Flux path to `studio-render/matting-pending` and verify its
 1 GiB request and 18-CPU, 32 GiB limit. Cap offline render commands at
 `--workers 16`. Then stage the queue consumer with

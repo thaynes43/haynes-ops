@@ -172,7 +172,7 @@ def check_matting(path, flux):
         "matting-pending" in stage["spec"]["path"] and stage is not policy_stage
         for stage in flux if stage["kind"] == "Kustomization"
     ):
-        raise ValueError("matting provisioning, smoke and worker activation must stay staged")
+        raise ValueError("matting provisioning, smoke, quality trial and worker activation must stay staged")
 
     policy = render(pending / "policy")
     if {doc["kind"] for doc in policy} != {"CiliumNetworkPolicy", "ConfigMap"}:
@@ -238,6 +238,9 @@ def check_matting(path, flux):
         raise ValueError("the smoke Job must run the serving defaults with writable private scratch")
     check_matting_mounts(container(smoke), pod, weight_path, "scratch", memory)
 
+    quality = render(pending / "quality")
+    check_matting_quality(quality, pending / "quality/trial.py", smoke, image, weight_path, memory)
+
     stage = render(pending / "activation")
     worker = resource(stage, "Deployment", "studio-worker")
     worker_pod = worker["spec"]["template"]["spec"]
@@ -298,6 +301,55 @@ def check_matting_mounts(spec, pod, subpath, scratch_name, memory):
             or spec["resources"]["requests"]["memory"] != request):
         raise ValueError(f"matting needs 2 CPUs, {request} requested and {limit} limit, a private emptyDir "
                          "and read-only pinned weights")
+
+
+def check_matting_quality(documents, script, smoke, image, weight_path, memory):
+    if len(documents) != 1:
+        raise ValueError("matting quality must create exactly one Job and carry its script inline")
+    job = resource(documents, "Job", "studio-matting-quality-template")
+    spec = job["spec"]
+    expected_spec = {key: value for key, value in smoke["spec"].items() if key != "template"}
+    if (job["apiVersion"] != "batch/v1" or job["metadata"].get("namespace") != "ai"
+            or {key: value for key, value in spec.items() if key != "template"} != expected_spec):
+        raise ValueError("matting quality must use the same bounded Job envelope as the smoke")
+    pod = spec["template"]["spec"]
+    smoke_pod = smoke["spec"]["template"]["spec"]
+    fields = {"containers", "volumes"}
+    expected_pod = {key: value for key, value in smoke_pod.items() if key not in fields}
+    expected_pod["securityContext"] = {
+        **smoke_pod["securityContext"], "runAsUser": 1000, "runAsGroup": 1000, "fsGroup": 1000,
+    }
+    if (spec["template"]["metadata"] != smoke["spec"]["template"]["metadata"]
+            or {key: value for key, value in pod.items() if key not in fields} != expected_pod):
+        raise ValueError("matting quality must match the smoke's deny-all network label and pod security")
+
+    workload = container(job)
+    check_matting_container(workload, image)
+    if (set(workload) != {"name", "image", "command", "args", "env", "resources", "securityContext",
+                         "volumeMounts"} or workload["name"] != "matting"
+            or workload["securityContext"] != container(smoke)["securityContext"]
+            or workload["env"] != [{"name": "STUDIO_MATTING_IMAGE", "value": image}]
+            or workload["command"] != ["python", "-B", "-c"]
+            or workload["args"] != [script.read_text(encoding="utf-8")]
+            or workload["resources"] != {
+                "requests": {"cpu": "2", "memory": memory[0]},
+                "limits": {"cpu": "2", "memory": memory[1]},
+            }):
+        raise ValueError("matting quality must run the reviewed script and pinned CPU/memory profile")
+
+    scratch, weights = smoke_pod["volumes"]
+    share = {"server": "gasha01.haynesnetwork", "path": "/hdd-nfs-repl"}
+    if workload["volumeMounts"] != [
+        {"name": "scratch", "mountPath": "/matting"},
+        {"name": "weights", "mountPath": "/weights", "subPath": weight_path, "readOnly": True},
+        {"name": "input", "mountPath": "/input", "readOnly": True,
+         "subPath": "private-input-directory-replaced-by-runbook"},
+        {"name": "jobs", "mountPath": "/jobs", "subPath": "data/studio/jobs"},
+    ] or weights["nfs"] != {**share, "readOnly": True} or pod["volumes"] != [
+        scratch, weights, {"name": "input", "nfs": weights["nfs"]}, {"name": "jobs", "nfs": share},
+    ]:
+        raise ValueError("matting quality needs pinned read-only weights, one read-only input and only "
+                         "the Studio jobs output share")
 
 
 def check(path):

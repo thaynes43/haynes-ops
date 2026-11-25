@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: studio-matting-quality-template
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      # The installed smoke policy denies all ingress and egress for this label.
+      labels:
+        app.kubernetes.io/name: studio-matting-smoke
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        kubernetes.io/hostname: talosw01
+      priorityClassName: dev-env-agent
+      securityContext:
+        runAsNonRoot: true
+        # The existing private jobs root is mode 0755, owned by 1000:1000.
+        # Use the provisioner's storage identity for the create-only write.
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: matting
+          image: image-replaced-by-release
+          command: [python, -B, -c]
+          args: [script-replaced-by-kustomize]
+          env:
+            - {name: STUDIO_MATTING_IMAGE, value: image-replaced-by-release}
+          resources:
+            requests: {cpu: "2", memory: replaced-by-release}
+            limits: {cpu: "2", memory: replaced-by-release}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: scratch, mountPath: /matting}
+            - name: weights
+              mountPath: /weights
+              subPath: data/studio/jobs/allocation-replaced-by-release/weights
+              readOnly: true
+            - name: input
+              mountPath: /input
+              subPath: private-input-directory-replaced-by-runbook
+              readOnly: true
+            - {name: jobs, mountPath: /jobs, subPath: data/studio/jobs}
+      volumes:
+        - name: scratch
+          emptyDir: {sizeLimit: 256Mi}
+        - name: weights
+          nfs: {server: gasha01.haynesnetwork, path: /hdd-nfs-repl, readOnly: true}
+        - name: input
+          nfs: {server: gasha01.haynesnetwork, path: /hdd-nfs-repl, readOnly: true}
+        - name: jobs
+          nfs: {server: gasha01.haynesnetwork, path: /hdd-nfs-repl}
