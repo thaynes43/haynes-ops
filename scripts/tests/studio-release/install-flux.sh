@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the pinned Flux CLI for the offline Studio policy and release checks.
+# Install the pinned Flux CLI for the offline Studio release checks.
 set -euo pipefail
 
 mkdir "$RUNNER_TEMP/studio-flux"

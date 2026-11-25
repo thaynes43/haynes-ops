@@ -2410,8 +2410,9 @@ count fails after a later pin, correct the query before trusting the block.
 ## OP967 fourth release
 
 The [fourth-release runbook](studio-fourth-release.md) covers preflight,
-migration through `0013_matte_jobs`, the matte worker and sidecar,
-PyAV 18.1.1 verification, and a workloads-only rollback.
+migration through `0013_matte_jobs`, PyAV 18.1.1 verification,
+and a workloads-only rollback. [Story 970](https://work.haynesnetwork.com/work_packages/970)
+owns matte worker activation.
 
 ## OP437 one API pod recovery
 

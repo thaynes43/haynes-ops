@@ -10,10 +10,6 @@ old_web=sha256:497e020b8846f09cdeab6d822aa1536dfeb325edd26205cd6e28f0061bb6d9ca
 revision=$(yq -er '.revision' "$root/release.yaml") || exit 1
 api=$(yq -er '.apiDigest' "$root/release.yaml") || exit 1
 web=$(yq -er '.webDigest' "$root/release.yaml") || exit 1
-matting="$root/matting-pending/release/release.yaml"
-sidecar=$(yq -er '.data.image' "$matting") || exit 1
-profile=$(yq -er '.data.profileSha256' "$matting") || exit 1
-allocation=$(yq -er '.data.allocation' "$matting") || exit 1
 phase=${1:-}
 failed=0
 results=()
@@ -40,8 +36,6 @@ preflight_checks=(
   'offline render app idle and admitted venv complete'
   'Wan ready and both active jobs null'
   'shared ComfyUI queue empty'
-  'retained matting allocation exact profile'
-  'installed effective policy for the projected matte pod'
   'LAN root available'
   'LAN API anonymous access refused'
   'empty queues, archived data and store baseline'
@@ -50,7 +44,6 @@ retry_checks=(
   'original baseline and archived predecessor Job logs verified'
   'replacement migration Job and Flux health check match the terminal failure'
   'catalogue is complete 0012 or verified 0013'
-  'matte workload absent'
 )
 rollback_checks=(
   'new private receipt and baseline paths supplied'
@@ -241,7 +234,7 @@ migration_catalogue() {
   primary=$(kubectl -n database get cluster postgres16 -o json | jq -er '
     .status.currentPrimary | select(type == "string" and startswith("postgres16-"))') || return 1
   kubectl -n database exec -i "$primary" -c postgres -- \
-    env PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=5000' \
+    env PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=5000 -c search_path=pg_catalog' \
     psql -X -w -h /controller/run -U postgres -d studio -qAt -v ON_ERROR_STOP=1 \
     < "$script_dir/op967-catalogue.sql"
 }
@@ -258,39 +251,42 @@ retry_catalogue() {
 }
 
 flux_state() {
-  local mode=$1 expected=$2 source inventory stages
+  local expected=$1 source inventory stages
   source=$(kubectl -n flux-system get gitrepository haynes-ops -o json) || return 1
   inventory=$(kubectl -n flux-system get kustomization cluster-apps -o json) || return 1
   stages=$(kubectl -n ai get kustomizations -o json) || return 1
   fetch_main && on_main "$expected" || return 1
   printf '%s\n' "$source" "$inventory" "$stages" | jq -s . |
-    python3 -B scripts/tests/studio-release/check.py --audit-flux "$mode" "$expected"
+    python3 -B scripts/tests/studio-release/check.py --audit-flux "$expected"
 }
 
 release_workloads() {
   # Deployment templates may advance while predecessor pods still serve.
   # Only the two admitted image pairs are valid while Flux applies the pin.
-  kubectl -n ai get deployments -o json | jq -er     --arg old "ghcr.io/thaynes43/haynes-studio@$old_digest"     --arg old_web "ghcr.io/thaynes43/haynes-studio-web@$old_web"     --arg api "ghcr.io/thaynes43/haynes-studio@$api"     --arg web "ghcr.io/thaynes43/haynes-studio-web@$web" --arg sidecar "$sidecar" '
+  kubectl -n ai get deployments -o json | jq -er \
+    --arg old "ghcr.io/thaynes43/haynes-studio@$old_digest" \
+    --arg old_web "ghcr.io/thaynes43/haynes-studio-web@$old_web" \
+    --arg api "ghcr.io/thaynes43/haynes-studio@$api" \
+    --arg web "ghcr.io/thaynes43/haynes-studio-web@$web" '
     def containers: .spec.template.spec.containers | map({key: .name, value: .image}) | from_entries;
     def pair($a; $w): {
       "studio-api": {api:$a, "media-worker-routes":$w}, "studio-mcp": {mcp:$a}, "studio-web": {nginx:$w},
       "studio-worker": {worker:$a}, "studio-voice-worker": {worker:$a}, "studio-image-worker": {worker:$a}
     };
     pair($old; $old_web) as $predecessor |
-    (pair($api; $web) + {"studio-matte-worker": {worker:$api, matting:$sidecar}}) as $target |
+    pair($api; $web) as $target |
     [.items[] | {key: .metadata.name, value: containers}] | from_entries | . as $actual |
     select(all($predecessor | keys[]; . as $name |
       ($actual[$name] == $predecessor[$name] or $actual[$name] == $target[$name]))) |
-    select($actual["studio-matte-worker"] == null or $actual["studio-matte-worker"] == $target["studio-matte-worker"]) |
     select($actual["studio-api"] == $target["studio-api"] or
-      all(["studio-worker", "studio-voice-worker", "studio-image-worker", "studio-matte-worker"][];
+      all(["studio-worker", "studio-voice-worker", "studio-image-worker"][];
         . as $name | $actual[$name] == $predecessor[$name])) |
     any($target | keys[]; . as $name | $actual[$name] == $target[$name]) | tostring'
 }
 
 release_sequence() {
   local state=0 advanced
-  flux_state release "$1" || state=$?
+  flux_state "$1" || state=$?
   case $state in 0|2|3) ;; *) return 1 ;; esac
   advanced=$(release_workloads) || return 1
   if [[ $advanced == true || ${2:-} == rollback ]]; then
@@ -349,7 +345,7 @@ wait_for_flux() {
   while true; do
     state=0
     if [[ -n ${ROLLBACK_OPS_REVISION:-} ]]; then
-      flux_state rollback "$expected" || state=$?
+      flux_state "$expected" || state=$?
     else
       release_sequence "$expected" || state=$?
     fi
@@ -471,7 +467,7 @@ node_capacity() {
   kubectl get node talosw01 -o json |
     jq -er '.status.allocatable |
       select((.cpu | tonumber) >= 24 and (.memory | test("^[0-9]+Ki$")) and
-        (.memory | sub("Ki$"; "") | tonumber) >= (51 * 1024 * 1024))'
+        (.memory | sub("Ki$"; "") | tonumber) >= (40 * 1024 * 1024))'
 }
 
 render_idle() {
@@ -501,15 +497,6 @@ else:
     assert "PPid:\t1" in (other[0] / "status").read_text().splitlines()
 print("Idle render venv complete (PyAV", av.__version__ + ")")
 ' "$mode"
-}
-
-weights_pin() {
-  kubectl -n ai exec deploy/studio-render -c app -- sh -c '
-    weights=/studio/jobs/$1/weights
-    read -r pinned < "$weights/profile.sha256" || exit 1
-    found=$(sha256sum "$weights/profile.json") || exit 1
-    test "$pinned" = "$2" && test "${found%% *}" = "$2"
-  ' sh "$allocation" "$profile"
 }
 
 lan() {
@@ -581,24 +568,21 @@ data_probe() {
 }
 
 pins() {
-  local release_api=$1 release_web=$2 include_matte=$3 layout problems=0
+  local release_api=$1 release_web=$2 layout problems=0
   layout=$(jq -cn --arg api "ghcr.io/thaynes43/haynes-studio@$release_api" \
-    --arg web "ghcr.io/thaynes43/haynes-studio-web@$release_web" --arg matting "$sidecar" '
+    --arg web "ghcr.io/thaynes43/haynes-studio-web@$release_web" '
     {
       api: {api:$api, "media-worker-routes":$web}, mcp: {mcp:$api}, web: {nginx:$web},
-      worker: {worker:$api}, "voice-worker": {worker:$api}, "image-worker": {worker:$api},
-      "matte-worker": {worker:$api, matting:$matting}
+      worker: {worker:$api}, "voice-worker": {worker:$api}, "image-worker": {worker:$api}
     }') || return 1
   local workload expected replicas placement
-  local workers=(api mcp web worker voice-worker image-worker)
-  if [[ $include_matte == yes ]]; then workers+=(matte-worker); fi
-  for workload in "${workers[@]}"; do
+  for workload in api mcp web worker voice-worker image-worker; do
     expected=$(jq -cer --arg name "$workload" '.[$name]' <<< "$layout") || return 1
     replicas=1
     placement=any
     case $workload in
       api|mcp|web) replicas=2 ;;
-      worker|matte-worker) placement=talosw01 ;;
+      worker) placement=talosw01 ;;
       *) placement=off-talosw01 ;;
     esac
     check "studio-$workload pod image, placement and restart counts" pods "$workload" "$expected" "$replicas" "$placement"
@@ -644,7 +628,6 @@ registration() {
   local job manifest
   case $lane in
     worker) manifest=worker-registration/job.yaml ;;
-    matte-worker) manifest=matte-worker-registration/job.yaml ;;
     *) manifest="media-worker-registration/${lane%-worker}-job.yaml" ;;
   esac
   job=$(yq -er 'select(.kind == "Job") | .metadata.name' "$root/$manifest") || return 1
@@ -658,7 +641,6 @@ registration_audits() {
   check 'run worker registration reused its token' registration worker '[200]'
   check 'voice worker registration reused its token' registration voice-worker '[200]'
   check 'image worker registration reused its token' registration image-worker '[200]'
-  check 'matte grant registered or reused the same token on retry' registration matte-worker '[201,200]'
 }
 
 migration() {
@@ -671,30 +653,6 @@ migration() {
     <<< "$report"
 }
 
-sidecar_ready() {
-  kubectl -n ai exec deploy/studio-matte-worker -c matting -- studio-matting ready || return 1
-  kubectl -n ai exec deploy/studio-matte-worker -c worker -- python -I -B -c '
-import os
-from pathlib import Path
-from haynes_studio.matting.service import local_call
-code, ready = local_call(Path("/matting/matte.sock"), "GET", "/v1/ready", timeout=2)
-expected = os.environ["STUDIO_MATTING_PROFILE_SHA256"]
-assert code == 200 and ready.get("profile_sha256") == expected
-print("Matting profile SHA-256", expected)
-'
-}
-
-matte_loop() {
-  kubectl -n ai exec deploy/studio-matte-worker -c worker -- python -I -B -c '
-from pathlib import Path
-from haynes_studio.queue.progress import ProgressFile
-args = Path("/proc/1/cmdline").read_bytes().strip(b"\0").split(b"\0")
-assert b"studio-worker" in [item.rsplit(b"/", 1)[-1] for item in args]
-assert args[-2:] == [b"--lane", b"matte"]
-assert ProgressFile("/run/studio/worker-progress").fresh(300)
-'
-}
-
 render_pin() {
   ready helmrelease/studio-render || return 1
   kubectl -n ai get pods -l app.kubernetes.io/name=studio-render -o json |
@@ -702,14 +660,14 @@ render_pin() {
       .items as $p | ($p | length) == 1 and
       ($p[0] | .metadata.deletionTimestamp == null and .spec.nodeName == "talosw01" and
        any(.status.conditions[]?; .type == "Ready" and .status == "True") and
-       any(.spec.containers[]; .name == "app" and .resources.limits.cpu == "17" and
+       any(.spec.containers[]; .name == "app" and .resources.limits.cpu == "20" and
          .command == ["/usr/local/bin/python","-B","/config/render-init.py"]) and
        any(.status.containerStatuses[]; .name == "app" and .ready and .restartCount == 0))' >/dev/null
 }
 
 encoders() {
   local version reference= workload pod container interpreter names
-  for workload in api worker voice-worker image-worker matte-worker render; do
+  for workload in api worker voice-worker image-worker render; do
     names=$(kubectl -n ai get pods -l "app.kubernetes.io/name=studio-$workload" -o json |
       jq -er '[.items[] | select(.metadata.deletionTimestamp == null) | .metadata.name] |
         select(length > 0) | .[]') || return 1
@@ -768,59 +726,12 @@ worker_engines() {
   check 'run worker reaches the Wan listener' worker_engine worker run
 }
 
-matte_queue_idle() {
-  local pod
-  pod=$(ready_api_pod "$api") || return 1
-  kubectl -n ai exec "$pod" -c api -- python -I -B -c '
-import os
-import psycopg
-
-with psycopg.connect(os.environ["STUDIO_DATABASE_URL"], connect_timeout=5,
-                     options="-c statement_timeout=5000") as conn:
-    conn.read_only = True
-    idle, = conn.execute("""
-        SELECT NOT EXISTS (
-            SELECT FROM studio.media_jobs
-            WHERE lane = %s AND document->>%s = ANY(%s)
-        )
-    """, ("matte", "status", ["queued", "running", "held"])).fetchone()
-    if not idle:
-        print("Matte queue is no longer idle")
-        raise SystemExit(1)
-'
-}
-
 worker_routes() {
   local detail
-  for detail in voice-worker:voice image-worker:image worker:run matte-worker:matte; do
+  for detail in voice-worker:voice image-worker:image worker:run; do
     check "${detail#*:} worker token and listener" kubectl -n ai exec -i "deploy/studio-${detail%:*}" \
       -c worker -- python -I -B - "${detail#*:}" < "$script_dir/op967-routes.py"
   done
-}
-
-matte_removed() {
-  local result
-  result=$(kubectl -n ai get deploy/studio-matte-worker --ignore-not-found -o name) || return 1
-  [[ -z $result ]] || return 1
-  result=$(kubectl -n ai get pods -l app.kubernetes.io/name=studio-matte-worker -o name) || return 1
-  [[ -z $result ]]
-}
-
-installed_policies() {
-  local namespaced clusterwide cilium namespace endpoints api_pods matte_pods
-  namespaced=$(kubectl get networkpolicies.networking.k8s.io,ciliumnetworkpolicies.cilium.io \
-    --all-namespaces -o json) || return 1
-  clusterwide=$(kubectl get ciliumclusterwidenetworkpolicies.cilium.io -o json) || return 1
-  cilium=$(kubectl -n kube-system get configmap cilium-config -o json) || return 1
-  if [[ $1 == preflight ]]; then
-    namespace=$(kubectl get namespace ai -o json) || return 1
-    printf '%s\n' "$namespaced" "$clusterwide" "$cilium" "$namespace"
-  else
-    endpoints=$(kubectl -n ai get ciliumendpoints.cilium.io -o json) || return 1
-    api_pods=$(kubectl -n ai get pods -l app.kubernetes.io/name=studio-api -o json) || return 1
-    matte_pods=$(kubectl -n ai get pods -l app.kubernetes.io/name=studio-matte-worker -o json) || return 1
-    printf '%s\n' "$namespaced" "$clusterwide" "$cilium" "$endpoints" "$api_pods" "$matte_pods"
-  fi | jq -s . | python3 -B scripts/tests/studio-release/check.py --installed-policies "$1"
 }
 
 case $phase in
@@ -855,7 +766,6 @@ case $phase in
       if (( ! failed )); then
         check 'catalogue is complete 0012 or verified 0013' retry_catalogue
       fi
-      check 'matte workload absent' matte_removed
     fi
     check 'three postgres16 instances Ready' postgres_ready
     check 'installed dependencies and predecessor credential projections Ready' ready \
@@ -864,15 +774,13 @@ case $phase in
       externalsecret/studio-runtime-db externalsecret/studio-migrator-db \
       externalsecret/studio-oidc-client externalsecret/studio-worker-token \
       externalsecret/studio-image-worker-token externalsecret/studio-voice-worker-token
-    check 'third-pin workload set' pins "$old_digest" "$old_web" no
+    check 'third-pin workload set' pins "$old_digest" "$old_web"
     check 'old API endpoints' api_endpoints "$old_digest"
     check 'talosw01 capacity' node_capacity
     check 'talosw01 CPU <=10%, memory <=25%' node_idle
     check 'offline render app idle and admitted venv complete' render_idle "$render_mode"
     check 'Wan ready and both active jobs null' wan_idle
     check 'shared ComfyUI queue empty' images_idle
-    check 'retained matting allocation exact profile' weights_pin
-    check 'installed effective policy for the projected matte pod' installed_policies preflight
     check 'LAN root available' lan '' 200
     check 'LAN API anonymous access refused' lan v1/me 401
     if (( ! failed )); then
@@ -891,16 +799,13 @@ case $phase in
     check 'automatic Flux pickup and Studio stages Ready at the pin' wait_for_flux
     ;;
   postflight|verify)
-    check 'Flux stages Ready at the selected release or a matching descendant' flux_state release "$head"
+    check 'Flux stages Ready at the selected release or a matching descendant' flux_state "$head"
     if ((failed)); then finish; fi
     check 'migration Job completed at 0013 with correct identity' migration
     registration_audits
-    check 'fourth-pin workload set' pins "$api" "$web" yes
+    check 'fourth-pin workload set' pins "$api" "$web"
     check 'both selected API endpoints Ready' api_endpoints
-    check 'installed effective matte policy and API ingress' installed_policies postflight
-    check 'offline render app on the 17-CPU split and forwarding init' render_pin
-    check 'exact sidecar profile reached from the matte worker' sidecar_ready
-    check 'matte worker entered its normal polling loop and reports progress' matte_loop
+    check 'offline render app at 20 CPUs with forwarding init' render_pin
     worker_engines
     check 'one PyAV 18.1.1 encoder and bundled libraries' encoders
     check 'LAN root available' lan '' 200
@@ -911,20 +816,9 @@ case $phase in
     fi
     check "$snapshot_check" data_probe postflight "$revision" "$api"
     if (( ! failed )); then
-      check 'Flux stages still Ready before listener probes' flux_state release "$head"
+      check 'Flux stages still Ready before listener probes' flux_state "$head"
     fi
     if (( ! failed )); then worker_routes; fi
-    if [[ $phase == postflight ]]; then
-      if (( ! failed )); then
-        check 'matte queue still idle before the claim' matte_queue_idle
-      fi
-      if (( ! failed )); then
-        check 'matte claim validation over port 8002' kubectl -n ai exec -i deploy/studio-matte-worker \
-          -c worker -- python -I -B - matte claim-validation < "$script_dir/op967-routes.py"
-      else
-        printf 'FAIL final claim validation skipped after unsuccessful postflight checks\n' >&2
-      fi
-    fi
     ;;
   rollback-preflight)
     check 'new private receipt and baseline paths supplied' receipt_paths
@@ -947,10 +841,9 @@ case $phase in
     ;;
   compare)
     baseline=${STUDIO_OP967_ROLLBACK_BASELINE:-}
-    check 'Flux stages Ready on the selected rollback sequence' flux_state rollback "${ROLLBACK_OPS_REVISION:-}"
+    check 'Flux stages Ready on the selected rollback sequence' flux_state "${ROLLBACK_OPS_REVISION:-}"
     if ((failed)); then finish; fi
-    check 'third-pin workload set' pins "$old_digest" "$old_web" no
-    check 'matte worker removed' matte_removed
+    check 'third-pin workload set' pins "$old_digest" "$old_web"
     check 'old API endpoints' api_endpoints "$old_digest"
     worker_engines
     check 'LAN root available on previous build' lan '' 200

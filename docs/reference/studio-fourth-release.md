@@ -1,7 +1,12 @@
 # OP967 fourth Studio release
 
-**Expected.** This source pins matte jobs, the matte lane, the matting
-companion and PyAV 18.1.1. The coordinator owns installation and postflight.
+**Expected.** Under provisional ruling **CR-65**, this pin updates the API,
+web, MCP and the existing run, voice and image workers, applies migration
+`0013_matte_jobs`, and updates the offline render venv to PyAV 18.1.1 at 20 CPUs.
+The coordinator owns installation and postflight. Matte worker activation,
+including its credential and grant, registration, network isolation, listener
+extension and offline CPU change, is in [story 970](https://work.haynesnetwork.com/work_packages/970).
+
 The installed starting point is the [third
 pin](studio-deployment.md#op964-third-release), Studio `80975a9`, with
 Alembic `0012_release_constraints`. [Story 967](https://work.haynesnetwork.com/work_packages/967)
@@ -50,8 +55,8 @@ expires. Save the receipt, baseline and four predecessor Job logs in
 those Jobs and pod logs. The baseline hashes the database rows and store
 files and modification times.
 
-Preflight checks the old workloads, three Ready PostgreSQL instances, the
-matting profile, installed policy, LAN and worker dependencies. It requires
+Preflight checks the old workloads, three Ready PostgreSQL instances,
+LAN status and worker dependencies. It requires
 zero queued, running or held Studio jobs, Wan with both active jobs null,
 an empty shared ComfyUI queue, and at most 10% CPU and 25% memory on
 `talosw01`. The offline app must measure at most 250m CPU and run only its
@@ -87,40 +92,21 @@ migration audit before treating any advanced workload as valid.
 
 | Flux stage | Added or changed automatically on merge | Pruned automatically |
 | --- | --- | --- |
-| AI inventory | Adds matte policy, worker and registration stages. Updates render, migration and the existing registration gates. | |
-| `studio-render` | Adds the fourth-pin render ConfigMap and updates the HelmRelease. The offline render pod restarts once at 17 CPUs. The installed and composed paths render the same target. | |
+| AI inventory | Updates migration and the existing registration gates. | |
+| `studio-render` | Adds the pinned render environment ConfigMap and updates the HelmRelease. Recreate rolls the offline pod once at 20 CPUs. | |
 | `studio-migration` | Creates the digest-named 0013 migration Job. | Third-pin migration Job and pod logs. |
-| `studio` | Rolls API replicas, their worker listeners, web and MCP. Updates API ingress and adds the new listener ConfigMap. The old listener ConfigMap stays available for predecessor pod replacements during a stalled surge. | |
+| `studio` | Rolls API replicas, web and MCP. Both API generations use the same port-8002 listener configuration. | |
 | `studio-worker-registration` | Creates the new run registration Job. | Third-pin run registration Job and pod logs. |
 | `studio-worker` | Replaces the run worker pod. | |
-| `studio-media-worker-registration` | Creates the new voice and image registration Jobs and the independent matte token projection. | Third-pin voice and image registration Jobs and pod logs. |
+| `studio-media-worker-registration` | Creates the new voice and image registration Jobs. | Third-pin voice and image registration Jobs and pod logs. |
 | `studio-media-workers` | Replaces the voice and image worker pods. | |
-| `studio-matte-policy` | Applies the matte NetworkPolicy before the worker stage can run. | |
-| `studio-matte-worker` | Adds the Deployment, ConfigMap and ServiceAccount after the policy stage is Ready. | |
-| `studio-matte-worker-registration` | Creates the matte registration Job after the exact-profile sidecar is Ready. | |
 
 Offline render and migration can start in parallel. API, web and MCP wait
-for the successful migration at the selected revision. The existing workers
-wait for their API and registration dependencies. Matte also waits for the
-offline render split and its NetworkPolicy stage at the selected revision.
-Keep the predecessor listener ConfigMap and its
-explicit Flux prune exemption through the next pin. After verified turnover
-on that pin, remove the exemption while Flux still owns the object, then
-remove its declaration in the pin after next.
-
-**Proven at pickup.** OP459's successful provision and smoke used matting
-image `sha256:209031a328957e3fd25e12a4acb5518abd08e67adbc5efe1c89b721964cac0a5`
-and allocation `matting-op459-birefnet-lite-v1-03`. The installed manifest,
-checksum file and smoke report agree on
-`7093e0b535eb7b6ab8a5f679ceb235bde6e40e4708393c54e0fcd92665f91c94`.
-The OCI revision and image environment name
-`f217cd21ed7899ab7d2b633d19813c536b1c2a14`. That revision and the selected API
-revision have the same `src/haynes_studio/matting` Git tree
-`20ab3415338c761ed8b8b9e9acfcfbd9408bbe9a`. The new worker's locked
-`Profile.installed().manifest()` with the sidecar image and revision computes
-the installed hash. Its NumPy, Pillow and SciPy versions are 2.4.6, 13.0.0
-and 1.16.3. Reuse the existing weights allocation. A profile difference
-blocks activation. [OP459](https://work.haynesnetwork.com/work_packages/459)
+for the successful migration. The run worker waits for the API stage, its
+registration and the Helm-ready render worker. Voice and image wait for the
+API stage and their registrations. The idle render pod keeps previous completed
+venvs and builds a new one from the exact lock export. Its forwarding PID 1
+reaps children and forwards termination to the startup process group.
 
 ## Migrate while the third pin serves
 
@@ -190,105 +176,52 @@ fi
 
 The retry preflight checks for a Failed Job with zero active pods. It
 verifies the saved predecessor Job archive, the original baseline and
-fresh hashes. It requires Ready third-pin workloads and endpoints and
-the absence of the matte Deployment and pods. Idle render may already
+fresh hashes. It requires Ready third-pin workloads and endpoints. Idle render may already
 be on PyAV 18.1.1. All other preflight checks apply.
 
-- **Complete 0012.** The primary database reports exactly
-  `0012_release_constraints`, with both validated 0012 foreign keys and
-  without the 0013 release column, matte FIFO or widened checks. Use the
-  replacement Job above to apply 0013 and read it back.
-- **Committed 0013.** The primary reports exactly `0013_matte_jobs`, with
-  the release column, matte FIFO, widened checks and both validated 0012
-  foreign keys.
-  Use the same replacement Job. Its upgrade is a no-op and its read-back
-  supplies the successful Job audit. A workload revert is also available
-  through the procedure below.
+- **Complete 0012.** The primary reports `0012_release_constraints`, all six
+  original constraint definitions and both 0012 foreign keys, with the release
+  column absent. Use the replacement Job above to apply 0013 and read it back.
+- **Committed 0013.** The primary reports `0013_matte_jobs`, all six exact widened
+  check definitions, both 0012 foreign keys, the `SMALLINT NOT NULL DEFAULT 0`
+  release column and its `UPDATE` grant to `studio_app`, and a positive matte FIFO
+  position. The replacement Job reads back the already committed head. The
+  workload revert below is also available.
 
-The catalogue probe reads the CNPG primary over its local peer socket
-in a read-only transaction. Any other catalogue state fails preflight.
-After the retry PR merges, select its exact merge and use `wait` and
-`postflight` with the retry baseline.
+The catalogue uses PostgreSQL 16's `pg_get_constraintdef` and reads the CNPG
+primary over its peer socket in a read-only transaction. A different catalogue
+state fails preflight. After the retry PR merges, use its exact merge with `wait`
+and `postflight` and the retry baseline.
 
-## Workload turnover
+## Serving while matte activation is pending
 
-The run worker keeps its own pod and 4 CPUs. The new `studio-matte-worker`
-Deployment on `talosw01` pairs a single `studio-worker --lane matte` with
-the smoked sidecar. They share a 256 MiB `/matting` volume with supplementary
-GID 10001 for the mode-0660 Unix socket and staged attempt files. The worker
-uses the canonical store read/write as UID 1000. The sidecar uses UID/GID
-10001 and mounts only read-only weights plus scratch. Each container has
-a five-second preStop sleep and a 90-second pod grace period.
+The API readiness probe requires the matte FIFO row seeded by 0013. The API
+and MCP start with their existing configuration, and the run, voice and image
+workers claim using their own lanes and existing bearer tokens. The matting
+profile and sidecar client are loaded only by `studio-worker --lane matte`.
+Port 8002 keeps the existing five POST routes for voice and image; only those
+pods use that listener. The API's worker authentication looks up a single
+presented token and grant per request. [API readiness and startup](https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/api/app.py#L225)
+· [MCP startup](https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/mcp/server.py#L270)
+· [Worker startup](https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/queue/worker.py#L236)
+· [Worker authentication](https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/api/auth.py)
 
-| Workload on talosw01 | CPUs | Memory request | Memory limit |
-| --- | ---: | ---: | ---: |
-| Offline render app | 17 | 1 GiB | 32 GiB |
-| Run worker | 4 | 2 GiB | 8 GiB |
-| Matte worker | 1 | 192 MiB | 1 GiB |
-| Matting sidecar | 2 | 8 GiB | 10 GiB |
-| Total | 24 | 11 GiB + 192 MiB | 51 GiB |
-
-At pickup, `talosw01` reported 39 CPUs and 111,129,616 KiB (105.98 GiB)
-allocatable. Limits shown here consume 51 GiB of that before other workloads.
-With the dormant segmentation overlay composed on top, offline render would
-drop to 15 CPUs and the additional container would add 2 CPUs and 5 GiB.
-The combined ceiling would be 24 CPUs and 56 GiB. Keep heavy work serialized
-and cap manual offline render at `--workers 15` in the fourth pin to leave
-two cores in its 17-CPU allocation. The new offline app uses a forwarding
-PID 1 that reaps children and sends termination signals to the render
-startup process group. Its venv uses the exact exported lock dependencies.
-
-The matte pod waits for the selected API, the Helm-ready offline CPU split,
-its NetworkPolicy and token projection resources. External Secrets projects a stable,
-independent generated token. The sidecar's readiness probe requires its
-exact profile hash. The matte container keeps its progress marker fresh
-while probing for its grant with an extra-field claim body that can't take
-work. Flux observes the healthy Deployment before applying the
-digest-named registration Job, which mounts the same generated token and
-uses the migration identity to register `studio-matte-worker` for `matte`.
-After it gets the expected validation refusal, the wrapper replaces
-itself with `studio-worker --lane matte`. The worker also verifies the
-sidecar before claims. Its progress liveness allowance is 300 seconds.
-Under provisional coordinator ruling **CR-59**, NetworkPolicy covers both
-containers in the matte pod. The offline guard checks repository-rendered
-policies and cannot see every policy an installed Helm release generates.
-The full-render policy job is advisory across cluster paths. The Studio
-release guard is still required for Studio paths.
-
-The authoritative checks list every installed NetworkPolicy,
-CiliumNetworkPolicy and CiliumClusterwideNetworkPolicy. Preflight uses
-the rendered matte and API pod labels, live namespace and Cilium identity
-inputs, and substitutes the reviewed matte policy and API ingress for
-their installed versions.
-Postflight repeats the check with the real pod labels and the UID-bound
-Cilium identities of the matte and API pods. The policy's creation
-timestamp must precede the matte pod's start time. The matte pod must allow
-only DNS and the API's TCP 8002 listener for egress and no pod ingress.
-The audit refuses selecting Cilium allow or deny rules on the checked
-directions and checks the reviewed API ingress after rollout.
-[Cilium namespace selectors](https://docs.cilium.io/en/stable/security/policy/kubernetes/)
-
-The worker token is mounted read-only only in the worker container. The
-sidecar has its own PID and mount namespaces, runs as UID 10001 with a
-read-only root filesystem and has no service-account token. The listener
-clears forwarded headers. All six POST routes require a worker bearer and
-postflight checks that anonymous requests are refused.
-
-The three existing registrations must return audit status 200. The matte
-grant's first registration returns 201. Status 200 is the matching-token
-no-op on a retry. An unexpected conflict stops the rollout for review.
+The pinned API has no submission gate tied to matte worker registration. A
+valid matte request returns HTTP 202 and waits queued until a registered matte
+worker claims it. The queue pause controls claiming and still accepts submissions.
+Keep matte submissions closed operationally until story 970 activates the worker.
+[Submit handler](https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/api/job_routes.py#L235)
+· [Lane authorization](https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/api/run_routes.py#L333)
 
 ## Postflight
 
 Run from the selected merge with `STUDIO_OP967_BASELINE` set. The script
-reads every Flux stage, the migration and four registration Job audits,
-workloads, endpoints, installed policies, sidecar, engines, encoders,
-LAN and the data snapshot. It requires four grants, idle queues and
-unchanged archives. It rechecks Flux before the listener and lane POST
-probes, which use bodies that fail validation or authorization. After
-the four route groups pass, it rechecks the matte queue and sends a
-matte claim with an extra field that must return 422 before any claim.
-Keep submissions closed through verification.
+reads every Flux stage, the migration and three registration Job audits,
+workloads, endpoints, engines, encoders, LAN and the data snapshot. The
+snapshot requires three existing grants, no matte grant, no queued, running
+or held jobs in the matte queue, idle existing lanes and unchanged archives.
+It rechecks Flux before the listener POST probes, which fail validation or
+authorization before a write. Keep submissions closed through verification.
 
 ```bash
 if ! bash scripts/studio-release/op967.sh postflight; then
@@ -297,8 +230,7 @@ if ! bash scripts/studio-release/op967.sh postflight; then
 fi
 ```
 
-Use `verify` for the same audits and status probes with an optional baseline
-and without the final queue and claim-validation pair.
+Use `verify` for the same audits and status probes with an optional baseline.
 
 ```bash
 if ! bash scripts/studio-release/op967.sh verify; then
@@ -308,7 +240,7 @@ fi
 ```
 
 The probe reports `av.__version__` and `av.library_versions` from both API
-pods, the run, voice, image and matte workers and the offline render venv.
+pods, the run, voice and image workers and the offline render venv.
 It requires 18.1.1 and identical bundled library versions. Record the
 actual values and the data comparisons on both
 [966](https://work.haynesnetwork.com/work_packages/966) and
@@ -316,60 +248,40 @@ actual values and the data comparisons on both
 postflight session. This proof reads the installed encoders and archived
 data without rebuilding deliveries or runs.
 
-| Probe | Voice | Image | Run | Matte |
-| --- | ---: | ---: | ---: | ---: |
-| Malformed `/resume` | 403 | 403 | 422 | 403 |
-| A known other lane and invalid fields | 403 | 403 | 403 | 403 |
-| Extra field with lane omitted | 403 | 403 | 422 | 403 |
-| Malformed JSON or unknown lane on claim | 422 | 422 | 422 | 422 |
-| Own-lane claim with `settle_only: true` | 403 | 403 | 403 | — |
-| Malformed `/release-matte` | 403 | 403 | 403 | 422 |
-| Malformed heartbeat, publish, complete or fail without a job | 403 | 403 | — | 403 |
-| Own-lane claim with an extra field after the queue read | — | — | — | 422 |
+The listener probes require anonymous claim to return 401, malformed or
+unknown-lane claims to return 422, and a known other lane (including matte)
+or disallowed `settle_only` to return 403. The port-8002 listener refuses
+`/resume`. The API refuses forwarded media requests that default to the run
+lane. The run worker's malformed `/resume` reaches API validation. Record
+engine reachability and Gatus before opening run, voice and image submissions. [Gatus check](studio-deployment.md#gatus-and-backup-coverage)
 
-Media traffic on port 8002 gets a listener refusal on excluded run routes.
-The remaining cross-lane refusals require the API's `work.lane_forbidden`
-error. Malformed release for the matte token reaches API validation.
-A GET and a trailing slash for release are refused at the listener.
-The API validation order was independently exercised on Studio PR 139.
-[Source review](https://github.com/thaynes43/haynes-studio/pull/139#issuecomment-7165445269)
-
-**Expected.** A disposable cutout and fenced release proof need an existing
-permitted still and a separate supervised test. The store held no suitable
-still at pickup.
-
-Record the script's engine reachability results and the Gatus result before
-opening submissions. A real cutout and a person's review are separate
-evidence. [Gatus check](studio-deployment.md#gatus-and-backup-coverage)
+The static check permits `kubectl get`, `logs`, `wait`, and `top` with the
+reviewed read flags. Its named `kubectl exec` probes read PostgreSQL and the
+store, dependency and ingress status, the idle render process, encoder versions
+and worker engines. Flux renders local inputs with `flux build kustomization
+--dry-run --in-memory-build`. Direct HTTP reads use GET or HEAD. The named
+listener module sends only POSTs expected to fail at the listener,
+authentication, lane authorization or payload validation.
 
 ## Roll back workloads through a reviewed PR
 
 Keep submissions closed until active and held work settles. The snapshot
-allows existing queued matte jobs only with a recorded matte pause. The
-rollback preserves matte records, grants, the migration Job and
-schema 0013. Old migration images cannot resolve that revision.
+allows queued matte jobs with a recorded matte pause and preserves any matte
+job and pause records. Keep schema 0013. Old migration images cannot resolve it.
 
 Base a workloads-only revert on current Ops `main`. Under
-`kubernetes/main/apps/ai/studio/`, make these edits using the verified
-third-pin manifests as the workload source.
+`kubernetes/main/apps/ai/studio/`, use the verified third-pin manifests.
 
-- Restore the third-pin `app/api.yaml`, `app/mcp.yaml`, `app/web.yaml`,
-  `app/networkpolicy.yaml`, `worker/deployment.yaml` and
-  `media-workers/{voice,image}.yaml`. Point the restored API listener
-  volume at the explicit `studio-media-worker-routes-cbf48cht27` ConfigMap
-  in `app/media-worker-routes-op964.yaml`. Keep its prune exemption and
-  the fourth-pin listener generator while both generations turn over.
+- Restore the image pair in `app/api.yaml`, `app/mcp.yaml`, `app/web.yaml`,
+  `worker/deployment.yaml` and `media-workers/{voice,image}.yaml`. The generated
+  port-8002 ConfigMap stays available at `studio-media-worker-routes-cbf48cht27`.
 - Restore `worker-registration/job.yaml` and
-  `media-worker-registration/{voice,image}-job.yaml`. Restore the three
-  Job health-check names in `ks.yaml`, retaining the render dependency
-  and Helm health check. Remove the `studio-matte-worker` and
-  `studio-matte-worker-registration` Kustomizations from `ks.yaml`.
-  Keep the `studio-matte-policy` Kustomization and its NetworkPolicy.
-- Retain `migration/job.yaml`, its `studio-migration` Kustomization,
-  `release.yaml` as the schema pin, and the matte
-  token projection and weights allocation. Keep offline render at 17
-  CPUs through matte removal. Update the release guard in the revert to
-  assert the third-pin workload pair with the fourth-pin migration.
+  `media-worker-registration/{voice,image}-job.yaml` and their three Job health
+  names in `ks.yaml`. Keep the render dependency and Helm health check.
+- Retain `migration/job.yaml`, its Kustomization and `release.yaml` as the
+  schema pin. Keep the offline render venv at PyAV 18.1.1 and its limit at 20 CPUs.
+  Adjust the release guard to assert the third-pin workload pair alongside the
+  fourth-pin migration and render lock.
 - Keep the exact migration Job health check when the Job completed. For
   a terminal Job with verified 0013, remove the `healthChecks` field from
   `studio-migration` in this revert. Flux can then reconcile the restored
@@ -396,7 +308,7 @@ After the revert merges, return to the fourth-pin checkout. Set
 `ROLLBACK_OPS_REVISION` to the full revert merge SHA and set
 `STUDIO_OP967_ROLLBACK_BASELINE` to the revert preflight's snapshot.
 Run the same `wait` block, then compare the old images, endpoints,
-engine reachability, matte removal and retained schema and data.
+engine reachability and retained schema and data.
 
 ```bash
 if ! bash scripts/studio-release/op967.sh compare; then
@@ -407,25 +319,3 @@ fi
 
 Record the Gatus result before reopening the original lanes. A forward
 fix is needed to resume matte submissions and job detail.
-
-A later reviewed PR removes the `studio-matte-policy` stage. Before
-opening that PR, read the pods in namespace `ai` with selector
-`app.kubernetes.io/name=studio-matte-worker` and confirm there are none,
-including terminating pods. The rollback comparison checks the same
-condition.
-
-A separate reviewed change can restore the offline 20-CPU limit after
-a passing rollback comparison and read-back that the matte pod has
-left. Preflight that change in a quiet window by verifying the idle
-17-CPU app, the completed old venv or exact wheel availability, and
-the absence of any remaining matte pod. In `studio-render/app/`, set
-20 CPUs in `helmrelease.yaml` and copy `requirements-op964.txt` over
-`requirements.txt`. Align both live paths and the release guard.
-Retain the forwarding init and keyed venv startup. Require PyAV
-18.1.0 after automatic turnover.
-
-On 2026-11-25 the exact yanked Python 3.12-compatible wheel downloaded
-with SHA-256
-`8a032e8d8ebc73dec079364b9b4a6837638a2d106e8472314e685ffbf163e700`.
-If the completed venv is missing and the wheel is unavailable, retain
-the 17-CPU offline pin. [PyPI wheel](https://pypi.org/project/av/18.1.0/#av-18.1.0-cp311-abi3-manylinux_2_28_x86_64.whl)

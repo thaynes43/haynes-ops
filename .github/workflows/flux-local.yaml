@@ -208,25 +208,6 @@ jobs:
             --schema "$RUNNER_TEMP/authentik-schema.json" \
             --rendered "$RUNNER_TEMP/authentik-rendered.yaml"
 
-  studio-effective-policy:
-    # Advisory on all cluster paths. The Studio-path release guard is required.
-    if: ${{ needs.filter.outputs.changed-files != '[]' || needs.filter.outputs.studio-files != '[]' }}
-    needs: filter
-    name: Flux Local - Studio effective policy guard
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Install Flux for offline policy inventory rendering
-        run: bash scripts/tests/studio-release/install-flux.sh
-      - name: Verify the rendered effective Studio policy
-        run: |
-          python3 -m venv "$RUNNER_TEMP/studio-policy-venv"
-          "$RUNNER_TEMP/studio-policy-venv/bin/python" -I -m pip install \
-            --only-binary=:all: --no-deps --disable-pip-version-check PyYAML==6.0.3
-          "$RUNNER_TEMP/studio-policy-venv/bin/python" -I -B scripts/tests/studio-release/check.py --effective-policies
-
   studio-release-guard:
     if: ${{ needs.filter.outputs.studio-files != '[]' }}
     needs: filter
@@ -249,7 +230,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install Flux for offline policy inventory rendering
+      - name: Install Flux for offline Studio stage rendering
         run: bash scripts/tests/studio-release/install-flux.sh
       - name: Test Studio Flux Job gates
         run: |

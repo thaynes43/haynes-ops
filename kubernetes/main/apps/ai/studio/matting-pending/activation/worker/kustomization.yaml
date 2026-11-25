@@ -1,11 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - deployment.yaml
-  - serviceaccount.yaml
+  - ../../../worker
 patches:
   - path: sidecar.yaml
-configMapGenerator:
-  - name: studio-matte-worker-config
-    files:
-      - matte-start.py

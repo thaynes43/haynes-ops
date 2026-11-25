@@ -1,18 +1,16 @@
 """Run each OP967 runbook block with no cluster access and errexit suppressed."""
 
 import hashlib
-import importlib.util
 import json
 import os
 import re
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import Mock, patch
 
 import yaml
 
@@ -36,8 +34,7 @@ ROLLBACK = "5" * 40
 UNRELATED = "6" * 40
 OFF_MAIN = "7" * 40
 STAGES = ("studio-render", "studio-migration", "studio", "studio-worker-registration", "studio-worker",
-          "studio-media-worker-registration", "studio-media-workers", "studio-matte-policy", "studio-matte-worker",
-          "studio-matte-worker-registration")
+          "studio-media-worker-registration", "studio-media-workers")
 NOW = 1760000050
 SNAPSHOT = {"store": {}, "runs": {}, "deliveries": {}, "delivery media": {}, "media jobs": {}}
 RELEASE_CHECKS = (
@@ -54,8 +51,6 @@ RELEASE_CHECKS = (
     "offline render app idle and admitted venv complete",
     "Wan ready and both active jobs null",
     "shared ComfyUI queue empty",
-    "retained matting allocation exact profile",
-    "installed effective policy for the projected matte pod",
     "LAN root available",
     "LAN API anonymous access refused",
     "predecessor Job logs saved",
@@ -102,7 +97,6 @@ def definition(name, commit):
         spec["suspend"] = True
     return {"kind": "Kustomization", "metadata": {"name": name, "namespace": namespace}, "spec": spec}
 revision, api, web = data["new"] if data["workloads"] == "new" else data["old"]
-sidecar = data["sidecar"]
 studio = Path("kubernetes/main/apps/ai/studio")
 old_job_suffix = data["old"][1][7:19]
 
@@ -114,7 +108,6 @@ def pods(workload):
         "api": {"api": api, "media-worker-routes": web},
         "mcp": {"mcp": api}, "web": {"nginx": web}, "worker": {"worker": api},
         "voice-worker": {"worker": api}, "image-worker": {"worker": api},
-        "matte-worker": {"worker": api, "matting": sidecar},
         "render": {"app": api},
     }[workload]
     instances = 2 if workload in {"api", "mcp", "web"} else 1
@@ -122,23 +115,21 @@ def pods(workload):
     for index in range(instances):
         pod = f"{workload}-{index}"
         containers = {
-            name: (digest if name == "matting" else
-                   "ghcr.io/thaynes43/haynes-studio" + ("-web" if digest == web else "") + "@" + digest)
+            name: "ghcr.io/thaynes43/haynes-studio" + ("-web" if digest == web else "") + "@" + digest
             for name, digest in names.items()
         }
         result.append({
             "metadata": {"name": pod, "uid": pod, "labels": {"app.kubernetes.io/name": "studio-" + workload}},
             "spec": {
-                "nodeName": "talosw01" if workload in {"worker", "matte-worker", "render"} else f"other-{index}",
+                "nodeName": "talosw01" if workload in {"worker", "render"} else f"other-{index}",
                 "containers": [
                     {"name": name, "image": image,
-                     "resources": {"limits": {"cpu": "17"}},
+                     "resources": {"limits": {"cpu": data.get("render_cpus", "20")}},
                      "command": ["/usr/local/bin/python", "-B", "/config/render-init.py"]}
                     for name, image in containers.items()
                 ],
             },
             "status": {
-                "startTime": "2026-11-25T21:01:00Z",
                 "conditions": [{"type": "Ready", "status": "False" if data.get("api_unready") and workload == "api"
                                 else "True"}],
                 "containerStatuses": [
@@ -268,7 +259,7 @@ elif cmd == "yq":
 elif cmd == "curl":
     sys.exit(99)
 elif cmd == "flux":
-    if args[:2] != ["build", "kustomization"] or "--dry-run" not in args:
+    if args[:2] != ["build", "kustomization"] or args[-2:] != ["--dry-run", "--in-memory-build"]:
         sys.exit(99)
     name = args[2]
     patch = Path("kubernetes/main/flux/stage-path-patch")
@@ -276,20 +267,7 @@ elif cmd == "flux":
     if name == "cluster":
         print(yaml.safe_dump(definition("cluster-apps", commit)))
     elif name == "cluster-apps":
-        stages = data["definitions"]
-        if commit == data["rollback"]:
-            stages = [stage for stage in stages if not stage.startswith("studio-matte-worker")]
-        print(yaml.safe_dump_all([definition(stage, commit) for stage in stages]))
-    elif not commit:
-        files = [studio / file for file in {
-            "studio": ("app/api.yaml", "app/networkpolicy.yaml"),
-            "studio-matte-worker": ("matting-pending/activation/worker/deployment.yaml",),
-            "studio-matte-policy": ("matting-pending/worker-policy/networkpolicy.yaml",),
-        }.get(name, ())]
-        documents = [doc for file in files for doc in yaml.safe_load_all(file.read_text()) if doc]
-        for doc in documents:
-            doc["metadata"]["namespace"] = "ai"
-        print(yaml.safe_dump_all(documents))
+        print(yaml.safe_dump_all([definition(stage, commit) for stage in data["definitions"]]))
 elif cmd == "kubectl":
     if args[:1] == ["-n"]:
         args = args[2:]
@@ -308,8 +286,6 @@ elif cmd == "kubectl":
             emit({"items": [stage(name) for name in data["stages"] if name not in data.get("missing_stages", [])]})
         case ["get", "deployments", "-o", "json"]:
             workloads = ("api", "mcp", "web", "worker", "voice-worker", "image-worker")
-            if data["workloads"] == "new":
-                workloads += ("matte-worker",)
             items = []
             for workload in workloads:
                 pod_set = pods(workload)
@@ -325,9 +301,6 @@ elif cmd == "kubectl":
             emit({"items": job_pods(label.split("=", 1)[1])})
         case ["get", "pods", "-l", label, "-o", "json"]:
             emit({"items": pods(label.split("=studio-", 1)[1])})
-        case ["get", "pods", "-l", "app.kubernetes.io/name=studio-matte-worker", "-o", "name"]:
-            if data.get("matte_pod_remaining"):
-                print("pod/studio-matte-worker-still-terminating")
         case ["get", "pods", *_]:
             if data.get("sample_failure"):
                 sys.exit(1)
@@ -341,59 +314,6 @@ elif cmd == "kubectl":
                                                       "active": data.get("terminal_active", 0)},
                   "spec": {"template": {"spec": {"containers": [{"name": "migrate",
                       "image": "ghcr.io/thaynes43/haynes-studio@" + data["new"][1]}]}}}})
-        case ["get", "networkpolicies.networking.k8s.io,ciliumnetworkpolicies.cilium.io", "--all-namespaces", "-o", "json"]:
-            manifests = [studio / "app/networkpolicy.yaml"]
-            if data["workloads"] == "new":
-                manifests.append(studio / "matting-pending/worker-policy/networkpolicy.yaml")
-            items = [doc for path in manifests for doc in yaml.safe_load_all(path.read_text()) if doc]
-            for policy in items:
-                policy["metadata"]["namespace"] = "ai"
-                if policy["metadata"]["name"] == "studio-matte-worker":
-                    policy["metadata"]["creationTimestamp"] = data.get("policy_created", "2026-11-25T21:00:00Z")
-                if policy["metadata"]["name"] == "studio-api-ingress" and data["workloads"] == "old":
-                    policy["spec"]["ingress"][1]["from"][0]["podSelector"]["matchExpressions"][0]["values"].remove(
-                        "studio-matte-worker")
-            if kind := data.get("helm_policy"):
-                metadata = {"namespace": data.get("helm_policy_namespace", "ai"), "name": "example-helm",
-                            "labels": {"app.kubernetes.io/managed-by": "Helm"}}
-                matte = {"matchLabels": {"app.kubernetes.io/name": "studio-matte-worker"}}
-                spec = ({"podSelector": matte, "policyTypes": ["Egress"], "egress": [{}]}
-                        if kind == "NetworkPolicy" else
-                        {"endpointSelector": matte, "ingress": [{}]})
-                items.append({"kind": kind, "metadata": metadata, "spec": spec})
-            if data.get("helm_api_deny"):
-                items.append({"kind": "CiliumNetworkPolicy",
-                              "metadata": {"name": "helm-api-deny", "namespace": "ai",
-                                           "labels": {"app.kubernetes.io/managed-by": "Helm"}},
-                              "spec": {"endpointSelector": {"matchLabels": {"app.kubernetes.io/name": "studio-api"}},
-                                       "ingressDeny": [{"fromEndpoints": [
-                                           {"matchLabels": {"app.kubernetes.io/name": "studio-matte-worker"}}
-                                       ], "toPorts": [{"ports": [{"port": "8002", "protocol": "TCP"}]}]}]}})
-            emit({"items": items})
-        case ["get", "configmap", "cilium-config", "-o", "json"]:
-            emit({"data": {"cluster-name": "haynes-ops", "enable-policy": data.get("enforcement", "default")}})
-        case ["get", "namespace", "ai", "-o", "json"]:
-            emit({"metadata": {"labels": {"kubernetes.io/metadata.name": "ai"}}})
-        case ["get", "ciliumclusterwidenetworkpolicies.cilium.io", "-o", "json"]:
-            emit({"items": [{"kind": "CiliumClusterwideNetworkPolicy", "metadata": {"name": "endpoint-bypass"},
-                             "spec": {"endpointSelector": {"matchLabels": {"k8s:runtime-only": "present"}},
-                                      "egress": [{}]}}] if data.get("cilium_bypass_policy") else
-                            [{"kind": "CiliumClusterwideNetworkPolicy",
-                              "metadata": {"name": "namespace-clusterwide"},
-                              "specs": [{"endpointSelector": {"matchExpressions": [{
-                                  "key": "k8s:io.cilium.k8s.namespace.labels.kubernetes.io/metadata.name",
-                                  "operator": "In", "values": ["ai"],
-                              }]}, "egressDeny": [{}]}]}] if data.get("clusterwide_projected") else []})
-        case ["get", "ciliumendpoints.cilium.io", "-o", "json"]:
-            items = []
-            for workload in ("api", "matte-worker"):
-                for pod in pods(workload):
-                    pod_name = pod["metadata"]["name"]
-                    items.append({"metadata": {"name": pod_name, "ownerReferences": [
-                        {"kind": "Pod", "uid": "wrong-uid" if data.get("bad_endpoint_uid") else pod_name},
-                    ]}, "status": {"identity": {"labels": [f"k8s:app.kubernetes.io/name=studio-{workload}",
-                        *(["k8s:runtime-only=present"] if workload == "matte-worker" else [])]}}})
-            emit({"items": items})
         case ["get", "endpointslices", *_]:
             emit({"items": [{"endpoints": [
                 {"conditions": {"ready": True}, "targetRef": {"uid": pod["metadata"]["uid"]}}
@@ -403,9 +323,6 @@ elif cmd == "kubectl":
             emit({"spec": {"instances": 3}, "status": {"readyInstances": 3, "currentPrimary": "postgres16-primary"}})
         case ["get", "node", "talosw01", *_]:
             emit({"status": {"allocatable": {"cpu": "39", "memory": "111129616Ki"}}})
-        case ["get", "deploy/studio-matte-worker", *_]:
-            if data.get("matte_present"):
-                print("deployment.apps/studio-matte-worker")
         case ["top", "node", *_]:
             print("talosw01 100m 2% 100Mi 10%")
         case ["top", "pod", *_]:
@@ -426,7 +343,7 @@ elif cmd == "kubectl":
                           "tls": True, "hba_rejected": ["other database", "plaintext"]})
             else:
                 worker = re.sub(r"-[a-f0-9]{12}(?:-r[1-9][0-9]*)?$", "", job.removeprefix("studio-register-"))
-                status = 201 if worker == "matte-worker" else 200
+                status = 200
                 if worker == "image-worker" and data.get("bad_registration_audit"):
                     status = 409
                 emit({"action": "worker_tokens.register", "worker_id": "studio-" + worker, "status": status})
@@ -457,6 +374,9 @@ elif cmd == "kubectl":
                 if data.get("wrong_schema") and mode == "rollback-baseline":
                     print("FAIL expected schema", file=sys.stderr)
                     sys.exit(1)
+                if mode == "postflight" and data.get("matte_queue_busy"):
+                    print("FAIL matte queue empty (queued, running or held)", file=sys.stderr)
+                    sys.exit(1)
                 print("diagnostic before JSON")
                 emit({"wrong": "first JSON object"})
                 emit(data["snapshot"])
@@ -467,10 +387,8 @@ elif cmd == "kubectl":
                             or (version == "18.1.1" and options[-1] != "retry")):
                         sys.exit(1)
                     print(f"Idle render venv complete (PyAV {version})")
-            elif any("Matte queue is no longer idle" in arg for arg in options):
-                sys.exit(bool(data.get("matte_queue_refilled")))
             elif any("av.library_versions" in arg for arg in options):
-                emit({"pyav": "18.1.1", "libraries": {f"libav{name}": [1, 2, 3] for name in (
+                emit({"pyav": "18.1.0" if options[0] == data.get("stale_encoder") else "18.1.1", "libraries": {f"libav{name}": [1, 2, 3] for name in (
                     "codec", "format", "filter", "util", "device", "video", "audio"
                 )}})
         case _:
@@ -517,10 +435,9 @@ class PhaseTest(unittest.TestCase):
             "stages": STAGES, "definitions": STAGES,
             "paths": {stage: f"./kubernetes/main/apps/ai/studio/{stage}" for stage in STAGES}
             | {"studio": "./kubernetes/main/apps/ai/studio/app"},
-            "edited": EDITED, "rewired": REWIRED, "rollback": ROLLBACK,
+            "edited": EDITED, "rewired": REWIRED,
             "new": [RELEASE[key] for key in ("revision", "apiDigest", "webDigest")],
             "old": OLD, "workloads": "old", "snapshot": SNAPSHOT,
-            "sidecar": yaml.safe_load((STUDIO / "matting-pending/release/release.yaml").read_text())["data"]["image"],
         }
 
     def admit(self, **changes):
@@ -613,6 +530,7 @@ class PhaseTest(unittest.TestCase):
             ("non-integer", {"started_epoch": NOW - 100.5}, {}),
             ("wrong hash", {"baseline_sha256": "0" * 64}, {}),
             ("wrong path", {"baseline_path": str(self.root / "other")}, {}),
+            ("relative archive path", {"jobs_path": os.path.relpath(archive["jobs_path"], self.checkout)}, {}),
             ("wrong schema", {"schema": "studio-op967/v2"}, {}),
             ("partial checks", {"checks": passing[-2:]}, {}),
             ("duplicate check", {"checks": [*passing, passing[0]]}, {}),
@@ -729,7 +647,7 @@ class PhaseTest(unittest.TestCase):
         self.assertIn("different pin", result.stderr)
 
     def test_flux_requires_stage_in_ready_inventory_but_waits_for_pending_inventory(self):
-        result, _ = self.run_phase("wait", expected=1, missing_stages=["studio-matte-worker"])
+        result, _ = self.run_phase("wait", expected=1, missing_stages=["studio-worker"])
         self.assertIn("ready Flux inventory is missing Studio stages", result.stderr)
         result, _ = self.run_phase("wait", missing_stages=list(STAGES[-2:]),
                                    stage_revisions={"cluster-apps": PREVIOUS},
@@ -737,9 +655,9 @@ class PhaseTest(unittest.TestCase):
         self.assertIn("ready at pin False", result.stdout)
         self.assertIn("ready at pin True", result.stdout)
 
-    def test_wait_checks_matte_image_worker_order_and_migration_audit(self):
+    def test_wait_checks_worker_image_worker_order_and_migration_audit(self):
         for changes in (
-            {"wrong_deployment": "matte-worker"},
+            {"wrong_deployment": "voice-worker"},
             {"worker_before_api": True},
             {"migration_wait_failure": True},
         ):
@@ -759,9 +677,9 @@ class PhaseTest(unittest.TestCase):
             with self.subTest(order=order):
                 _, calls = self.run_phase("postflight", workloads="new", pod_order=order)
                 logs = [call[4] for call in calls if call[:4] == ["kubectl", "-n", "ai", "logs"]]
-                self.assertEqual(len(logs), 5)
+                self.assertEqual(len(logs), 4)
                 self.assertTrue(all(name.endswith("-succeeded") for name in logs), logs)
-                self.assertEqual(len([name for name in logs if "-register-" in name]), 4)
+                self.assertEqual(len([name for name in logs if "-register-" in name]), 3)
 
     def test_complete_job_refuses_missing_or_multiple_succeeded_pods(self):
         self.baseline.write_text(json.dumps(SNAPSHOT))
@@ -781,45 +699,47 @@ class PhaseTest(unittest.TestCase):
                 result, _ = self.run_phase("postflight", workloads="new", expected=1, **{failure: True})
                 self.assertIn("FAIL image worker registration reused its token", result.stderr)
 
-    def test_postflight_rechecks_baseline_and_gates_final_probe(self):
+    def test_postflight_requires_matching_baseline_and_empty_matte_queue(self):
         self.baseline.write_text(json.dumps(SNAPSHOT))
         _, calls = self.run_phase("postflight", workloads="new")
-        self.assertTrue(any("claim-validation" in call for call in calls))
-        _, calls = self.run_phase("postflight", expected=1, workloads="new", snapshot={**SNAPSHOT, "runs": 3})
-        self.assertFalse(any("claim-validation" in call for call in calls))
-        result, calls = self.run_phase("postflight", expected=1, workloads="new", helm_policy="NetworkPolicy")
-        self.assertIn("matte worker effective egress", result.stderr)
-        self.assertFalse(any("claim-validation" in call for call in calls))
-        result, calls = self.run_phase("postflight", expected=1, workloads="new", cilium_bypass_policy=True)
-        self.assertIn("unexpected Cilium policy endpoint-bypass", result.stderr)
-        self.assertFalse(any("claim-validation" in call for call in calls))
-        result, calls = self.run_phase("postflight", expected=1, workloads="new", bad_endpoint_uid=True)
-        self.assertIn("missing installed Cilium endpoint", result.stderr)
-        self.assertFalse(any("claim-validation" in call for call in calls))
+        self.assertEqual(len(self.route_calls(calls)), 3)
+        for changes in ({"snapshot": {**SNAPSHOT, "runs": 3}}, {"matte_queue_busy": True}):
+            with self.subTest(changes=changes):
+                _, calls = self.run_phase("postflight", expected=1, workloads="new", **changes)
+                self.assertEqual(self.route_calls(calls), [])
         self.baseline.write_text("{}")
         _, calls = self.run_phase("postflight", expected=1, workloads="new")
         self.assertEqual(self.route_calls(calls), [])
 
+    def test_postflight_requires_pyav_on_both_api_pods_all_workers_and_render(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        expected_pods = {"api-0", "api-1", "worker-0", "voice-worker-0", "image-worker-0", "render-0"}
+        _, calls = self.run_phase("postflight", workloads="new")
+        self.assertEqual({call[4] for call in calls if any("av.library_versions" in arg for arg in call)}, expected_pods)
+        result, _ = self.run_phase("postflight", workloads="new", expected=1, stale_encoder="image-worker-0")
+        self.assertIn("FAIL one PyAV 18.1.1 encoder and bundled libraries", result.stderr)
+        result, _ = self.run_phase("postflight", workloads="new", expected=1, render_cpus="17")
+        self.assertIn("FAIL offline render app at 20 CPUs with forwarding init", result.stderr)
+
     @staticmethod
     def route_calls(calls):
         return [call for call in calls
-                if call[-2] == "-" and call[-1] in {"voice", "image", "run", "matte"}]
+                if call[-2] == "-" and call[-1] in {"voice", "image", "run"}]
 
     def test_verify_without_a_receipt_reads_every_audit(self):
         result, calls = self.run_phase("verify", now=NOW + 7200, workloads="new",
                                        extra_env={"STUDIO_OP967_BASELINE": ""})
         self.assertIn("PASS OP967 verify", result.stderr)
-        for expected in ("gitrepository", "cluster-apps", "kustomizations", "ciliumendpoints.cilium.io", "postflight"):
+        for expected in ("gitrepository", "cluster-apps", "kustomizations", "postflight"):
             self.assertTrue(any(expected in call for call in calls), expected)
         logs = [call[4] for call in calls if call[:4] == ["kubectl", "-n", "ai", "logs"]]
-        for job in ("migrate", "register-worker", "register-voice-worker", "register-image-worker",
-                    "register-matte-worker"):
+        for job in ("migrate", "register-worker", "register-voice-worker", "register-image-worker"):
             self.assertTrue(any(pod.startswith(f"studio-{job}-") for pod in logs), job)
-        self.assertEqual({call[-1] for call in self.route_calls(calls)}, {"voice", "image", "run", "matte"})
+        self.assertEqual({call[-1] for call in self.route_calls(calls)}, {"voice", "image", "run"})
         ingress = [call[-1] for call in calls if call[:6] == ["kubectl", "-n", "ai", "exec", "-i", "deploy/studio-mcp"]]
         self.assertEqual(ingress, ["/", "/v1/me"])
         self.assertFalse(any(call[0] == "curl" for call in calls))
-        self.assertFalse(any(call[0] == "flux" or "claim-validation" in call for call in calls))
+        self.assertFalse(any(call[0] == "flux" for call in calls))
 
     def test_failed_state_stops_before_the_first_listener_post(self):
         self.baseline.write_text(json.dumps(SNAPSHOT))
@@ -833,17 +753,6 @@ class PhaseTest(unittest.TestCase):
                 with self.subTest(phase=phase, changes=changes):
                     _, calls = self.run_phase(phase, expected=1, workloads="new", **changes)
                     self.assertEqual(self.route_calls(calls), [])
-                    self.assertFalse(any("claim-validation" in call for call in calls))
-
-    def test_postflight_rechecks_matte_queue_after_route_probes(self):
-        self.baseline.write_text(json.dumps(SNAPSHOT))
-        result, calls = self.run_phase("postflight", expected=1, workloads="new",
-                                       now=NOW + 7200, matte_queue_refilled=True)
-        self.assertIn("FAIL matte queue still idle before the claim", result.stderr)
-        recheck = next(index for index, call in enumerate(calls)
-                       if any("Matte queue is no longer idle" in arg for arg in call))
-        self.assertEqual(len(self.route_calls(calls[:recheck])), 4)
-        self.assertFalse(any("claim-validation" in call for call in calls))
 
     def test_postflight_second_flux_read_gates_every_listener_post(self):
         self.baseline.write_text(json.dumps(SNAPSHOT))
@@ -851,32 +760,6 @@ class PhaseTest(unittest.TestCase):
         self.assertIn("PASS all queues idle, grants present and archived data and store identical", result.stderr)
         self.assertIn("FAIL Flux stages still Ready before listener probes", result.stderr)
         self.assertEqual(self.route_calls(calls), [])
-        self.assertFalse(any("claim-validation" in call for call in calls))
-
-    def test_postflight_requires_policy_created_before_matte_pod_start(self):
-        self.baseline.write_text(json.dumps(SNAPSHOT))
-        for timestamp in ("2026-11-25T21:01:00Z", "2026-11-25T21:02:00Z"):
-            with self.subTest(created=timestamp):
-                result, calls = self.run_phase("postflight", expected=1, workloads="new", policy_created=timestamp)
-                self.assertIn("NetworkPolicy creation must precede the matte pod start", result.stderr)
-                self.assertEqual(self.route_calls(calls), [])
-
-    def test_preflight_refuses_installed_helm_policy_for_projected_matte_labels(self):
-        for override, reason in (
-            ({"helm_policy": "NetworkPolicy"}, "matte worker effective egress"),
-            ({"helm_policy": "CiliumNetworkPolicy"}, "unexpected Cilium policy example-helm"),
-            ({"helm_api_deny": True}, "unexpected Cilium policy helm-api-deny for studio-api-ingress ingress"),
-            ({"clusterwide_projected": True}, "unexpected Cilium policy namespace-clusterwide"),
-            ({"enforcement": "never"}, "does not enforce network policy"),
-        ):
-            with self.subTest(override=override):
-                self.receipt.unlink(missing_ok=True)
-                result, calls = self.run_phase("preflight", expected=1, **override)
-                self.assertIn(reason, result.stderr)
-                self.assertTrue(any("--all-namespaces" in call for call in calls))
-                self.assertFalse(json.loads(self.receipt.read_text())["passed"])
-        self.receipt.unlink()
-        self.run_phase("preflight", helm_policy="NetworkPolicy", helm_policy_namespace="network")
 
     def test_rollback_accepts_either_ready_verified_build_and_requires_committed_schema(self):
         for pods, revision in (("old", OLD[0]), ("new", RELEASE["revision"])):
@@ -889,11 +772,10 @@ class PhaseTest(unittest.TestCase):
                 self.assertEqual(json.loads(self.receipt.read_text())["mode"], "rollback")
         self.rollback_baseline.write_bytes(self.baseline.read_bytes())
         self.receipt.unlink()
-        rollback = {"artifact": ROLLBACK, "stages": STAGES[:-2], "now": NOW + 14400}
+        rollback = {"artifact": ROLLBACK, "stages": STAGES, "now": NOW + 14400}
         _, calls = self.run_phase("compare", **rollback)
         for engine in ("image", "voice", "run"):
             self.assertTrue(any("exec" in call and call[-1] == engine for call in calls), engine)
-        self.run_phase("compare", expected=1, matte_pod_remaining=True, **rollback)
         self.run_phase("compare", expected=1, snapshot={**SNAPSHOT, "runs": 3}, **rollback)
         self.run_phase("compare", expected=1, **{**rollback, "artifact": HEAD})
         self.baseline.unlink()
@@ -927,11 +809,13 @@ class PhaseTest(unittest.TestCase):
         pin = STUDIO / "release.yaml"
         for changes in (
             {"off_main": [HEAD]},
+            {"head": HEAD},
             {"ancestry": []},
             {"previous_source": {str(pin): yaml.safe_dump({**RELEASE, "webDigest": OLD[2]})}},
         ):
             with self.subTest(changes=changes):
-                result, calls = self.run_phase("rollback-preflight", expected=1, head=REVIEWED_HEAD, **changes)
+                result, calls = self.run_phase("rollback-preflight", expected=1,
+                                               **{"head": REVIEWED_HEAD, **changes})
                 self.assertIn("FAIL selected fourth-pin Ops revision on main", result.stderr)
                 self.assertFalse(any(call[0] == "kubectl" for call in calls))
 
@@ -994,7 +878,6 @@ class PhaseTest(unittest.TestCase):
             ("replacement migration Job and Flux health check", {}, "changed health gate"),
             ("replacement migration Job and Flux health check", {}, "changed Job spec"),
             ("catalogue is complete 0012 or verified 0013", {"catalogue": "unverified"}, ""),
-            ("matte workload absent", {"matte_present": True}, ""),
             ("empty queues, archived data and store baseline", {"snapshot": {**SNAPSHOT, "runs": 3}}, ""),
             ("old API endpoints", {"workloads": "new"}, ""),
             ("offline render app idle", {"render_busy": True}, ""),
@@ -1035,113 +918,144 @@ class StartupTest(unittest.TestCase):
         for block in re.findall(r"(?ms)^```bash\n(.*?)^```$", page):
             subprocess.run(["bash", "-n"], input=block, text=True, check=True, capture_output=True)
 
-    def exec_commands(self, text):
-        text = text.replace("\\\n", " ")
-        commands = re.compile(r"""\b(kubectl|flux)[ \t]+((?:'[^']*'|"[^"\n]*"|[^'"\n])*)""")
-        mutations = {
-            "flux": r"\b(?:reconcile|suspend|resume)\b",
-            "kubectl": (r"\b(?:create|apply|delete|patch|replace|scale|rollout|annotate|label|"
-                        r"cordon|drain|cp|port-forward)\b"),
-        }
-        executable = re.sub(r"(?m)^\s*#.*$", "", text)
-        self.assertNotRegex(executable, r"(?i)(?:\bPOST\b|(?<!\S)-XPOST\b)")
-        self.assertNotRegex(executable, r"(?m)\b(?:curl|wget)\b[^\n]*(?:\s-d|--data|--post-|--json|--form|\s-F)")
-        for tool, command in commands.findall(text):
-            prefix = command.split("-- ", 1)[0].split("|", 1)[0]
-            self.assertNotRegex(prefix, mutations[tool], command)
-            if tool == "kubectl" and re.search(r"\bexec\b", prefix):
-                yield command.strip()
+    # Each exec fingerprint includes its argv, inline payload and stdin path.
+    READ_ONLY_EXEC = {
+        "5ea47b89e3acb3c5705d891b641eecc557b7fd48553acf844c692ce38befdc92": "primary catalogue",
+        "54f3c38253799b5510413b52393d6e2404be9ed542bf6930a557c00b981b42cf": "dependency HTTP GET",
+        "6bfee002bd87f6b4df61c5ea4143d527ae66e28315da4ccb6954a25f476c0408": "idle render venv",
+        "fe7b2a92d56c9af4d76fbdb0a7226d5207d5baaa83685ee51e124e492e29cb75": "anonymous ingress GET",
+        "f5cb0a67b4ece341568593db5ceb79ac603a55cbf33fb310850ba43bf401a5a1": "data snapshot",
+        "20594027b779a9b6497fc7796dbd64f1e2124b2ec52f46a678769b0a236ec712": "encoder version",
+        "b23bd15302a967ce2823defe1ada2ea092df7d685920bd4ebe53aa5411ebebf7": "worker engine reachability",
+        "dabba0cfe9628d2a4f5a30d1e5eebe4fb5ed514c2ddeb89c3b6b99dff2b065d0": "listener validation refusals",
+    }
+    DEPENDENCY_READS = (
+        ["deploy/wan-video", "api", "http://127.0.0.1:8080/v1/ready"],
+        ["comfyui-0", "app", "http://127.0.0.1:8188/queue"],
+    )
 
-    def test_static_guard_rejects_cluster_writes_and_direct_http_posts(self):
+    def audit_commands(self, source):
+        # Keep quoted payloads as single arguments. Preserve shell separators
+        # and line endings so a command cannot borrow the next command's flags.
+        source = re.sub(r"(?m)^[ \t]*#.*$", "", source.replace("\\\n", " "))
+        lexer = shlex.shlex(source, posix=True, punctuation_chars="();|&<>\n")
+        lexer.whitespace = " \t\r"
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+        separators = re.compile(r"[();|&>\n]+")
+        tools = {"kubectl", "flux", "curl", "wget", "http", "https", "xh", "read_endpoint",
+                 "bash", "sh", "eval"}
+        seen = set()
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            index += 1
+            tool = Path(token).name
+            if tool == "read_endpoint" and tokens[index:index + 1] == ["()"]:
+                continue
+            if tool in tools:
+                start = index
+                while index < len(tokens) and not separators.fullmatch(tokens[index]):
+                    index += 1
+                argv = tokens[start:index]
+                seen.update(self.audit_call(tool, argv))
+                for argument in argv:
+                    if "$(" in argument or "`" in argument:
+                        seen.update(self.audit_commands(argument.replace("`", "")))
+            elif "$(" in token or "`" in token:
+                seen.update(self.audit_commands(token.replace("`", "")))
+            else:
+                self.assertNotRegex(token,
+                                    r"https?://|\b(?:https?\.client|httpx|requests|urllib|urlopen)\b|\bHTTP/\d"
+                                    r"|\b(?:kubectl|flux|curl|wget)\s+|\b(?:POST|PUT|PATCH|DELETE) /")
+        return seen
+
+    def audit_call(self, tool, argv):
+        detail = f"{tool} {argv!r}"
+        match tool:
+            case "kubectl":
+                args = argv
+                if args[:1] == ["-n"]:
+                    self.assertIn(args[1], {"ai", "database", "flux-system"}, detail)
+                    args = args[2:]
+                if args[:1] == ["exec"]:
+                    fingerprint = hashlib.sha256("\0".join(argv).encode()).hexdigest()
+                    self.assertIn(fingerprint, self.READ_ONLY_EXEC, detail)
+                    return {fingerprint}
+                name = r"[\w./$@-]+"
+                self.assertRegex(" ".join(args),
+                                 rf"^(?:get {name}(?: {name})?(?: -l [\w./=$-]+)?(?: -o (?:json|custom-columns=\S+))?"
+                                 rf"|logs {name}(?: -c {name})?"
+                                 rf"|wait --for=condition=(?:Complete|Ready)(?: --timeout=\d+s)? {name}"
+                                 rf"|top node {name} --no-headers|top pod --containers -l [\w./=-]+ --no-headers)$")
+            case "flux":
+                self.assertRegex(" ".join(argv),
+                                 r"^build kustomization \S+ --namespace \S+ --path \S+ "
+                                 r"--kustomization-file \S+ --dry-run --in-memory-build$")
+            case "curl":
+                # Disable curlrc and accept only read flags followed by one URL.
+                self.assertEqual(argv[:1], ["-q"], detail)
+                self.assertRegex(argv[-1], r"^https?://[\w./?%=+#@~:-]+$")
+                flags = " ".join(argv[1:-1])
+                self.assertRegex(flags, r"^(?:(?:--fail|--silent|--show-error|--head|--request (?:GET|HEAD))(?: |$))*$")
+            case "read_endpoint":
+                self.assertIn(argv, self.DEPENDENCY_READS, detail)
+            case "bash":
+                self.assertRegex(" ".join(argv), r"^scripts/studio-release/op967\.sh "
+                                 r"(?:preflight|retry-preflight|rollback-preflight|wait|postflight|verify|compare"
+                                 r"|admit-merge(?: retry| rollback)?)$")
+            case _:
+                self.fail(f"unlisted command: {detail}")
+        return set()
+
+    def test_static_guard_accepts_read_forms_and_rejects_unlisted_calls(self):
+        for command in (
+            "kubectl -n ai get pods | jq .",
+            "kubectl logs pod",
+            "kubectl wait --for=condition=Ready pod/test",
+            "flux build kustomization studio --namespace ai --path app --kustomization-file stage.yaml --dry-run --in-memory-build",
+            "curl -q --request GET https://studio.haynesops.com/v1/example",
+            "curl -q --head https://studio.haynesops.com/v1/example",
+        ):
+            with self.subTest(command=command):
+                self.audit_commands(command)
         for command in (
             "kubectl cordon node",
             "kubectl drain node",
             "kubectl -n ai cp report.txt pod:/tmp/report.txt",
             "kubectl -n ai port-forward svc/studio 8000:8000",
-            "curl -X POST https://studio.haynesops.com/v1/example",
-            "curl -XPOST https://studio.haynesops.com/v1/example",
-            "curl --data '{}' https://studio.haynesops.com/v1/example",
+            'if "kubectl" -n ai set env deploy/studio KEY=value; then true; fi',
+            'echo "$(kubectl edit deployment studio)"',
+            'kubectl get "$(kubectl edit deployment studio)"',
+            "kubectl -n ai exec pod -- touch /tmp/changed",
+            "flux reconcile kustomization studio",
+            "flux build kustomization studio --namespace ai --path app --kustomization-file stage.yaml",
+            "curl -q -X POST https://studio.haynesops.com/v1/example",
+            "curl -q -XPOST https://studio.haynesops.com/v1/example",
+            "curl -q --data '{}' https://studio.haynesops.com/v1/example",
+            "curl --upload-file report.txt https://studio.haynesops.com/v1/example",
+            "curl -q --upload-file report.txt https://studio.haynesops.com/v1/example",
+            "python -c 'import httpx; httpx.post(url)'",
+            "bash -c 'kubectl delete pods'",
+            "eval 'kubectl edit deployment studio'",
         ):
             with self.subTest(command=command), self.assertRaises(AssertionError):
-                list(self.exec_commands(command))
+                self.audit_commands(command)
 
     def test_runbook_and_entrypoint_have_no_cluster_writes(self):
-        # Fingerprint each reviewed exec, including the inline payload or local
-        # script redirection, so a new remote command requires explicit review.
-        readonly_exec = {
-            "5a8755822acec692da34e72895045f53947fa65c5ee7c38d6576c26f4b7bf8b0": "read-only primary catalogue",
-            "09c42126e3f485ee5542663ef8f2422bb1c2a58db63289c6d97e502b3336eafe": "dependency HTTP reads",
-            "935b3f7211df9a00c285156bb5f33335401c4ab1c817035ca931436f18253c4c": "idle render venv",
-            "d366be0a7bd0d5bda7ddb97617b8b45cecd49f27a0668b459c428cc60721cdc7": "saved weights SHA-256",
-            "450618e9a8036f346e63d681fe2d7f85f197b817db36e51a59197ee2d958466c": "anonymous ingress GET",
-            "6966ba8a89e8ef6073e89faa925d927c30629597cc1a97d376191a3ea4b91bf7": "read-only data snapshot",
-            "180457d1c23c00daa288208d3ecb17f450686a76594168ff54004486167bbea5": "sidecar readiness",
-            "913353e5c2d14c72be009bddeb515da6701642adecbf3d7b590e0d72d8134cc1": "Unix HTTP readiness",
-            "bcffdfcb7e9b3632ecb77f6ab82ea3a730f8f6092f39da0c59717c865e16e41e": "worker process and progress",
-            "2af902c4e749c0be06cd40e79fd6c3690a86529e0dfa9f2d961d6c65400c5704": "encoder version",
-            "7f7fbd7d7bf91eb88d3261d894f6163208899de07d1c026f9ed6adc953a462a5": "worker engine reachability",
-            "f930af22ada1d21c27735168a2c07dd07df3a042a60fa454fa2690b4b0ebdc03": "read-only matte queue",
-            "c971578fe32445f9b02732bdaa4f43a4aed4472e0358f29f96f47ca5ba84b17e": "listener validation probes",
-            "4b5389b0cbeb2e21d488fcc765aada9f2944ef0b0556a33bbc974dc0ef66ebc1": "final rejected claim",
-        }
         script = Path("scripts/studio-release/op967.sh").read_text()
         page = Path("docs/reference/studio-fourth-release.md").read_text()
         blocks = re.findall(r"(?ms)^```[^\n]*\n(.*?)^```$", page)
-        seen = set()
-        for text in [script, *blocks]:
-            for command in self.exec_commands(text):
-                fingerprint = hashlib.sha256(command.encode()).hexdigest()
-                self.assertIn(fingerprint, readonly_exec, command)
-                seen.add(fingerprint)
-        self.assertEqual(seen, readonly_exec.keys())
+        seen = set().union(*(self.audit_commands(source) for source in [script, *blocks]))
+        self.assertEqual(seen, self.READ_ONLY_EXEC.keys())
         for name, checksum in (
-            ("op967-data.py", "d3281bac7a3ae07f143d8c4cd7cf9a4ca8768cc0b2c19e2d78bdbe8a923408f7"),
-            ("op967-catalogue.sql", "3fcfeeef9764a17782e0eed7ea63861908018d040b041cdeebe2da62637bd1dc"),
-            ("op967-routes.py", "b39a8f0afcb09accd8272afa69ec339495eb4a50659791d7e0384273f215da50"),
+            ("op967-data.py", "631cf55975dd6a955b3024380f3d30d2b79bb0b704e6006a4f5804b76fc27bc8"),
+            ("op967-catalogue.sql", "d0fc7dcf3a6bb140578b3ce0e4dd39f6d8515068f54c1fd07fef2caaf5750aa6"),
+            ("op967-routes.py", "c88b91bc1d995f937de076b6a31bba5012cc28ec17cb8130779a0a8b00379359"),
         ):
             self.assertEqual(hashlib.sha256(Path("scripts/studio-release", name).read_bytes()).hexdigest(),
                              checksum, name)
-
-    def test_matte_start_reads_private_file_and_waits_for_grant_before_exec(self):
-        path = STUDIO / "matting-pending/activation/worker/matte-start.py"
-        spec = importlib.util.spec_from_file_location("matte_start", path)
-        launcher = importlib.util.module_from_spec(spec)
-        secret = "s" * 64
-        progress = Mock()
-        post = Mock(side_effect=[
-            SimpleNamespace(status_code=403),
-            SimpleNamespace(status_code=422, json=lambda: {
-                "error": {"code": "schema.unknown_field", "path": "/registration_probe"},
-            }),
-        ])
-        context = Mock()
-        context.__enter__ = Mock(return_value=SimpleNamespace(post=post))
-        context.__exit__ = Mock(return_value=False)
-        client = Mock(return_value=context)
-        dependencies = {
-            "httpx": SimpleNamespace(Client=client, RequestError=RuntimeError),
-            "haynes_studio.queue.progress": SimpleNamespace(ProgressFile=Mock(return_value=progress)),
-            "haynes_studio.queue.worker_tokens": SimpleNamespace(worker_bearer=lambda raw: "worker_" + raw),
-        }
-        with patch.dict(sys.modules, dependencies):
-            spec.loader.exec_module(launcher)
-        with (
-            patch.object(launcher, "Path", return_value=SimpleNamespace(read_text=lambda: secret)) as token_path,
-            patch.object(launcher, "sleep") as sleep,
-            patch.object(launcher.os, "execvpe") as execute,
-            patch.object(launcher.sys, "argv", [str(path), "studio-worker", "--lane", "matte"]),
-            patch.dict(os.environ, {"STUDIO_WORKER_PROGRESS_FILE": "/run/studio/worker-progress",
-                                    "STUDIO_API_URL": "http://studio-api:8002"}, clear=True),
-        ):
-            launcher.main()
-        token_path.assert_called_once_with("/run/secrets/studio-worker/token")
-        sleep.assert_called_once_with(5)
-        self.assertEqual(client.call_args.kwargs["headers"], {"Authorization": "Bearer worker_" + secret})
-        self.assertEqual(post.call_count, 2)
-        post.assert_called_with("/internal/v1/work/claim", json={"lane": "matte", "registration_probe": True})
-        command, args, environment = execute.call_args.args
-        self.assertEqual((command, args), ("studio-worker", ["studio-worker", "--lane", "matte"]))
-        self.assertEqual(environment["STUDIO_WORKER_TOKEN"], secret)
 
     def test_render_startup_keeps_previous_venv_on_failed_install_and_rollback(self):
         app = STUDIO.with_name("studio-render") / "app"

@@ -468,31 +468,28 @@ recorded experimental load setting.
 
 ## Activate in a follow-up
 
-**Expected.** Activate matting first in the fourth deployment pin
-([story 967](https://work.haynesnetwork.com/work_packages/967)). Follow the
-[matting runbook](studio-matting-deployment.md#activation-retries-and-rollback)
-to activate the `studio-render/matting-pending` render split and the matting
-sidecar on `studio-matte-worker`. After matting is ready and the segmentation smoke
-passes, point the render Flux Kustomization at `studio/segmentation-pending/activation`.
+**Expected.** [Story 970](https://work.haynesnetwork.com/work_packages/970)
+owns matting activation. The dormant overlays and limits below describe the
+previously staged layout. Verify the segmentation overlay against the layout
+that story 970 adopts before any activation.
 That overlay builds on `studio-render/matting-pending`. It adds the segmentation
 sidecar while the queue stays on its matting overlay. The release guard checks
-both combinations below. Cap manual render at `--workers 15` with matting and
-`--workers 13` with both. Segmentation runs at 10001:10001 with read-only
+both combinations below. Cap manual render at `--workers 16` with matting and
+`--workers 14` with both. Segmentation runs at 10001:10001 with read-only
 weights and shares scratch with the render app via fsGroup 1000.
 
 | Container on talosw01 | Matting alone CPU / memory | Matting and segmentation CPU / memory |
 |---|---:|---:|
-| Offline render app | 17 / 32 GiB | 15 / 32 GiB |
-| Run worker | 4 / 8 GiB | 4 / 8 GiB |
-| Matte worker | 1 / 1 GiB | 1 / 1 GiB |
+| Offline render app | 18 / 32 GiB | 16 / 32 GiB |
+| Queue worker | 4 / 8 GiB | 4 / 8 GiB |
 | Matting sidecar | 2 / 10 GiB | 2 / 10 GiB |
 | Segmentation sidecar | — | 2 / 5 GiB |
-| Three Studio pods | 24 / 51 GiB | 24 / 56 GiB |
+| Both Studio pods | 24 / 50 GiB | 24 / 55 GiB |
 
 The 2026-11-25 read of `talosw01` showed 39 CPUs and 111,129,616 KiB
 (105.98 GiB) allocatable. Existing memory requests totalled 55,482 MiB,
 and limits totalled 239,424 MiB (233.81 GiB). With both staged companions,
-requests would total 67,962 MiB and limits 255,808 MiB (249.81 GiB) at
+requests would total 67,770 MiB and limits 254,784 MiB (248.81 GiB) at
 that baseline. The node cannot sustain all configured peaks simultaneously.
 Keep heavy work serialized and check current headroom before activation.
 

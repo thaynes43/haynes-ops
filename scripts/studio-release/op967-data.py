@@ -22,7 +22,7 @@ IMPORTS = {
 }
 WORKERS = {
     "studio-worker": "run", "studio-image-worker": "image",
-    "studio-voice-worker": "voice", "studio-matte-worker": "matte",
+    "studio-voice-worker": "voice",
 }
 
 
@@ -105,10 +105,14 @@ def database_snapshot(conn, phase, results):
     print(f"Active or held runs: {active_runs}. Active or held media jobs: {active_media}.", file=sys.stderr)
 
     if phase == "postflight":
+        results["matte queue empty (queued, running or held)"] = all(row[0] != "matte" for row in active_media)
+        results["no registered matte worker grant"] = conn.execute("""
+            SELECT NOT EXISTS (SELECT FROM studio.worker_lane_grants WHERE lane = 'matte')
+        """).fetchone() == (True,)
         grants = dict(conn.execute("""
             SELECT worker_id, lane FROM studio.worker_lane_grants WHERE worker_id = ANY(%s)
         """, (list(WORKERS),)).fetchall())
-        results["all four worker lane grants"] = grants == WORKERS
+        results["all three existing worker lane grants"] = grants == WORKERS
         checks = conn.execute("""
             SELECT has_table_privilege('studio.worker_lane_grants', 'SELECT'),
                    has_any_column_privilege('studio.worker_lane_grants', 'INSERT'),
@@ -133,7 +137,6 @@ def database_snapshot(conn, phase, results):
             ("matte jobs", "SELECT to_jsonb(j) FROM studio.media_jobs AS j WHERE lane = 'matte' ORDER BY id"),
             ("matte pause events", "SELECT to_jsonb(e) FROM studio.queue_lane_events AS e "
                                  "WHERE lane = 'matte' ORDER BY sequence"),
-            ("matte grants", "SELECT worker_id FROM studio.worker_lane_grants WHERE lane = 'matte' ORDER BY worker_id"),
         )
         for name, query in checks:
             rows = conn.execute(query).fetchall()

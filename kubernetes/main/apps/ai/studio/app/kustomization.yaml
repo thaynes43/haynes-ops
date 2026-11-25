@@ -7,7 +7,6 @@ resources:
   - mcp.yaml
   - ingressroute.yaml
   - networkpolicy.yaml
-  - media-worker-routes-op964.yaml
 configMapGenerator:
   - name: studio-media-worker-routes
     files:
