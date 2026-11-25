@@ -1,11 +1,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  # -r2: the first smoke was killed for memory 14 seconds after it started, under
-  # the profile's unmeasured 6Gi budget, before it reported anything. This attempt
-  # has room to finish and report the real peak; the serving limit is set from that
-  # measurement, not from this number. A Job is immutable, so a retry is a new name.
-  name: studio-matting-smoke-00-r2
+  # A new image needs a new immutable weight/profile allocation. The third
+  # smoke measures the CPU arena change against the installed artifact hashes.
+  name: studio-matting-smoke-00-r3
 spec:
   activeDeadlineSeconds: 300
   backoffLimit: 0
@@ -30,12 +28,12 @@ spec:
       containers:
         - name: matting
           image: image-replaced-by-release
-          command: [studio-matting, smoke]
+          command: [studio-matting, smoke, --no-cpu-arena]
           env:
             - {name: STUDIO_MATTING_IMAGE, value: image-replaced-by-release}
           resources:
-            requests: {cpu: 250m, memory: 2Gi}
-            limits: {cpu: "2", memory: 16Gi}
+            requests: {cpu: 250m, memory: replaced-by-release}
+            limits: {cpu: "2", memory: replaced-by-release}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

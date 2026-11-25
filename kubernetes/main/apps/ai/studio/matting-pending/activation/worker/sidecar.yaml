@@ -17,8 +17,8 @@ spec:
           env:
             - {name: STUDIO_MATTING_IMAGE, value: image-replaced-by-release}
           resources:
-            requests: {cpu: 250m, memory: 2Gi}
-            limits: {cpu: "2", memory: 6Gi}
+            requests: {cpu: 250m, memory: replaced-by-release}
+            limits: {cpu: "2", memory: replaced-by-release}
           securityContext:
             runAsUser: 10001
             runAsGroup: 10001
