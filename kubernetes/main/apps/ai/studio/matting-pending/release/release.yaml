@@ -5,8 +5,10 @@ metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
 data:
-  # Replace this stale pin with the CR-43 digest from the Studio main publish.
+  # CR-43 image, source and manifest hash read back from the OP459 serving smoke.
   image: ghcr.io/thaynes43/haynes-studio-matting@sha256:209031a328957e3fd25e12a4acb5518abd08e67adbc5efe1c89b721964cac0a5
+  revision: f217cd21ed7899ab7d2b633d19813c536b1c2a14
+  profileSha256: 7093e0b535eb7b6ab8a5f679ceb235bde6e40e4708393c54e0fcd92665f91c94
   allocation: matting-op459-birefnet-lite-v1-03
   memoryRequest: 8Gi
   memoryLimit: 10Gi

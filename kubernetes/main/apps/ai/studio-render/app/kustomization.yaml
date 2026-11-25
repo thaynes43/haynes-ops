@@ -10,6 +10,7 @@ configMapGenerator:
   - name: studio-render-requirements
     files:
       - requirements.txt
+      - render-init.py
 generatorOptions:
   disableNameSuffixHash: true
   annotations:

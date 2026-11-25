@@ -3,8 +3,8 @@
 CR-33 selects BiRefNet Lite FP32 on ONNX Runtime CPU. The baseline and
 CPU-arena retest ran on 2026-11-25. CR-43 stages the new serving profile,
 with the CPU arena off, in a fresh immutable allocation. Flux owns the
-targeted policies and provisioner ConfigMap. The Jobs, worker sidecar
-and render CPU split stay staged. Launch each Job individually after
+targeted policies and provisioner ConfigMap. The provision and smoke Jobs
+are one-shot. OP967 owns the serving activation and CPU split. Launch each Job individually after
 its checks pass. [OP459](https://work.haynesnetwork.com/work_packages/459)
 
 OP459 authorizes a one-shot exception to Flux ownership for these two
@@ -463,21 +463,11 @@ Keep heavy jobs serialized unless measured headroom shows the second
 fits. Follow the Wan, Foley and local-model lease rules.
 [Matting profile](https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/matting-backend-profile.md)
 
-Sidecar activation is a separate deployment pin after the smoke. First move the
-offline worker's Flux path to `studio-render/matting-pending` and verify its
-1 GiB request and 18-CPU, 32 GiB limit. Cap offline render commands at
-`--workers 16`. Then stage the queue consumer with
-`studio/matting-pending/activation`. The worker has 4 CPUs, 2 GiB
-requested and an 8 GiB limit. The matting sidecar has 2 CPUs,
-8 GiB requested and a 10 GiB limit. The two pods total 24 CPUs and 50 GiB.
-The [segmentation activation overlay](studio-segmentation-deployment.md#activate-in-a-follow-up)
-builds on this render split and comes after matting. The
-serving command uses the same arena-off profile as the plain smoke. The
-sidecar uses a shared, group-writable `/matting` emptyDir and the read-only
-`/weights` mount. Only the worker keeps its API credential and media mounts. Stage
-per-attempt directories with shared GID 10001, permissions 2770, and an
-input readable by that group. Check `studio-matting ready` in the
-activated pod before sending any dispatch.
+The [fourth release](studio-fourth-release.md#roll-the-workloads) activates
+the sidecar beside `studio-matte-worker` after the OP459 smoke. The offline
+app, run worker, matte worker and sidecar have a combined limit of 24 CPUs
+and 51 GiB. Use the fourth-release checks for exact readiness and grant
+registration. The Unix socket and attempt directories share GID 10001.
 
 If provisioning fails, preserve the logs and failed allocation. Investigate
 the code before deciding whether a fresh run is appropriate. A reviewed

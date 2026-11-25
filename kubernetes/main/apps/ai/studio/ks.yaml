@@ -20,7 +20,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-migrate-08ac310f246c
+      name: studio-migrate-c4f06807de8c
       namespace: ai
   interval: 30m
   retryInterval: 1m
@@ -72,10 +72,9 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-worker-08ac310f246c
+      name: studio-register-worker-c4f06807de8c
       namespace: ai
-    # studio-render's Kustomization applies the HelmRelease but does not wait
-    # for Helm. Wait here so the worker cannot start until the 20-CPU cap is live.
+    # Keep the current offline render split in the run-worker health gate.
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: studio-render
@@ -157,11 +156,11 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-voice-worker-08ac310f246c
+      name: studio-register-voice-worker-c4f06807de8c
       namespace: ai
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-image-worker-08ac310f246c
+      name: studio-register-image-worker-c4f06807de8c
       namespace: ai
   interval: 30m
   retryInterval: 1m
@@ -204,3 +203,53 @@ spec:
   interval: 30m
   retryInterval: 1m
   timeout: 2m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: studio-matte-worker
+  namespace: ai
+spec:
+  targetNamespace: ai
+  dependsOn:
+    - name: studio
+    - name: studio-render
+    # Projects the matte token and provides the registration ServiceAccount.
+    - name: studio-media-worker-registration
+  path: ./kubernetes/main/apps/ai/studio/matting-pending/activation
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  prune: true
+  # The Deployment is Ready only when the sidecar reports the exact profile.
+  # The worker maintains its progress marker while it waits for registration.
+  wait: true
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: studio-matte-worker-registration
+  namespace: ai
+spec:
+  targetNamespace: ai
+  dependsOn:
+    - name: studio-migration
+    - name: studio-matte-worker
+  path: ./kubernetes/main/apps/ai/studio/matte-worker-registration
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  prune: true
+  healthChecks:
+    - apiVersion: batch/v1
+      kind: Job
+      name: studio-register-matte-worker-c4f06807de8c
+      namespace: ai
+  interval: 30m
+  retryInterval: 1m
+  timeout: 6m

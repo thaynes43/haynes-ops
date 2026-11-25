@@ -20,7 +20,7 @@ spec.loader.exec_module(guard)
 STUDIO = guard.STUDIO_PATH
 
 
-class EntryPointTest(unittest.TestCase):
+class ReleaseFixture:
     def setUp(self):
         contracts = {
             "matting": {"request_gib": 8, "limit_gib": 10},
@@ -30,13 +30,17 @@ class EntryPointTest(unittest.TestCase):
             },
             "upscaling": {"measuring": {"request_gib": 2, "limit_gib": 8}, "quality_peak_gib": 1},
         }
+        matting = yaml.safe_load((STUDIO / "matting-pending/release/release.yaml").read_text())["data"]
+        release = yaml.safe_load((STUDIO / "release.yaml").read_text())
+        digests = {guard.API_IMAGE: release["apiDigest"], f"{guard.API_IMAGE}-web": release["webDigest"]}
+        self.enterContext(patch.object(guard, "studio_image_digest", side_effect=lambda image, _: digests[image]))
         configs = {}
         for backend, contract in contracts.items():
             configs[f"{guard.API_IMAGE}-{backend}"] = {
                 "os": "linux", "architecture": "amd64",
                 "config": {"User": "10001:10001", "Cmd": ["studio-segmentation", "serve"], "Labels": {
                     "org.opencontainers.image.source": guard.STUDIO_REPO,
-                    "org.opencontainers.image.revision": "a" * 40,
+                    "org.opencontainers.image.revision": matting["revision"] if backend == "matting" else "a" * 40,
                     "io.haynes-studio.upscaling.comparison": "stored-proxy-frame-v2",
                     f"io.haynes-studio.{backend}.resources": json.dumps({
                         "schema": f"studio.{backend}-resources/v1", **contract,
@@ -63,6 +67,8 @@ class EntryPointTest(unittest.TestCase):
 
         return patch.object(Path, "read_text", read)
 
+
+class EntryPointTest(ReleaseFixture, unittest.TestCase):
     def test_check_invokes_each_backend_once(self):
         with ExitStack() as stack:
             output = stack.enter_context(redirect_stdout(io.StringIO()))
@@ -95,7 +101,7 @@ class EntryPointTest(unittest.TestCase):
         path = STUDIO / "ks.yaml"
         flux = path.read_text()
         for backend, error in (
-            ("matting", "matting provisioning, smoke, quality trial and worker activation must stay staged"),
+            ("matting", "matting provisioning, smoke and quality trial must stay staged"),
             ("segmentation", "Flux may apply only the segmentation policy stage"),
             ("upscaling", "only the upscaling policy stage belongs in Flux"),
         ):
@@ -116,11 +122,71 @@ class EntryPointTest(unittest.TestCase):
                 store_root = guard.env(api, "api")["STUDIO_STORE_ROOT"]
                 mounts = guard.container(api, "api")["volumeMounts"]
                 next(mount for mount in mounts if mount["mountPath"] == store_root)["subPath"] = "data/studio"
+            elif path == STUDIO / guard.MATTE_ACTIVATION:
+                matte = guard.resource(documents, "Deployment", guard.MATTE_WORKER)
+                mounts = guard.container(matte, "worker")["volumeMounts"]
+                next(mount for mount in mounts if mount["name"] == "store")["subPath"] = "data/studio"
             return documents
 
         with (
             patch.object(guard, "render", side_effect=render_with_different_api_store),
             self.assertRaisesRegex(ValueError, "upscaling store sub-path must match the studio-api Deployment"),
+        ):
+            guard.check(STUDIO)
+
+
+class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
+    def check_refuses_rendered_mutation(self, stage, mutate, expected):
+        render = guard.render
+        changed = render(stage)
+        mutate(changed)
+        with (
+            patch.object(guard, "render", side_effect=lambda path: changed if path == stage else render(path)),
+            self.assertRaisesRegex(ValueError, expected),
+        ):
+            guard.check(STUDIO)
+
+    def test_wrong_matte_worker_digest_is_refused(self):
+        def mutate(stage):
+            worker = guard.resource(stage, "Deployment", guard.MATTE_WORKER)
+            guard.container(worker, "worker")["image"] = f"{guard.API_IMAGE}@sha256:" + "0" * 64
+
+        self.check_refuses_rendered_mutation(
+            STUDIO / guard.MATTE_ACTIVATION, mutate, "matte worker and registration Job must use the Studio release digest",
+        )
+
+    def test_listener_missing_release_route_is_refused(self):
+        path = STUDIO / "app/media-worker-routes.conf"
+        with (
+            self.override_source(path, path.read_text().replace("|release-matte", "")),
+            self.assertRaisesRegex(ValueError, "port 8002 must allow exactly the six media POST routes"),
+        ):
+            guard.check(STUDIO)
+
+    def test_matting_sidecar_on_run_worker_is_refused(self):
+        def mutate(stage):
+            worker = guard.resource(stage, "Deployment", "studio-worker")
+            matte = guard.resource(guard.render(STUDIO / guard.MATTE_ACTIVATION), "Deployment", guard.MATTE_WORKER)
+            worker["spec"]["template"]["spec"]["containers"].append(guard.container(matte, "matting"))
+
+        self.check_refuses_rendered_mutation(
+            STUDIO / "worker", mutate, "matting sidecar belongs only on the matte worker pod",
+        )
+
+    def test_dropped_label_selector_is_refused(self):
+        def mutate(stage):
+            policy = guard.resource(stage, "NetworkPolicy", guard.MATTE_WORKER)
+            policy["spec"]["egress"][1]["to"][0]["podSelector"]["matchLabels"]["pod-template-hash"] = "ignored"
+
+        self.check_refuses_rendered_mutation(
+            STUDIO / guard.MATTE_ACTIVATION, mutate, "Cilium leaves out of pod identities",
+        )
+
+    def test_old_render_pyav_is_refused(self):
+        path = STUDIO.with_name("studio-render") / "app/requirements.txt"
+        with (
+            self.override_source(path, path.read_text().replace("av==18.1.1", "av==18.1.0")),
+            self.assertRaisesRegex(ValueError, "offline render must export PyAV 18.1.1"),
         ):
             guard.check(STUDIO)
 

@@ -1,4 +1,4 @@
-# Dormant. Story 451 owns activation after the provisioning and smoke evidence.
+# OP967 pairs the smoked matting server with the matte lane worker.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: ai

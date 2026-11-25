@@ -32,7 +32,7 @@ spec:
             matchExpressions:
               - key: app.kubernetes.io/name
                 operator: In
-                values: [studio-voice-worker, studio-image-worker]
+                values: [studio-voice-worker, studio-image-worker, studio-matte-worker]
       ports:
         - port: 8002
           protocol: TCP

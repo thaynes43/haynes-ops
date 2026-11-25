@@ -255,14 +255,14 @@ class ReleaseTests(unittest.TestCase):
         stage = PENDING / "activation"
         render = guard.render
         documents = render(stage)
-        for resource, excess in (("cpu", "17"), ("cpu", "16500m"), ("memory", "33280Mi")):
+        for resource, excess in (("cpu", "16"), ("cpu", "15500m"), ("memory", "33280Mi")):
             with self.subTest(resource=resource):
                 mutated = copy.deepcopy(documents)
                 values = guard.resource(mutated, "HelmRelease", "studio-render")["spec"]["values"]
                 values["controllers"]["studio-render"]["containers"]["app"]["resources"]["limits"][resource] = excess
                 with patch.object(guard, "render",
                                   side_effect=lambda path: mutated if path == stage else render(path)):
-                    with self.assertRaisesRegex(ValueError, "matting with segmentation exceeds.*24 CPU or 55 GiB"):
+                    with self.assertRaisesRegex(ValueError, "matting with segmentation exceeds.*24 CPU or 56 GiB"):
                         guard.check_segmentation_stage(STUDIO, self.flux)
 
     def test_activation_checks_matting_alone_and_accepts_equivalent_quantities(self):
@@ -270,9 +270,9 @@ class ReleaseTests(unittest.TestCase):
         render = guard.render
         documents = render(stage)
         for cpu, memory, refusal in (
-            ("18000m", "32768Mi", None),
-            ("19", "32Gi", "matting alone exceeds.*24 CPU or 50 GiB"),
-            ("18", "33Gi", "matting alone exceeds.*24 CPU or 50 GiB"),
+            ("17000m", "32768Mi", None),
+            ("18", "32Gi", "matting alone exceeds.*24 CPU or 51 GiB"),
+            ("17", "33Gi", "matting alone exceeds.*24 CPU or 51 GiB"),
             ("500m", "32Gi", "offline render must keep 32 GiB"),
             ("18mcpu", "32Gi", "invalid Kubernetes CPU limit"),
             ("18", "32GB", "invalid Kubernetes memory limit"),
@@ -364,7 +364,11 @@ class RenderOverlayTests(unittest.TestCase):
         self.write(self.render / "matting-pending", "../app")
         self.write(self.pending / "activation", "render")
         self.write(self.pending / "activation/render", "../../../../studio-render/matting-pending")
-        (self.render / "ks.yaml").write_text(f"spec:\n  path: ./{guard.STUDIO_PATH.with_name('studio-render')}/app\n")
+        self.write_live("matting-pending", wait=True)
+
+    def write_live(self, overlay, *, wait):
+        path = f"./{guard.STUDIO_PATH.with_name('studio-render')}/{overlay}"
+        (self.render / "ks.yaml").write_text(yaml.safe_dump({"spec": {"path": path, "wait": wait}}))
 
     def write(self, path, base=None, patches=()):
         path.mkdir(parents=True, exist_ok=True)
@@ -392,11 +396,12 @@ class RenderOverlayTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "segmentation activation must build on the matting render overlay"):
             guard._check_render_overlays(self.studio, self.pending)
 
-    def test_live_render_must_stay_on_base(self):
-        path = self.render / "ks.yaml"
-        path.write_text(f"spec:\n  path: ./{guard.STUDIO_PATH.with_name('studio-render')}/matting-pending\n")
-        with self.assertRaisesRegex(ValueError, "live studio-render Flux path must stay on the base"):
-            guard._check_render_overlays(self.studio, self.pending)
+    def test_live_render_must_wait_on_matting_only(self):
+        for overlay, wait in (("app", True), ("matting-pending", False)):
+            with self.subTest(overlay=overlay, wait=wait):
+                self.write_live(overlay, wait=wait)
+                with self.assertRaisesRegex(ValueError, "live studio-render Flux stage must wait on the matting-only overlay"):
+                    guard._check_render_overlays(self.studio, self.pending)
 
     def test_activation_must_reference_its_render_substage(self):
         self.write(self.pending / "activation")

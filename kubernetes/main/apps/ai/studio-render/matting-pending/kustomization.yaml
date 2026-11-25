@@ -1,4 +1,4 @@
-# Dormant. Apply this CPU split before the staged Studio worker sidecar.
+# Reduce the offline budget before the matte worker and sidecar start.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -10,4 +10,4 @@ patches:
     patch: |-
       - op: replace
         path: /spec/values/controllers/studio-render/containers/app/resources/limits/cpu
-        value: "18"
+        value: "17"

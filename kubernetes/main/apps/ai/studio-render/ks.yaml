@@ -10,12 +10,13 @@ spec:
   commonMetadata:
     labels:
       app.kubernetes.io/name: studio-render
-  path: ./kubernetes/main/apps/ai/studio-render/app
+  path: ./kubernetes/main/apps/ai/studio-render/matting-pending
   prune: true
   sourceRef:
     kind: GitRepository
     name: haynes-ops
     namespace: flux-system
-  wait: false
+  # Matte deployment waits for the offline CPU split and encoder to be live.
+  wait: true
   interval: 30m
-  timeout: 5m
+  timeout: 22m
