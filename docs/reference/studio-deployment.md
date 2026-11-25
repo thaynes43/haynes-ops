@@ -1,9 +1,11 @@
 # Studio LAN deployment
 
 [OP434](https://work.haynesnetwork.com/work_packages/434) installed Studio in
-`ai`. [OP956](https://work.haynesnetwork.com/work_packages/956) adds the queue worker,
-its credential registration and a new release pin. The queue rollout and checks
-below are expected until the coordinator records results.
+`ai`. [OP956](https://work.haynesnetwork.com/work_packages/956) adds the queue worker
+and its credential registration. [OP957](https://work.haynesnetwork.com/work_packages/957)
+pins the release with the finished-production importer and adds two imports and a
+scoped playback proof. The OP957 rollout and proof below are **Expected** until
+the coordinator records their results.
 
 `https://studio.haynesops.com` uses the internal Traefik tier, the
 `internal.haynesops` DNS target and the namespace's wildcard certificate.
@@ -47,8 +49,16 @@ Both processes mount `data/studio/build-stage-v1` from the same export at
 `/build-stage`, read-write, as `STUDIO_BUILD_STAGE_ROOT`. The worker builds
 there and the API validates and publishes the resulting delivery. Both use the
 same `STUDIO_BUILD_REVISION=git:<commit>`. The worker records the API image
-digest as `STUDIO_BUILD_IMAGE_DIGEST` and mounts the matching source release's
-model licence register from a Kustomize ConfigMap.
+digest as `STUDIO_BUILD_IMAGE_DIGEST`. The API and worker mount the same
+immutable `studio-model-licences-<digest prefix>` ConfigMap, copied from the
+pinned release. A register change ships with a new image digest, changing
+the ConfigMap name and both Deployment volume references together. Kubernetes
+rejects an in-place edit because the register is immutable. Flux keeps older
+register ConfigMaps so the current worker can still mount its version if its
+replacement is held at the registration gate or during rollback.
+The API reads `docs/reference/model-licences.json` relative to its
+`/opt/studio` working directory. The worker reads
+`STUDIO_MODEL_REGISTER=/etc/studio/model-licences.json`.
 
 Worker egress allows cluster DNS, the Studio API on TCP 8000, the Wan product
 Service on TCP 8080 and Wyoming Whisper on TCP 10300. The API admits the
@@ -139,12 +149,18 @@ registration Job use provisional settings.
 
 | Workload | Measured RSS | Mean CPU in smoke | CPU request | Memory request / limit |
 | --- | ---: | ---: | ---: | ---: |
-| API | 127.5 MiB | 1.5m | 100m | 160 MiB / 320 MiB |
-| MCP | 63.1 MiB | 1.5m | 50m | 96 MiB / 192 MiB |
+| API | 127.5 MiB | 1.5m | 100m | 160 MiB / 640 MiB |
+| MCP | 63.1 MiB | 1.5m | 50m | 96 MiB / 320 MiB |
 | Web | 9.4 MiB | below sampling resolution | 25m | 16 MiB / 32 MiB |
 | Migration Job | 74.3 MiB | 1.14 CPU-seconds in 9.99 s | 100m | 96 MiB / 192 MiB |
 | Registration Job | Pending | Pending | 50m | 64 MiB / 192 MiB |
 | Queue worker | Pending | Pending | 250m | 2 GiB / 8 GiB |
+
+The API and MCP memory limits include headroom for the maximum photo
+upload measured on [Studio PR 102](https://github.com/thaynes43/haynes-studio/pull/102)
+at 346 MiB and 173 MiB respectively. That upload implementation is outside this
+pin. The `ai` namespace had no ResourceQuota at OP957 preflight. Its
+`default-cpu-request` LimitRange set a default CPU request of 50m.
 
 CR-22 divides D18's 24 vCPU limit into 20 for `studio-render` and 4 for
 `studio-worker`. Both use the same low priority. The worker runs one build
@@ -156,7 +172,7 @@ decoded frame buffers and media subprocesses. Sample worker CPU, memory
 and restarts during the first authorized build.
 [Studio mix measurements](https://github.com/thaynes43/haynes-studio/blob/c75086b85a3278ead1d42b7a26da3b70da8b5793/docs/reference/studio-mix.md)
 
-## Before merging the installation PR
+## Before the initial install
 
 The coordinator runs the rollout. Confirm `database/cloudnative-pg-cluster`
 has all three Postgres instances ready, `ai/studio-database` and
@@ -187,7 +203,9 @@ kubectl -n ai wait --for=condition=Ready --timeout=2m \
 
 ## Reconcile and verify
 
-After merge, track the same `main@sha1:<merge SHA>` through the Flux
+For the OP957 pin and imports, follow the [archive rollout](#roll-out-the-archive-imports).
+
+After the initial installation merge, track the same `main@sha1:<merge SHA>` through the Flux
 Kustomizations below. The reconciliations can also run automatically
 once Flux sees the commit. Record Job success before recording the
 application rollout. The API, MCP and web wait on migration. Registration
@@ -391,10 +409,9 @@ else:
 
 Finish with a browser round trip using an existing allowed human account.
 Verify `/v1/me` identifies the person after sign-in and returns 401 after
-sign-out. For scoped playback, use an authorized private fixture and its
-existing scoped caller. Verify a byte Range returns 206 for an in-scope
-hash and the same request returns 404 for an out-of-scope hash. Record
-statuses, scope and the fixture's hash. Verify OP956's worker below. The
+sign-out. The [archive playback Job](#roll-out-the-archive-imports) captures scoped
+HTTP evidence. Record the signed-in phone playback and creative verdict
+separately. Verify OP956's worker below. The
 broader concurrency, recovery and private delivery checks stay with
 [OP437](https://work.haynesnetwork.com/work_packages/437).
 
@@ -513,25 +530,16 @@ kubectl -n ai logs deploy/studio-worker -c worker --since=10m   | grep -E '/inte
 kubectl -n ai top pod -l app.kubernetes.io/name=studio-worker --containers
 ```
 
-The pinned release has no supported CLI, HTTP or MCP command that installs a
-production and its assets into both the API's store and catalog. The
-`studio legacy import` command prepares the canonical story exchange.
-`python -m haynes_studio.importer` can verify and publish source bytes into a
-filesystem store and write library records. The server-side
-`db.drafts.import_draft` helper registers the production, draft and asset
-version metadata in one transaction. A private import harness still needs
-to join those steps: publish the verified canonical blobs create-only into
-the installed store, register the matching metadata and validate the
-draft's pinned photo, voice and other required assets. Before enqueue,
-`GET /v1/stories/<story-id>/estimate` should report a buildable reference set.
-With an authorized fixture and existing credentials, use
-`POST /v1/stories/<story-id>/runs` with the current `If-Match` and a fresh
-`Idempotency-Key`. Read `GET /v1/runs/<run-id>` until the claim and any
-natural Wan refusal are visible. For a refusal, capture the return to
+The OP957 imports publish finished deliveries for playback. Their input pins have
+metadata only, and the recovered Winter Menu run has no board snapshot. For a
+separately authorized build fixture, supply its inputs through the existing asset
+paths and pin the resulting versions in a buildable draft. Use
+`GET /v1/stories/<story-id>/estimate` to check it before queueing. With an
+authorized caller, send `POST /v1/stories/<story-id>/runs` with the current
+`If-Match` and a fresh `Idempotency-Key`. Read the run until the claim and
+any normal Wan refusal are visible. For a refusal, record the return to
 `queued`, its retry time and the same run's subsequent claim after Wan clears.
-Record the import prerequisite if it has not been completed.
-[Private input importer](https://github.com/thaynes43/haynes-studio/blob/c75086b85a3278ead1d42b7a26da3b70da8b5793/docs/reference/private-input-import.md)
-[Catalog import boundary](https://github.com/thaynes43/haynes-studio/blob/c75086b85a3278ead1d42b7a26da3b70da8b5793/docs/reference/studio-api.md#draft-metadata-and-catalog)
+[Private input importer](https://github.com/thaynes43/haynes-studio/blob/f30445ff312bcdb04519765e9000a5fe1295c223/docs/reference/private-input-import.md)
 
 After the fixture settles, use a temporary GitOps change to set the worker
 Deployment's `spec.replicas` to zero. Reconcile and verify the pods are gone.
@@ -553,9 +561,12 @@ kubectl -n ai rollout status deploy/studio-api --timeout=5m
 
 For the next version, use one successful Studio image build. Check the revision
 and both digests anonymously. Update the API, MCP, worker and both Jobs to the
-same API digest. Update the web digest, both build revision settings, the
-worker's provenance digest and its model licence register from that revision.
-Update each Job name and the corresponding Flux health check together.
+same API digest. Update the published pair in `studio/release.yaml`, both build
+revision settings, the worker's provenance digest and the shared model licence
+register and both register volume references for the new digest. Update each
+changed Job name and its Flux health check together.
+Retire the OP957 one-shot Job graph and its release-guard entries together
+after recording proof and revoking the two keys.
 For a changed Job template or an exhausted retry at the same image digest,
 use the digest-based name with a new suffix such as `-r2`.
 
@@ -590,3 +601,248 @@ database at `0003`. Roll back the app behavior using a reviewed compatible
 Studio build that carries the applied Alembic revision. Promote its full
 image set using the normal ordering and re-run the probes. Preserve the
 NFS store, build stage, database and credential.
+
+## Roll out the archive imports
+
+**Expected** for OP957. Use the published [Studio images run](https://github.com/thaynes43/haynes-studio/actions/runs/45534812883)
+for `f30445ff312bcdb04519765e9000a5fe1295c223`. The API, MCP, worker and every
+Job use the Python image digest in [the release record](../../kubernetes/main/apps/ai/studio/release.yaml).
+The web uses the matching web digest. An anonymous GHCR pull verified both
+digests and both image revision labels.
+
+Keep `STUDIO_GO_LIVE_APPROVER_SUBJECTS='[]'`. An authorized signed-in person
+with a valid CSRF header receives 403 `approval.approver_not_configured`.
+A Studio agent key receives 403 `approval.approver_not_permitted` before the
+run checks. An imported run has a legacy marker and an otherwise eligible
+approver receives 422 `approval.legacy_run`. The API uses the shared, read-only
+licence register described above. No additional go-live environment value is
+needed.
+
+Change the build revision only while the queue is empty. This build has no
+pause route (it arrives with a later pin), so check instead that no run is
+queued or running and that the worker is idle, and do not queue anything until
+the roll-out is done:
+
+```sh
+(
+  set -eu
+  kubectl -n ai exec -i deploy/studio-api -c api -- python - <<'PY'
+import os, psycopg
+with psycopg.connect(os.environ["STUDIO_DATABASE_URL"]) as conn:
+    rows = conn.execute(
+        "SELECT document->>'status', count(*) FROM studio.runs GROUP BY 1 ORDER BY 1").fetchall()
+print("runs by status:", rows or "none")
+assert not [status for status, _ in rows if status in ("queued", "running", "held")], rows
+PY
+  kubectl -n ai logs deploy/studio-worker -c worker --since=2m | grep -c 'work/claim "HTTP/1.1 204'
+)
+```
+
+The first command must print no queued, running or held run; the second counts
+the worker's idle polls in the last two minutes and must be above zero. Check
+the existing database and OIDC projections and the LAN route before
+reconciliation. While the migration runs, check from the LAN that the old app
+still serves 200 at `/` and 401 at `/v1/me`.
+
+The cluster reconciles `ai/studio-migration` after the database and OIDC
+dependencies. The application rollout and worker registration follow the
+migration. The worker also waits for the existing `studio-render` HelmRelease
+health check and the healthy app. The old API replicas serve during migration.
+
+The independent `studio-archive-access` Kustomization installs the policies
+for both imports, key registration and verification before the Jobs start.
+The migration and network policy stage gate One More Meeting. Its completed
+Job and the migration gate The Winter Menu. Both completed imports and the
+healthy app gate key registration. The proof Job waits for key registration.
+Use the same applied Git revision for every Flux gate. A failed import stops
+the dependent steps while the app's own migration-based rollout can continue.
+
+From the LAN, run these commands before and during the migration.
+
+```sh
+test "$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' https://studio.haynesops.com/)" = 200
+test "$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' https://studio.haynesops.com/v1/me)" = 401
+```
+
+From the coordinator session, use the following commands to reconcile and
+record evidence. Flux may begin dependent stages automatically. Once proof
+and registration begin, keep them together within the keys' expiry window.
+
+```sh
+(
+set -eu
+suffix=1aa9b4736da9
+flux reconcile kustomization cluster-apps -n flux-system --with-source
+kubectl -n ai wait --for=condition=Ready --timeout=2m \
+  externalsecret/studio-migrator-db externalsecret/studio-runtime-db externalsecret/studio-oidc-client
+flux reconcile kustomization studio-migration -n ai
+kubectl -n ai wait --for=condition=complete --timeout=5m "job/studio-migrate-$suffix"
+kubectl -n ai logs "job/studio-migrate-$suffix" -c migrate
+flux reconcile kustomization studio -n ai
+for workload in api mcp web; do
+  kubectl -n ai rollout status "deploy/studio-$workload" --timeout=5m
+done
+flux reconcile kustomization studio-worker-registration -n ai
+kubectl -n ai wait --for=condition=complete --timeout=5m "job/studio-register-worker-$suffix"
+kubectl -n ai logs "job/studio-register-worker-$suffix" -c register
+flux reconcile kustomization studio-worker -n ai
+kubectl -n ai rollout status deploy/studio-worker --timeout=5m
+
+flux reconcile kustomization studio-archive-access -n ai
+for archive in one-more-meeting winter-menu; do
+  flux reconcile kustomization "studio-import-$archive" -n ai
+  kubectl -n ai wait --for=condition=complete --timeout=5m "job/studio-import-$archive-$suffix"
+  kubectl -n ai logs "job/studio-import-$archive-$suffix" -c import
+done
+flux reconcile kustomization studio-playback-registration -n ai
+flux reconcile kustomization studio-playback-proof -n ai
+kubectl -n ai wait --for=condition=complete --timeout=2m "job/studio-verify-playback-$suffix"
+kubectl -n ai logs "job/studio-verify-playback-$suffix" -c verify
+flux get kustomizations -n ai
+kubectl -n ai get pod -l 'app.kubernetes.io/name in (studio-api,studio-web,studio-mcp,studio-worker)' \
+  -o 'custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,READY:.status.containerStatuses[0].ready,IMAGE:.status.containerStatuses[0].imageID'
+)
+```
+
+Expect Alembic `0004_go_live_approvals`, migration TLS and HBA checks, and
+the unchanged worker token registration result. Record the import JSON
+lines with run and delivery IDs, counts, sizes and hashes. Expect 10 files
+and 10,102,482 bytes for One More Meeting and five files and 73,638,915 bytes
+for The Winter Menu. Their ConfigMaps contain the exact two `files` JSON
+objects from [the OP942 receipt](https://github.com/thaynes43/haynes-studio/blob/f33073c4a29cd0ea27efe6e452198ff753e8ac62/titles/one-more-meeting/run-evidence.json).
+The release guard and the import Jobs check each receipt's text SHA-256.
+The importer verifies every archive member independently.
+
+The proof dials the internal Traefik HTTPS Service with the Studio host in
+TLS and HTTP. It checks the certificate and uses the pinned media identities.
+Expect a scoped production list, imported run marker and delivery for each
+key, a 200 HEAD and a 206 open-ended whole proxy, first, past-midpoint and suffix ranges. The
+partial bytes must equal slices of the verified whole proxy. One More Meeting
+must match 1,789,344 bytes and
+`63dbb1e26287360ed6c4a0422dbdbfa250ad981c74e9719133d4dfe72d809d1b`.
+Both masters and the Winter Menu proxy must match their delivery records and
+archive receipts. Expect 404 for the other production's key and for an
+unknown hash, 401 without a key, and 403 for approval, draft edit and run
+queue with each key. Record the Job's JSON of statuses, ranges, lengths and
+hashes separately from [phone playback](https://work.haynesnetwork.com/work_packages/944)
+and Tom's verdict.
+
+### Retry an import or proof
+
+Each import mounts the archive read-only and publishes create-only into
+`api-store-v1`. A receipt, identity or pre-publication check failure leaves the
+database and store intact. A store or commit failure can leave complete,
+unreferenced blobs and staging files. The final database transaction rolls
+back the affected rows on failure. Keep the original archive and receipts,
+leave the store's retention in place and investigate any conflict.
+After correcting the cause, give the failed Job a new `-rN` name and update
+its Flux health check in Git. Preserve the digest, receipt and source
+directory basename. A repeat of a committed import verifies the published
+blobs and reports `already_imported` with exit code 0.
+
+The admin command accepts an absolute future expiry and has no minimum TTL.
+The registration Job uses five minutes to cover the dependent proof's
+two-minute deadline and Flux scheduling. If registration partially succeeds
+or the proof expires, revoke any registered IDs first. For a repeat, change
+both registration and proof Job names and gates to the next `-rN` suffix and
+give each Password generator, ExternalSecret and target Secret a fresh name.
+Update the two Jobs' projections in the same Git change. Reusing a revoked key
+is refused. New proof keys still grant only `read` on their respective
+production.
+
+### Revoke the playback keys
+
+After proof succeeds or stops, revoke the key IDs reported by the registration
+Job using the migrator projection. The following one-off coordinator Job uses
+the same pinned image and restricted DB policy and mounts only its scratch
+directory. Leave the archived films, registered worker token and media intact.
+
+```sh
+(
+set -eu
+suffix=1aa9b4736da9
+registration="studio-register-playback-$suffix"
+revoke="studio-revoke-playback-$suffix"
+ids=$(kubectl -n ai logs "job/$registration" -c register | jq -Rsc '
+  split("\n") | map(fromjson? | select(keys == ["key_id"]) | .key_id) | unique
+')
+jq -en --argjson ids "$ids" '
+  $ids | length >= 1 and length <= 2 and
+  all(.[]; type == "string" and test("^key_[0-7][0-9A-HJKMNP-TV-Z]{25}$"))
+' >/dev/null
+kubectl -n ai get job "$registration" -o json | jq --arg name "$revoke" --argjson ids "$ids" '
+  {
+    apiVersion: "batch/v1", kind: "Job",
+    metadata: {name: $name, namespace: "ai"},
+    spec: {
+      activeDeadlineSeconds: 120, backoffLimit: 0,
+      template: {
+        metadata: {labels: {"app.kubernetes.io/name": "studio-playback-registration"}},
+        spec: .spec.template.spec
+      }
+    }
+  }
+  | .spec.template.spec.volumes |= map(select(.name != "keys"))
+  | .spec.template.spec.containers[0] |= (
+      .name = "revoke"
+      | .args = ["for id in \"$@\"; do studio-api-admin revoke \"$id\"; done", "revoke"] + $ids
+      | .volumeMounts |= map(select(.name != "keys"))
+    )
+' | kubectl create -f -
+kubectl -n ai wait --for=condition=complete --timeout=2m "job/$revoke"
+kubectl -n ai logs "job/$revoke" -c revoke
+)
+```
+
+For a retried registration, set `registration` to its actual Job name and use
+a fresh `revoke` Job name. The API enforces the five-minute expiry on each
+authentication, including when a revocation Job fails or is delayed. Revoke
+explicitly after the attempt and record the Job's key IDs and `revoked_at`
+timestamps on OP957. A registration that issued zero IDs needs no revocation
+Job. Revoking is required even though the keys have expired: an expired key
+that was never revoked could be given a new expiry by an operator's
+`register --replace-grants`, and a revoked one cannot. The proof keys' Secrets
+are owned by their ExternalSecrets and nothing in that stage is exempt from
+pruning, so the follow-up change that removes the one-shot stages from Git
+(the two imports, key registration and the proof, with their release-guard
+entries) also removes the generators, the ExternalSecrets and the Secrets.
+Make that change once the proof is recorded.
+
+### Roll back the OP957 pin
+
+Before `0004_go_live_approvals` commits, the coordinator can revert the OP957
+squash commit and reconcile `cluster-apps`. After it commits, retain the schema
+and use a corrective GitOps PR. Stop any pending proof stages and revoke issued
+keys while the registration metadata and DB policy are available. Remove the
+one-shot OP957 Kustomizations, their manifests and their release-guard entries
+together. Keep the empty go-live approver list and matching register.
+
+A compatible pre-import image pair is the successful
+[Studio images run for `df6929a`](https://github.com/thaynes43/haynes-studio/actions/runs/45533416204).
+Use revision `df6929affb2c4dd4849a28d9b962a84fd66c14ae`, the API digest
+`sha256:ef46ff3d9e49c89c0f0bd1eee0490a596556a2a4f56b61fada8462b230b1cf21`
+and web digest
+`sha256:67c22c46b2d656e28ac7a1c45e546307534cfc34f5ffdd6e29622439778beff5`.
+Both resolved anonymously under that revision. Update the Job names and
+health checks with the pin, reconcile migration, app, registration and worker
+in the same order, and verify `0004_go_live_approvals`, app readiness and LAN
+responses. The earlier OP956 migration image cannot resolve revision `0004`:
+never restore its migration Job, or `studio-migration` fails and the app stays
+on whatever it had.
+
+**After an import has committed, prefer fixing forward.** The imported rows use
+record shapes that first exist in `f30445f`: the recovered delivery of The
+Winter Menu, the archive-import marker on both runs and the
+`recorded_without_media` marker on One More Meeting's pinned versions. A build
+older than `f30445f`, the `df6929a` pair above included, was never tested
+against them, and its reads of the two imported productions may fail
+validation with a 500 while the rest of the app keeps serving. The import is
+create-only and is not undone by any rollback. If the pin must go back, say on
+the story that the imported productions may be unreadable until the pin moves
+forward again, and check `GET /v1/productions` and one imported story with a
+signed-in session before leaving it there.
+
+This rolls back the running code and reconciles its workload configuration.
+The imported rows, hashes and content-addressed blobs stay in PostgreSQL and
+the store. The read-only originals on NFS remain intact. A pin revert also
+leaves database key grants in place until expiry or explicit revocation.

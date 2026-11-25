@@ -4,7 +4,3 @@ kind: Kustomization
 resources:
   - deployment.yaml
   - networkpolicy.yaml
-configMapGenerator:
-  - name: studio-worker-model-licences
-    files:
-      - model-licences.json

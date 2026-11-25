@@ -42,7 +42,8 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: api
-          image: ghcr.io/thaynes43/haynes-studio@sha256:b8460c3da82287ceae6162da8e58b818c478da1ece86ed493b97d12d2a6a38bb
+          image: ghcr.io/thaynes43/haynes-studio@sha256:1aa9b4736da902031613d957d5db3ddd17831c6cc344c5e108d761b485f3501c
+          workingDir: /opt/studio
           command: [sh, -eu, -c]
           args:
             - |
@@ -79,7 +80,7 @@ spec:
             - name: STUDIO_STORE_ROOT
               value: /studio
             - name: STUDIO_BUILD_REVISION
-              value: git:c75086b85a3278ead1d42b7a26da3b70da8b5793
+              value: git:f30445ff312bcdb04519765e9000a5fe1295c223
             - name: STUDIO_BUILD_STAGE_ROOT
               value: /build-stage
             - name: STUDIO_PUBLIC_ORIGIN
@@ -95,6 +96,8 @@ spec:
                   key: STUDIO_OIDC_CLIENT_SECRET
             - name: STUDIO_OIDC_ALLOWED_GROUPS
               value: '["authentik Admins"]'
+            - name: STUDIO_GO_LIVE_APPROVER_SUBJECTS
+              value: '[]'
           ports:
             - name: http
               containerPort: 8000
@@ -114,7 +117,7 @@ spec:
             failureThreshold: 3
           resources:
             requests: {cpu: 100m, memory: 160Mi}
-            limits: {memory: 320Mi}
+            limits: {memory: 640Mi}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -126,6 +129,10 @@ spec:
             - name: media
               mountPath: /build-stage
               subPath: data/studio/build-stage-v1
+            - name: model-licences
+              mountPath: /opt/studio/docs/reference/model-licences.json
+              subPath: model-licences.json
+              readOnly: true
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -133,6 +140,9 @@ spec:
           nfs:
             server: gasha01.haynesnetwork
             path: /hdd-nfs-repl
+        - name: model-licences
+          configMap:
+            name: studio-model-licences-1aa9b4736da9
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi

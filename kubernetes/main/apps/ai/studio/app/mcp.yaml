@@ -33,7 +33,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: mcp
-          image: ghcr.io/thaynes43/haynes-studio@sha256:b8460c3da82287ceae6162da8e58b818c478da1ece86ed493b97d12d2a6a38bb
+          image: ghcr.io/thaynes43/haynes-studio@sha256:1aa9b4736da902031613d957d5db3ddd17831c6cc344c5e108d761b485f3501c
           command: [studio-mcp]
           args:
             - --host
@@ -56,7 +56,7 @@ spec:
             periodSeconds: 10
           resources:
             requests: {cpu: 50m, memory: 96Mi}
-            limits: {memory: 192Mi}
+            limits: {memory: 320Mi}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
