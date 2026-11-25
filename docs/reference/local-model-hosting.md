@@ -90,14 +90,10 @@ calibrated profile. Flux can pick up a merge on its interval. Do each merge
 with its prechecks complete and the lane quiesced, and reconcile to capture the
 exact revision.
 
-The PRs form a stack reviewed against `main`. After each squash merge rebase
-the next PR so its diff contains only its own step. Save the original A and
-B heads before updating branches. Use the original predecessor as the
-`git rebase --onto origin/main <original-predecessor-head>` boundary on the
-original next branch. Push with `--force-with-lease` to that branch and require
-its checks at the rebased head. Repeat for C after B. At C verify the diff
-removes both temporary references from `kubernetes/main/apps/ai/kustomization.yaml`.
-A pre-B merge base would hide that retirement from the diff.
+After A and B squash-merge, merge `origin/main` into C's existing branch and
+push normally. Verify C's diff against main removes both temporary references
+from `kubernetes/main/apps/ai/kustomization.yaml`. Require checks on the exact
+merge and calibration head.
 
 ### Prepare evidence and verify the image
 
@@ -251,7 +247,9 @@ print(json.dumps({"id": job["id"], "state": job["state"]}))
 **Rollback A.** Before B, merge a revert of A and reconcile `cluster-apps`.
 Confirm the policy Kustomization and the Cilium policy disappear through Flux
 inventory pruning, the Job remains absent, and the dormant gate and both UIDs
-still pass. If B was already applied, retire B first.
+still pass. If B was already applied, retire B first. If the dormant gate finds
+a retained local-model journal from a later activation, use the
+[hold-clearing step](#clear-a-local-model-hold) before declaring recovery.
 
 ### B. Provision and read back the weights
 
@@ -344,7 +342,8 @@ logs. If the Job is still running, capture its current state and merge a
 revert that removes the weights Kustomization from the `ai` inventory, then
 reconcile `cluster-apps`. Flux prunes the Job and hashed ConfigMap. Check that
 the Job and its pods are gone, the policy is still present, the PVC UID is the
-same and the dormant health gate passes. Preserve any published revision and
+same and the dormant health gate passes. Use the [hold-clearing step](#clear-a-local-model-hold)
+for a retained local-model journal if it blocks that gate. Preserve any published revision and
 account for the exact bytes and inodes of every `.quarantine-*` attempt.
 Require fresh capacity evidence and a reviewed new Job attempt before retry.
 On success leave the completed Job in desired state through the read-back and
@@ -354,12 +353,21 @@ calibration. C will prune the completed Job, ConfigMap and download policy.
 
 Check the Job succeeded, the read-back and disk/inode reserves pass and Wan
 is still dormant. Check node headroom for an 8 GiB request and 16 GiB limit,
-including other workloads. Confirm known card ownership. With producers
-paused, drain ordinary ComfyUI cache under the existing lease, then collect
-Card A readings. Choose the highest stable drained reading rounded up as an
+including other workloads. Starting with C, the Wan pod is Ready only when
+its local-model sidecar is Ready. Any sidecar restart briefly removes Wan
+from its Service, including access from the Studio worker, Open WebUI and the
+viewing route. A persistent sidecar failure keeps it off the Service.
+Run the [Wan-pod change check](#wan-pod-change-check) before every subsequent
+Wan-pod change. With producers paused, confirm known card ownership, drain
+ordinary ComfyUI cache under the existing lease, and collect Card A readings
+and its engine process baseline. Choose the highest stable drained reading rounded up as an
 integer in 1–512 MiB. Edit the marked `unloaded_max_mib` line in
 [the profile](../../kubernetes/main/apps/ai/wan-video/local-model-pending/activation/profile.yaml)
-in PR C before merging. If no stable readings fit, keep Wan dormant.
+in PR C before merging. If no stable readings fit, keep Wan dormant. Review
+every Card A PID and process name in `calibration.json` against the engine
+ownership checks and record the attribution in the private operator note.
+An empty process list is valid. Unknown or unidentifiable processes stop
+calibration. Keep the unedited JSON with the approved profile for rollback.
 
 ```bash
 (
@@ -367,10 +375,19 @@ in PR C before merging. If no stable readings fit, keep Wan dormant.
   umask 077
   evidence=${OP442_EVIDENCE:?}
   kubectl -n ai exec -i deploy/wan-video -c api -- env PYTHONPATH=/config/video python -B - \
-    > "$evidence/calibration.jsonl" <<'PY'
-import json, time
+    > "$evidence/calibration.json" <<'PY'
+import json, subprocess, time
+from pathlib import Path
 from urllib.request import urlopen
 import api
+
+card = "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a"
+
+def compute_apps():
+    return subprocess.check_output(
+        ["nvidia-smi", "--id=" + card, "--query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory",
+         "--format=csv,noheader,nounits"], text=True, timeout=10,
+    )
 
 lease = api.acquire_compute()
 if lease is None:
@@ -388,15 +405,25 @@ with lease:
         raise SystemExit("Rack GPUs are not idle")
     api.require_empty_queue()
     api.engine("/free", {"unload_models": True, "free_memory": True})
+    processes = compute_apps()
+    samples = []
     for _ in range(15):
         api.require_empty_queue()
         sample = api.gpu_sample()
         if not api.gpus_idle(sample):
             raise SystemExit("Unexpected GPU activity during calibration")
-        print(json.dumps(sample), flush=True)
+        sample_a = next(gpu for gpu in sample["gpus"] if gpu["uuid"] == card)
+        sample_a["gpu_uuid"] = sample_a.pop("uuid")
+        samples.append({"time": sample["time"], **sample_a})
         time.sleep(1)
+    api.require_empty_queue()
+    if compute_apps() != processes:
+        raise SystemExit("Card A compute processes changed during calibration")
+    print(json.dumps({"gpu_uuid": card, "samples": samples, "compute_apps_csv": processes,
+                      "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip()}))
 PY
-  jq -r '.gpus[] | select(.uuid == "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a") | .memory_mib' "$evidence/calibration.jsonl"
+  jq -r '.samples[].memory_mib' "$evidence/calibration.json"
+  jq -r '.compute_apps_csv' "$evidence/calibration.json"
 )
 ```
 
@@ -407,12 +434,27 @@ PVC in a retiring inventory could delete the claim and leave Wan Pending.
 The activation initializer preserves the compute-lock inode. The sidecar
 mounts both weights read-only and has no second device allocation.
 
+Save the profile from the calibrated, checked PR head before merging. The
+hold-clearing command needs that exact profile if the mount has been removed.
+
+```bash
+(
+  set -euo pipefail
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  profile=kubernetes/main/apps/ai/wan-video/local-model-pending/activation/profile.yaml
+  awk 'found { sub(/^    /, ""); print } /^  local-model.json: \|$/ { found=1 }' "$profile" |
+    jq -e . > "$evidence/c-approved-profile.json"
+)
+```
+
 After the calibrated PR checks pass, declare activity with
 `agent-run declare-activity start "Wan local model activation" --scope ai,talosw01,wan-video`.
 Merge C and reconcile the parent and existing Wan Kustomization. Each of the
 four containers must be Ready on the new pod, and init containers must have
-completed. The sidecar must answer its private listener probe before the Wan
-gate passes. Mounted profile discovery and the legacy `/health` can respond
+completed. The sidecar must answer its private listener probe, and the
+Service must have a Ready endpoint for that pod. A sidecar restart briefly
+removes the Ready endpoint even if the other containers stay healthy. Mounted profile discovery and the legacy `/health` can respond
 while the sidecar is starting. An otherwise admissible legacy Wan, typed I2V,
 S2V or Foley request then reaches the ledger as failed with
 `local_model_unavailable` before engine work. Check the CPU outage test
@@ -442,8 +484,12 @@ settled.
       {uid:.metadata.uid, containers:[.status.containerStatuses[] | {name,image,imageID,ready}]}
     ' > "$evidence/c-pod.json"
   [[ $(kubectl -n ai get pvc wan-video -o jsonpath='{.metadata.uid}') == "$(cat "$evidence/pvc.uid")" ]]
+  kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |
+    jq -e --arg uid "$(jq -r .uid "$evidence/c-pod.json")" '
+      any(.items[].endpoints[]; .targetRef.uid == $uid and .conditions.ready == true)'
   for name in wan-local-model-weights wan-local-model-download-policy; do
-    kubectl -n ai wait --for=delete "kustomization/$name" --timeout=120s
+    retired=$(kubectl -n ai get "kustomization/$name" --ignore-not-found -o name)
+    [[ -z "$retired" ]]
   done
   job=$(kubectl -n ai get job wan-local-model-provision --ignore-not-found -o name)
   policy=$(kubectl -n ai get ciliumnetworkpolicy wan-local-model-provision --ignore-not-found -o name)
@@ -462,15 +508,88 @@ settled.
 )
 ```
 
-**Rollback C.** Quiesce producers and check the Wan, Foley, queue and
-sidecar listener gates. Restore sidecar readiness before attempting release
-proof if it is unavailable. An unavailable sidecar still blocks Wan and
-Foley admission while the profile is mounted. Preserve any hold and resolve
-unknown work with the Wan recovery procedure. Once ownership is clear the
-rollback command below submits a tracked unload if the child is resident,
-validates its release receipt and proves no child, reservation or pending
-operation remains under the lease. It drains cache only after proving
-residency is clear. Stop on a failed proof and preserve the journal.
+#### Wan-pod change check
+
+Before every later Wan-pod change, pause the Studio worker and direct
+producers. Confirm there is one Ready Wan pod, four Ready containers if
+active, and a Ready Service endpoint for that pod. Save the pod UID, image,
+restart counts and listener status. Run the active health command below and
+review the empty queue, cleared residency and idle ownership before
+proceeding. On a dormant deployment use the three-container check and dormant
+health command from the [dormant gate](#gitops-revert-and-dormant-gate).
+Allow for a Service outage in the change window and repeat these checks
+after the replacement pod starts.
+
+```bash
+(
+  set -euo pipefail
+  uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
+    jq -er '.items | select(length == 1) | .[0] |
+      select(any(.status.conditions[]; .type == "Ready" and .status == "True")) |
+      select((.status.containerStatuses | length) == 4 and all(.status.containerStatuses[]; .ready)) |
+      .metadata.uid')
+  kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |
+    jq -e --arg uid "$uid" 'any(.items[].endpoints[]; .targetRef.uid == $uid and .conditions.ready == true)'
+  kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
+    jq '.items[].status.containerStatuses[] | {name, imageID, ready, restartCount}'
+  python3 -B scripts/wan-video/op442_smoke.py active
+  kubectl -n ai exec deploy/wan-video -c api -- nvidia-smi \
+    --query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory --format=csv
+)
+```
+
+#### Clear a local-model hold
+
+Keep all producers quiesced. Run the reviewed helper in the API container
+when a release latched `local_model_held`, or when a retained journal blocks
+the dormant path. When the profile is still mounted, the helper requires its
+sidecar to answer that no child exists. With the profile removed, it requires
+the socket path to be absent and three compute-process reads to show only the
+engine PIDs and names reviewed in the calibration for that boot, within their
+recorded memory. It requires three idle Card A memory readings at or below both
+the calibrated ceiling and the recorded memory baseline plus 4 MiB. The
+journal's load baseline takes precedence. If the hold predates a load
+baseline, the helper uses the highest recorded dormant calibration sample.
+The helper refuses an unavailable listener while the profile is mounted, a
+live child, ambiguous ownership, an occupied lease, a nonempty or unreadable
+queue, an active Wan or Foley job, or a separate render hold. For a Wan render
+hold, use the existing Wan recovery procedure first.
+
+Use the original reviewed calibration and the exact approved C profile. Keep
+the receipt and archived journal on the original PVC and link the receipt's
+ID and state hash in the private operator note. Record the operator, pod UID
+and reason for recovery there. The helper writes its proof before renaming
+`state.json` in place to `state.<UTC timestamp>-<id>.json`. On refusal,
+preserve the files and resolve the stated proof failure. On an interrupted
+command, read back the named receipt and archived journal before another
+attempt. This procedure leaves local request receipts in the ledger. Reuse
+of an unresolved request ID is unsafe. Start new work only after the health
+gate for the resulting active or dormant state.
+
+```bash
+(
+  set -euo pipefail
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  receipt=$(mktemp "$evidence/hold-clear.XXXXXXXX")
+  jq -en --slurpfile calibration "$evidence/calibration.json" \
+    --slurpfile profile "$evidence/c-approved-profile.json" \
+    '{calibration: $calibration[0], profile: $profile[0]}' |
+    kubectl -n ai exec -i deploy/wan-video -c api -- python -B /config/video/clear_local_model_hold.py |
+    tee "$receipt"
+)
+```
+
+#### Rollback C after the sidecar served
+
+Quiesce producers and check Wan, Foley, queue and sidecar listener health.
+Restore listener readiness if needed for release inspection. If the lane
+has a local-model hold, run [hold clearing](#clear-a-local-model-hold) first.
+If it has ordinary residency, the rollback helper submits the tracked unload,
+validates its receipt and proves no child, reservation or pending operation
+remains under the lease. It drains ordinary ComfyUI cache only after proving
+residency is clear. If the release latches a hold, preserve the journal and
+return to the hold-clearing step before continuing to the GitOps revert.
 
 ```bash
 (
@@ -480,75 +599,183 @@ residency is clear. Stop on a failed proof and preserve the journal.
 )
 ```
 
-After proof, merge a GitOps change restoring `wan-video/ks.yaml` to the dormant
-app path and the original 5-minute timeout without the activation health
-checks. Keep the finished provisioning inventories retired. Reconcile
-`cluster-apps` and `wan-video`, check one new three-container pod, the same
-PVC UID, the dormant health gate, no model container or profile and
-`local_model_not_installed`. The persistent weights and evidence remain
-available. End the activity declaration after the dormant lane is settled.
+#### Rollback C when the sidecar never became Ready
 
-## One private smoke window
+A bad image or missing weights can keep the sidecar from listening and leave
+the Service without a Ready endpoint. If rollout observation from pod creation
+shows the sidecar never became Ready, and the API container confirms
+`state.json` is absent, proceed directly to the GitOps revert. Every model load
+writes state before it starts a child. This path works without a sidecar
+listener or a local-model request. Current `ready: false` alone cannot establish
+that readiness was never reached. Cross-check the observed rollout with the
+pod's container states, events, current and previous sidecar logs, and
+EndpointSlices. A previous successful listener, a state file, or uncertain
+history requires the tracked rollback and, if held, the hold-clearing step.
 
-**Expected.** Use the active health gate, known idle ownership and the same
-producer pause and evidence directory. The smoke script stages only synthetic
-inputs generated by [smoke-inputs.py](../../scripts/studio-local-model/smoke-inputs.py).
-It uses loopback via pods/exec in `ai`. The 30-minute clock starts with the
-first leased load after input staging. Each admitted operation uses the same
-compute lease. Watch GPU ownership, utilization and temperature, and keep
-the terminal open through cleanup.
+Keep dispatch paused. Copy the exact failed pod name from the first command
+into `OP442_FAILED_POD`. A container that never started has no logs. When
+Kubernetes reports an exit, read the previous container logs. Keep these
+records private. Require the inside-container proof to succeed on the same pod.
+
+```bash
+(
+  set -euo pipefail
+  kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o wide
+  pod=${OP442_FAILED_POD:?Set OP442_FAILED_POD to the failed Wan pod name}
+  kubectl -n ai get pod "$pod" -o json |
+    jq -e '.status.containerStatuses[] | select(.name == "local-model" and .ready == false) |
+      {ready, started, restartCount, state, lastState}'
+  kubectl -n ai describe pod "$pod"
+  kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |
+    jq -e 'all(.items[].endpoints[]; .conditions.ready != true)'
+  status=$(kubectl -n ai get pod "$pod" -o json |
+    jq -ce '.status.containerStatuses[] | select(.name == "local-model")')
+  if jq -e '.state.running or .state.terminated' <<< "$status" > /dev/null; then
+    kubectl -n ai logs "$pod" -c local-model --tail=80
+  fi
+  if jq -e '.lastState.terminated' <<< "$status" > /dev/null; then
+    kubectl -n ai logs "$pod" -c local-model --previous --tail=80
+  fi
+)
+```
+
+```bash
+(
+  set -euo pipefail
+  pod=${OP442_FAILED_POD:?}
+  kubectl -n ai exec -i "$pod" -c api -- env PYTHONPATH=/config/video python -B - <<'PY'
+import os
+import api
+from clear_local_model_hold import check_idle
+
+lease = api.acquire_compute()
+if lease is None:
+    raise SystemExit("Compute is reserved")
+with lease:
+    check_idle()
+    if api.local.load_profile(api.CONFIG) is None:
+        raise SystemExit("Expected the activated profile on the failed pod")
+    if os.path.lexists(api.local.state_path(api.ROOT)):
+        raise SystemExit("Residency journal exists. Use the tracked rollback or hold clearing.")
+    print("Compute lease acquired, engine and workers idle, no residency journal")
+PY
+)
+```
+
+#### GitOps revert and dormant gate
+
+For either rollback, merge a reviewed revert of C's activation settings in
+`wan-video/ks.yaml`. Restore the dormant `./kubernetes/main/apps/ai/wan-video/app`
+path and 5-minute timeout and remove the activation health checks. Retain the
+Wan app ConfigMap helper and keep both completed provisioning inventories
+retired. Reconcile the parent and existing Wan Kustomization. Set
+`OP442_ACTIVE_POD_UID` to the UID of the pod being replaced. Require a new
+three-container Ready pod with a Ready Service endpoint, the same PVC UID,
+empty queues, idle workers, and `local_model_not_installed`. Repeat the private
+legacy read from the dormant gate and verify rack ownership before resuming
+dispatch. If an already-dormant pod still has a journal, run
+[hold clearing](#clear-a-local-model-hold) with its socket and GPU process
+proof before resuming. End the activity declaration once settled.
 
 ```bash
 (
   set -euo pipefail
   umask 077
   evidence=${OP442_EVIDENCE:?}
-  python3 -B scripts/wan-video/op442_smoke.py smoke --evidence "$evidence"
+  old=${OP442_ACTIVE_POD_UID:?Set OP442_ACTIVE_POD_UID to the pod being replaced}
+  flux reconcile kustomization cluster-apps -n flux-system --with-source
+  flux reconcile kustomization wan-video -n ai
+  kubectl -n ai rollout status deploy/wan-video --timeout=35m
+  flux get kustomizations -n ai wan-video > "$evidence/rollback-flux.txt"
+  uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
+    jq -er --arg old "$old" '.items | select(length == 1) | .[0] |
+      select(.metadata.uid != $old) |
+      select(([.status.containerStatuses[].name] | sort) == ["api","app","foley"]) |
+      select(all(.status.containerStatuses[]; .ready)) | .metadata.uid')
+  [[ $(kubectl -n ai get pvc wan-video -o jsonpath='{.metadata.uid}') == "$(cat "$evidence/pvc.uid")" ]]
+  kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |
+    jq -e --arg uid "$uid" 'any(.items[].endpoints[]; .targetRef.uid == $uid and .conditions.ready == true)'
+  kubectl -n ai exec deploy/wan-video -c api -- test ! -e /config/video/local-model.json
+  python3 -B scripts/wan-video/op442_smoke.py dormant > "$evidence/rollback-health.json"
 )
 ```
 
-| Step | Wall-time target and gate |
+## Two private smoke windows
+
+**Expected.** Run both windows with the active health gate, known idle
+ownership, the same private evidence directory and all other producers paused.
+The driver stages only synthetic inputs generated by
+[smoke-inputs.py](../../scripts/studio-local-model/smoke-inputs.py) before the
+first window. Each admitted operation uses the Wan compute lease. Each
+30-minute clock starts immediately before its first leased load. Keep the
+terminal open through cleanup and hold dispatch paused between windows.
+
+```bash
+(
+  set -euo pipefail
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  python3 -B scripts/wan-video/op442_smoke.py window-1 --evidence "$evidence"
+  python3 -B scripts/wan-video/op442_smoke.py window-2 --evidence "$evidence"
+)
+```
+
+### Window 1. Cold load, text, vision and S2V
+
+| Step | Budget and evidence |
 | --- | --- |
-| Five release-drift cycles | Plan 5 × (60 s load + ~8 s unload/receipt). The first load stops at 120 s and may hit a warm PVC cache. Every unload must return a verified release, with memory at or below the ceiling and a signed post-exit-minus-baseline difference of at most 4 MiB. |
-| Load for text, vision and handover | Plan 60 s. One `plan_v1` text answer proves both bounded text and schema output (256 tokens, target ~20 s). One `frame_check_v1` has four ordered synthetic frames with known face, code and wardrobe differences (512 tokens, target ~35 s). |
-| Handover | Start only by 7m 50s elapsed with at least 1,280 s for S2V (1,200 s render plus admission and read-back) and 50 s reserved for idle proof and cleanup. Verify the internal unload receipt before the engine's start time and an empty engine queue at completion. |
-| Return load and final verification | If at least 185 s remain, time the return load with the same 60 s target and verify tracked unload. Reserve 50 s for cleanup. If short on time after S2V, skip the return load first and preserve S2V's verified unload plus final idle proof. If the S2V cutoff is missed, skip S2V and unload the current child. A skipped step leaves the smoke incomplete. |
+| Cold load | Up to 120 s with a 60 s target. Record the load ID, baseline and wall time. The PVC cache may already be warm. |
+| Text and vision | 30 s for one `plan_v1` answer at 256 tokens and 55 s for one `frame_check_v1` answer at 512 tokens. Keep the token counts, schema results and all four ordered synthetic frame hashes. Allow 10 s for the model peak check. |
+| Handover precheck and S2V | Allow 30 s for the leased readiness and ledger precheck. Submit by 4m 15s elapsed with 1,280 s for the render and admission, and keep 265 s for read-back, reload and final cleanup. |
+| S2V evidence read-back | Allow 40 s to verify the internal unload receipt predates engine dispatch, read the empty queue, and save the prompt ID and receipt. Use the per-UUID process samples to confirm S2V ownership. |
+| Return load | Up to 120 s with a 60 s target. Record the warm load ID, baseline and wall time. |
+| Final tracked unload and idle proof | Reserve 100 s. Verify the unload receipt against its paired baseline, then prove the queue, workers and card idle under the lease. Record the final receipt and idle proof. |
 
-Every drift record saves the load baseline, the post-exit sample and the
-difference. A failed receipt may omit its sample. The script records a
-fresh diagnostic sample if the child exited and the lane can be read under
-the lease. A failed cycle, a difference greater than 4 MiB, or a reading above
-the calibrated ceiling stops handover. Leave the lane as the code left it,
-preserve its journal or hold and record the request IDs and samples. Raise
-the drift allowance only by a reviewed change with evidence. The proof still
-uses the absolute profile ceiling.
+### Window 2. Five paired drift cycles
 
-Keep sampler files and receipts private. Check that both GPUs' samples cover
-the full smoke, record Card A VRAM peak against 12,288 MiB, sidecar cgroup memory
-peak against 16 GiB, and S2V ownership using the per-UUID process data and
-ledger prompt ID. Record cold and warm wall times. A sample is an observation
-of peak usage at its sampling interval. Keep the sidecar's logs privately for
-allocation diagnosis. The script verifies schema outputs and token bounds,
-keeps the source result IDs, and stops on ambiguity. After a transport failure
-it reads the original ID and repeats the exact saved PUT at most once, after
-a definitive absent response. If a polling deadline arrives with work still
-running, cleanup reads the same ID until it settles or the cleanup cutoff.
-It then verifies release or submits the tracked unload if needed. An unresolved
-original ID at the cutoff takes the Wan recovery path. Avoid new work while queue or ownership is
-unclear.
+Start only after window 1 writes `passed.json`. The driver checks the profile
+and unloaded host again. Budget 120 s per load and 25 s for each unload and
+its receipt, for 725 s total. Keep the 100 s final cleanup reserve throughout.
+Each cycle records the load baseline, verified post-exit sample and signed
+difference. Require post-exit memory at or below the calibrated ceiling and
+at most 4 MiB above the corresponding baseline. The fifth tracked unload
+supplies the final release receipt. The driver then verifies idle ownership
+under the lease. A stopped window with a safely unloadable child still uses
+its final cleanup reserve. A failure preserves the receipts and evidence.
+
+Rely on the 4 MiB allowance for unattended use only after window 2 passes.
+A release exceeding that limit already latches a hold during the pilot.
+Review the evidence before changing any allowance. The absolute profile
+ceiling also applies.
+
+Keep both windows' GPU and process samples, observed local-model VRAM peaks
+against 12,288 MiB, sidecar cgroup memory peaks against 16 GiB, request IDs
+and timings private. A sampled peak is an observation at the sampling
+interval. The driver retries the exact original PUT at most once, after a
+transport failure and a definitive absent response for that ID. At a polling
+deadline, follow the same original ID through cleanup. If work settles with
+a live child and a known owner, submit the tracked unload within the cleanup
+reserve. A failed or unverified release, unknown owner, access denial or
+unresolved original ID stops further requests. Keep any hold and use the
+recovery route below. A skipped, cut-off or unverified step leaves the
+window incomplete.
 
 ## Stops and evidence
 
-Stop on an access denial, hold, unknown ownership, malformed queue, bad image
-or weight digest, reserve failure, absent listener, failed release, caps or
-deadline. Keep dispatch quiesced through verified cleanup or recovery. Restore
-dispatch once the sidecar is Ready, the model and journal are cleared, the
-engine queue is empty and the rack checks pass. Keep failed attempts and
-published weights under their original paths. A fallback needs a new ruling
-and window.
+| Stop | Hold state and next action |
+| --- | --- |
+| Measured release exceeds 4 MiB drift or the calibrated ceiling and the API fails its release proof, or the API reports `local_model_held` | Local-model hold latched on failed memory proof. Save the failed receipt and diagnostic reading, then use [hold clearing](#clear-a-local-model-hold). |
+| Release receipt missing, failed or inconsistent without a confirmed hold | Hold status unknown. Preserve the request and journal, and inspect under the lease. Use [hold clearing](#clear-a-local-model-hold) if held, or resume tracked cleanup only after ownership and residency are known. |
+| Unknown ownership, malformed queue, unsettled request or failed lease proof | Foreign work or lease contention alone does not latch the local-model hold. A malformed queue may latch a separate render hold or a local-model hold after dispatch. Resolve ownership and any Wan render hold first. Use [hold clearing](#clear-a-local-model-hold) for a latched local-model hold. |
+| Bad image, weights, reserve failure or unavailable listener | These preflight failures do not themselves latch a hold. Use the [direct rollback](#rollback-c-when-the-sidecar-never-became-ready) only with evidence of no Ready transition and no state file. If state is present, use the tracked rollback and [hold clearing](#clear-a-local-model-hold) if held. |
+| Access denial | The denial does not itself latch a hold. The state of any earlier request may be unknown. Stop without retrying through another route. An authorized operator can inspect and follow [hold clearing](#clear-a-local-model-hold) if held. |
+| Output check, cap or budget failure | No hold from the stop itself. Finish verified cleanup within the reserve if safe. If the API latches a hold during release, use [hold clearing](#clear-a-local-model-hold). |
 
-Publish only IDs, states, hashes, measured times and memory samples to the
-tracker. Keep service logs, full model outputs, prompts, staged media and
-engine ledgers in the private evidence directory. Record source, built image,
-tested checks, installation, usable smoke and Tom's acceptance as separate
-facts. The E10 model quality verdict comes from its own benchmark.
+Keep dispatch paused through verified cleanup or recovery. Resume once the
+applicable Service, health, queue, rack and residency gates pass. Preserve
+failed attempts, weights and journals. Publish only IDs, states, hashes,
+measured times and memory samples to the tracker. Keep service logs, full
+model outputs, prompts, staged media and engine ledgers in the private
+evidence directory. Record source, built image, tested checks, installation,
+usable smoke and Tom's acceptance separately. The E10 model quality verdict
+comes from its own benchmark.

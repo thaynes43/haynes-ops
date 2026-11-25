@@ -45,12 +45,12 @@ class TrialTests(unittest.TestCase):
                 patch.object(smoke, "http", side_effect=smoke.exec_failure("api", refusal.encode())) as http, \
                 patch.object(smoke.Trial, "finish") as finish:
             with self.assertRaisesRegex(smoke.Denied, "Forbidden"):
-                smoke.smoke(self.directory)
+                smoke.run_window(self.directory, 1)
         http.assert_called_once()
         finish.assert_not_called()
 
     def test_handover_respects_full_render_and_cleanup_budget(self):
-        with patch.object(self.trial, "time_left", return_value=1329), \
+        with patch.object(self.trial, "time_left", return_value=smoke.S2V_BUDGET + smoke.S2V_RESERVE - 1), \
                 patch.object(smoke, "pod") as pod, patch.object(smoke, "http") as http:
             with self.assertRaisesRegex(smoke.Stop, "Insufficient time"):
                 self.trial.handover(266, {})
@@ -65,6 +65,82 @@ class TrialTests(unittest.TestCase):
         evidence = json.loads((self.directory / "cycle-1-drift.json").read_text())
         self.assertEqual(evidence["difference_mib"], 5)
         self.assertEqual(evidence["source"], "post_failure_sample")
+
+    def test_window_two_requires_window_one_before_any_work(self):
+        with patch.object(smoke, "health") as health, patch.object(smoke, "stage") as stage:
+            with self.assertRaisesRegex(smoke.Stop, "Window 1 must pass"):
+                smoke.run_window(self.directory, 2)
+        health.assert_not_called()
+        stage.assert_not_called()
+
+    def test_windows_gate_on_final_proof_and_keep_work_in_order(self):
+        events = []
+        idle = {"sample": {"resident": False}, "journal": None}
+
+        def load(trial, label):
+            events.append(label)
+            return {"baseline_memory_mib": 264}
+
+        def infer(trial, label, budget, **parameters):
+            events.append(label)
+            if label == "text-plan":
+                return {"scene_id": "s01", "shots": [{}, {}]}
+            return {"frames": [
+                {"face": "visible", "code": "A17", "wardrobe": "match"},
+                {"face": "hidden", "code": "B24", "wardrobe": "match"},
+                {"face": "visible", "code": "C38", "wardrobe": "mismatch"},
+                {"face": "visible", "code": None, "wardrobe": "uncertain"},
+            ]}
+
+        def telemetry(directory, phase):
+            (directory / f"{phase}-gpu.csv").touch()
+            return nullcontext([])
+
+        def finish(trial):
+            self.assertFalse((trial.directory / "passed.json").exists())
+            events.append(f"{trial.directory.name}-verified-unload")
+
+        hashes = {f"frame-{index}.png": "hash" for index in range(1, 5)}
+        with patch.object(smoke, "health", return_value=self.profile), \
+                patch.object(smoke, "stage", return_value=hashes) as stage, \
+                patch.object(smoke, "lane", return_value=idle), \
+                patch.object(smoke, "telemetry", side_effect=telemetry), \
+                patch.multiple(smoke.Trial, load=load, infer=infer, finish=finish,
+                               check_peak=lambda *a, **kw: None,
+                               handover=lambda *a: events.append("s2v"),
+                               operation=lambda *a, **kw: {},
+                               release=lambda trial, label, *a: events.append(label + "-verified-unload")):
+            smoke.run_window(self.directory, 1)
+            smoke.run_window(self.directory, 2)
+
+        stage.assert_called_once()
+        self.assertEqual(events[:6], [
+            "cold-load", "text-plan", "vision", "s2v", "return-load", "window-1-verified-unload",
+        ])
+        self.assertEqual(events[6:-1], [
+            label for index in range(1, 6) for label in (f"cycle-{index}-load", f"cycle-{index}-verified-unload")
+        ])
+        self.assertEqual(events[-1], "window-2-verified-unload")
+        for number in (1, 2):
+            self.assertTrue((self.directory / f"window-{number}" / "passed.json").is_file())
+
+    def test_window_cleans_up_after_a_budget_stop_but_preserves_a_release_hold(self):
+        idle = {"sample": {"resident": False}, "journal": None}
+        for error, cleanup_expected in (
+            (smoke.Stop("work budget reached"), True),
+            (smoke.ReleaseUnverified("release proof failed"), False),
+        ):
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as work:
+                directory = Path(work)
+                with patch.object(smoke, "health", return_value=self.profile), \
+                        patch.object(smoke, "stage"), patch.object(smoke, "lane", return_value=idle), \
+                        patch.object(smoke, "telemetry", return_value=nullcontext([])), \
+                        patch.object(smoke, "handover_window", side_effect=error), \
+                        patch.object(smoke.Trial, "finish") as finish:
+                    with self.assertRaisesRegex(smoke.Stop, str(error)):
+                        smoke.run_window(directory, 1)
+                self.assertEqual(finish.called, cleanup_expected)
+                self.assertFalse((directory / "window-1" / "passed.json").exists())
 
 
 if __name__ == "__main__":

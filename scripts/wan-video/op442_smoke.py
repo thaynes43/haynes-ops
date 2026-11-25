@@ -21,8 +21,11 @@ CARDS = {CARD, "GPU-d8a856f1-f955-f683-bc24-654561496774"}
 MODEL = "qwen3.5-9b-q5_k_m"
 WINDOW = 1800
 S2V_BUDGET = 1280
-CLEANUP_BUDGET = 50
+CLEANUP_BUDGET = 100
 LOAD_LIMIT = 120
+S2V_READBACK = 40
+RETURN_RESERVE = LOAD_LIMIT + CLEANUP_BUDGET + 5
+S2V_RESERVE = S2V_READBACK + RETURN_RESERVE
 GPU_LIMIT = 12288
 RAM_LIMIT = 16 * 1024**3
 
@@ -53,7 +56,7 @@ except (URLError, OSError, HTTPException):
 # residency. When requested, evict ordinary ComfyUI cache after proving the
 # child and residency journal have both gone.
 LANE = """
-import json, sys, time
+import json, os, sys, time
 from urllib.request import urlopen
 import api
 import product_local as model
@@ -75,6 +78,11 @@ with lease:
     rack = api.gpu_sample()
     if not api.gpus_idle(rack):
         raise SystemExit("Rack GPUs are not idle")
+    if action == "dormant":
+        if model.load_profile(api.CONFIG) is not None or os.path.lexists(model.state_path(api.ROOT)):
+            raise SystemExit("Dormant gate requires no profile or residency journal")
+        print(json.dumps({"rack": rack, "journal": None}))
+        raise SystemExit()
     lane = model.enabled_lane(api.ROOT, api.CONFIG)
     if lane is None:
         raise SystemExit("Expected the active profile")
@@ -349,9 +357,10 @@ class Trial:
             raise ReleaseUnverified(f"{label}: release unverified, preserve the lane and review evidence")
         return unload
 
-    def check_peak(self, phase, samplers):
+    def check_peak(self, phase, samplers, *, offset=0):
         check_samplers(samplers)
-        with (self.directory / f"{phase}-gpu.csv").open(newline="") as source:
+        with (self.directory / "window-gpu.csv").open(newline="") as source:
+            source.seek(offset)
             rows = [row for row in csv.reader(source, skipinitialspace=True) if len(row) == 5]
         require({row[1] for row in rows} == CARDS and all(row[2].isdecimal() for row in rows),
                 f"{phase}: missing valid rack GPU telemetry")
@@ -371,18 +380,18 @@ class Trial:
         return json.loads(result["text"])
 
     def handover(self, baseline, hashes):
-        require(self.time_left() >= S2V_BUDGET + CLEANUP_BUDGET, "Insufficient time for S2V and verified cleanup")
+        require(self.time_left() >= S2V_BUDGET + S2V_RESERVE, "Insufficient time for S2V, reload and verified cleanup")
         sample = self.sample("before-s2v")
         require(sample["sample"]["resident"] and all(gpu["temperature_c"] < 62 for gpu in sample["rack"]["gpus"]),
                 "Model residency or rack temperature does not permit S2V")
         names = ("ls", "-1", "/workspace/local-model/requests")
         before = set(pod("api", *names, timeout=min(10, self.time_left())).decode().splitlines())
-        require(self.time_left() >= S2V_BUDGET + CLEANUP_BUDGET, "S2V deadline reserve was consumed")
+        require(self.time_left() >= S2V_BUDGET + S2V_RESERVE, "S2V deadline reserve was consumed")
         record = self.request("s2v", "/v1/jobs/s2v", {
             "profile": "wan2.2-s2v-14b-lightning", "story": STORY, "seed": 442,
             "prompt": "An illustrated figure makes a brief speaking motion. Locked camera.",
             "image_sha256": hashes["s2v.png"], "audio_sha256": hashes["s2v.wav"], "board_frames": 48,
-        }, budget=S2V_BUDGET)
+        }, budget=S2V_BUDGET, reserve=S2V_RESERVE)
         after = set(pod("api", *names, timeout=min(10, self.time_left())).decode().splitlines())
         new = after - before
         require(len(new) == 1 and re.fullmatch(r"[0-9a-f]{32}\.json", next(iter(new))), "Ambiguous handover ledger")
@@ -390,7 +399,7 @@ class Trial:
                                  timeout=min(10, self.time_left())))
         self.note("handover", receipt)
         self.release("handover", receipt, baseline)
-        require(record["state"] == "succeeded" and receipt.get("internal") is True
+        require(record["state"] == "succeeded" and record.get("prompt_id") and receipt.get("internal") is True
                 and receipt["operation"] == "unload" and receipt["finished_at"] <= record["started_at"],
                 "S2V success and pre-dispatch unload were not both proved")
         self.sample("after-s2v")
@@ -401,7 +410,7 @@ class Trial:
         label, path = self.pending
         # Cleanup never resubmits an operation. Preserve enough time for a
         # tracked unload after the original ID settles.
-        cutoff = self.deadline - 40
+        cutoff = self.deadline - 75
         while time.monotonic() < cutoff:
             status, record = http(8080, path, timeout=min(10, cutoff - time.monotonic()))
             self.note(f"{label}-cleanup-read", {"status": status, "record": record})
@@ -419,9 +428,9 @@ class Trial:
         self.settle_pending()
         state = self.sample("before-final-unload", wait_for_lease=5)
         if state["sample"]["resident"]:
-            require(self.time_left() > 25, "Insufficient time for a safe unload; keep dispatch paused")
+            require(self.time_left() >= 55, "Insufficient time for a safe unload; keep dispatch paused")
             baseline = state["journal"]["baseline_memory_mib"]
-            final = self.operation("final-unload", "unload", budget=28, reserve=12)
+            final = self.operation("final-unload", "unload", budget=30, reserve=25)
             self.release("final-unload", final, baseline)
         proof = self.sample("final-idle", "prove", wait_for_lease=3)
         require(not proof["sample"]["resident"] and proof["journal"] is None, "Residency was not cleared")
@@ -441,75 +450,93 @@ def stage(directory):
     return hashes
 
 
-def smoke(evidence):
-    directory = evidence / "smoke"
-    directory.mkdir(mode=0o700)
+def handover_window(trial, samplers, hashes):
+    load = trial.load("cold-load")
+    plan = trial.infer("text-plan", 30, mode="plan_v1", max_output_tokens=256,
+                       prompt="Plan two shots for scene s01: an eye-level wide shot, then a close view.")
+    require(plan["scene_id"] == "s01" and len(plan["shots"]) == 2, "Unexpected structured text result")
+    vision = trial.infer(
+        "vision", 55, mode="frame_check_v1", max_output_tokens=512,
+        prompt="Report the frames in order. Expected garment green. Return null for unreadable code.",
+        image_sha256s=[hashes[f"frame-{index}.png"] for index in range(1, 5)],
+    )
+    require(vision["frames"] == [
+        {"face": "visible", "code": "A17", "wardrobe": "match"},
+        {"face": "hidden", "code": "B24", "wardrobe": "match"},
+        {"face": "visible", "code": "C38", "wardrobe": "mismatch"},
+        {"face": "visible", "code": None, "wardrobe": "uncertain"},
+    ], "Unexpected structured vision result")
+    trial.check_peak("cold", samplers)
+    trial.handover(load["baseline_memory_mib"], hashes)
+    offset = (trial.directory / "window-gpu.csv").stat().st_size
+    trial.load("return-load")
+    return offset
+
+
+def drift_window(trial):
+    for index in range(1, 6):
+        load = trial.load(f"cycle-{index}-load")
+        unload = trial.operation(f"cycle-{index}-unload", "unload", budget=25)
+        trial.release(f"cycle-{index}", unload, load["baseline_memory_mib"])
+
+
+def run_window(evidence, number):
+    previous = evidence / "window-1" / "passed.json"
+    if number == 2:
+        require(previous.is_file(), "Window 1 must pass before window 2")
     profile = health(True)
+    if number == 2:
+        require(json.loads(previous.read_text())["profile"] == profile, "Active profile changed since window 1")
+    directory = evidence / f"window-{number}"
+    directory.mkdir(mode=0o700)
     store(directory / "profile.json", profile)
-    hashes = stage(directory)
+    hashes = stage(directory) if number == 1 else None
     initial = lane("inspect")
     require(not initial.get("lease_busy") and not initial["sample"]["resident"] and initial["journal"] is None,
             "Start with the host unloaded and the lease clear")
     store(directory / "initial-idle.json", initial)
 
-    trial = None
-    cleanup = True
     try:
-        with telemetry(directory, "model") as samplers:
+        with telemetry(directory, "window") as samplers:
             trial = Trial(directory, profile)
-            for index in range(1, 6):
-                load = trial.load(f"cycle-{index}-load")
-                unload = trial.operation(f"cycle-{index}-unload", "unload", budget=25)
-                trial.release(f"cycle-{index}", unload, load["baseline_memory_mib"])
-                trial.check_peak("model", samplers)
-
-            load = trial.load("handover-load")
-            plan = trial.infer("text-plan", 30, mode="plan_v1", max_output_tokens=256,
-                               prompt="Plan two shots for scene s01: an eye-level wide shot, then a close view.")
-            require(plan["scene_id"] == "s01" and len(plan["shots"]) == 2, "Unexpected structured text result")
-            vision = trial.infer(
-                "vision", 55, mode="frame_check_v1", max_output_tokens=512,
-                prompt="Report the frames in order. Expected garment green. Return null for unreadable code.",
-                image_sha256s=[hashes[f"frame-{index}.png"] for index in range(1, 5)],
-            )
-            require(vision["frames"] == [
-                {"face": "visible", "code": "A17", "wardrobe": "match"},
-                {"face": "hidden", "code": "B24", "wardrobe": "match"},
-                {"face": "visible", "code": "C38", "wardrobe": "mismatch"},
-                {"face": "visible", "code": None, "wardrobe": "uncertain"},
-            ], "Unexpected structured vision result")
-            trial.check_peak("model", samplers)
-
-        with telemetry(directory, "s2v") as samplers:
-            trial.handover(load["baseline_memory_mib"], hashes)
-            check_samplers(samplers)
-
-        with telemetry(directory, "return") as samplers:
-            if trial.time_left() <= LOAD_LIMIT + CLEANUP_BUDGET + 15:
-                raise Stop("S2V passed and unloaded the model. Return load skipped due to the cleanup reserve")
-            trial.load("return-load")
-            trial.check_peak("return", samplers)
+            try:
+                if number == 1:
+                    offset = handover_window(trial, samplers, hashes)
+                else:
+                    drift_window(trial)
+                    offset = 0
+            except (Denied, ReleaseUnverified):
+                # A denial is terminal. A failed release can leave a latched
+                # hold, which only the operator recovery proof can clear.
+                raise
+            except BaseException:
+                try:
+                    trial.finish()
+                except BaseException as cleanup_error:
+                    trial.note("cleanup-error", {"reason": str(cleanup_error) or type(cleanup_error).__name__})
+                raise
+            else:
+                trial.finish()
+            trial.check_peak("return" if number == 1 else "drift", samplers, offset=offset)
+        store(directory / "passed.json", {"profile": profile, "finished_at": time.time()})
     except BaseException as error:
-        cleanup = not isinstance(error, (Denied, ReleaseUnverified))
         store(directory / "stopped.json", {"reason": str(error) or type(error).__name__})
         raise
-    finally:
-        if cleanup and trial is not None:
-            trial.finish()
-    print("Five release cycles, text/schema, vision, S2V handover, return load and verified unload passed.")
+    print(f"Window {number} passed with verified final unload and idle proof.")
+
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("dormant", "active", "smoke", "rollback"))
+    parser.add_argument("action", choices=("dormant", "active", "window-1", "window-2", "rollback"))
     parser.add_argument("--evidence", type=Path)
     args = parser.parse_args()
     os.umask(0o077)
     try:
-        if args.action in ("smoke", "rollback"):
+        if args.action in ("window-1", "window-2", "rollback"):
             require(args.evidence is not None and args.evidence.is_dir(), "Provide a private evidence directory")
-        if args.action == "smoke":
-            smoke(args.evidence)
+        if args.action in ("window-1", "window-2"):
+            run_window(args.evidence, int(args.action[-1]))
         elif args.action == "rollback":
             directory = args.evidence / f"rollback-{uuid4().hex}"
             directory.mkdir(mode=0o700)
@@ -522,6 +549,10 @@ def main():
                 idle = lane("inspect")
                 require(not idle.get("lease_busy") and not idle["sample"]["resident"] and idle["journal"] is None,
                         "Expected a fresh unloaded host and clear lease")
+                evidence["idle"] = idle
+            else:
+                idle = lane("dormant")
+                require(not idle.get("lease_busy"), "Expected a clear dormant lease")
                 evidence["idle"] = idle
             print(json.dumps(evidence, indent=2))
     except (Stop, KeyError, ValueError, OSError, subprocess.SubprocessError, KeyboardInterrupt) as error:
