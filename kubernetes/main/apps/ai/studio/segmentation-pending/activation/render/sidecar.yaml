@@ -1,0 +1,90 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: studio-render
+spec:
+  values:
+    controllers:
+      studio-render:
+        containers:
+          app:
+            resources:
+              limits: {cpu: "18", memory: unmeasured}
+          segmentation:
+            image:
+              repository: ghcr.io/thaynes43/haynes-studio-segmentation
+              tag: pinned@replaced-by-release
+            command: [studio-segmentation, serve]
+            env:
+              STUDIO_SEGMENTATION_IMAGE: image-replaced-by-release
+            securityContext:
+              runAsUser: 10001
+              runAsGroup: 10001
+              runAsNonRoot: true
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities: {drop: [ALL]}
+            resources:
+              requests: {cpu: 250m, memory: unmeasured}
+              limits: {cpu: "2", memory: unmeasured}
+            probes:
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  exec: {command: [studio-segmentation, ready]}
+                  periodSeconds: 5
+                  failureThreshold: 14
+                  timeoutSeconds: 3
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  exec: {command: [studio-segmentation, ready]}
+                  periodSeconds: 5
+                  timeoutSeconds: 3
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  exec: {command: [studio-segmentation, ready]}
+                  periodSeconds: 5
+                  failureThreshold: 14
+                  timeoutSeconds: 3
+    persistence:
+      studio:
+        globalMounts: null
+        advancedMounts:
+          studio-render:
+            app:
+              - {path: /studio, subPath: data/studio}
+      config:
+        globalMounts: null
+        advancedMounts:
+          studio-render:
+            app:
+              - {path: /config, readOnly: true}
+      tmp:
+        globalMounts: null
+        advancedMounts:
+          studio-render:
+            app:
+              - {path: /tmp}
+      segmentation-scratch:
+        # Inherit the render pod's shared fsGroup 1000 for the socket and attempts.
+        type: emptyDir
+        sizeLimit: 256Mi
+        advancedMounts:
+          studio-render:
+            app: [{path: /segmentation}]
+            segmentation: [{path: /segmentation}]
+      segmentation-weights:
+        type: nfs
+        server: gasha01.haynesnetwork
+        path: /hdd-nfs-repl
+        advancedMounts:
+          studio-render:
+            segmentation:
+              - path: /opt/studio-models
+                subPath: data/studio/jobs/replaced-by-release/weights
+                readOnly: true

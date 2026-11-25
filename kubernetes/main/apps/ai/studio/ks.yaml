@@ -20,7 +20,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-migrate-4787d14f98a4
+      name: studio-migrate-08ac310f246c
       namespace: ai
   interval: 30m
   retryInterval: 1m
@@ -72,7 +72,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-worker-4787d14f98a4
+      name: studio-register-worker-08ac310f246c
       namespace: ai
     # studio-render's Kustomization applies the HelmRelease but does not wait
     # for Helm. Wait here so the worker cannot start until the 20-CPU cap is live.
@@ -157,11 +157,11 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-voice-worker-4787d14f98a4
+      name: studio-register-voice-worker-08ac310f246c
       namespace: ai
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-image-worker-4787d14f98a4
+      name: studio-register-image-worker-08ac310f246c
       namespace: ai
   interval: 30m
   retryInterval: 1m
@@ -187,3 +187,20 @@ spec:
   interval: 30m
   retryInterval: 1m
   timeout: 5m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: studio-segmentation-policy
+  namespace: ai
+spec:
+  targetNamespace: ai
+  path: ./kubernetes/main/apps/ai/studio/segmentation-pending/policy
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  prune: true
+  interval: 30m
+  retryInterval: 1m
+  timeout: 2m

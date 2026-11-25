@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # The release supplies the new allocation suffix for the immutable Job name.
+  name: studio-segmentation-smoke-00
+spec:
+  activeDeadlineSeconds: 900
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: studio-segmentation-smoke
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        kubernetes.io/hostname: talosw01
+      priorityClassName: dev-env-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: segmentation
+          image: image-replaced-by-release
+          command: [studio-segmentation, smoke, --load-strategy, mmap, --compare-load-strategy, buffered]
+          env:
+            - {name: STUDIO_SEGMENTATION_IMAGE, value: image-replaced-by-release}
+          resources:
+            # Measuring allowance only. Serving resources come from both smoke runs.
+            requests: {cpu: 250m, memory: replaced-by-release}
+            limits: {cpu: "2", memory: replaced-by-release}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: scratch, mountPath: /segmentation}
+            - name: weights
+              mountPath: /opt/studio-models
+              subPath: data/studio/jobs/allocation-replaced-by-release/weights
+              readOnly: true
+      volumes:
+        - name: scratch
+          emptyDir: {sizeLimit: 256Mi}
+        - name: weights
+          nfs:
+            server: gasha01.haynesnetwork
+            path: /hdd-nfs-repl
+            readOnly: true

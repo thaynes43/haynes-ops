@@ -9,7 +9,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   # Change this name and the Flux health check together for a changed Job spec.
-  name: studio-migrate-4787d14f98a4
+  name: studio-migrate-08ac310f246c
   labels:
     app.kubernetes.io/name: studio-migration
 spec:
@@ -31,7 +31,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: migrate
-          image: ghcr.io/thaynes43/haynes-studio@sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
+          image: ghcr.io/thaynes43/haynes-studio@sha256:08ac310f246cdc43225478e9496e480af6430b53751f4ae93f3e34206714c3e7
           command: [sh, -eu, -c]
           args:
             - |
