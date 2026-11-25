@@ -502,9 +502,11 @@ requires both successful Job gates and the healthy app at the new Git
 artifact revision. A failed migration leaves the existing app serving.
 Investigate the failure and use a new digest-named Job for a forward fix.
 Preserve the credential during routine image rollbacks. The token's
-ExternalSecret has `deletionPolicy: Retain`, so pruning or deleting it leaves the
-Secret in place, and the registration Job passes `--replace`, so re-running it with
-the same token changes nothing.
+ExternalSecret uses `creationPolicy: Orphan` and, like its Password generator, is
+exempt from Flux pruning, so removing either from Git or deleting the
+ExternalSecret leaves the Secret in place. Re-creating the ExternalSecret mints a
+new value, which is a rotation: follow the steps below. The registration Job passes
+`--replace`, so re-running it with the same token changes nothing.
 
 To rotate the worker token on purpose: scale the worker to zero in GitOps; delete
 the Secret `ai/studio-worker-token` (External Secrets then mints a new value);
