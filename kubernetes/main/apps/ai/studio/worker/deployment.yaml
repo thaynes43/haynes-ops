@@ -92,7 +92,7 @@ spec:
         - name: model-licences
           configMap:
             # Refresh model-licences.json from the pinned Studio source on promotion.
-            name: studio-model-licences
+            name: studio-model-licences-1aa9b4736da9
         - name: tmp
           emptyDir:
             sizeLimit: 8Gi

@@ -50,7 +50,9 @@ Both processes mount `data/studio/build-stage-v1` from the same export at
 there and the API validates and publishes the resulting delivery. Both use the
 same `STUDIO_BUILD_REVISION=git:<commit>`. The worker records the API image
 digest as `STUDIO_BUILD_IMAGE_DIGEST`. The API and worker mount the same
-Kustomize ConfigMap, `studio-model-licences`, copied from the pinned release.
+immutable `studio-model-licences-<digest prefix>` ConfigMap, copied from the
+pinned release. A register change ships with a new image digest, changing
+the ConfigMap name and both Deployment volume references together.
 The API reads `docs/reference/model-licences.json` relative to its
 `/opt/studio` working directory. The worker reads
 `STUDIO_MODEL_REGISTER=/etc/studio/model-licences.json`.
@@ -558,7 +560,8 @@ For the next version, use one successful Studio image build. Check the revision
 and both digests anonymously. Update the API, MCP, worker and both Jobs to the
 same API digest. Update the published pair in `studio/release.yaml`, both build
 revision settings, the worker's provenance digest and the shared model licence
-register. Update each changed Job name and its Flux health check together.
+register and both register volume references for the new digest. Update each
+changed Job name and its Flux health check together.
 Retire the OP957 one-shot Job graph and its release-guard entries together
 after recording proof and revoking the two keys.
 For a changed Job template or an exhausted retry at the same image digest,
@@ -764,11 +767,13 @@ kubectl -n ai logs "job/$revoke" -c revoke
 ```
 
 For a retried registration, set `registration` to its actual Job name and use
-a fresh `revoke` Job name. Each result reports the key ID and `revoked_at`.
-A failed registration with zero issued IDs needs no revocation Job. The old
-keys also expire automatically. The ESO generators and ExternalSecrets are
-exempt from Flux pruning and their target Secrets are orphaned. Revocation
-removes access even while those resources remain.
+a fresh `revoke` Job name. The API enforces the five-minute expiry on each
+authentication, including when a revocation Job fails or is delayed. Revoke
+explicitly after the attempt and record the Job's key IDs and `revoked_at`
+timestamps on OP957. A registration that issued zero IDs needs no revocation
+Job. The ESO generators and ExternalSecrets are exempt from Flux pruning and
+their target Secrets are orphaned. The API refuses revoked or expired keys
+while those resources remain.
 
 ### Roll back the OP957 pin
 

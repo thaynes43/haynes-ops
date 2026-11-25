@@ -11,9 +11,10 @@ components:
   - ../../../../../shared/components/common/gatus/guarded
 configMapGenerator:
   # The worker also mounts this register and waits for this Kustomization.
-  # Both Deployments roll when the source release and its register change.
-  - name: studio-model-licences
+  # Keep this name and both volume references tied to the API image digest.
+  - name: studio-model-licences-1aa9b4736da9
     files:
       - model-licences.json
     options:
       disableNameSuffixHash: true
+      immutable: true

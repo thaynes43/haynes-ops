@@ -142,7 +142,7 @@ spec:
             path: /hdd-nfs-repl
         - name: model-licences
           configMap:
-            name: studio-model-licences
+            name: studio-model-licences-1aa9b4736da9
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi

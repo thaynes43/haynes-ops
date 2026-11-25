@@ -56,6 +56,18 @@ def env(workload):
     return {entry["name"]: entry.get("value") for entry in container(workload)["env"]}
 
 
+def check_model_licences(app, api, worker, digest):
+    name = f"studio-model-licences-{digest.removeprefix('sha256:')[:12]}"
+    config = resource(app, "ConfigMap", name)
+    if config.get("immutable") is not True:
+        raise ValueError(f"{name} must be immutable")
+    for deployment in (api, worker):
+        volumes = deployment["spec"]["template"]["spec"]["volumes"]
+        register, = [volume for volume in volumes if volume["name"] == "model-licences"]
+        if register["configMap"]["name"] != name:
+            raise ValueError(f"{deployment['metadata']['name']} must mount {name}")
+
+
 def check_receipt(path, documents, job):
     volumes = job["spec"]["template"]["spec"]["volumes"]
     receipt_volume, = [volume for volume in volumes if volume["name"] == "receipt"]
@@ -122,6 +134,7 @@ def check(path):
     check_job(migration, resource(flux, "Kustomization", "studio-migration"), "studio-migrate", digest)
     check_job(registration, resource(flux, "Kustomization", "studio-worker-registration"),
               "studio-register-worker", digest)
+    check_model_licences(app, api, worker, digest)
     check_archive_jobs(path, flux, digest)
     print(f"Studio release pins, Job health gates and archive receipts agree for {revision} ({digest})")
 
