@@ -2409,10 +2409,22 @@ count fails after a later pin, correct the query before trusting the block.
 
 ## OP967 fourth release
 
-The [fourth-release runbook](studio-fourth-release.md) covers preflight,
-migration through `0013_matte_jobs`, PyAV 18.1.1 verification,
-and a workloads-only rollback. [Story 970](https://work.haynesnetwork.com/work_packages/970)
-owns matte worker activation.
+**Proven (2026-11-25).** After haynes-ops merged
+`59dc8678cbd7ed70648feccda53b3bdff9a86af4` at 22:42:26Z, Flux installed
+Studio `470a90af`, Alembic `0013_matte_jobs` and PyAV 18.1.1 in the app and existing
+workers, including offline render at 20 CPUs. The coordinator's `wait` passed
+at 23:02:12Z and `postflight` returned **75 PASS, 0 FAIL** at 23:02:39Z.
+The independent `verify` returned **75 PASS, 0 FAIL** at 23:06:52Z. The
+coordinator's baseline comparison confirmed the two archived runs, their
+deliveries and media indexes, and the store were unchanged. [Story 967, comment 10322](https://work.haynesnetwork.com/work_packages/967)
+· [Fourth-release evidence](studio-fourth-release.md#installed-evidence)
+
+**Changed.** Flux picked up the merge on its 30-minute poll at 22:56:10Z,
+13 minutes 44 seconds after merge. The blocks ran from session pods and read
+ingress through `studio-mcp`.
+
+**Expected.** The migration retry and workload rollback remain unexercised.
+Matte worker activation is tracked in [story 970](https://work.haynesnetwork.com/work_packages/970).
 
 ## OP437 one API pod recovery
 

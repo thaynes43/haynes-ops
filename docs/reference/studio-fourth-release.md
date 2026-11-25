@@ -1,15 +1,14 @@
 # OP967 fourth Studio release
 
-**Expected.** Under provisional ruling **CR-65**, this pin updates the API,
-web, MCP and the existing run, voice and image workers, applies migration
-`0013_matte_jobs`, and updates the offline render venv to PyAV 18.1.1 at 20 CPUs.
-The coordinator owns installation and postflight. Matte worker activation,
-including its credential and grant, registration, network isolation, listener
-extension and offline CPU change, is in [story 970](https://work.haynesnetwork.com/work_packages/970).
+**Proven (2026-11-25).** Under provisional ruling **CR-65**, this pin updated the
+API, web, MCP and the existing run, voice and image workers, applied migration
+`0013_matte_jobs`, and updated the offline render venv to PyAV 18.1.1 at 20 CPUs.
+Matte worker activation, including its credential and grant, registration,
+network isolation, listener extension and offline CPU change, is in
+[story 970](https://work.haynesnetwork.com/work_packages/970).
 
-The installed starting point is the [third
-pin](studio-deployment.md#op964-third-release), Studio `80975a9`, with
-Alembic `0012_release_constraints`. [Story 967](https://work.haynesnetwork.com/work_packages/967)
+The rollout started from Studio `80975a9` with Alembic
+`0012_release_constraints`. [Third pin](studio-deployment.md#op964-third-release)
 
 The [release record](../../kubernetes/main/apps/ai/studio/release.yaml) pins
 the amd64 API and web/listener images from Studio `470a90af`. The guard checks
@@ -17,6 +16,46 @@ their OCI revisions, the reviewed 0013 migration, listener authentication,
 Job names and health gates, and the offline lock export.
 [Studio images run 45692717257](https://github.com/thaynes43/haynes-studio/actions/runs/45692717257)
 · [Studio migration fix](https://github.com/thaynes43/haynes-studio/pull/146)
+
+## Installed evidence
+
+Haynes-ops merged `59dc8678cbd7ed70648feccda53b3bdff9a86af4` at 22:42:26Z on
+2026-11-25. The installed Studio revision is
+`470a90af73a2201e6542b5d867853dce6facad04`. The coordinator recorded the rollout
+in story 967, comment 10322. [Merge PR](https://github.com/thaynes43/haynes-ops/pull/5093)
+· [Story 967](https://work.haynesnetwork.com/work_packages/967)
+
+| Read or block | Result (UTC, 2026-11-25) |
+| --- | --- |
+| Migration | `studio-migrate-c13c8ad74dfb` ran from 22:56:51Z to 22:57:05Z with one succeeded pod and zero failed pods. The audit read `0013_matte_jobs` under the migrator identity over TLS. |
+| Workloads | API replicas started at 22:57:11Z and 22:57:32Z, and the voice and image workers at 22:58:23Z. The run worker started at 23:01:30Z after Helm reported the offline render worker Ready. The render pod started at 22:56:42Z with 20 CPUs and forwarding init. All new pods, including two web and two MCP replicas, were Ready with zero restarts. |
+| `wait` | Passed at 23:02:12Z. Flux stages were Ready at the selected pin. |
+| `postflight` | **75 PASS, 0 FAIL** at 23:02:39Z. All three registration Jobs reused their tokens, both API endpoints were Ready, and the worker dependency reads passed. The three existing lane grants were present and read-only, the lanes were idle, the matte queue was empty and there was no matte grant. All 39 listener and lane probes returned the expected 401, 403 or 422. |
+| Gatus `internal/studio` | All 21 samples between the merge and 23:02Z returned the expected 401. The last six took 2–7 ms. |
+| Independent `verify` | **75 PASS, 0 FAIL** from 23:06:36Z to 23:06:52Z, exit 0. Ran the block as its own Bash process from a clean checkout of the exact merge, with `MERGED_OPS_REVISION` set and no baseline. |
+
+**Changed.** Flux fetched the merge at 22:56:10Z on its 30-minute poll,
+13 minutes 44 seconds after the merge. The audit accepted the later source
+revision `d618d8b8` because its Studio inputs matched the merge.
+
+**Changed.** The coordinator's `wait` and `postflight` and the independent
+`verify` ran from session pods with Python 3.12 and PyYAML. Ingress reads went
+through the `studio-mcp` pod and internal ingress Service. `/` returned 200
+and `/v1/me` returned 401.
+
+The coordinator's `postflight` matched both archived runs, their deliveries and
+media indexes, and the store's file count, byte total, SHA-256 and modification
+time fingerprint against the pre-merge baseline. The independent `verify` found
+both archived runs, their linked deliveries and media indexes, and read the
+current store totals and fingerprints. Before-and-after equality comes from the
+coordinator's comparison with the private baseline. Tom's acceptance remains open.
+[Story 967](https://work.haynesnetwork.com/work_packages/967)
+
+The independent encoder reads confirmed PyAV 18.1.1 in the imported module and
+installed distribution metadata in both API replicas and the run, voice, image
+and offline render workers. All seven bundled library versions matched, including
+libavcodec 62.28.103 and libavformat 62.12.103. The mounted render requirements
+declared `av==18.1.1`. [Story 966](https://work.haynesnetwork.com/work_packages/966)
 
 ## Preflight
 
@@ -104,9 +143,10 @@ migration audit before treating any advanced workload as valid.
 Offline render and migration can start in parallel. API, web and MCP wait
 for the successful migration. The run worker waits for the API stage, its
 registration and the Helm-ready render worker. Voice and image wait for the
-API stage and their registrations. The idle render pod keeps previous completed
-venvs and builds a new one from the exact lock export. Its forwarding PID 1
-reaps children and forwards termination to the startup process group.
+API stage and their registrations. The render worker builds a new venv from
+the exact lock export and keeps older completed Python environments on the
+share. Cleanup remains unwritten. Its forwarding PID 1 reaps children and
+forwards termination to the startup process group.
 
 ## Migrate while the third pin serves
 
@@ -154,6 +194,8 @@ line confirms its status. An older failed pod is normal after a retry. A
 Complete Job with zero or multiple succeeded pods fails the audit.
 
 ### Retry a terminal migration with a new PR
+
+**Expected.** The fourth-pin rollout completed on the first attempt.
 
 Keep submissions closed. From current Ops `main`, change only these two
 files under `kubernetes/main/apps/ai/studio/`. In `migration/job.yaml`,
@@ -213,6 +255,21 @@ Keep matte submissions closed operationally until story 970 activates the worker
 [Submit handler](https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/api/job_routes.py#L235)
 · [Lane authorization](https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/api/run_routes.py#L333)
 
+### Carried to story 970
+
+- **P2.** A queued cutout can keep image submission disabled when following
+  **Generate asset** from the same view. **Close job view** restores submission.
+  A queued matte job also fails postflight and requires a recorded matte pause
+  before the rollback snapshot can proceed.
+- **P3.** Pin the local helper entry points permitted by the read-only command
+  scanner and inspect their payloads.
+- **P3.** Compare the full offline requirements list with the pinned Studio
+  export in required CI.
+- **P3.** Add tests that fail when each independent release-phase and schema
+  guard is removed, including the all-stale encoder case.
+
+[Story 970](https://work.haynesnetwork.com/work_packages/970) · [Independent review](https://github.com/thaynes43/haynes-ops/pull/5093#issuecomment-7176652850)
+
 ## Postflight
 
 Run from the selected merge with `STUDIO_OP967_BASELINE` set. The script
@@ -264,6 +321,8 @@ listener module sends only POSTs expected to fail at the listener,
 authentication, lane authorization or payload validation.
 
 ## Roll back workloads through a reviewed PR
+
+**Expected.** The fourth-pin rollout completed without a workload rollback.
 
 Keep submissions closed until active and held work settles. The snapshot
 allows queued matte jobs with a recorded matte pause and preserves any matte
