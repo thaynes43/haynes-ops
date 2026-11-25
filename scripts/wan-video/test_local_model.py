@@ -647,11 +647,11 @@ class LocalModelTests(unittest.TestCase):
         ]
         for mode, value, expected in cases:
             with self.subTest(mode=mode, value=value):
-                self.assertIs(local.valid_result(PROFILE, {"mode": mode, "image_sha256s": ["a" * 64]},
+                self.assertIs(local.valid_result_mode({"mode": mode, "image_sha256s": ["a" * 64]},
                                                  {**result, "text": json.dumps(value)}), expected)
         duplicate = '{"scene_id":"","scene_id":"scene1","shots":[{"technical_direction":"x"}]}'
-        self.assertFalse(local.valid_result(PROFILE, {"mode": "plan_v1"}, {**result, "text": duplicate}))
-        self.assertFalse(local.valid_result(PROFILE, {"mode": "plan_v1"}, {**result, "text": "{"}))
+        self.assertFalse(local.valid_result_mode({"mode": "plan_v1"}, {**result, "text": duplicate}))
+        self.assertFalse(local.valid_result_mode({"mode": "plan_v1"}, {**result, "text": "{"}))
 
     def test_structured_receipt_is_revalidated_before_publication(self):
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
@@ -701,6 +701,43 @@ class LocalModelTests(unittest.TestCase):
         self.text = "€" * (local.MAX_TEXT_BYTES // 3 + 1)
         self.assertEqual(self.perform(INFER, "infer")["error"], "backend_failed")
         self.assertEqual(self.work("infer"), [("infer", INFER, "running", False)])
+        self.assertTrue(product.read_job(self.lane.path)["held"])
+
+    def test_structured_output_token_cap_violation_stops_backend_and_holds(self):
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        self.text = '{"scene_id":"scene1","shots":[{"technical_direction":"Closeup."}]}'
+        self.outputs = 13
+        job = self.perform(INFER, "infer", mode="plan_v1")
+        self.assertEqual(job["error"], "backend_failed")
+        self.assertEqual(self.worker.receipt["error"], "backend_failed")
+        self.assertFalse(self.worker.resident)
+        self.assertTrue(product.read_job(self.lane.path)["held"])
+
+    def test_structured_utf8_byte_ceiling_violation_stops_backend_and_holds(self):
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        self.text = "€" * (local.MAX_TEXT_BYTES // 3 + 1)
+        job = self.perform(INFER, "infer", mode="plan_v1")
+        self.assertEqual(job["error"], "backend_failed")
+        self.assertEqual(self.worker.receipt["error"], "backend_failed")
+        self.assertFalse(self.worker.resident)
+        self.assertTrue(product.read_job(self.lane.path)["held"])
+
+    def test_structured_receipt_bound_violation_cannot_downgrade_to_invalid_result(self):
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        self.text = '{"scene_id":"scene1","shots":[{"technical_direction":"Closeup."}]}'
+        snapshot_status = self.worker.status
+
+        def changed():
+            snapshot = snapshot_status()
+            receipt = snapshot.get("receipt")
+            if receipt and receipt["operation"] == "infer":
+                return {**snapshot, "receipt": {**receipt, "result": {**receipt["result"], "output_tokens": 13}}}
+            return snapshot
+
+        with patch.object(self.worker, "status", side_effect=changed):
+            job = self.perform(INFER, "infer", mode="plan_v1")
+        self.assertEqual(job["error"], "backend_failed")
+        self.assertNotIn("result", job)
         self.assertTrue(product.read_job(self.lane.path)["held"])
 
     def test_one_card_wan_on_other_card_keeps_residency(self):

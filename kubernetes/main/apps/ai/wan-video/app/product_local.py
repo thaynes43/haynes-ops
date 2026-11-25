@@ -359,8 +359,10 @@ class Lane:
                 expected = job["operation"] != "unload"
                 if job["operation"] == "infer":
                     result = receipt.get("result")
-                    if not valid_result(self.profile, job, result):
-                        error = "invalid_result" if "mode" in job else "backend_failed"
+                    if not valid_result_bounds(self.profile, job, result):
+                        error = "backend_failed"
+                    elif not valid_result_mode(job, result):
+                        error = "invalid_result"
             elif error in ("operation_timeout", "backend_exited"):
                 # The supervisor reaped the model process before publishing
                 # this receipt. Still require the card's unloaded memory proof.
@@ -496,11 +498,14 @@ def gpu_range(value, low, high):
     return type(value) in (int, float) and low <= value <= high
 
 
-def valid_result(profile, job, result):
+def valid_result_bounds(profile, job, result):
     if type(result) is not dict or result.keys() != {"text", "input_tokens", "output_tokens"}:
         return False
     inputs, outputs = result["input_tokens"], result["output_tokens"]
     cap = job.get("max_output_tokens", profile["max_output_tokens"])
     return (type(inputs) is int and 0 <= inputs <= profile["context_tokens"] - cap
-            and type(outputs) is int and 0 <= outputs <= cap and bounded_text(result["text"])
-            and modes.valid_text(job.get("mode", "text"), result["text"], len(image_digests(job))))
+            and type(outputs) is int and 0 <= outputs <= cap and bounded_text(result["text"]))
+
+
+def valid_result_mode(job, result):
+    return modes.valid_text(job.get("mode", "text"), result["text"], len(image_digests(job)))

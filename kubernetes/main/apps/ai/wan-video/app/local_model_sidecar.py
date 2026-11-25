@@ -75,11 +75,10 @@ def infer(backend, root, profile, request):
         return {"error": "context_limit"}
     text, outputs, complete = backend.infer(prepared, cap)
     result = {"text": text, "input_tokens": inputs, "output_tokens": outputs}
-    structured = request.get("mode", "text") != "text"
-    if (structured and complete is not True) or not local.valid_result(profile, request, result):
-        if structured:
-            return {"error": "invalid_result"}
-        raise ValueError("Invalid local-model result")
+    if not local.valid_result_bounds(profile, request, result):
+        raise ValueError("Invalid local-model result bounds")
+    if (mode and complete is not True) or not local.valid_result_mode(request, result):
+        return {"error": "invalid_result"}
     return {"result": result}
 
 
