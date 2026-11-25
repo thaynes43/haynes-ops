@@ -15,8 +15,9 @@ for that revision. Record the image byte size and the run's
 `studio-segmentation-sbom-<revision>` artifact. Set only `data.image` in
 [release.yaml](../../kubernetes/main/apps/ai/studio/segmentation-pending/release/release.yaml)
 before merging the serving release for allocation
-`segmentation-op460-dino-sam-v1-03`. The release guard refuses the old
-measuring digest and verifies the published OCI config for the new digest.
+`segmentation-op460-dino-sam-v1-04`. The release guard refuses the old
+measuring and two-pass serving digests and verifies the published OCI config
+for the new digest.
 The serving contract pins memory-mapped loads, a 4 GiB request and a
 5 GiB limit. Run the blocks below from the merged Ops revision.
 
@@ -164,6 +165,14 @@ PY
 read-back for that revision passed for the profile and all 12 files of both models.
 [Story 460, comment 10083](https://work.haynesnetwork.com/work_packages/460).
 
+**Proven (2026-11-25).** `studio-segmentation-provision-03` ran from
+13:21Z to 13:22Z on talosw01. It published 846,220,082 bytes for allocation
+`segmentation-op460-dino-sam-v1-03` and serving profile SHA-256
+`5cf7324789d63cce25528dad320fe5bbe9bd85230ed94eb35dfeb78f1b44cad6`.
+Read-back passed for the profile digest, all 12 files, the serving profile
+identity and the memory-mapped load setting with a 4 GiB request and 5 GiB
+limit. [Story 460, comment 10156](https://work.haynesnetwork.com/projects/haynes-studio/work_packages/460/activity#comment-10156).
+
 ## Run the serving smoke
 
 Reserve an exclusive heavy-job window on talosw01. The idle gate requires
@@ -172,12 +181,16 @@ at most 250m CPU, Wan with no active job and a clear shared ComfyUI queue.
 Record the readings and hold competing heavy render, Wan, Foley and local
 model work for this window.
 
-**Expected.** `studio-segmentation-smoke-03` requests and limits two CPUs,
+**Expected.** `studio-segmentation-smoke-04` requests and limits two CPUs,
 requests 4 GiB and has a 5 GiB limit. It runs at 10001:10001 with read-only
 weights. Plain `studio-segmentation smoke` loads the serving profile once
-and sends two of each of the six fixture requests. Startup and each
-request keep the 60 s bounds, leaving room within the Job's 900 s deadline.
-The Job has zero retries.
+and runs the six fixture requests three times, for eighteen fixture calls.
+Pass 1 warms the models. The residency check compares passes 2 and 3.
+Startup and inference keep their 60 s bounds. The smoke stops starting
+fixture calls when fewer than 65 s remain in its 840 s run budget, leaving
+time to report a failure before the Job's 900 s deadline. The Job has zero
+retries. Allocation 03's twelve calls took about 58 s. At the same rate,
+eighteen calls should take about 87 s plus the cold load.
 
 ```bash
 (
@@ -232,8 +245,9 @@ with urlopen(sys.argv[1], timeout=5) as response:
   job=$(yq '.metadata.name' <<< "$smoke")
   check 'Smoke Job created' kubectl -n ai create -f - <<< "$smoke"
   check 'Smoke Job completed' bash scripts/studio-segmentation/wait-job.sh "$job" 960 || status=1
-  report=$(kubectl -n ai --request-timeout=10s logs "job/$job" -c segmentation | grep '^{' | tail -n 1) || report=
+  report=$(kubectl -n ai --request-timeout=10s logs "job/$job" -c segmentation | grep '^{' | tail -n 1) || report=null
   printf '%s\n' "$report"
+  check 'Smoke report JSON line' jq -es 'length == 1 and (.[0] | type == "object")' <<< "$report" || status=1
   check 'Exact image, profile and serving load setting' jq -e --arg image "${image##*@}" --arg profile "$profile" '
     .schema == "studio.segmentation-smoke/v1" and .mode == "serving" and
     .image_digest == $image and .profile_sha256 == $profile and
@@ -243,40 +257,50 @@ with urlopen(sys.argv[1], timeout=5) as response:
     .cgroup_limit_bytes == $limit and .verdicts.cgroup_allowance == true and
     (.cgroup_peak_bytes | type == "number" and . > 0 and . <= $limit)
   ' <<< "$report" || status=1
-  check 'Cold start and memory phases for all twelve calls' jq -e --argjson limit "$limit_bytes" '
+  check 'Cold start and memory phases for all eighteen calls' jq -e --argjson limit "$limit_bytes" '
     .runs[0] |
     (.cold_load_ms | type == "number" and . >= 0 and . <= 60000) and .verdicts.phase_memory == true and
     (.memory.startup | keys == ["load_dino", "load_sam", "runtime_import", "verify_profile_and_files"]) and
-    (.memory.requests | length == 12 and all(.[]; has("source_validation"))) and
+    (.memory.requests | length == 18 and all(.[]; has("source_validation"))) and
     ([.memory.startup, .memory.requests[]] |
       all(.[]; all(.[]; .phase_rss_peak_reset == true and
         ([.peak_rss_bytes, .resident_rss_bytes, .cgroup_resident_bytes, .cgroup_peak_since_start_bytes] |
           all(.[]; type == "number" and . > 0 and . <= $limit)))))
   ' <<< "$report" || status=1
-  check 'Resident memory growth is at most 64 MiB' jq -e --argjson limit "$limit_bytes" '
+  check 'Resident memory growth from pass 2 to pass 3 is at most 64 MiB' jq -e --argjson limit "$limit_bytes" '
     def stable($first; $second):
       ([$first, $second] | all(.[]; type == "number" and . > 0 and . <= $limit)) and
       ($second <= $first + 67108864);
     .runs[0] |
     .memory.requests as $requests | .memory.passes as $passes |
     $passes.cgroup_resident_bytes as $cgroup |
-    .verdicts.memory_stable == true and $passes.tolerance_bytes == 67108864 and
-    ($cgroup | type == "array" and length == 2) and stable($cgroup[0]; $cgroup[1]) and
+    .verdicts.memory_stable == true and $passes.tolerance_bytes == 67108864 and $passes.compared_passes == [2, 3] and
+    ($cgroup | type == "array" and length == 3 and all(.[]; type == "number" and . > 0 and . <= $limit)) and
+    stable($cgroup[1]; $cgroup[2]) and
     all(range(6); . as $case |
-      $requests[$case] as $first | $requests[$case + 6] as $second |
+      $requests[$case + 6] as $first | $requests[$case + 12] as $second |
       ($first | keys) == ($second | keys) and all($first | keys[]; . as $phase |
         stable($first[$phase].resident_rss_bytes; $second[$phase].resident_rss_bytes) and
         stable($first[$phase].cgroup_resident_bytes; $second[$phase].cgroup_resident_bytes)))
   ' <<< "$report" || status=1
-  check 'Exact readiness before and after both passes' jq -e --arg profile "$profile" '
+  check 'Exact readiness before and after all three passes' jq -e --arg profile "$profile" '
     {profile_id: "grounding-dino-tiny-sam2.1-tiny-cpu-v1", profile_sha256: $profile, device: "cpu"} as $ready |
     .runs[0] | .readiness == {initial: $ready, after: $ready} and
     .verdicts.ready_initial == true and .verdicts.ready_after == true
   ' <<< "$report" || status=1
-  check 'Both fixture passes and create-only replay' jq -e '
-    .passed == true and (.runs[0] | (.cases | length == 12) and
-      .verdicts.create_only_replay == true and
-      .verdicts.visibility == true and .verdicts.visibility_repeat == true)
+  check 'All eighteen fixture statuses and create-only replay' jq -e '
+    .runs[0] as $run |
+    ($run.cases | length == 18) and $run.verdicts.create_only_replay == true and
+    all(["", "_repeat", "_third"][]; . as $suffix |
+      $run.verdicts["visibility" + $suffix] == true and
+      $run.verdicts["hidden_prop_fails_fixture_gate" + $suffix] == true and
+      $run.cases["absent_gavel" + $suffix].status == "needs_hint" and
+      all(["foreground", "visible_face", "hidden_prop", "point", "grounded_ball"][];
+        $run.cases[. + $suffix].status == "ready"))
+  ' <<< "$report" || status=1
+  check 'Smoke report passed within its time budget' jq -e '
+    .passed == true and .runs[0].verdicts.time_budget == true and
+    all(.verdicts[]; . == true) and all(.runs[0].verdicts[]; . == true)
   ' <<< "$report" || status=1
   check 'Offline render ready after smoke' kubectl -n ai rollout status deploy/studio-render --timeout=30s || status=1
   exit "$status"
@@ -285,7 +309,7 @@ with urlopen(sys.argv[1], timeout=5) as response:
 
 Keep the final JSON report with the story. Record the cold start, per-case
 wall times, per-phase worker peak and resident RSS, and container cgroup
-peak, limit and resident bytes. Save both passes' phase samples and the
+peak, limit and resident bytes. Save all three passes' phase samples and the
 cgroup resident samples at the end of each pass. The 64 MiB tolerance
 allows allocator and page-cache variation. The Job waits stop on `Complete`
 or `Failed`.
@@ -294,6 +318,29 @@ wait prints the Job, pod termination state when available and container logs.
 The visible-face and hidden-prop fractions exercise the fixed
 synthetic arrangement. Story [452](https://work.haynesnetwork.com/work_packages/452)
 owns real fixture quality and the adapter's build-time layout decision.
+
+### Allocation 03 serving result
+
+**Changed (2026-11-25).** `studio-segmentation-smoke-03` ran from 13:22:53Z
+to 13:24:13Z on talosw01, using allocation `segmentation-op460-dino-sam-v1-03`,
+image `sha256:05de65b703506a4591887e3063dde04a03aa142f28bacde5b3101a495b6a53c0`
+and profile SHA-256 `5cf7324789d63cce25528dad320fe5bbe9bd85230ed94eb35dfeb78f1b44cad6`.
+The Job exited 1 with `passed: false` on its own stability verdict.
+`memory_stable` was the only false verdict. The cgroup peak was
+3,060,940,800 bytes under the 5 GiB limit. Cold load took 19,786 ms. All
+twelve calls had their expected status, exact readiness passed before and
+after, and the report was the last line written.
+
+| Measured | Pass 1 | Pass 2 |
+|---|---|---|
+| Worker resident memory after each request (MiB) | 836, 828, 1008, 1008, 1686, 1624 | 1624, 1624, 1624, 1624, 1624, 1624 |
+| Cgroup resident memory at pass end (bytes) | 1,795,043,328 | 1,795,268,608 |
+
+The old verdict counted first-use paging of the memory-mapped weights as
+growth between matching requests. The mask-only cases use SAM, and the fifth
+case first uses the detector. Worker residency stayed flat through pass 2.
+The serving configuration still needs a passing smoke before activation.
+[Story 460, comment 10156](https://work.haynesnetwork.com/projects/haynes-studio/work_packages/460/activity#comment-10156).
 
 ## Measuring evidence
 
