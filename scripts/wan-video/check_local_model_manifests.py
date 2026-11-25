@@ -94,6 +94,12 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(active_pvc, dormant_pvc)
         self.assertEqual(active_pvc["metadata"]["annotations"]["kustomize.toolkit.fluxcd.io/prune"], "disabled")
 
+    def test_recovery_helper_is_in_the_api_code_config_for_both_paths(self):
+        for rendered in (self.dormant, self.activation):
+            data = resource(rendered, "ConfigMap", "wan-video-config")["data"]
+            self.assertEqual(data["clear_local_model_hold.py"],
+                             (WAN / "app" / "clear_local_model_hold.py").read_text())
+
     def test_dormant_release_has_no_local_model_resources_or_container(self):
         self.assertFalse({doc["kind"] for doc in self.dormant} & {"Job", "CiliumNetworkPolicy"})
         self.assertNotIn("wan-local-model-profile", {doc["metadata"]["name"] for doc in self.dormant})

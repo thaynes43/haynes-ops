@@ -15,6 +15,7 @@ configMapGenerator:
       - product_graphs.py
       - product_foley.py
       - product_local.py
+      - clear_local_model_hold.py
       - local_model_sidecar.py
       - local_model_modes.py
       - workflow.json
