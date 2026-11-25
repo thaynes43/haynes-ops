@@ -838,6 +838,17 @@ bash -s <<'BASH'
   flux reconcile kustomization cluster-apps -n flux-system --with-source
   flux reconcile kustomization wan-video -n ai
   gate_passed
+  # The Kustomization does not wait: Flux returns once the HelmRelease object is
+  # applied and Helm patches the Deployment a few seconds later. Reading the
+  # roll-out in that gap reads the old, already complete Deployment.
+  gate='Deployment template has the local-model container'
+  deadline=$((SECONDS + 300))
+  until kubectl -n ai get deploy wan-video -o json |
+      jq -e 'any(.spec.template.spec.containers[]; .name == "local-model")' >/dev/null; do
+    (( SECONDS < deadline ))
+    sleep 3
+  done
+  gate_passed
   gate='Deployment rollout'
   kubectl -n ai rollout status deploy/wan-video --timeout=35m
   gate_passed
@@ -1212,6 +1223,16 @@ bash -s <<'BASH'
   gate='Reconcile dormant manifests'
   flux reconcile kustomization cluster-apps -n flux-system --with-source
   flux reconcile kustomization wan-video -n ai
+  gate_passed
+  # As in the activation block: wait for Helm to patch the Deployment before
+  # reading the roll-out, or the gate reads the Deployment being replaced.
+  gate='Deployment template no longer has the local-model container'
+  deadline=$((SECONDS + 300))
+  until kubectl -n ai get deploy wan-video -o json |
+      jq -e 'all(.spec.template.spec.containers[]; .name != "local-model")' >/dev/null; do
+    (( SECONDS < deadline ))
+    sleep 3
+  done
   gate_passed
   gate='Dormant Deployment rollout'
   kubectl -n ai rollout status deploy/wan-video --timeout=35m
