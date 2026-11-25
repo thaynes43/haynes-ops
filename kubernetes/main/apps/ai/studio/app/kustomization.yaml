@@ -18,3 +18,6 @@ configMapGenerator:
     options:
       disableNameSuffixHash: true
       immutable: true
+      annotations:
+        # Keep the old register mountable while worker registration gates its rollout.
+        kustomize.toolkit.fluxcd.io/prune: disabled

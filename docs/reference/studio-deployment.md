@@ -52,7 +52,10 @@ same `STUDIO_BUILD_REVISION=git:<commit>`. The worker records the API image
 digest as `STUDIO_BUILD_IMAGE_DIGEST`. The API and worker mount the same
 immutable `studio-model-licences-<digest prefix>` ConfigMap, copied from the
 pinned release. A register change ships with a new image digest, changing
-the ConfigMap name and both Deployment volume references together.
+the ConfigMap name and both Deployment volume references together. Kubernetes
+rejects an in-place edit because the register is immutable. Flux keeps older
+register ConfigMaps so the current worker can still mount its version if its
+replacement is held at the registration gate or during rollback.
 The API reads `docs/reference/model-licences.json` relative to its
 `/opt/studio` working directory. The worker reads
 `STUDIO_MODEL_REGISTER=/etc/studio/model-licences.json`.

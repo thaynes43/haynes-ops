@@ -61,6 +61,9 @@ def check_model_licences(app, api, worker, digest):
     config = resource(app, "ConfigMap", name)
     if config.get("immutable") is not True:
         raise ValueError(f"{name} must be immutable")
+    annotations = config["metadata"].get("annotations", {})
+    if annotations.get("kustomize.toolkit.fluxcd.io/prune") != "disabled":
+        raise ValueError(f"{name} must be exempt from Flux pruning")
     for deployment in (api, worker):
         volumes = deployment["spec"]["template"]["spec"]["volumes"]
         register, = [volume for volume in volumes if volume["name"] == "model-licences"]
