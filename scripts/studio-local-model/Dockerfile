@@ -29,6 +29,7 @@ ENV LD_LIBRARY_PATH=/app:/usr/local/lib:${LD_LIBRARY_PATH} \
 WORKDIR /opt/studio-local-model
 COPY --from=binding /build/libstudio_local_backend.so /build/source/models/templates/Qwen3.5-4B.jinja /build/source/LICENSE ./
 COPY kubernetes/main/apps/ai/wan-video/app/*.py ./
+COPY scripts/studio-local-model/startup_check.py ./
 COPY kubernetes/main/apps/ai/wan-video/local-model-pending/weights/weights.json ./
 USER 1000:1000
 HEALTHCHECK NONE

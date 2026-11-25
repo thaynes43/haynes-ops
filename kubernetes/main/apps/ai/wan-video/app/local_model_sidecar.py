@@ -12,6 +12,7 @@ from contextlib import closing
 import csv
 import ctypes
 import fcntl
+import json
 from http.client import HTTPException
 import multiprocessing
 import os
@@ -25,6 +26,19 @@ import uuid
 import product
 import local_model_modes as modes
 import product_local as local
+
+
+PIN_VARIABLES = ("NVIDIA_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES")
+STARTUP_LOG = "local-model-listening"
+
+
+def pin_error(card):
+    pins = [os.environ.get(name) for name in PIN_VARIABLES]
+    if not all(pins):
+        return "gpu_pin_missing"
+    if any(pin != card for pin in pins):
+        return "gpu_pin_mismatch"
+    return None
 
 
 def verify_lease(root, fd):
@@ -210,10 +224,12 @@ class ModelProcess:
 
 
 class Sidecar:
-    def __init__(self, root, profile, backend_factory, *, check_idle, evict_cache, sample=local.sample_card):
+    def __init__(self, root, profile, backend_factory, *, check_idle, evict_cache,
+                 sample=local.sample_card, startup_error=None):
         self.lane = local.Lane(root, profile)
         self.profile = profile
-        self.model = ModelProcess(root, profile, backend_factory)
+        self.startup_error = startup_error
+        self.model = None if startup_error else ModelProcess(root, profile, backend_factory)
         self.sample = sample
         self.check_idle = check_idle
         self.evict_cache = evict_cache
@@ -221,6 +237,12 @@ class Sidecar:
         self.receipt = None
 
     def status(self, *, residency_only=False):
+        if self.startup_error:
+            return {
+                "gpu_uuid": self.profile["gpu_uuid"] if self.profile else None,
+                "profile_sha256": self.lane.profile_hash, "instance": self.instance,
+                "resident": False, "receipt": None, "startup_error": self.startup_error,
+            }
         card = self.profile["gpu_uuid"]
         telemetry = {} if residency_only else self.sample(card)
         return {
@@ -260,6 +282,8 @@ class Sidecar:
         if not local.valid_id(job_id) or message.keys() != {"action", "id", "request"}:
             raise ValueError("Invalid local-model dispatch")
         verify_lease(self.lane.root, fd)
+        if self.startup_error:
+            raise local.StartupUnavailable(self.startup_error)
         state = self.lane.read_state()
         job = self.lane.read(job_id)
         request = local.validate(self.profile, message["request"])
@@ -308,10 +332,13 @@ class Sidecar:
                     socket_fds = (conn.fileno(),) if listener_fd is None else (conn.fileno(), listener_fd)
                     try:
                         self.run(message, fds[0], *socket_fds)
+                    except local.StartupUnavailable as exc:
+                        reply = exc.body()
                     except SystemExit:
                         self.model.stop()
                         raise
-                    reply = {"id": message["id"]}
+                    else:
+                        reply = {"id": message["id"]}
                 else:
                     raise ValueError("Invalid local-model sidecar call")
             finally:
@@ -325,11 +352,10 @@ class Sidecar:
             return
 
 
-def serve(root, profile, backend_factory):
+def serve(root, profile, backend_factory, *, startup_error=None):
     """Run one sidecar with no TCP endpoint and a workspace-private Unix socket."""
-    card = profile["gpu_uuid"]
-    if any(os.environ.get(key) != card for key in ("NVIDIA_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES")):
-        raise ValueError("Local-model sidecar must be pinned to its configured GPU UUID")
+    if startup_error is None:
+        startup_error = pin_error(profile["gpu_uuid"])
     path = local.socket_path(root)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     if path.exists():
@@ -351,9 +377,11 @@ def serve(root, profile, backend_factory):
         engine("/free", {"unload_models": True, "free_memory": True})
 
     pr_set_child_subreaper = 36
-    if ctypes.CDLL(None).prctl(pr_set_child_subreaper, 1, 0, 0, 0):
-        raise RuntimeError("Could not enable model descendant reaping")
-    worker = Sidecar(root, profile, backend_factory, check_idle=require_empty_queue, evict_cache=evict_cache)
+    if not startup_error and ctypes.CDLL(None).prctl(pr_set_child_subreaper, 1, 0, 0, 0):
+        startup_error = "process_supervision_unavailable"
+    worker = Sidecar(root, profile, backend_factory, check_idle=require_empty_queue,
+                     evict_cache=evict_cache, startup_error=startup_error)
+
     def shutdown(signum, _frame):
         raise SystemExit(128 + signum)
 
@@ -366,10 +394,17 @@ def serve(root, profile, backend_factory):
         try:
             path.chmod(0o600)
             listener.listen(4)
+            print(json.dumps({
+                "event": STARTUP_LOG, "startup_error": startup_error,
+                "gpu_uuid": profile["gpu_uuid"] if profile else None,
+                "pins": {name: os.environ[name][:128] if name in os.environ else None
+                         for name in PIN_VARIABLES},
+            }), flush=True)
             while True:
                 conn, _ = listener.accept()
                 with closing(conn):
                     worker.handle(conn, listener.fileno())
         finally:
-            worker.model.stop()
+            if worker.model is not None:
+                worker.model.stop()
             path.unlink(missing_ok=True)

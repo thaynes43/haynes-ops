@@ -38,6 +38,11 @@ LOAD_REFUSALS = {
     "local_model_unavailable": "local_model_unavailable",
 }
 PROFILE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}")
+PROFILE_STARTUP_ERRORS = frozenset({"profile_missing", "profile_invalid"})
+STARTUP_ERRORS = PROFILE_STARTUP_ERRORS | {
+    "gpu_pin_missing", "gpu_pin_mismatch", "profile_unsupported", "weights_missing",
+    "weights_mismatch", "weights_unreadable", "process_supervision_unavailable",
+}
 
 
 def sample_card(card):
@@ -88,6 +93,41 @@ def load_profile(config):
     except (ValueError, TypeError, RecursionError) as exc:
         raise product.RequestError("local_model_misconfigured", "Invalid local-model profile", 503) from exc
     return profile
+
+
+def startup_profile(config):
+    try:
+        profile = load_profile(config)
+    except (OSError, product.RequestError):
+        return None, "profile_invalid"
+    return profile, None if profile is not None else "profile_missing"
+
+
+class StartupUnavailable(product.RequestError):
+    def __init__(self, reason):
+        super().__init__("local_model_unavailable", "Local-model startup check failed", 503)
+        self.reason = reason
+
+    def body(self):
+        return {**super().body(), "reason_code": self.reason}
+
+
+def activation_expected():
+    return os.environ.get("WAN_LOCAL_MODEL_ENABLED") == "1"
+
+
+def configured_profile(config):
+    if not activation_expected():
+        return load_profile(config)
+    profile, reason = startup_profile(config)
+    if reason:
+        raise StartupUnavailable(reason)
+    return profile
+
+
+def require_started(snapshot):
+    if reason := snapshot.get("startup_error"):
+        raise StartupUnavailable(reason)
 
 
 def validate(profile, data):
@@ -262,13 +302,13 @@ class Lane:
     def __init__(self, root, profile):
         self.root = root
         self.profile = profile
-        self.profile_hash = product.digest(profile)
+        self.profile_hash = product.digest(profile) if profile is not None else None
         self.path = state_path(root)
 
     def read_state(self):
         state = product.read_job(self.path)
         if state is not None and (
-            not isinstance(state, dict) or state.get("profile_sha256") != self.profile_hash
+            self.profile is None or not isinstance(state, dict) or state.get("profile_sha256") != self.profile_hash
             or type(state.get("resident")) is not bool
             or not valid_id(state.get("instance"))
             or ("pending" in state and not valid_id(state["pending"]))
@@ -293,16 +333,32 @@ class Lane:
             state["held"] = True
         write_record(self.path, state)
 
-    def status(self, *, residency_only=False):
+    def status(self, *, residency_only=False, allow_unbound=False):
         try:
             snapshot = exchange(self.root, {"action": "residency" if residency_only else "status"})
-            if (snapshot.get("profile_sha256") != self.profile_hash
-                    or not valid_id(snapshot.get("instance"))
-                    or type(snapshot.get("resident")) is not bool
-                    or snapshot.get("gpu_uuid") != self.profile["gpu_uuid"]
-                    or (not residency_only and not valid_card_sample(snapshot, self.profile["gpu_uuid"]))):
+            if not valid_id(snapshot.get("instance")) or type(snapshot.get("resident")) is not bool:
                 raise ValueError("Invalid local-model status")
-        except (OSError, ValueError, RecursionError) as exc:
+            reason = snapshot.get("startup_error")
+            unbound = reason in PROFILE_STARTUP_ERRORS and (
+                "profile_sha256" in snapshot and snapshot["profile_sha256"] is None
+                and "gpu_uuid" in snapshot and snapshot["gpu_uuid"] is None
+            )
+            if not (unbound and allow_unbound and residency_only) and (
+                self.profile is None or snapshot.get("profile_sha256") != self.profile_hash
+                or snapshot.get("gpu_uuid") != self.profile["gpu_uuid"]
+            ):
+                raise ValueError("Invalid local-model identity")
+            if reason is not None:
+                if (reason not in STARTUP_ERRORS or snapshot["resident"]
+                        or "receipt" not in snapshot or snapshot["receipt"] is not None):
+                    raise ValueError("Invalid local-model startup state")
+                if not residency_only:
+                    require_started(snapshot)
+            elif not residency_only and not valid_card_sample(snapshot, self.profile["gpu_uuid"]):
+                raise ValueError("Invalid local-model card sample")
+        except StartupUnavailable:
+            raise
+        except (OSError, ValueError, TypeError, RecursionError) as exc:
             raise product.RequestError("local_model_unavailable", "Local-model sidecar state is unavailable", 503) from exc
         return snapshot
 
@@ -366,7 +422,9 @@ class Lane:
         if state is None:
             state = self.read_state()
         if state is None:
-            snapshot = self.status(residency_only=True)
+            # An unavailable process with no profile can prove only that it
+            # never started a child. It cannot attest to a prior reservation.
+            snapshot = self.status(residency_only=True, allow_unbound=True)
             if snapshot["resident"]:
                 self.write_state(snapshot["instance"], True, hold=True)
                 raise held()
@@ -495,6 +553,7 @@ class Lane:
         try:
             check_idle()
             snapshot = self.reconcile() if snapshot is None else snapshot
+            require_started(snapshot)
             operation = job["operation"]
             if operation == "infer" and not snapshot["resident"]:
                 return self.finish(job, error="model_not_loaded", admission_code="pre_admission_failed")
@@ -505,6 +564,8 @@ class Lane:
             check_idle()
             state = self.read_state()
             baseline = state.get("baseline_memory_mib") if state else None
+        except StartupUnavailable as exc:
+            return self.finish(job, error=exc.code, admission_code=exc.code, reason_code=exc.reason)
         except product.AdmissionRefusal as exc:
             self.finish(job, error=exc.error, admission_code=exc.code)
             raise
@@ -549,7 +610,12 @@ class Lane:
 
 
 def enabled_lane(root, config):
-    profile = load_profile(config)
+    try:
+        profile = configured_profile(config)
+    except StartupUnavailable:
+        # Require the private listener's no-child proof for a broken active
+        # mount. Lane.read_state rejects any existing journal in this case.
+        return Lane(root, None)
     if profile is not None:
         return Lane(root, profile)
     # Disabling configuration cannot discard a previously reserved card.

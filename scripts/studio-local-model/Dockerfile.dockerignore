@@ -1,4 +1,5 @@
 **
 !scripts/studio-local-model/backend.cpp
+!scripts/studio-local-model/startup_check.py
 !kubernetes/main/apps/ai/wan-video/app/*.py
 !kubernetes/main/apps/ai/wan-video/local-model-pending/weights/weights.json

@@ -368,6 +368,68 @@ class LocalModelTests(unittest.TestCase):
         self.assertEqual(self.work("wan_prompt", "free_cache", "load"), [])
         self.assertEqual(self.generate("i2v", "e1" * 16)["state"], "succeeded")
 
+    def test_startup_refusal_keeps_wan_and_foley_available_and_refuses_the_model(self):
+        self.memory = 5000
+        self.worker = sidecar.Sidecar(self.root, PROFILE, None, check_idle=None, evict_cache=None,
+                                      startup_error="gpu_pin_mismatch")
+        expected = local.StartupUnavailable("gpu_pin_mismatch").body()
+        with server(api.Handler) as url:
+            self.assertEqual(call(url, local.PROFILE_ROUTE)[::2], (503, expected))
+            for operation, job_id in (("load", LOAD), ("infer", INFER)):
+                self.assertEqual(self.submit(url, job_id, operation)[::2], (503, expected))
+                self.assertIsNone(self.lane.read(job_id))
+        for kind in ("i2v", "s2v", None):
+            self.assertEqual(self.generate(kind, uuid.uuid4().hex)["state"], "succeeded")
+        with patch.object(product_foley, "CONFIG", self.config), \
+                patch.multiple(product_foley.service, ROOT=self.root, idle=api.check_local_queue):
+            with api.acquire_compute() as lease:
+                product_foley.prepare_foley(lease)
+            self.queue = {**EMPTY, "queue_pending": [[0, "foreign"]]}
+            with api.acquire_compute() as lease, self.assertRaises(product.AdmissionRefusal) as refusal:
+                product_foley.prepare_foley(lease)
+            self.assertEqual(refusal.exception.code, "engine_busy")
+        self.assertEqual(self.generate("i2v", uuid.uuid4().hex)["admission_code"], "engine_busy")
+        self.assertFalse(self.lane.path.exists())
+        self.assertFalse(api.UNSAFE)
+        self.assertEqual(self.work("load", "infer", "unload", "free_cache"), [])
+
+    def test_missing_active_profile_requires_no_child_proof_for_wan_and_foley(self):
+        self.config.joinpath("local-model.json").unlink()
+        self.worker = sidecar.Sidecar(self.root, None, None, check_idle=None, evict_cache=None,
+                                      startup_error="profile_missing")
+        with patch.dict("os.environ", {"WAN_LOCAL_MODEL_ENABLED": "1"}), \
+                patch.object(product_foley, "CONFIG", self.config), \
+                patch.multiple(product_foley.service, ROOT=self.root, idle=api.check_local_queue):
+            with server(api.Handler) as url:
+                expected = local.StartupUnavailable("profile_missing").body()
+                self.assertEqual(call(url, local.PROFILE_ROUTE)[::2], (503, expected))
+                self.assertEqual(self.submit(url, LOAD, "load")[::2], (503, expected))
+            self.assertEqual(self.generate("i2v", uuid.uuid4().hex)["state"], "succeeded")
+            with api.acquire_compute() as lease:
+                product_foley.prepare_foley(lease)
+            with patch.object(local, "exchange", side_effect=ConnectionRefusedError):
+                self.assertEqual(self.generate("i2v", uuid.uuid4().hex)["admission_code"], "local_model_unavailable")
+                with api.acquire_compute() as lease, self.assertRaises(product.AdmissionRefusal) as refusal:
+                    product_foley.prepare_foley(lease)
+                self.assertEqual(refusal.exception.code, "local_model_unavailable")
+        self.assertFalse(self.lane.path.exists())
+        self.assertFalse(api.UNSAFE)
+
+    def test_startup_refusal_preserves_a_previous_residency_reservation(self):
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        old_state = self.lane.read_state()
+        self.worker = sidecar.Sidecar(self.root, PROFILE, None, check_idle=None, evict_cache=None,
+                                      startup_error="weights_mismatch")
+        self.assertEqual(self.generate("i2v", uuid.uuid4().hex)["admission_code"], "local_model_unavailable")
+        with patch.object(product_foley, "CONFIG", self.config), \
+                patch.multiple(product_foley.service, ROOT=self.root, idle=api.check_local_queue), \
+                api.acquire_compute() as lease, self.assertRaises(product.AdmissionRefusal) as refusal:
+            product_foley.prepare_foley(lease)
+        self.assertEqual(refusal.exception.code, "local_model_unavailable")
+        self.assertEqual(self.lane.read_state(), old_state)
+        self.assertFalse(api.UNSAFE)
+        self.assertEqual(self.work("wan_prompt", "unload"), [])
+
     def test_wan_foley_sequence_keeps_idle_engine_cache_usable(self):
         self.wan_cache = (5000, 8000)
         self.assertEqual(self.generate("i2v", "a1" * 16)["state"], "succeeded")
@@ -1231,8 +1293,3 @@ class LocalModelTests(unittest.TestCase):
                 self.assertIsNone(api.acquire_compute())
             self.assertEqual(len(self.work("unload")), 1)
             self.assertFalse(self.lane.path.exists())
-
-    def test_sidecar_startup_requires_exact_gpu_pin(self):
-        with patch.dict("os.environ", {"NVIDIA_VISIBLE_DEVICES": CARD, "CUDA_VISIBLE_DEVICES": OTHER}):
-            with self.assertRaisesRegex(ValueError, "must be pinned"):
-                sidecar.serve(self.root, PROFILE, None)

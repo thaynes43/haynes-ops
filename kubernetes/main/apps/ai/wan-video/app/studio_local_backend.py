@@ -55,11 +55,15 @@ def encode_json(value):
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
+class UnsupportedProfile(ValueError):
+    pass
+
+
 def weight_paths(profile, root, pins):
     if (profile["model"] != pins["model"] or "s2v_gpu_uuid" in profile
             or profile["context_tokens"] > 8192 or profile["max_output_tokens"] > 2048
             or profile["unloaded_max_mib"] > local.MAX_UNLOADED_MIB):
-        raise ValueError("This image serves only the selected CR-20 profile")
+        raise UnsupportedProfile("This image serves only the selected CR-20 profile")
     directory = root / pins["model"] / pins["revision"]
     with (directory / "manifest.json").open("rb") as manifest:
         if json.loads(manifest.read(4096)) != pins:
@@ -82,7 +86,7 @@ class LlamaBackend:
 
     def load(self):
         card = self.profile["gpu_uuid"]
-        if any(os.environ.get(name) != card for name in ("CUDA_VISIBLE_DEVICES", "NVIDIA_VISIBLE_DEVICES")):
+        if sidecar.pin_error(card):
             raise ValueError("Local-model GPU does not match the profile")
         weights, projector = weight_paths(self.profile, self.weights_root, self.pins)
         self.lib = self.library()
@@ -170,30 +174,48 @@ def owns_socket(fd, inode):
         return False
 
 
+def startup(profile_path, weights_root):
+    if profile_path.name != "local-model.json":
+        return None, None, "profile_invalid"
+    profile, reason = local.startup_profile(profile_path.parent)
+    if reason:
+        return None, None, reason
+    if reason := sidecar.pin_error(profile["gpu_uuid"]):
+        return profile, None, reason
+    try:
+        pins = json.loads((MODULE_DIR / "weights.json").read_text())
+        weight_paths(profile, weights_root, pins)
+    except UnsupportedProfile:
+        return profile, None, "profile_unsupported"
+    except FileNotFoundError:
+        return profile, None, "weights_missing"
+    except (ValueError, KeyError, TypeError, RecursionError):
+        return profile, None, "weights_mismatch"
+    except OSError:
+        return profile, None, "weights_unreadable"
+    return profile, pins, None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("serve", "ready"):
         commands.add_parser(name).add_argument("--workspace", type=Path, default=Path("/workspace"))
+    commands.choices["ready"].add_argument("--pid", type=int, default=1)
     serve = commands.choices["serve"]
     serve.add_argument("--profile", type=Path, default=Path("/config/video/local-model.json"))
     serve.add_argument("--weights-root", type=Path, default=Path("/workspace/local-model-weights"))
     commands.add_parser("self-check")
     args = parser.parse_args()
     if args.command == "ready":
-        return 0 if listener_ready(args.workspace) else 1
+        return 0 if listener_ready(args.workspace, args.pid) else 1
     if args.command == "self-check":
         template = (MODULE_DIR / "Qwen3.5-4B.jinja").read_bytes()
         return 0 if open_library().studio_cpu_check(template, encode_json(modes.PLAN),
                                                     encode_json(modes.PLAN_TOOL)) else 1
-    if args.profile.name != "local-model.json":
-        parser.error("Profile filename must be local-model.json")
-    profile = local.load_profile(args.profile.parent)
-    if profile is None:
-        parser.error("The local-model profile must be mounted")
-    pins = json.loads((MODULE_DIR / "weights.json").read_text())
-    weight_paths(profile, args.weights_root, pins)
-    sidecar.serve(args.workspace, profile, lambda p: LlamaBackend(p, args.weights_root, pins))
+    profile, pins, reason = startup(args.profile, args.weights_root)
+    sidecar.serve(args.workspace, profile, lambda p: LlamaBackend(p, args.weights_root, pins),
+                  startup_error=reason)
     return 0
 
 

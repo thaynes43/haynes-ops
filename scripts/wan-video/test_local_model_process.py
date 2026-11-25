@@ -86,8 +86,8 @@ def serve_fixture(root, scenario):
         listen(sock, backlog)
         print("ready", flush=True)
 
-    def make_sidecar(root, profile, factory, *, check_idle, evict_cache):
-        return original(root, profile, factory, check_idle=check_idle, evict_cache=evict_cache, sample=sample)
+    def make_sidecar(root, profile, factory, **kwargs):
+        return original(root, profile, factory, sample=sample, **kwargs)
 
     original = sidecar.Sidecar
     os.environ.update(CUDA_VISIBLE_DEVICES=CARD, NVIDIA_VISIBLE_DEVICES=CARD)

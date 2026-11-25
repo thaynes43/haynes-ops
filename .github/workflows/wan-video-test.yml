@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - scripts/wan-video/**
+      - scripts/studio-local-model/startup_*.py
       - kubernetes/main/apps/ai/wan-video/**
       - kubernetes/main/apps/ai/open-webui/app/wan_video.py
       - .github/workflows/wan-video-test.yml

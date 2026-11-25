@@ -346,7 +346,7 @@ def generate(job, prompt, lease=None, *, negative=None):
             configured = True
             # S2V can keep the model on the other card only when the deployment
             # explicitly pins and verifies ComfyUI's single-device placement.
-            s2v_card = lane.profile.get("s2v_gpu_uuid")
+            s2v_card = lane.profile.get("s2v_gpu_uuid") if lane.profile else None
             cards = {s2v_card} if kind == "s2v" and s2v_card else EXPECTED
             prepare_video(cards, lease, lane)
         sample = gpu_sample()
@@ -579,7 +579,7 @@ def check_local_queue():
 
 
 def local_profile():
-    profile = local.load_profile(CONFIG)
+    profile = local.configured_profile(CONFIG)
     if profile is None:
         raise product.RequestError("local_model_not_installed", "No local model is installed", 503)
     return profile
@@ -622,6 +622,7 @@ def submit_local_request(lane, job_id, request):
         started = False
         try:
             lane.read_state()
+            local.require_started(lane.status(residency_only=True, allow_unbound=True))
             local.check_images(ROOT, request)
             job = lane.create(job_id, request)
             ACTIVE = job_id
@@ -723,7 +724,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def get_product(self):
         if self.path == local.PROFILE_ROUTE:
-            self.respond(200, {"api_version": product.VERSION, "profile": local_profile()})
+            profile = local_profile()
+            lane = local.Lane(ROOT, profile)
+            local.require_started(lane.status(residency_only=True, allow_unbound=True))
+            self.respond(200, {"api_version": product.VERSION, "profile": profile})
             return
         if local_match := local.REQUEST_ROUTE.fullmatch(self.path):
             self.respond(200, get_local_request(local.Lane(ROOT, local_profile()), local_match[1]))
@@ -914,7 +918,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def recover_with_local():
     global UNSAFE
-    if not (CONFIG / "local-model.json").exists() and not local.state_path(ROOT).exists():
+    if (not local.activation_expected() and not (CONFIG / "local-model.json").exists()
+            and not local.state_path(ROOT).exists()):
         recover()
         return
     # A model operation can still own the lease after the API container exits.
