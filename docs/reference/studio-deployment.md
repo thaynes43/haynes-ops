@@ -38,8 +38,8 @@ exclusive create, fsync, hard-link no-clobber and read-back under
 `.probe/` before serving. Kubernetes uses `/healthz` for process
 liveness. The readiness probe tolerates the first `/readyz` response
 of 503 while the store check runs. It also checks PostgreSQL. Web probes
-read `/index.html`. MCP probes check its TCP listener. Gatus uses the shared internal component and checks
-`/v1/me` on the LAN origin, where a healthy anonymous API returns 401.
+read `/index.html`. MCP probes check its TCP listener. The
+[LAN route check](#gatus-and-backup-coverage) runs from Gatus.
 
 The worker runs one `studio-worker` replica on `talosw01` with `Recreate`
 and the `dev-env-agent` priority class. It shares the API's UID and GID.
@@ -65,6 +65,70 @@ same value is idempotent.
 D47 excludes NFS media from backups. The NFS server is outside the
 cluster and remains a shared dependency of all API replicas. PostgreSQL
 uses the existing [CNPG backup coverage](studio-database.md#backup-and-rollback).
+
+## Gatus and backup coverage
+
+[OP435](https://work.haynesnetwork.com/work_packages/435) verified the Gatus
+endpoint installed by OP434. The `ai/studio` Flux Kustomization renders
+`studio-gatus-ep` from the shared `common/gatus/guarded` component. The Gatus
+ConfigMap sidecar in `observability` watches the `gatus.io/enabled` label and
+loads the endpoint into the `internal` group. Gatus requests
+`https://studio.haynesops.com/v1/me` through internal Traefik once a minute.
+It sends no credential. The expected anonymous response is **401**, within
+the installed 200–401 success range. A timeout, too-many-requests response,
+missing route or server error fails. The process and database/store probes
+remain on the API pod. The Studio Deployments do not mount the Gatus
+ConfigMap, so its installation or update requires no Studio pod rollout.
+
+On a fresh install, the main [rollout](#reconcile-and-verify) applies the
+ConfigMap with the app. For an existing deployment, once the Studio migration
+dependency is Ready at the chosen Git revision, reconcile just `ai/studio`
+if the ConfigMap is missing or out of date. The existing OP435 deployment
+requires only the verification steps.
+
+```sh
+# On initial installation or to reconcile a missing/outdated ConfigMap
+flux reconcile kustomization studio -n ai --with-source
+
+# Verify the rendered config and a fresh probe result
+kubectl -n ai get configmap studio-gatus-ep -o jsonpath='{.data.config\.yaml}'
+kubectl -n observability exec -i gatus-0 -c configmap-sidecar -- python - <<'PY'
+import json
+from urllib.error import HTTPError
+from urllib.request import urlopen
+
+with urlopen("http://127.0.0.1/api/v1/endpoints/statuses", timeout=10) as response:
+    studio = next(entry for entry in json.load(response)
+                  if entry["group"] == "internal" and entry["name"] == "studio")
+    result = max(studio["results"], key=lambda entry: entry["timestamp"])
+    print("internal/studio", result["timestamp"], result["success"])
+    assert result["success"]
+try:
+    with urlopen("https://studio.haynesops.com/v1/me", timeout=10) as response:
+        raise SystemExit(f"Expected anonymous HTTP 401, got {response.status}")
+except HTTPError as error:
+    print("/v1/me", error.code)
+    assert error.code == 401
+PY
+```
+
+Check that the result timestamp follows the reconcile on a fresh install
+and is within two probe intervals of verification. An empty history on
+first load needs one check interval. OP435 saw passing checks at 01:59,
+02:00 and 02:01 UTC on 2026-11-25 and observed 401 at `/v1/me`, 200 at `/`
+and 404 at `/healthz` from the Gatus pod.
+
+OP435 found no Studio PVC in `ai` and no claim mounts on `studio-api`,
+`studio-web`, `studio-mcp`, `studio-worker` or `studio-render`. API, worker
+and render use raw NFS volumes. VolSync has no Studio claim to snapshot.
+To recheck after a storage change, list the namespace claims and workload
+volume references:
+
+```sh
+kubectl -n ai get pvc
+kubectl -n ai get deploy studio-api studio-web studio-mcp studio-worker studio-render \
+  -o 'custom-columns=NAME:.metadata.name,CLAIMS:.spec.template.spec.volumes[*].persistentVolumeClaim.claimName,NFS:.spec.template.spec.volumes[*].nfs.path'
+```
 
 ## Initial resource settings
 
