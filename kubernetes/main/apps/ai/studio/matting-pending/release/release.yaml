@@ -6,5 +6,5 @@ metadata:
     config.kubernetes.io/local-config: "true"
 data:
   # Replace this one value with the digest from the Studio main publish.
-  image: ghcr.io/thaynes43/haynes-studio-matting:pending-op459
+  image: ghcr.io/thaynes43/haynes-studio-matting@sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f
   allocation: matting-op459-birefnet-lite-v1-01
