@@ -1,0 +1,54 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: studio-upscaling-provision
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: studio-upscaling-provision
+  ingressDeny:
+    - fromEntities: [all]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:app.kubernetes.io/instance: coredns
+      toPorts:
+        - ports:
+            - {port: "53", protocol: ANY}
+          rules:
+            dns:
+              - matchName: raw.githubusercontent.com
+    - toFQDNs:
+        - matchName: raw.githubusercontent.com
+      toPorts:
+        - ports:
+            - {port: "443", protocol: TCP}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: studio-upscaling-smoke
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: studio-upscaling-smoke
+  ingressDeny:
+    - fromEntities: [all]
+  egressDeny:
+    - toEntities: [all]
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: studio-upscaling-compare
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: studio-upscaling-compare
+  ingressDeny:
+    - fromEntities: [all]
+  egressDeny:
+    - toEntities: [all]
