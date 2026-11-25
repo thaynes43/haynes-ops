@@ -21,6 +21,7 @@ jobs:
     outputs:
       changed-files: ${{ steps.changed-files.outputs.changed_files }}
       portal-files: ${{ steps.portal-files.outputs.changed_files }}
+      studio-files: ${{ steps.studio-files.outputs.changed_files }}
     steps:
       - name: Get Changed Files
         id: changed-files
@@ -35,6 +36,15 @@ jobs:
             kubernetes/main/apps/network/authentik/**
             scripts/tests/portal178-m5a/**
             .agents/reports/portal178-m5a/pending/**
+            .github/workflows/flux-local.yaml
+
+      - name: Get Studio Release Guard Files
+        id: studio-files
+        uses: bjw-s-labs/action-changed-files@147be9638332cf68fd60714a610509d7a9360d60 # v0.7.0
+        with:
+          patterns: |
+            kubernetes/main/apps/ai/studio/**
+            scripts/tests/studio-release/**
             .github/workflows/flux-local.yaml
 
   # The `cluster` matrix carries a single entry since the edge cluster was retired
@@ -58,23 +68,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Check Studio release pins and Flux Job gates
-        run: |
-          python3 -m venv "$RUNNER_TEMP/studio-release-venv"
-          "$RUNNER_TEMP/studio-release-venv/bin/python" -I -m pip install \
-            --only-binary=:all: --no-deps --disable-pip-version-check PyYAML==6.0.3
-          mkdir "$RUNNER_TEMP/studio-kustomize"
-          (
-            cd "$RUNNER_TEMP/studio-kustomize"
-            curl --fail --silent --show-error --location \
-              https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.8.3/kustomize_v5.8.3_linux_amd64.tar.gz \
-              --output kustomize_v5.8.3_linux_amd64.tar.gz
-            sha256sum --check "$GITHUB_WORKSPACE/scripts/tests/portal178-m5a/kustomize.sha256"
-            tar -xzf kustomize_v5.8.3_linux_amd64.tar.gz
-          )
-          PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
-            "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/check.py
 
       - name: Run flux-local test
         uses: docker://ghcr.io/allenporter/flux-local:v8.4.0@sha256:c0be852e30f299ce6a220cc992b0c21a2a0b0684cc17713b9d718e18d9c8beff
@@ -209,6 +202,32 @@ jobs:
             --schema "$RUNNER_TEMP/authentik-schema.json" \
             --rendered "$RUNNER_TEMP/authentik-rendered.yaml"
 
+  studio-release-guard:
+    if: ${{ needs.filter.outputs.studio-files != '[]' }}
+    needs: filter
+    name: Flux Local - Studio release guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check Studio release pins and Flux Job gates
+        run: |
+          python3 -m venv "$RUNNER_TEMP/studio-release-venv"
+          "$RUNNER_TEMP/studio-release-venv/bin/python" -I -m pip install \
+            --only-binary=:all: --no-deps --disable-pip-version-check PyYAML==6.0.3
+          mkdir "$RUNNER_TEMP/studio-kustomize"
+          (
+            cd "$RUNNER_TEMP/studio-kustomize"
+            curl --fail --silent --show-error --location \
+              https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.8.3/kustomize_v5.8.3_linux_amd64.tar.gz \
+              --output kustomize_v5.8.3_linux_amd64.tar.gz
+            sha256sum --check "$GITHUB_WORKSPACE/scripts/tests/portal178-m5a/kustomize.sha256"
+            tar -xzf kustomize_v5.8.3_linux_amd64.tar.gz
+          )
+          PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
+            "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/check.py
+
   success:
     if: ${{ always() }}
     needs:
@@ -217,6 +236,7 @@ jobs:
       - diff
       - annotation-guard
       - portal-identity-guard
+      - studio-release-guard
     name: Flux Local - Success
     runs-on: ubuntu-latest
     steps:
