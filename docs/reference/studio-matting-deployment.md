@@ -8,6 +8,12 @@ ConfigMap. The provisioning and smoke Jobs are launched individually after
 the preceding checks pass. The worker sidecar and the render CPU change
 remain outside Flux's applied paths. Existing worker and render pods do
 not roll during this install.
+
+OP459 authorizes a one-shot exception to Flux ownership for these two
+unprivileged Job objects. The saga coordinator runs the reviewed Git
+templates and waits at each health gate. Flux owns the targeted policies and provisioner
+ConfigMap. The provisioner leaves a verified, create-only allocation on
+the private Studio share, and both Job objects expire after 24 hours.
 [Matting profile](https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/matting-backend-profile.md)
 · [Studio deployment](studio-deployment.md)
 
@@ -132,8 +138,9 @@ cold load and peak RSS. Capture the report from a failed run too.
 )
 ```
 
-Record the revision, published digest, verified graph and profile hashes,
-Job status, smoke JSON and deployed health on OP459. Record the private
+Record the Ops Git revision, both Job names and statuses, published image
+digest, verified graph and profile hashes, smoke JSON and deployed health
+on OP459. Record the private
 allocation in the story handoff. The synthetic result establishes installed
 smoke behavior. [OP451](https://work.haynesnetwork.com/work_packages/451)
 owns the private cast quality and serving integration. Tom owns acceptance.
