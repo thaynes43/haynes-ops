@@ -297,31 +297,64 @@ def store_product_video(job, history):
     save(job)
 
 
+GPU_BUSY_ERROR = "RuntimeError: Rack GPUs are busy; refusing to start a competing job"
+ENGINE_BUSY_ERROR = "RuntimeError: ComfyUI already has a job; refusing a competing request"
+MALFORMED_QUEUE_ERROR = "ValueError: Malformed ComfyUI /queue response; backend work is unknown"
+
+
+def check_video_queue():
+    try:
+        queue = engine_queue()
+    except (OSError, HTTPException, ValueError, RecursionError) as exc:
+        raise product.AdmissionRefusal("engine_busy", product.job_error(exc)) from exc
+    if queue["queue_running"] or queue["queue_pending"]:
+        raise product.AdmissionRefusal("engine_busy", ENGINE_BUSY_ERROR)
+
+
+def prepare_video(cards, lease, lane):
+    if UNSAFE:
+        raise product.AdmissionRefusal("lease_held", GPU_BUSY_ERROR)
+    try:
+        lane.prepare_other(cards, lease, check_video_queue)
+    except local.UnknownEngineWork as exc:
+        error = ENGINE_BUSY_ERROR if exc.engine_busy else MALFORMED_QUEUE_ERROR
+        raise product.AdmissionRefusal("engine_busy", error) from exc
+    except product.RequestError as exc:
+        code = exc.code if exc.code in {"local_model_unavailable", "local_model_handover"} else "local_model_handover"
+        raise product.AdmissionRefusal(code, GPU_BUSY_ERROR) from exc
+    except (OSError, ValueError, RecursionError) as exc:
+        raise product.AdmissionRefusal("local_model_unavailable", GPU_BUSY_ERROR) from exc
+
+
 def generate(job, prompt, lease=None, *, negative=None):
     global ACTIVE, UNSAFE
     kind = job.get("type") if job.get("api_version") == product.VERSION else None
     acknowledged = False
     submission_attempted = False
+    configured = False
     try:
         if lease is None:
             lease = acquire_compute()
         if lease is None:
-            raise RuntimeError("Compute is reserved by another video/audio job")
-        lane = local.enabled_lane(ROOT, CONFIG)
+            raise product.AdmissionRefusal("lease_held", "RuntimeError: Compute is reserved by another video/audio job")
+        try:
+            lane = local.enabled_lane(ROOT, CONFIG)
+        except product.RequestError as exc:
+            configured = True
+            raise product.AdmissionRefusal("local_model_handover", GPU_BUSY_ERROR) from exc
         if lane:
+            configured = True
             # S2V can keep the model on the other card only when the deployment
             # explicitly pins and verifies ComfyUI's single-device placement.
             s2v_card = lane.profile.get("s2v_gpu_uuid")
             cards = {s2v_card} if kind == "s2v" and s2v_card else EXPECTED
-            lane.prepare_other(cards, lease, check_local_queue)
+            prepare_video(cards, lease, lane)
         sample = gpu_sample()
         if not gpus_idle(sample):
-            raise RuntimeError("Rack GPUs are busy; refusing to start a competing job")
+            raise product.AdmissionRefusal("gpu_busy", GPU_BUSY_ERROR)
         if kind and any(s["temperature_c"] >= 62 for s in sample["gpus"]):
-            raise RuntimeError("Rack GPUs must be below 62 C for a product job")
-        queue = engine_queue()
-        if queue["queue_running"] or queue["queue_pending"]:
-            raise RuntimeError("ComfyUI already has a job; refusing a competing request")
+            raise product.AdmissionRefusal("gpu_warm", "RuntimeError: Rack GPUs must be below 62 C for a product job")
+        check_video_queue()
         timeout = product.PROFILES[kind]["timeout_seconds"] if kind else 1200
         if kind == "i2v":
             graph = image_graph(CONFIG / "workflow.json", job, prompt, negative)
@@ -440,7 +473,10 @@ def generate(job, prompt, lease=None, *, negative=None):
             except Exception:
                 UNSAFE = True
         # Do not persist upstream response bodies or prompt content in error messages.
-        job.update(state="failed", error=type(exc).__name__ + ": " + str(exc)[:200], finished_at=time.time())
+        refusal = isinstance(exc, product.AdmissionRefusal)
+        job.update(state="failed", error=exc.error if refusal else product.job_error(exc), finished_at=time.time())
+        if not submission_attempted and (kind or configured):
+            job["admission_code"] = exc.code if refusal else "pre_admission_failed"
         save(job)
     finally:
         if lease is not None:
@@ -478,7 +514,8 @@ def submit_product_video(kind, job_id, request):
                 threading.Thread(target=generate, args=(job, request["prompt"], lease),
                                  kwargs={"negative": request["negative_prompt"]}, daemon=True).start()
             except RuntimeError:
-                job.update(state="failed", error="Could not start worker", finished_at=time.time())
+                job.update(state="failed", error="Could not start worker", admission_code="pre_admission_failed",
+                           finished_at=time.time())
                 save(job)
                 return 503, product.job_view(job)
             started = True
@@ -524,20 +561,20 @@ def require_empty_queue():
     except (ValueError, RecursionError) as exc:
         raise local.UnknownEngineWork("ComfyUI queue is malformed") from exc
     if queue["queue_running"] or queue["queue_pending"]:
-        raise local.UnknownEngineWork("ComfyUI already has a job; preserving engine work")
+        raise local.UnknownEngineWork("ComfyUI already has a job; preserving engine work", engine_busy=True)
 
 
 def check_local_queue():
     global UNSAFE
     if UNSAFE:
-        raise local.busy("Render hold requires inspection")
+        raise local.busy("Render hold requires inspection", "lease_held")
     try:
         require_empty_queue()
     except local.UnknownEngineWork as exc:
         UNSAFE = True
-        raise local.busy(str(exc)) from exc
+        raise local.busy(str(exc), "engine_busy") from exc
     except (OSError, HTTPException) as exc:
-        raise local.busy("ComfyUI queue is temporarily unavailable") from exc
+        raise local.busy("ComfyUI queue is temporarily unavailable", "engine_busy") from exc
 
 
 def local_profile():
@@ -552,9 +589,9 @@ def check_local_compute():
     try:
         sample = gpu_sample()
     except (OSError, subprocess.SubprocessError, ValueError, IndexError, RuntimeError, csv.Error) as exc:
-        raise local.busy("Rack GPU state is unknown") from exc
+        raise local.busy("Rack GPU state is unknown", "pre_admission_failed") from exc
     if not gpus_idle(sample):
-        raise local.busy("Rack GPUs are busy")
+        raise local.busy("Rack GPUs are busy", "gpu_busy")
 
 
 def clear_local_load_memory(lane):
@@ -597,14 +634,14 @@ def submit_local_request(lane, job_id, request):
         started = False
         try:
             lane.read_state()
-            local.check_image(ROOT, request)
+            local.check_images(ROOT, request)
             job = lane.create(job_id, request)
             ACTIVE = job_id
             accepted = local.view(job)
             try:
                 threading.Thread(target=run_local_request, args=(lane, job, request, lease), daemon=True).start()
             except RuntimeError:
-                return 503, local.view(lane.finish(job, error="worker_unavailable"))
+                return 503, local.view(lane.finish(job, error="worker_unavailable", admission_code="pre_admission_failed"))
             started = True
             return 202, accepted
         finally:
@@ -900,8 +937,8 @@ def recover_with_local():
         if not UNSAFE:
             try:
                 lane = local.enabled_lane(ROOT, CONFIG)
-                if lane:
-                    lane.reconcile()
+                if lane and (state := lane.read_state()) is not None:
+                    lane.reconcile(state)
             except (OSError, ValueError):
                 # Keep serving reads. Admission will fail closed until the
                 # sidecar supplies evidence or the operator resolves a hold.

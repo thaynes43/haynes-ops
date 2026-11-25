@@ -1,22 +1,30 @@
-"""Private sidecar adapter for an in-process local model provided by OP442.
+"""Supervise the one process that owns the local model and its CUDA context.
 
-The backend must finish all GPU activity before returning from load, infer or
-unload. Startup, idle and request preparation must never enqueue GPU work.
-The backend must not spawn a process or service with its own GPU lifetime.
+The backend factory runs in the child. Load and inference must drain GPU work
+before returning. Preparation runs on the CPU, including any image decode,
+resize, template expansion and token counting. It returns the prepared prompt,
+total input token count, and one visual token count per image. Inference returns
+text, output tokens and a completion flag used to reject truncated structured
+output. The backend must not spawn a process or service with an independent GPU
+lifetime.
 """
-from contextlib import closing, contextmanager
+from contextlib import closing
+import ctypes
 import csv
 import fcntl
 from http.client import HTTPException
 import io
+import multiprocessing
 import os
 import signal
 import socket
 import stat
 import subprocess
+import time
 import uuid
 
 import product
+import local_model_modes as modes
 import product_local as local
 
 
@@ -54,28 +62,140 @@ def verify_lease(root, fd):
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
-@contextmanager
-def operation_deadline(seconds):
-    # A native call can hang with the GIL held. The kernel's default SIGALRM
-    # action terminates this sidecar even when Python cannot run a watcher.
-    handler = signal.signal(signal.SIGALRM, signal.SIG_DFL)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
-    try:
-        yield
-    finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, handler)
+def infer(backend, root, profile, request):
+    images = local.check_images(root, request)
+    mode = modes.MODES[request.get("mode", "text")]
+    prepared, inputs, visual = backend.prepare(request["prompt"], images, mode)
+    if (type(inputs) is not int or inputs < 0 or type(visual) is not list or len(visual) != len(images)
+            or any(type(tokens) is not int or not 1 <= tokens <= local.MAX_VISUAL_TOKENS for tokens in visual)
+            or sum(visual) > inputs):
+        raise ValueError("Invalid input token count")
+    cap = request.get("max_output_tokens", profile["max_output_tokens"])
+    if inputs + cap > profile["context_tokens"]:
+        return {"error": "context_limit"}
+    text, outputs, complete = backend.infer(prepared, cap)
+    result = {"text": text, "input_tokens": inputs, "output_tokens": outputs}
+    structured = request.get("mode", "text") != "text"
+    if (structured and complete is not True) or not local.valid_result(profile, request, result):
+        if structured:
+            return {"error": "invalid_result"}
+        raise ValueError("Invalid local-model result")
+    return {"result": result}
+
+
+def model_worker(conn, parent_pid, parent_fds, root, profile, factory):
+    # Linux does not inherit the parent-death signal across fork. Arm it
+    # before touching the model and check for parent death during that window.
+    for fd in parent_fds:
+        os.close(fd)
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    pr_set_pdeathsig = 1
+    if ctypes.CDLL(None).prctl(pr_set_pdeathsig, signal.SIGKILL, 0, 0, 0) or os.getppid() != parent_pid:
+        return
+    signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM, signal.SIGINT})
+    with conn:
+        try:
+            backend = factory(profile)
+            backend.load()
+            local.send_packet(conn, {})
+            while True:
+                message, _ = local.receive_packet(conn)
+                if message["operation"] == "unload":
+                    backend.unload()
+                    return
+                local.send_packet(conn, infer(backend, root, profile, message))
+        except Exception:
+            try:
+                local.send_packet(conn, {"error": "backend_failed"})
+            except OSError:
+                pass
+
+
+class ModelProcess:
+    def __init__(self, root, profile, factory):
+        self.root = root
+        self.profile = profile
+        self.factory = factory
+        self.process = self.conn = None
+
+    def stop(self):
+        if self.process is not None:
+            if self.process.is_alive():
+                self.process.kill()
+            self.process.join()
+            self.process.close()
+            self.conn.close()
+            self.process = self.conn = None
+
+    @staticmethod
+    def remaining(deadline):
+        seconds = deadline - time.monotonic()
+        if seconds <= 0:
+            raise TimeoutError
+        return seconds
+
+    def execute(self, request, deadline, parent_fds):
+        operation = request["operation"]
+        try:
+            self.remaining(deadline)
+            if operation == "load":
+                if self.process is not None:
+                    raise ValueError("Model already owns a process")
+                # The serving parent is single threaded and has not initialized
+                # CUDA. Close its listener, request socket and lease in the child.
+                conn, peer = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+                with peer:
+                    process = multiprocessing.get_context("fork").Process(
+                        target=model_worker, daemon=True,
+                        args=(peer, os.getpid(), (*parent_fds, conn.fileno()),
+                              self.root, self.profile, self.factory),
+                    )
+                    previous = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM, signal.SIGINT})
+                    try:
+                        process.start()
+                        self.conn, self.process = conn, process
+                    except BaseException:
+                        conn.close()
+                        raise
+                    finally:
+                        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+            else:
+                self.conn.settimeout(self.remaining(deadline))
+                local.send_packet(self.conn, request)
+            if operation == "unload":
+                self.process.join(self.remaining(deadline))
+                if self.process.exitcode is None:
+                    raise TimeoutError
+                if self.process.exitcode != 0:
+                    return {"error": "backend_exited"}
+                # A clean exit is the acknowledgement. If unload raised,
+                # the child sends an error before exiting.
+                packet = self.conn.recv(1, socket.MSG_PEEK)
+                return {"error": "backend_failed"} if packet else {}
+            self.conn.settimeout(self.remaining(deadline))
+            reply, _ = local.receive_packet(self.conn)
+            if reply.get("error") == "backend_failed":
+                self.stop()
+            return reply
+        except TimeoutError:
+            self.stop()
+            return {"error": "operation_timeout"}
+        except (OSError, ValueError):
+            self.stop()
+            return {"error": "backend_exited"}
+        finally:
+            if operation == "unload":
+                self.stop()
 
 
 class Sidecar:
-    def __init__(self, root, profile, backend_factory, *, check_idle, sample=sample_card, deadline=operation_deadline):
+    def __init__(self, root, profile, backend_factory, *, check_idle, sample=sample_card):
         self.lane = local.Lane(root, profile)
         self.profile = profile
-        self.backend_factory = backend_factory
-        self.backend = None
+        self.model = ModelProcess(root, profile, backend_factory)
         self.sample = sample
         self.check_idle = check_idle
-        self.deadline = deadline
         self.instance = uuid.uuid4().hex
         self.resident = False
         self.receipt = None
@@ -87,38 +207,7 @@ class Sidecar:
             "resident": self.resident, "receipt": self.receipt,
         }
 
-    def execute(self, job, request):
-        operation = job["operation"]
-        if operation == "load":
-            if self.resident:
-                raise ValueError("Model is already loaded")
-            self.backend = self.backend_factory(self.profile)
-            self.backend.load()
-            self.resident = True
-        elif operation == "unload":
-            if not self.resident:
-                raise ValueError("Model is already unloaded")
-            self.backend.unload()
-            self.backend = None
-            self.resident = False
-        else:
-            if not self.resident:
-                raise ValueError("Model is not loaded")
-            image = local.check_image(self.lane.root, request)
-            prepared, inputs = self.backend.prepare(request["prompt"], image)
-            cap = request.get("max_output_tokens", self.profile["max_output_tokens"])
-            if type(inputs) is not int or inputs < 0:
-                raise ValueError("Invalid input token count")
-            if inputs + cap > self.profile["context_tokens"]:
-                return {"error": "context_limit"}
-            text, outputs = self.backend.infer(prepared, cap)
-            result = {"text": text, "input_tokens": inputs, "output_tokens": outputs}
-            if not local.valid_result(self.profile, job, result):
-                raise ValueError("Invalid local-model result")
-            return {"result": result}
-        return {}
-
-    def run(self, message, fd):
+    def run(self, message, fd, *socket_fds):
         job_id = message.get("id")
         if not local.valid_id(job_id) or message.keys() != {"action", "id", "request"}:
             raise ValueError("Invalid local-model dispatch")
@@ -136,21 +225,26 @@ class Sidecar:
         operation = job["operation"]
         # Repeat the queue read at the engine boundary. The API's earlier
         # observation may predate a delayed delivery to the sidecar.
-        with self.deadline(self.profile[operation + "_timeout_seconds"]):
+        deadline = time.monotonic() + self.profile[operation + "_timeout_seconds"]
+        try:
+            self.check_idle()
+        except local.UnknownEngineWork as exc:
+            outcome = {"error": "engine_work_unknown", "engine_busy": exc.engine_busy}
+        except (OSError, HTTPException):
+            outcome = {"error": "engine_queue_unavailable"}
+        else:
             try:
-                self.check_idle()
-            except local.UnknownEngineWork:
-                outcome = {"error": "engine_work_unknown"}
-            except (OSError, HTTPException):
-                outcome = {"error": "engine_queue_unavailable"}
-            else:
-                try:
-                    outcome = self.execute(job, request)
-                except Exception:
-                    outcome = {"error": "backend_failed"}
-            self.receipt = {"id": job_id, "operation": operation, **outcome}
+                outcome = self.model.execute(request, deadline, (fd, *socket_fds))
+            except BaseException:
+                self.model.stop()
+                raise
+            if not outcome.get("error"):
+                self.resident = operation != "unload"
+            elif outcome["error"] in {"operation_timeout", "backend_exited", "backend_failed"}:
+                self.resident = False
+        self.receipt = {"id": job_id, "operation": operation, **outcome}
 
-    def handle(self, conn):
+    def handle(self, conn, listener_fd=None):
         conn.settimeout(local.STATUS_SECONDS)
         try:
             message, fds = local.receive_packet(conn, max_fds=1)
@@ -158,7 +252,12 @@ class Sidecar:
                 if not fds and message == {"action": "status"}:
                     reply = self.status()
                 elif len(fds) == 1 and message.get("action") == "run":
-                    self.run(message, fds[0])
+                    socket_fds = (conn.fileno(),) if listener_fd is None else (conn.fileno(), listener_fd)
+                    try:
+                        self.run(message, fds[0], *socket_fds)
+                    except SystemExit:
+                        self.model.stop()
+                        raise
                     reply = {"id": message["id"]}
                 else:
                     raise ValueError("Invalid local-model sidecar call")
@@ -183,7 +282,7 @@ def serve(root, profile, backend_factory):
     if path.exists():
         if not stat.S_ISSOCK(path.lstat().st_mode):
             raise ValueError("Local-model socket path is occupied")
-        # A process killed by its watchdog leaves a socket name behind. Never
+        # A killed supervisor can leave a socket name behind. Never
         # replace an endpoint with a live listener.
         with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as probe:
             probe.settimeout(1)
@@ -195,6 +294,13 @@ def serve(root, profile, backend_factory):
                 raise RuntimeError("Local-model sidecar is already serving")
     from api import require_empty_queue
     worker = Sidecar(root, profile, backend_factory, check_idle=require_empty_queue)
+    def shutdown(signum, _frame):
+        raise SystemExit(128 + signum)
+
+    # PID 1 needs explicit termination handlers. A shutdown during a request
+    # reaps the CUDA owner before handle() releases its copy of the lease.
+    signal.signal(signal.SIGTERM, shutdown)
+    signal.signal(signal.SIGINT, shutdown)
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as listener:
         listener.bind(os.fspath(path))
         try:
@@ -203,6 +309,7 @@ def serve(root, profile, backend_factory):
             while True:
                 conn, _ = listener.accept()
                 with closing(conn):
-                    worker.handle(conn)
+                    worker.handle(conn, listener.fileno())
         finally:
+            worker.model.stop()
             path.unlink(missing_ok=True)

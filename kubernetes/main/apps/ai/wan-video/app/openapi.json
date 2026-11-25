@@ -69,7 +69,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Job status"
+            "description": "Job status. With local-model handover enabled, a refused job can include admission_code as defined for ProductJob."
           },
           "404": {
             "description": "Unknown job"
@@ -1197,6 +1197,9 @@
               }
             },
             "nullable": true
+          },
+          "admission_code": {
+            "$ref": "#/components/schemas/AdmissionCode"
           }
         }
       },
@@ -1268,8 +1271,46 @@
             "minimum": 1,
             "maximum": 4096,
             "description": "At most the profile limit"
+          },
+          "image_sha256s": {
+            "$ref": "#/components/schemas/LocalModelImages"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/LocalModelMode"
           }
-        }
+        },
+        "not": {
+          "required": [
+            "image_sha256",
+            "image_sha256s"
+          ]
+        },
+        "anyOf": [
+          {
+            "not": {
+              "required": [
+                "mode"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "frame_check_v1"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "required": [
+              "image_sha256"
+            ]
+          },
+          {
+            "required": [
+              "image_sha256s"
+            ]
+          }
+        ]
       },
       "LocalModelUnloadRequest": {
         "type": "object",
@@ -1461,7 +1502,7 @@
             "properties": {
               "text": {
                 "type": "string",
-                "description": "At most 32768 UTF-8 bytes"
+                "description": "At most 32768 UTF-8 bytes. Structured modes return a JSON object as text. frame_check_v1 has one face, code and wardrobe result per input frame, in order. plan_v1 returns scene_id and shots with technical_direction. plan_tool_v1 returns exactly one name (record_plan_v1) and arguments object with scene_id, shot_count and technical_direction. Invalid or incomplete structured output fails with invalid_result."
               },
               "input_tokens": {
                 "type": "integer",
@@ -1472,8 +1513,50 @@
                 "minimum": 0
               }
             }
+          },
+          "admission_code": {
+            "$ref": "#/components/schemas/AdmissionCode"
+          },
+          "image_sha256s": {
+            "$ref": "#/components/schemas/LocalModelImages"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/LocalModelMode"
           }
         }
+      },
+      "AdmissionCode": {
+        "type": "string",
+        "description": "Optional failed-job field for a refusal before engine submission. The engine output did not run. Back off before using a fresh ID for gpu_busy, gpu_warm, engine_busy, lease_held, local_model_handover or local_model_unavailable. A held card may need operator inspection. Inspect pre_admission_failed before retrying. Existing records can omit this field.",
+        "enum": [
+          "gpu_busy",
+          "gpu_warm",
+          "engine_busy",
+          "lease_held",
+          "local_model_handover",
+          "local_model_unavailable",
+          "pre_admission_failed"
+        ]
+      },
+      "LocalModelMode": {
+        "type": "string",
+        "enum": [
+          "text",
+          "frame_check_v1",
+          "plan_v1",
+          "plan_tool_v1"
+        ],
+        "description": "Omission or explicit text selects the original text fingerprint without adding mode. Structured modes use server-owned definitions."
+      },
+      "LocalModelImages": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 4,
+        "items": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "description": "Ordered staged PNGs. Each is at most 8 MiB and fits within 1080 by 1920 pixels in either orientation. Exclusive with image_sha256."
       }
     }
   }

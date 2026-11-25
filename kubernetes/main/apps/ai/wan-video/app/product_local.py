@@ -10,6 +10,7 @@ import time
 import uuid
 
 import product
+import local_model_modes as modes
 
 APPROVED_CARDS = frozenset({
     "GPU-d8a856f1-f955-f683-bc24-654561496774",
@@ -20,6 +21,9 @@ REQUEST_ROUTE = re.compile(r"/v1/local-model/requests/([0-9a-f]{32})")
 REQUEST_ID = re.compile(r"[0-9a-f]{32}")
 OPERATIONS = {"load", "infer", "unload"}
 MAX_TEXT_BYTES = 32 * 1024
+MAX_IMAGES = 4
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_VISUAL_TOKENS = 1024
 MAX_PACKET = 64 * 1024
 STATUS_SECONDS = 15
 PROFILE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}")
@@ -64,7 +68,7 @@ def validate(profile, data):
         raise product.RequestError("invalid_request", "Choose load, infer or unload")
     operation = data["operation"]
     required = {"operation", "profile"} | ({"prompt"} if operation == "infer" else set())
-    optional = {"image_sha256", "max_output_tokens"} if operation == "infer" else set()
+    optional = {"image_sha256", "image_sha256s", "max_output_tokens", "mode"} if operation == "infer" else set()
     if not required <= data.keys() or data.keys() - required - optional:
         raise product.RequestError("invalid_request", "Request contains missing or unsupported fields")
     if data["profile"] != profile["model"]:
@@ -75,30 +79,50 @@ def validate(profile, data):
     if (not isinstance(prompt, str) or not 1 <= len(prompt) <= 4096 or not prompt.strip()
             or any(char == "\0" or 0xD800 <= ord(char) <= 0xDFFF for char in prompt)):
         raise product.RequestError("invalid_request", "Provide 1–4096 characters of prompt text")
-    if "image_sha256" in data:
-        digest = data["image_sha256"]
-        if not isinstance(digest, str) or not product.SHA256.fullmatch(digest):
-            raise product.RequestError("invalid_request", "Use an uploaded PNG's SHA-256")
+    if "image_sha256s" in data:
+        images = data["image_sha256s"]
+        if "image_sha256" in data or type(images) is not list or not 1 <= len(images) <= MAX_IMAGES:
+            raise product.RequestError("invalid_request", "Use one digest field with up to four ordered PNGs")
+    if any(type(digest) is not str or not product.SHA256.fullmatch(digest) for digest in image_digests(data)):
+        raise product.RequestError("invalid_request", "Use an uploaded PNG's SHA-256")
+    mode = data.get("mode", "text")
+    if type(mode) is not str or mode not in modes.MODES:
+        raise product.RequestError("invalid_request", "Choose a supported inference mode")
+    if mode == "frame_check_v1" and not image_digests(data):
+        raise product.RequestError("invalid_request", "Frame checks require at least one image")
     if "max_output_tokens" in data:
         count = data["max_output_tokens"]
         if type(count) is not int or not 1 <= count <= profile["max_output_tokens"]:
             raise product.RequestError("invalid_request", "Output token limit exceeds the profile")
-    return {**data, "prompt": prompt.strip()}
+    request = {**data, "prompt": prompt.strip()}
+    if mode == "text":
+        request.pop("mode", None)
+    return request
 
 
-def check_image(root, request):
-    if "image_sha256" not in request:
-        return None
-    digest = request["image_sha256"]
-    path = product.input_path(root, digest, "png")
-    try:
-        if not 0 < path.stat().st_size <= product.MAX_UPLOAD:
-            raise product.RequestError("invalid_input", "Staged PNG exceeds the input limit")
-        product.verify_existing_input(path, digest)
-        product.validate_png(path)
-    except FileNotFoundError as exc:
-        raise product.RequestError("input_missing", "Upload the PNG first", 404) from exc
-    return path
+def image_digests(request):
+    if "image_sha256" in request:
+        return [request["image_sha256"]]
+    return request.get("image_sha256s", [])
+
+
+def check_images(root, request):
+    ordered = "image_sha256s" in request
+    limit = MAX_IMAGE_BYTES if ordered else product.MAX_UPLOAD
+    images = []
+    for digest in image_digests(request):
+        path = product.input_path(root, digest, "png")
+        try:
+            if not 0 < path.stat().st_size <= limit:
+                raise product.RequestError("invalid_input", "Staged PNG exceeds the input limit")
+            product.verify_existing_input(path, digest)
+            width, height = product.validate_png(path)
+            if ordered and (min(width, height) > 1080 or max(width, height) > 1920):
+                raise product.RequestError("invalid_input", "Staged frame exceeds the dimension limit")
+        except FileNotFoundError as exc:
+            raise product.RequestError("input_missing", "Upload the PNG first", 404) from exc
+        images.append(path)
+    return images
 
 
 def bounded_text(text):
@@ -191,10 +215,15 @@ def view(job):
 
 class UnknownEngineWork(RuntimeError):
     """A queue reply was malformed or showed work outside this lease."""
+    def __init__(self, message, *, engine_busy=False):
+        super().__init__(message)
+        self.engine_busy = engine_busy
 
 
-def busy(message):
-    return product.RequestError("worker_busy", message, 409)
+def busy(message, admission_code=None):
+    refusal = product.RequestError("worker_busy", message, 409)
+    refusal.admission_code = admission_code
+    return refusal
 
 
 def held():
@@ -271,7 +300,7 @@ class Lane:
         }
         if internal:
             job["internal"] = True
-        for key in ("image_sha256", "max_output_tokens"):
+        for key in ("image_sha256", "image_sha256s", "max_output_tokens", "mode"):
             if key in request:
                 job[key] = request[key]
         path = job_path(self.root, job_id)
@@ -279,20 +308,23 @@ class Lane:
         sync_directory(path.parent)
         return job
 
-    def finish(self, job, *, error=None, result=None):
+    def finish(self, job, *, error=None, result=None, admission_code=None):
         if job["state"] in {"succeeded", "failed"}:
             return job
         job.update(state="failed" if error else "succeeded", finished_at=time.time())
         if error:
             job["error"] = error
+            if admission_code:
+                job["admission_code"] = admission_code
         elif result is not None:
             job["result"] = result
         write_record(job_path(self.root, job["id"]), job)
         return job
 
-    def reconcile(self):
+    def reconcile(self, state=None):
         """Resolve the only possible outstanding dispatch under a newly held lease."""
-        state = self.read_state()
+        if state is None:
+            state = self.read_state()
         snapshot = self.status()
         instance = snapshot["instance"]
         was_resident = state["resident"] if state else False
@@ -320,7 +352,7 @@ class Lane:
         matched = bool(receipt and receipt.get("id") == pending)
         if matched and receipt.get("operation") != job["operation"]:
             raise held()
-        error = result = None
+        error = result = admission_code = None
         if matched:
             error = receipt.get("error")
             if error is None:
@@ -328,8 +360,27 @@ class Lane:
                 if job["operation"] == "infer":
                     result = receipt.get("result")
                     if not valid_result(self.profile, job, result):
-                        error = "backend_failed"
-            elif error not in ("context_limit", "engine_work_unknown", "engine_queue_unavailable"):
+                        error = "invalid_result" if "mode" in job else "backend_failed"
+            elif error in ("operation_timeout", "backend_exited"):
+                # The supervisor reaped the model process before publishing
+                # this receipt. Still require the card's unloaded memory proof.
+                expected = False
+            elif job.get("internal") and error in ("engine_work_unknown", "engine_queue_unavailable"):
+                # The sidecar declined the unload before touching the model.
+                # Foreign work may be visible in telemetry. Preserve the
+                # existing reservation and retry its memory proof next time.
+                if snapshot["resident"] != was_resident:
+                    raise held()
+                if error == "engine_work_unknown":
+                    error = "engine_busy" if receipt.get("engine_busy") else "engine_queue_malformed"
+                self.finish(job, error=error, admission_code="engine_busy")
+                self.write_state(instance, was_resident)
+                return snapshot
+            elif error in ("engine_work_unknown", "engine_queue_unavailable"):
+                admission_code = "engine_busy"
+            elif error == "context_limit":
+                admission_code = "pre_admission_failed"
+            elif error != "invalid_result" or job["operation"] != "infer" or "mode" not in job:
                 error = "backend_failed"
         elif pending:
             error = "submission_lost"
@@ -340,7 +391,8 @@ class Lane:
         memory_ok = self.resident(snapshot) if expected else (
             not needs_unloaded_proof or self.unloaded(snapshot)
         )
-        if matched and not error and snapshot["resident"] == expected:
+        if (matched and (not error or error in ("operation_timeout", "backend_exited"))
+                and snapshot["resident"] == expected):
             for _ in range(3):
                 if memory_ok:
                     break
@@ -353,11 +405,12 @@ class Lane:
         unsafe_error = error in ("backend_failed", "engine_work_unknown")
         if snapshot["resident"] != expected or not memory_ok or unsafe_error:
             if job:
-                self.finish(job, error=error if unsafe_error else "residency_unverified")
+                self.finish(job, error=error if unsafe_error else "residency_unverified",
+                            admission_code=admission_code if unsafe_error else None)
             self.write_state(instance, snapshot["resident"], pending=pending, hold=True)
             raise held()
         if job:
-            self.finish(job, error=error, result=result)
+            self.finish(job, error=error, result=result, admission_code=admission_code)
         if pending:
             self.write_state(instance, expected)
         return snapshot
@@ -369,25 +422,33 @@ class Lane:
             snapshot = self.reconcile() if snapshot is None else snapshot
             operation = job["operation"]
             if operation == "infer" and not snapshot["resident"]:
-                return self.finish(job, error="model_not_loaded")
+                return self.finish(job, error="model_not_loaded", admission_code="pre_admission_failed")
             if operation != "infer" and snapshot["resident"] == (operation == "load"):
                 return self.finish(job)
             if operation == "load" and not self.unloaded(snapshot) and ensure_load_memory is not None:
                 snapshot = ensure_load_memory(self)
             if operation == "load" and not self.unloaded(snapshot):
-                return self.finish(job, error="model_card_busy")
+                return self.finish(job, error="model_card_busy", admission_code="gpu_busy")
             if operation != "unload" and snapshot["temperature_c"] >= 62:
-                return self.finish(job, error="model_card_hot")
+                return self.finish(job, error="model_card_hot", admission_code="gpu_warm")
             check_idle()
+        except product.AdmissionRefusal as exc:
+            self.finish(job, error=exc.error, admission_code=exc.code)
+            raise
         except (OSError, ValueError) as exc:
-            return self.finish(job, error=getattr(exc, "code", "local_model_unavailable"))
+            error = getattr(exc, "code", "local_model_unavailable")
+            code = getattr(exc, "admission_code", None) or (
+                "local_model_handover" if error == "local_model_held" else "local_model_unavailable"
+            )
+            return self.finish(job, error=error, admission_code=code)
         job.update(state="running", started_at=time.time())
         write_record(job_path(self.root, job["id"]), job)
         self.write_state(snapshot["instance"], snapshot["resident"], pending=job["id"])
         try:
             exchange(self.root, {"action": "run", "id": job["id"], "request": request},
                      lease, self.profile[operation + "_timeout_seconds"] + STATUS_SECONDS)
-            check_idle()
+            if not job.get("internal"):
+                check_idle()
             self.reconcile()
         except (OSError, ValueError, RecursionError):
             # Resolve the journal on a later read/admission after obtaining the
@@ -397,15 +458,24 @@ class Lane:
 
     def prepare_other(self, cards, lease, check_idle):
         """Resolve outstanding work and evict conflicting residency before admission."""
+        state = self.read_state()
+        if state is None:
+            # A load writes pending state before it can reach the sidecar.
+            return
         check_idle()
-        snapshot = self.reconcile()
+        snapshot = self.reconcile(state)
         if not snapshot["resident"] or self.profile["gpu_uuid"] not in cards:
             return
         request = {"operation": "unload", "profile": self.profile["model"]}
         job = self.create(uuid.uuid4().hex, request, internal=True)
         completed = self.run(job, request, lease, check_idle, snapshot=snapshot)
         if completed["state"] != "succeeded":
-            raise busy("Local-model handover did not verify that the card was released")
+            error = completed.get("error")
+            if error in {"engine_busy", "engine_queue_malformed"}:
+                raise UnknownEngineWork(error, engine_busy=error == "engine_busy")
+            if error == "engine_queue_unavailable":
+                raise OSError("ComfyUI queue is temporarily unavailable")
+            raise product.RequestError("local_model_handover", "Local-model handover did not verify card release", 503)
 
 
 def enabled_lane(root, config):
@@ -432,4 +502,5 @@ def valid_result(profile, job, result):
     inputs, outputs = result["input_tokens"], result["output_tokens"]
     cap = job.get("max_output_tokens", profile["max_output_tokens"])
     return (type(inputs) is int and 0 <= inputs <= profile["context_tokens"] - cap
-            and type(outputs) is int and 0 <= outputs <= cap and bounded_text(result["text"]))
+            and type(outputs) is int and 0 <= outputs <= cap and bounded_text(result["text"])
+            and modes.valid_text(job.get("mode", "text"), result["text"], len(image_digests(job))))
