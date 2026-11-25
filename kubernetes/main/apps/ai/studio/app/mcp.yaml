@@ -33,7 +33,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: mcp
-          image: ghcr.io/thaynes43/haynes-studio@sha256:8de1942e806c03146ad9543b0b6720ab439582a060eff5655f05963034565d20
+          image: ghcr.io/thaynes43/haynes-studio@sha256:b8460c3da82287ceae6162da8e58b818c478da1ece86ed493b97d12d2a6a38bb
           command: [studio-mcp]
           args:
             - --host

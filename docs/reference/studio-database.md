@@ -16,11 +16,10 @@ on this Kustomization. Wire individual `secretKeyRef` entries as follows.
 | Consumer | Secret in `ai` | Key and environment variable |
 | --- | --- | --- |
 | API | `studio-runtime-db` | `STUDIO_DATABASE_URL` |
-| One-shot migration Job | `studio-migrator-db` | `STUDIO_MIGRATION_DATABASE_URL` |
+| Migration and worker registration Jobs | `studio-migrator-db` | `STUDIO_MIGRATION_DATABASE_URL` |
 
-Set `STUDIO_DATABASE_SCHEMA=studio` for both. The web, MCP and render
-workers use the API and need no database Secret. Run the two workloads with
-their own service accounts. The projection readers are for ESO's TokenRequest
+Set `STUDIO_DATABASE_SCHEMA=studio` for all three consumers. The web, MCP and render
+workers use the API and need no database Secret. Run each consumer with its own service account. The projection readers are for ESO's TokenRequest
 calls only.
 
 ESO generates each CNPG basic-auth Secret once in `database`. The two
@@ -111,7 +110,7 @@ COMMIT;
 SQL
 ```
 
-## OP434 migration and grants
+## Migration and grants
 
 Follow the [Studio LAN rollout](studio-deployment.md) for Flux ordering.
 
@@ -119,38 +118,20 @@ Run `studio-api-migrate upgrade head` once in the Job under `studio_migrator`
 using the pinned Studio API image. The command holds a database advisory
 transaction lock. A second connection slot lets a retry connect while a
 previous Job's backend lingers. The lock still serializes schema writes.
-The Job verifies the migrator role and its HBA rules, runs the upgrade, then
-applies the runtime grants in a separate transaction. The owner bootstrap
-above grants database CONNECT. The Job grants schema USAGE and the table
-and column privileges below. Flux releases the API replicas after the
-Job completes. A retry at the same migration head reapplies the same grants.
-[Studio API grant contract](https://github.com/thaynes43/haynes-studio/blob/fa5296870ccf11be99b56d9e5a2ee34b37a68a75/docs/reference/studio-api.md#database-privileges)
+The Job verifies the migrator role and its HBA rules before upgrading.
+`STUDIO_RUNTIME_ROLE=studio_app` applies schema, table and column grants in
+the Alembic revision transaction. The owner bootstrap above grants database
+CONNECT. After migration, the one-shot registration Job uses the migration
+identity to register the worker token digest. The API runtime role can read
+credential rows for authentication. It has no credential writes, create,
+temporary table, sequence or Alembic history privileges.
+[Studio API runtime grants](https://github.com/thaynes43/haynes-studio/blob/c75086b85a3278ead1d42b7a26da3b70da8b5793/docs/reference/studio-api.md#database-privileges)
 
-```sql
-GRANT USAGE ON SCHEMA studio TO studio_app;
-GRANT SELECT, INSERT ON studio.productions, studio.stories,
-    studio.boards, studio.selections TO studio_app;
-REVOKE UPDATE ON studio.productions, studio.stories,
-    studio.boards, studio.selections FROM studio_app;
-GRANT UPDATE (document) ON studio.productions, studio.stories TO studio_app;
-GRANT UPDATE (document, tombstone) ON studio.boards TO studio_app;
-GRANT UPDATE (document, revision) ON studio.selections TO studio_app;
-GRANT SELECT, INSERT ON studio.media_types, studio.draft_ids, studio.assets,
-    studio.asset_versions, studio.asset_sources, studio.asset_media,
-    studio.deliveries, studio.delivery_media TO studio_app;
-GRANT SELECT, INSERT, DELETE ON studio.login_attempts, studio.sessions,
-    studio.story_asset_refs TO studio_app;
-GRANT SELECT ON studio.agent_keys, studio.agent_grants, studio.worker_tokens TO studio_app;
-```
-
-Keep additional grants explicit in the migration that requires them. The
-runtime role gets no create, temporary table, sequence or Alembic history
-privileges. Credential-table provisioning uses a separate owner-managed path.
-Check the applied Alembic revision with the migration identity. For the
-initial schema in [Studio PR 86](https://github.com/thaynes43/haynes-studio/pull/86)
-the output is `0001_studio_metadata`. The OP434 install includes the active
-agent grants revision `0002_active_agent_grants` from
-[Studio PR 92](https://github.com/thaynes43/haynes-studio/pull/92).
+The initial OP434 install applied `0002_active_agent_grants`.
+[OP956](https://work.haynesnetwork.com/work_packages/956) pins
+`0003_studio_run_queue`, which adds the queue tables and reapplies the initial
+grants while adding the queue-specific ones. Use the migration identity to
+check the applied Alembic revision.
 
 ```sql
 SELECT version_num FROM studio.alembic_version;
@@ -173,7 +154,7 @@ SELECT pg_postmaster_start_time(), pg_conf_load_time();
 
 From a permitted `ai` workload with the chosen key injected via
 `secretKeyRef`, run the following with the role argument set to `studio_app`
-or `studio_migrator`. The OP434 Job runs the migrator checks and prints the
+or `studio_migrator`. The migration Job runs the migrator checks and prints the
 revision before it exits. Read its results from the completed Job logs. Run
 the runtime checks in the API container after the grants. The checks print
 role and outcome only.
@@ -205,9 +186,19 @@ with psycopg.connect(dsn) as connection:
                    has_table_privilege(current_user, 'studio.productions', 'UPDATE'),
                    has_column_privilege(current_user, 'studio.productions', 'document', 'UPDATE'),
                    has_column_privilege(current_user, 'studio.productions', 'id', 'UPDATE'),
-                   has_table_privilege(current_user, 'studio.agent_keys', 'INSERT')
+                   has_table_privilege(current_user, 'studio.agent_keys', 'INSERT'),
+                   has_table_privilege(current_user, 'studio.worker_tokens', 'SELECT'),
+                   has_table_privilege(current_user, 'studio.worker_tokens', 'INSERT,UPDATE,DELETE'),
+                   has_column_privilege(current_user, 'studio.runs', 'document', 'UPDATE'),
+                   has_column_privilege(current_user, 'studio.runs', 'snapshot', 'UPDATE'),
+                   has_column_privilege(current_user, 'studio.run_wan_attempts', 'request', 'UPDATE'),
+                   has_column_privilege(current_user, 'studio.run_wan_attempts', 'job_id', 'UPDATE')
         """).fetchone()
-        assert privileges == (True, False, False, False, True, False, False)
+        assert privileges == (
+            True, False, False, False, True, False, False,
+            True, False, True, False, False, False,
+        )
+        print("studio_app schema, draft, worker and queue privileges passed")
     else:
         version = connection.execute(
             "SELECT version_num FROM studio.alembic_version"
