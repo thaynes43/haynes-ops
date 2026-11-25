@@ -118,9 +118,28 @@ class ManifestTests(unittest.TestCase):
                 ])
 
     def test_provisioner_can_only_write_its_weights_directory(self):
+        flux = resource(self.ai, "Kustomization", "wan-local-model-weights")["spec"]
+        self.assertEqual(flux["dependsOn"], [{"name": "wan-local-model-download-policy"}, {"name": "wan-video"}])
+        self.assertEqual(flux["healthChecks"], [{
+            "apiVersion": "batch/v1", "kind": "Job", "name": "wan-local-model-provision", "namespace": "ai",
+        }])
+        self.assertTrue(flux["prune"])
         job = resource(self.weights, "Job", "wan-local-model-provision")
+        self.assertEqual(job["spec"]["activeDeadlineSeconds"], 1800)
+        self.assertEqual(job["spec"]["backoffLimit"], 0)
+        self.assertEqual(job["spec"]["podReplacementPolicy"], "Failed")
         spec = job["spec"]["template"]["spec"]
+        self.assertEqual(spec["restartPolicy"], "Never")
         provision, = spec["containers"]
+        self.assertEqual(provision["image"], "docker.io/library/python:3.12.16-slim-bookworm@"
+                                             "sha256:1475c4f5b6bcb7d35e57661d6f5d7429ec4041275633c15f2b49350ac898276d")
+        self.assertIn({"name": "config", "mountPath": "/config", "readOnly": True},
+                      provision["volumeMounts"])
+        config, = [doc for doc in self.weights if doc["kind"] == "ConfigMap"]
+        self.assertIn({"name": "config", "configMap": {"name": config["metadata"]["name"]}}, spec["volumes"])
+        pins = json.loads(config["data"]["weights.json"])
+        self.assertEqual(pins["byte_cap"], 7499546400)
+        self.assertEqual(sum(file["bytes"] for file in pins["files"]), pins["byte_cap"])
         self.assertFalse(spec.get("initContainers"))
         self.assertEqual(workspace_mounts(provision), {
             ("/workspace/local-model-weights", "local-model-weights", False),

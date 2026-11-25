@@ -9,6 +9,7 @@ resources:
   - ./llama-server/ks.yaml
   - ./wan-video/ks.yaml
   - ./wan-video/local-model-pending/download-policy-ks.yaml
+  - ./wan-video/local-model-pending/weights-ks.yaml
   - ./studio-render/ks.yaml
   - ./studio-database/ks.yaml
   - ./studio-oidc/ks.yaml

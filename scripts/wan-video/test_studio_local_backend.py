@@ -1,5 +1,7 @@
 """CPU-only tests of the Python/native boundary and the isolated weight Job."""
+from contextlib import redirect_stdout
 import ctypes as c
+from email.message import Message
 import hashlib
 import io
 import json
@@ -262,17 +264,29 @@ class ProvisionTests(unittest.TestCase):
                 result = handler.redirect_request(request, None, 302, "", {}, url)
                 self.assertEqual(result.full_url, url)
 
-    def test_redirect_outside_https_cdn_is_refused(self):
+    def test_only_https_cdn_redirects_are_followed_and_hosts_are_logged(self):
+        request = Request("https://huggingface.co/resolve/file")
         handler = provision.PinnedRedirect()
-        for destination in (
-            "http://us.aws.cdn.hf.co/blob",
-            "https://example.test/blob",
-            "https://us.aws.cdn.hf.co@example.test/blob",
-            "https://other@us.aws.cdn.hf.co/blob",
-            "https://us.aws.cdn.hf.co:443/blob",
-            "https://us.aws.cdn.hf.co.example.test/blob",
-            "https://cdn.hf.co/blob",
+        for location, host, allowed in (
+            ("https://us.aws.cdn.hf.co/path?signature=secret", "us.aws.cdn.hf.co", True),
+            ("https://us.gcp.cdn.hf.co/path?signature=secret", "us.gcp.cdn.hf.co", True),
+            ("https://us.aws.cdn.hf.co.example.org/path?signature=secret", "us.aws.cdn.hf.co.example.org", False),
+            ("http://us.aws.cdn.hf.co/path?signature=secret", "us.aws.cdn.hf.co", False),
+            ("https://user:password@us.aws.cdn.hf.co/path", "us.aws.cdn.hf.co", False),
+            ("https://us.aws.cdn.hf.co:443/path", "us.aws.cdn.hf.co", False),
+            ("/path?signature=secret", "huggingface.co", False),
+            ("https://[invalid", "invalid", False),
         ):
-            with self.subTest(destination=destination):
-                with self.assertRaisesRegex(provision.ProvisionError, "unexpected_download_redirect"):
-                    handler.redirect_request(None, None, 302, "", {}, destination)
+            with self.subTest(location=location):
+                headers = Message()
+                headers["Location"] = location
+                output = io.StringIO()
+                with patch.object(provision.HTTPRedirectHandler, "http_error_302") as follow, redirect_stdout(output):
+                    if allowed:
+                        handler.http_error_307(request, None, 307, "", headers)
+                        follow.assert_called_once()
+                    else:
+                        with self.assertRaisesRegex(provision.ProvisionError, "unexpected_download_redirect"):
+                            handler.http_error_307(request, None, 307, "", headers)
+                        follow.assert_not_called()
+                self.assertEqual(output.getvalue(), f"Download redirect host={host} allowed={str(allowed).lower()}\n")
