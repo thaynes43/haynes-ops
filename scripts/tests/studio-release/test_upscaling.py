@@ -3,10 +3,11 @@
 import importlib.util
 import json
 from hashlib import sha1, sha256
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 import os
 import runpy
+import sqlite3
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
@@ -23,8 +24,12 @@ ALLOCATION = "upscaling-op461-fsrcnn-x2-v1-02"
 NOTICE = b"Synthetic model licence notice"
 COMPARE_ALLOCATION = "upscaling-op461-compare-000000000001"
 PROXY = "library/sha256/aa/" + "a" * 64 + ".mp4"
-MASTER = "library/sha256/bb/" + "b" * 64 + ".mp4"
+PRODUCTION = "prd_0" + "A" * 25
+DELIVERY = "dlv_0" + "B" * 25
+OTHER_DELIVERY = "dlv_0" + "C" * 25
+MASTER = f"productions/{PRODUCTION}/sha256/bb/" + "b" * 64 + ".mp4"
 COMPARE_JOB = runpy.run_path(str(STAGE / "compare/render.py"))["comparison_job"]
+VERIFY_DELIVERY = runpy.run_path(str(STAGE / "compare/verify_delivery.py"))["verified_delivery"]
 
 
 class Response(BytesIO):
@@ -134,6 +139,71 @@ class OutputReservationTest(unittest.TestCase):
         self.assertEqual(existing.stat().st_mode, original_mode)
 
 
+class DeliveryGateTest(unittest.TestCase):
+    def setUp(self):
+        self.db = sqlite3.connect(":memory:")
+        self.addCleanup(self.db.close)
+        self.db.execute("CREATE TABLE deliveries (id TEXT PRIMARY KEY, document TEXT)")
+        self.proxy = SimpleNamespace(text=PROXY, sha256="a" * 64)
+        self.master = SimpleNamespace(text=MASTER, sha256="b" * 64)
+        self.read_only = None
+        self.transaction_is_read_only = True
+        self.verdicts = self.enterContext(patch("sys.stderr", new_callable=StringIO))
+
+    def exec_driver_sql(self, statement, parameters=()):
+        if statement == "SET TRANSACTION READ ONLY":
+            self.read_only = "on" if self.transaction_is_read_only else "off"
+            return None
+        self.assertIsNotNone(self.read_only, "transaction mode must be set before any read")
+        if statement == "SHOW transaction_read_only":
+            return SimpleNamespace(scalar_one=lambda: self.read_only)
+        self.assertEqual(self.read_only, "on")
+        # SQLite exercises the actual JSON role predicates and row limit.
+        result = self.db.execute(statement.replace("%s", "?"), parameters)
+        return SimpleNamespace(all=result.fetchall)
+
+    def add_delivery(self, delivery=DELIVERY, proxy=None, master=None):
+        proxy, master = proxy or self.proxy, master or self.master
+        self.db.execute("INSERT INTO deliveries VALUES (?, ?)", (delivery, json.dumps({
+            "proxy": {"locator": proxy.text, "sha256": proxy.sha256},
+            "master": {"locator": master.text, "sha256": master.sha256},
+        })))
+
+    def test_exactly_one_record_supplies_both_locators_and_id(self):
+        self.add_delivery()
+        self.add_delivery(OTHER_DELIVERY, master=self.proxy)
+        self.assertEqual(VERIFY_DELIVERY(self, self.proxy, self.master, DELIVERY),
+                         {"id": DELIVERY, "proxy": PROXY, "master": MASTER})
+        self.assertEqual(self.verdicts.getvalue().count("PASS "), 3)
+        self.assertNotIn(PROXY, self.verdicts.getvalue())
+        self.assertNotIn(MASTER, self.verdicts.getvalue())
+
+    def test_crossed_roles_unpaired_hashes_and_duplicate_rows_are_refused(self):
+        self.add_delivery(proxy=self.master, master=self.proxy)
+        self.assertIsNone(VERIFY_DELIVERY(self, self.proxy, self.master, DELIVERY))
+        self.db.execute("DELETE FROM deliveries")
+        self.add_delivery(master=self.proxy)
+        self.add_delivery(OTHER_DELIVERY, proxy=self.master)
+        self.assertIsNone(VERIFY_DELIVERY(self, self.proxy, self.master, DELIVERY))
+        self.db.execute("DELETE FROM deliveries")
+        self.add_delivery()
+        self.add_delivery(OTHER_DELIVERY)
+        self.assertIsNone(VERIFY_DELIVERY(self, self.proxy, self.master, DELIVERY))
+        self.assertEqual(self.verdicts.getvalue().count("FAIL exactly one delivery"), 3)
+
+    def test_wrong_delivery_id_or_locator_is_refused(self):
+        self.add_delivery()
+        self.assertIsNone(VERIFY_DELIVERY(self, self.proxy, self.master, OTHER_DELIVERY))
+        self.master.text = self.master.text.replace(f"productions/{PRODUCTION}", "library")
+        self.assertIsNone(VERIFY_DELIVERY(self, self.proxy, self.master, DELIVERY))
+        self.assertEqual(self.verdicts.getvalue().count("FAIL delivery ID and role-specific locators"), 2)
+
+    def test_unconfirmed_read_only_mode_refuses_before_the_select(self):
+        self.transaction_is_read_only = False
+        self.assertIsNone(VERIFY_DELIVERY(self, self.proxy, self.master, DELIVERY))
+        self.assertEqual(self.verdicts.getvalue(), "FAIL delivery transaction is read-only\n")
+
+
 class ReleaseGuardTest(unittest.TestCase):
     def setUp(self):
         spec = importlib.util.spec_from_file_location("studio_release_check", Path(__file__).with_name("check.py"))
@@ -236,10 +306,11 @@ class ReleaseGuardTest(unittest.TestCase):
         for source, options, expected, other_shard in (
             (still, {"plate": True}, ["--input", "a" * 64 + ".jpg", "--input-sha256", "a" * 64, "--plate"], None),
             (PROXY, {"index": "1"}, ["--proxy", PROXY, "--frame-index", "1"], None),
-            (PROXY, {"timestamp": "0.125", "master": MASTER},
-             ["--proxy", PROXY, "--timestamp", "0.125", "--master", MASTER], master_shard),
-            (PROXY, {"index": "1", "master": same_shard},
-             ["--proxy", PROXY, "--frame-index", "1", "--master", same_shard], None),
+            (PROXY, {"timestamp": "0.125", "master": MASTER, "delivery_id": DELIVERY},
+             ["--proxy", PROXY, "--timestamp", "0.125", "--master", MASTER, "--delivery-id", DELIVERY],
+             master_shard),
+            (PROXY, {"index": "1", "master": same_shard, "delivery_id": DELIVERY},
+             ["--proxy", PROXY, "--frame-index", "1", "--master", same_shard, "--delivery-id", DELIVERY], None),
         ):
             with self.subTest(expected=expected):
                 job = COMPARE_JOB(template, source=source, run="000000000001", **options)
@@ -260,13 +331,45 @@ class ReleaseGuardTest(unittest.TestCase):
                 else:
                     self.assertNotIn("master", mounts)
 
+    def test_probe_uses_comparison_inputs_and_only_read_only_shards(self):
+        template = self.guard.resource(self.guard.render(STAGE / "compare"), "Job")
+        options = {"source": PROXY, "run": "000000000001", "timestamp": "0.125",
+                   "master": MASTER, "delivery_id": DELIVERY}
+        compare = COMPARE_JOB(template, **options)
+        probe = COMPARE_JOB(template, **options, probe=True)
+        self.assertEqual(probe["metadata"]["name"], "studio-upscaling-probe-000000000001")
+        self.assertEqual(probe["spec"]["activeDeadlineSeconds"], 90)
+        self.assertEqual(probe["spec"]["backoffLimit"], 0)
+        self.assertEqual(probe["spec"]["ttlSecondsAfterFinished"], 3600)
+        self.assertEqual(probe["spec"]["template"]["metadata"], compare["spec"]["template"]["metadata"])
+        pod = probe["spec"]["template"]["spec"]
+        self.assertNotIn("initContainers", pod)
+        self.assertFalse(pod["automountServiceAccountToken"])
+        self.assertEqual(pod["securityContext"], compare["spec"]["template"]["spec"]["securityContext"])
+        container = self.guard.container(probe)
+        comparison = self.guard.container(compare)
+        self.assertEqual(container["command"], comparison["command"])
+        self.assertEqual(container["image"], comparison["image"])
+        self.assertEqual(container["args"], [*comparison["args"], "--probe"])
+        self.assertEqual(container["resources"]["limits"], {"cpu": "1", "memory": "256Mi"})
+        self.assertEqual(container["volumeMounts"], [
+            mount for mount in comparison["volumeMounts"] if mount["name"] in {"source", "master"}
+        ])
+        self.assertEqual({v["name"] for v in pod["volumes"]}, {"source", "master"})
+        self.assertTrue(all(mount["readOnly"] for mount in container["volumeMounts"]))
+        self.assertTrue(all(v["nfs"]["readOnly"] for v in pod["volumes"]))
+
     def test_comparison_renderer_refuses_bad_arguments(self):
         for options in (
             {}, {"index": "-1"}, {"timestamp": "NaN"}, {"timestamp": "0", "index": "0"},
-            {"index": "0", "plate": True}, {"index": "0", "master": "../private.mp4"},
-            {"index": "0", "master": MASTER.replace(".mp4", ".jpg")},
+            {"index": "0", "plate": True}, {"index": "0", "master": "../private.mp4", "delivery_id": DELIVERY},
+            {"index": "0", "master": MASTER.replace(".mp4", ".jpg"), "delivery_id": DELIVERY},
+            {"index": "0", "master": MASTER},
+            {"index": "0", "master": MASTER, "delivery_id": "not-a-delivery-id"},
+            {"index": "0", "delivery_id": DELIVERY},
             {"index": "0", "source": PROXY.replace("/aa/", "/bb/")},
             {"index": "0", "source": PROXY.replace(".mp4", ".jpg")},
+            {"probe": True, "source": PROXY.replace(".mp4", ".jpg")},
         ):
             args = {"source": PROXY, "run": "000000000001", **options}
             with self.subTest(options=options), self.assertRaises(ValueError):
@@ -276,7 +379,7 @@ class ReleaseGuardTest(unittest.TestCase):
         self.configured_image(f"{self.guard.UPSCALING_IMAGE}@{DIGEST}")
         published = {
             "org.opencontainers.image.revision": "1" * 40,
-            self.guard.UPSCALING_COMPARISON_LABEL: "stored-proxy-frame-v1",
+            self.guard.UPSCALING_COMPARISON_LABEL: "stored-proxy-frame-v2",
             "io.haynes-studio.upscaling.resources": json.dumps({
                 "schema": "studio.upscaling-resources/v1",
                 "measuring": {"request_gib": 2, "limit_gib": 8},
@@ -291,6 +394,9 @@ class ReleaseGuardTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "support the stored-proxy frame comparison"):
                 self.guard.check_upscaling(self.studio, self.flux)
             published[self.guard.UPSCALING_COMPARISON_LABEL] = "stored-proxy-frame-v1"
+            with self.assertRaisesRegex(ValueError, "support the stored-proxy frame comparison and probe"):
+                self.guard.check_upscaling(self.studio, self.flux)
+            published[self.guard.UPSCALING_COMPARISON_LABEL] = "stored-proxy-frame-v2"
             published["io.haynes-studio.upscaling.resources"] = "{}"
             with self.assertRaisesRegex(ValueError, "resource contract failed"):
                 self.guard.check_upscaling(self.studio, self.flux)

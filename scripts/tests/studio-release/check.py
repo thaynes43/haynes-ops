@@ -888,8 +888,8 @@ def check_upscaling(path, flux):
         published = published_labels(UPSCALING_IMAGE, match[1])
     except (KeyError, OSError, TypeError, ValueError) as error:
         raise ValueError(f"published upscaling image failed verification: {error}") from error
-    if published.get(UPSCALING_COMPARISON_LABEL) != "stored-proxy-frame-v1":
-        raise ValueError("published upscaling image must support the stored-proxy frame comparison")
+    if published.get(UPSCALING_COMPARISON_LABEL) != "stored-proxy-frame-v2":
+        raise ValueError("published upscaling image must support the stored-proxy frame comparison and probe")
     try:
         memory = json.loads(published["io.haynes-studio.upscaling.resources"])
         if (memory["schema"] != "studio.upscaling-resources/v1"

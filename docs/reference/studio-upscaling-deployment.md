@@ -14,7 +14,7 @@ Tom's verdict are pending.
    the successful **Publish tested Studio images** summary on Studio `main`.
 2. Set only `data.image` in the Ops [release file](../../kubernetes/main/apps/ai/studio/upscaling-pending/release/release.yaml).
    The release guard fetches the immutable OCI manifest and config, checks
-   their digests and verifies the resource label and `stored-proxy-frame-v1`
+   their digests and verifies the resource label and `stored-proxy-frame-v2`
    comparison capability. Provision the new profile under the fresh `-02`
    allocation. The first smoke requests
    2 GiB and caps at 8 GiB for measurement on talosw01. The 2 GiB quality
@@ -24,9 +24,9 @@ Tom's verdict are pending.
 3. Run the following in Bash from that Ops revision. Flux owns just the
    ConfigMap with the provisioner and the three targeted policies. The
    download pod can use CoreDNS and HTTPS for the immutable raw GitHub URL.
-   Smoke and comparison have ingress and egress denied. Each Job is created
+   Smoke, probe and comparison have ingress and egress denied. Each Job is created
    once by the coordinator. Provision and smoke are retained for 24 hours.
-   The comparison expires one hour after finishing.
+   The probe and comparison expire one hour after finishing.
 
 Keep these helpers in the shell for the other blocks. Each check reports its
 own result. An idle gate failure prevents the Job creation.
@@ -92,7 +92,10 @@ wait_for_job() {
   return 1
 }
 
-final_report() { kubectl -n ai logs "job/$1" -c "${2:-upscaling}" | tail -n 1; }
+final_report() {
+  kubectl -n ai logs "job/$1" -c "${2:-upscaling}" |
+    awk '/^\{/ {line=$0} END {if (line != "") print line}'
+}
 
 (
   set -euo pipefail
@@ -135,7 +138,7 @@ least 1,024 further free entries. Keep failed allocations in the file budget.
   status=0
   check 'provision Job complete' wait_for_job "$job" || status=1
   report=$(final_report "$job") || report=
-  check 'provision final log line present' test -n "$report" || status=1
+  check 'provision JSON report present' test -n "$report" || status=1
   printf '%s\n' "$report"
   check_json 'provisioned graph and profile pins' '
     .graph_bytes == 38973 and
@@ -176,7 +179,7 @@ Choose a window with no heavy render, Wan or Foley work. The idle gate reads
 node and render load, checks Wan health and checks the queue from
 `comfyui-0` itself. Keep this window exclusive for the smoke. The Job
 compares the default and compact glibc allocator across the same frames and
-runs the deliberate timeout and fresh-worker replay. Capture the final log
+runs the deliberate timeout and fresh-worker replay. Capture the last JSON
 line even if Kubernetes recorded a failed Job. Record the measuring and
 quality verdicts separately. Use the observed worker RSS and cgroup peaks
 by phase to propose serving resources in a second change. The allowance check
@@ -199,7 +202,7 @@ reads the running container’s cgroup limit from `/sys/fs/cgroup/memory.max`.
   status=0
   check 'smoke Job complete' wait_for_job "$job" || status=1
   report=$(final_report "$job") || report=
-  check 'smoke final log line present' test -n "$report" || status=1
+  check 'smoke JSON report present' test -n "$report" || status=1
   printf '%s\n' "$report"
   check_json 'installed profile and image match' '
     .profile_sha256 == $profile and .image_digest == $digest and .provider == "opencv-dnn-cpu-fp32"
@@ -223,13 +226,23 @@ reads the running container’s cgroup limit from `/sys/fs/cgroup/memory.max`.
 ## Run the private comparison
 
 After the synthetic smoke passes, set `OP461_INPUT` to an authorized delivery
-proxy's canonical locator from the Studio delivery record. For ground truth,
-set `OP461_MASTER` to the master locator from that same record. Set
-`OP461_FRAME_INDEX` to a zero-based index or `OP461_TIMESTAMP` to decimal
+proxy's canonical locator. For ground truth, also set `OP461_MASTER` to the
+approved master locator and `OP461_DELIVERY_ID` to the ID in Studio's `titles/`
+evidence. Use the approved proxy and master SHA-256 values from that evidence
+in the locators. The API pod reads in a read-only transaction and requires
+exactly one delivery with the requested hashes in their respective proxy and
+master roles. The ID and both locators must agree with the approved inputs.
+The runbook captures the selected record privately and uses its fields to
+render both Jobs. The delivery lookup prints only check verdicts to the
+terminal.
+
+Set `OP461_FRAME_INDEX` to a zero-based index or `OP461_TIMESTAMP` to decimal
 seconds from the first frame, with up to nine decimal places. Choose one
 selector. The timestamp selects the active frame on the 24 fps delivery
-clock. The Job verifies both MP4s in place and decodes the selected frame
-with the bundled OpenCV FFmpeg backend. Each file is limited to 256 MiB.
+clock. The probe and comparison check the first presentation timestamp
+from the MP4 sample and edit tables. They refuse a nonzero origin with
+`adapter.nonzero_start_timestamp` and use the zero-based delivery clock for
+selection. Each file is limited to 256 MiB.
 
 For a still, set `OP461_INPUT` to the authorized opaque PNG or JPEG locator.
 Stills are limited to 4 MiB. Use an exact-aspect frame or set
@@ -245,8 +258,15 @@ must match it. Set `OP461_RUN` to a fresh 12-hex suffix. For optional ROIs,
 add `--lettering-roi`, `--face-roi` or `--hair-roi` and output coordinates
 `X0 Y0 X1 Y1` to `options` before rendering. The lower-right bounds are exclusive.
 
-The gate checks the store shape and verifies the bytes before the idle
-window. The Job has a dedicated deny-all network policy. Its UID/GID 1000
+The gate checks the store shape and verifies the bytes. For an MP4 input,
+the probe runs before the idle gate and heavy window. It reads the clock
+origin from the MP4 tables and uses the bundled OpenCV FFmpeg backend to
+decode the selected frame from the verified descriptors. Its deadline is
+90 seconds, with one CPU and 256 MiB of memory. It reports frame count, dimensions, first timestamp
+in seconds and whether the requested frame resolves. It mounts only the
+read-only input shards and runs without weights or either scaler. A refusal
+stops the block before the heavy comparison. Both Jobs use the same
+deny-all comparison network policy. The comparison's UID/GID 1000
 init container reserves one new group-writable job directory exclusively.
 The comparison runs as UID/GID 10001 with supplemental group 1000. It
 mounts the pinned weights and the selected hash shards read-only. Its only
@@ -274,22 +294,38 @@ provides bounded worker scratch. Keep the rendered Job private.
     ' sh "/studio/$locator" "${name%.*}" "$limit" >/dev/null 2>&1
   }
 
-  options=(--input "$OP461_INPUT" --run "$OP461_RUN" --orientation "${OP461_ORIENTATION:-portrait}")
+  source=$OP461_INPUT
+  master=${OP461_MASTER:-}
+  delivery_id=${OP461_DELIVERY_ID:-}
+  if [[ -n $master ]]; then
+    check 'approved delivery ID supplied for the master' test -n "$delivery_id"
+    if ! delivery=$(kubectl -n ai exec -i deploy/studio-api -c api -- python -I -B - \
+        "$source" "$master" "$delivery_id" < "$stage/compare/verify_delivery.py"); then
+      printf 'FAIL verified delivery required for a master\n' >&2
+      exit 1
+    fi
+    source=$(jq -er '.proxy' <<< "$delivery")
+    master=$(jq -er '.master' <<< "$delivery")
+    delivery_id=$(jq -er '.id' <<< "$delivery")
+  else
+    check 'delivery ID is used only with a master' test -z "$delivery_id"
+  fi
+  options=(--input "$source" --run "$OP461_RUN" --orientation "${OP461_ORIENTATION:-portrait}")
   [[ -z ${OP461_FRAME_INDEX:-} ]] || options+=(--frame-index "$OP461_FRAME_INDEX")
   [[ -z ${OP461_TIMESTAMP:-} ]] || options+=(--timestamp "$OP461_TIMESTAMP")
-  [[ -z ${OP461_MASTER:-} ]] || options+=(--master "$OP461_MASTER")
+  [[ -z $master ]] || options+=(--master "$master" --delivery-id "$delivery_id")
   [[ ${OP461_PLATE:-} != yes ]] || options+=(--plate)
-  job_spec=$(kustomize build "$stage/compare" | yq -o=json 'select(.kind == "Job")' |
-    python3 -B "$stage/compare/render.py" "${options[@]}")
+  template=$(kustomize build "$stage/compare" | yq -o=json 'select(.kind == "Job")')
+  job_spec=$(python3 -B "$stage/compare/render.py" "${options[@]}" <<< "$template")
   job=$(jq -er '.metadata.name' <<< "$job_spec")
-  source_name=${OP461_INPUT##*/}
+  source_name=${source##*/}
   source_hash=${source_name%.*}
   check 'supplied input digest agrees with the locator' test "${OP461_INPUT_SHA256:-$source_hash}" = "$source_hash"
-  check 'content-addressed regular single-link input matches SHA-256' input_matches_store_hash "$OP461_INPUT"
+  check 'content-addressed regular single-link input matches SHA-256' input_matches_store_hash "$source"
   master_hash=
-  if [[ -n ${OP461_MASTER:-} ]]; then
-    check 'content-addressed regular single-link master matches SHA-256' input_matches_store_hash "$OP461_MASTER"
-    master_name=${OP461_MASTER##*/}
+  if [[ -n $master ]]; then
+    check 'content-addressed regular single-link master matches SHA-256' input_matches_store_hash "$master"
+    master_name=${master##*/}
     master_hash=${master_name%.*}
   fi
   allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
@@ -299,6 +335,30 @@ provides bounded worker scratch. Keep the rendered Job private.
     check_json 'dedicated deny-all comparison policy is installed' '.spec == {
       "endpointSelector":{"matchLabels":{"app.kubernetes.io/name":"studio-upscaling-compare"}},
       "ingressDeny":[{"fromEntities":["all"]}], "egressDeny":[{"toEntities":["all"]}]}'
+  if [[ $source == *.mp4 ]]; then
+    probe_spec=$(python3 -B "$stage/compare/render.py" "${options[@]}" --probe <<< "$template")
+    probe=$(jq -er '.metadata.name' <<< "$probe_spec")
+    kubectl -n ai create -f - <<< "$probe_spec"
+    status=0
+    check 'probe Job complete' wait_for_job "$probe" || status=1
+    report=$(final_report "$probe") || report=
+    check 'probe JSON report present' test -n "$report" || status=1
+    printf '%s\n' "$report"
+    check_json 'proxy frame resolves on the zero-based delivery clock' '
+      .passed == true and .source.sha256 == $input and .source.resolved == true and
+      .source.first_timestamp_seconds == 0 and .source.fps == 24 and
+      (.source.frame_count > .source.frame_index) and (.source.size | length) == 2
+    ' --arg input "$source_hash" <<< "$report" || status=1
+    if [[ -n $master_hash ]]; then
+      check_json 'verified master resolves at the same frame' '
+        .delivery_id == $delivery and .reference.sha256 == $master and .reference.resolved == true and
+        .reference.first_timestamp_seconds == 0 and .reference.fps == 24 and
+        .reference.frame_index == .source.frame_index and .reference.frame_count == .source.frame_count and
+        (.reference.size | length) == 2
+      ' --arg delivery "$delivery_id" --arg master "$master_hash" <<< "$report" || status=1
+    fi
+    (( status == 0 )) || exit "$status"
+  fi
   idle_gate
   kubectl -n ai create -f - <<< "$job_spec"
   status=0
@@ -307,7 +367,7 @@ provides bounded worker scratch. Keep the rendered Job private.
   if [[ -z $report ]]; then
     report=$(final_report "$job" reserve-output 2>/dev/null) || report=
   fi
-  check 'comparison final log line present' test -n "$report" || status=1
+  check 'comparison JSON report present' test -n "$report" || status=1
   printf '%s\n' "$report"
   check_json 'source and both outputs recorded with measurements' '
     .source.sha256 == $input and
@@ -315,12 +375,15 @@ provides bounded worker scratch. Keep the rendered Job private.
     (.memory_by_phase | length) >= 4 and (.objective_measures | length) == 3
   ' --arg input "$source_hash" <<< "$report" || status=1
   if [[ -n $master_hash ]]; then
-    check_json 'matching master frame and reference measurements recorded' '
+    check_json 'verified delivery, master frame, reference measurements and caveat recorded' '
+      .delivery_id == $delivery and
+      (.pairing_verification | contains("The caller verified the pairing")) and
+      (.ground_truth_scope | contains("encoded downscale of the master")) and
       .reference.sha256 == $master and .reference.frame_index == .source.frame_index and
       (.normalized_reference.sha256 | test("^[0-9a-f]{64}$")) and
       ([.objective_measures.lanczos.ground_truth, .objective_measures.fsrcnn.ground_truth] |
         all(has("luma_psnr_db") and has("luma_ssim") and has("luma_mae")))
-    ' --arg master "$master_hash" <<< "$report" || status=1
+    ' --arg delivery "$delivery_id" --arg master "$master_hash" <<< "$report" || status=1
   fi
   exit "$status"
 )
@@ -332,7 +395,8 @@ with a master, `master.png`. Verify each PNG against its report hash. Tom
 judges lettering, hair and face fidelity, ringing and changed geometry at
 matching 1:1 crops. The Job reports source-scale luma error, edge energy
 and pairwise luma differences, including selected ROIs. With a master, it
-adds luma MAE, PSNR and SSIM for both arms. The proxy is an encoded downscale
+adds luma MAE, PSNR and SSIM for both arms. The printed JSON above shows
+`ground_truth_scope` alongside those numbers. The proxy is an encoded downscale
 of its master, so these measures reward undoing that specific encode. The
 synthetic smoke covers edge-spread, text, flatness and cadence gates. The
 fuller authorized excerpt and Tom's delivery review are tracked by
