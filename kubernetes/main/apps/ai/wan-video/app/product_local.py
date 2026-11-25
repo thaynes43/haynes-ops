@@ -70,7 +70,7 @@ def load_profile(config):
         integers = {
             "context_tokens": (2, 262144), "max_output_tokens": (1, 4096),
             "load_timeout_seconds": (1, 300), "infer_timeout_seconds": (1, 300),
-            "unload_timeout_seconds": (1, 300), "unloaded_max_mib": (0, MAX_UNLOADED_MIB),
+            "unload_timeout_seconds": (1, 300), "unloaded_max_mib": (1, MAX_UNLOADED_MIB),
             "resident_min_mib": (1, 22000), "resident_max_mib": (1, 22000),
         }
         required = integers.keys() | {"model", "gpu_uuid"}
