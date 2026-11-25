@@ -20,8 +20,13 @@ is the only action that changes the cluster. Flux receives a GitHub push
 event and polls Git every 30 minutes. The stages start automatically when
 the new artifact arrives.
 
-Use a LAN-capable Bash shell with GNU coreutils, jq, yq, Python 3.12 with PyYAML,
-and Flux CLI 2.10. Work from the clean reviewed PR head incorporating
+Use Bash with GNU coreutils, jq, yq, Python 3.12 with PyYAML and Flux CLI 2.10.
+Every block can run from a session pod. Its ingress reads use
+`kubectl exec -i` into `studio-mcp` and connect to
+`traefik-internal.network.svc.cluster.local:443` with
+`studio.haynesops.com` as TLS SNI and HTTP Host. The probe verifies the
+certificate and sends anonymous GET requests for `/` and `/v1/me`.
+Work from the clean reviewed PR head incorporating
 current Ops `main`. Set `STUDIO_OP967_RECEIPT` and `STUDIO_OP967_BASELINE` to
 new paths in a private directory outside the checkout. Keep submissions
 closed and offline render idle through postflight. The render pod restarts
@@ -37,7 +42,8 @@ fi
 ```
 
 The merge gate fetches Ops `main` and checks the reviewed commit and tree,
-baseline hash and every required PASS. Merge within 60 minutes of starting
+baseline hash, predecessor Job archive digest and every required PASS.
+Merge within 60 minutes of starting
 preflight. Take a fresh preflight if the PR head changes or the receipt
 expires. Save the receipt, baseline and four predecessor Job logs in
 `${STUDIO_OP967_RECEIPT}.jobs` for evidence and a possible retry. Flux prunes
@@ -58,8 +64,11 @@ SHA. The script reads Flux and fetches `main` before each comparison. It
 checks that the Git source, the rendered Studio stage definitions and the
 trees and rendered manifests at their paths match the selected merge.
 An unrelated descendant passes. A rewire, a changed stage input or an
-observed revision missing after the fetch fails with its revision. The
-inventory and each stage must report Ready for the current generation
+observed revision missing after the fetch fails with its revision. Each
+live stage at the selected pin must match every reviewed `spec` field.
+The sole allowed unlisted Flux v1 API default is `force: false`.
+A spec mismatch names the field. The inventory and each stage must
+report Ready for the current generation
 and a matching **applied** revision. An attempted revision alone is
 pending. After merge the audit uses the selected SHA and live state.
 
@@ -78,7 +87,7 @@ migration audit before treating any advanced workload as valid.
 
 | Flux stage | Added or changed automatically on merge | Pruned automatically |
 | --- | --- | --- |
-| AI inventory | Adds matte worker and registration stages. Updates render, migration and the existing registration gates. | |
+| AI inventory | Adds matte policy, worker and registration stages. Updates render, migration and the existing registration gates. | |
 | `studio-render` | Adds the fourth-pin render ConfigMap and updates the HelmRelease. The offline render pod restarts once at 17 CPUs. The installed and composed paths render the same target. | |
 | `studio-migration` | Creates the digest-named 0013 migration Job. | Third-pin migration Job and pod logs. |
 | `studio` | Rolls API replicas, their worker listeners, web and MCP. Updates API ingress and adds the new listener ConfigMap. The old listener ConfigMap stays available for predecessor pod replacements during a stalled surge. | |
@@ -86,13 +95,15 @@ migration audit before treating any advanced workload as valid.
 | `studio-worker` | Replaces the run worker pod. | |
 | `studio-media-worker-registration` | Creates the new voice and image registration Jobs and the independent matte token projection. | Third-pin voice and image registration Jobs and pod logs. |
 | `studio-media-workers` | Replaces the voice and image worker pods. | |
-| `studio-matte-worker` | Adds the Deployment, ConfigMap, ServiceAccount and NetworkPolicy. | |
+| `studio-matte-policy` | Applies the matte NetworkPolicy before the worker stage can run. | |
+| `studio-matte-worker` | Adds the Deployment, ConfigMap and ServiceAccount after the policy stage is Ready. | |
 | `studio-matte-worker-registration` | Creates the matte registration Job after the exact-profile sidecar is Ready. | |
 
 Offline render and migration can start in parallel. API, web and MCP wait
 for the successful migration at the selected revision. The existing workers
 wait for their API and registration dependencies. Matte also waits for the
-offline render split. Keep the predecessor listener ConfigMap and its
+offline render split and its NetworkPolicy stage at the selected revision.
+Keep the predecessor listener ConfigMap and its
 explicit Flux prune exemption through the next pin. After verified turnover
 on that pin, remove the exemption while Flux still owns the object, then
 remove its declaration in the pin after next.
@@ -177,13 +188,27 @@ if ! bash scripts/studio-release/op967.sh retry-preflight ||
 fi
 ```
 
-The retry preflight checks the terminal Job has Failed with no active
-pods. It uses the saved predecessor logs and verifies the original baseline
-and fresh hashes. It requires Ready third-pin workloads and old endpoints,
-no matte Deployment, both 0012 foreign keys, and no 0013 release column
-or matte FIFO. Idle render may already be on PyAV 18.1.1. All other
-preflight checks apply. After this PR merges, select its exact merge
-and use `wait` and `postflight` with the retry baseline.
+The retry preflight checks for a Failed Job with zero active pods. It
+verifies the saved predecessor Job archive, the original baseline and
+fresh hashes. It requires Ready third-pin workloads and endpoints and
+the absence of the matte Deployment and pods. Idle render may already
+be on PyAV 18.1.1. All other preflight checks apply.
+
+- **Complete 0012.** The primary database reports exactly
+  `0012_release_constraints`, with both validated 0012 foreign keys and
+  without the 0013 release column, matte FIFO or widened checks. Use the
+  replacement Job above to apply 0013 and read it back.
+- **Committed 0013.** The primary reports exactly `0013_matte_jobs`, with
+  the release column, matte FIFO, widened checks and both validated 0012
+  foreign keys.
+  Use the same replacement Job. Its upgrade is a no-op and its read-back
+  supplies the successful Job audit. A workload revert is also available
+  through the procedure below.
+
+The catalogue probe reads the CNPG primary over its local peer socket
+in a read-only transaction. Any other catalogue state fails preflight.
+After the retry PR merges, select its exact merge and use `wait` and
+`postflight` with the retry baseline.
 
 ## Workload turnover
 
@@ -213,8 +238,8 @@ two cores in its 17-CPU allocation. The new offline app uses a forwarding
 PID 1 that reaps children and sends termination signals to the render
 startup process group. Its venv uses the exact exported lock dependencies.
 
-The matte pod waits for the selected API, the Helm-ready offline CPU split
-and token projection resources. External Secrets projects a stable,
+The matte pod waits for the selected API, the Helm-ready offline CPU split,
+its NetworkPolicy and token projection resources. External Secrets projects a stable,
 independent generated token. The sidecar's readiness probe requires its
 exact profile hash. The matte container keeps its progress marker fresh
 while probing for its grant with an extra-field claim body that can't take
@@ -231,11 +256,13 @@ The full-render policy job is advisory across cluster paths. The Studio
 release guard is still required for Studio paths.
 
 The authoritative checks list every installed NetworkPolicy,
-CiliumNetworkPolicy and CiliumClusterwideNetworkPolicy. Preflight computes
-selection for the rendered matte labels, live namespace and Cilium
-identity inputs and includes the matte NetworkPolicy this pin adds.
+CiliumNetworkPolicy and CiliumClusterwideNetworkPolicy. Preflight uses
+the rendered matte and API pod labels, live namespace and Cilium identity
+inputs, and substitutes the reviewed matte policy and API ingress for
+their installed versions.
 Postflight repeats the check with the real pod labels and the UID-bound
-Cilium identities of the matte and API pods. The matte pod must allow
+Cilium identities of the matte and API pods. The policy's creation
+timestamp must precede the matte pod's start time. The matte pod must allow
 only DNS and the API's TCP 8002 listener for egress and no pod ingress.
 The audit refuses selecting Cilium allow or deny rules on the checked
 directions and checks the reviewed API ingress after rollout.
@@ -319,7 +346,7 @@ evidence. [Gatus check](studio-deployment.md#gatus-and-backup-coverage)
 
 Keep submissions closed until active and held work settles. The snapshot
 allows existing queued matte jobs only with a recorded matte pause. The
-rollback preserves matte records, grants, the completed migration and
+rollback preserves matte records, grants, the migration Job and
 schema 0013. Old migration images cannot resolve that revision.
 
 Base a workloads-only revert on current Ops `main`. Under
@@ -337,18 +364,25 @@ third-pin manifests as the workload source.
   Job health-check names in `ks.yaml`, retaining the render dependency
   and Helm health check. Remove the `studio-matte-worker` and
   `studio-matte-worker-registration` Kustomizations from `ks.yaml`.
-- Retain `migration/job.yaml`, its `studio-migration` Kustomization and
-  exact Job health check, `release.yaml` as the schema pin, and the matte
+  Keep the `studio-matte-policy` Kustomization and its NetworkPolicy.
+- Retain `migration/job.yaml`, its `studio-migration` Kustomization,
+  `release.yaml` as the schema pin, and the matte
   token projection and weights allocation. Keep offline render at 17
   CPUs through matte removal. Update the release guard in the revert to
   assert the third-pin workload pair with the fourth-pin migration.
+- Keep the exact migration Job health check when the Job completed. For
+  a terminal Job with verified 0013, remove the `healthChecks` field from
+  `studio-migration` in this revert. Flux can then reconcile the restored
+  workloads against the retained schema. The terminal Job stays available
+  as evidence.
 
 On the reviewed revert head, set `MERGED_OPS_REVISION` to the fourth-pin
 merge and set new private `STUDIO_OP967_RECEIPT` and
 `STUDIO_OP967_BASELINE` paths. The preflight checks the live Flux
-sequence and migration Job, the idle offline environment and LAN.
-It reads the committed 0013 schema from a Ready API pod on either
-verified image, so it works during a stalled API turnover.
+sequence, the idle offline environment and ingress. It checks the
+successful Job's log or, for a terminal Job, verifies the complete
+0013 catalogue on the primary. It takes the data snapshot from a Ready
+API pod on either verified image, so it works during a stalled turnover.
 
 ```bash
 if ! bash scripts/studio-release/op967.sh rollback-preflight ||
@@ -373,6 +407,12 @@ fi
 
 Record the Gatus result before reopening the original lanes. A forward
 fix is needed to resume matte submissions and job detail.
+
+A later reviewed PR removes the `studio-matte-policy` stage. Before
+opening that PR, read the pods in namespace `ai` with selector
+`app.kubernetes.io/name=studio-matte-worker` and confirm there are none,
+including terminating pods. The rollback comparison checks the same
+condition.
 
 A separate reviewed change can restore the offline 20-CPU limit after
 a passing rollback comparison and read-back that the matte pod has

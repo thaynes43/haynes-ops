@@ -1,19 +1,17 @@
-"""Exercise the deployed OP967 retry probe against the actual Studio migrations."""
+"""Exercise the deployed OP967 catalogue read against the actual Studio migrations."""
 
-import importlib.util
 import os
 import unittest
-from contextlib import redirect_stderr
-from io import StringIO
 from pathlib import Path
 
 
 DSN = os.getenv("STUDIO_OP967_TEST_DATABASE_URL")
+CATALOGUE = Path(__file__).resolve().parents[2] / "studio-release/op967-catalogue.sql"
 
 
 @unittest.skipUnless(DSN, "requires the disposable OP967 PostgreSQL database")
 class RetrySchemaTest(unittest.TestCase):
-    def test_retry_probe_distinguishes_0011_0012_and_0013(self):
+    def test_retry_catalogue_accepts_only_complete_0012_and_0013(self):
         import psycopg
         from psycopg import sql
         from psycopg.conninfo import conninfo_to_dict
@@ -24,57 +22,73 @@ class RetrySchemaTest(unittest.TestCase):
         info = conninfo_to_dict(DSN)
         self.assertEqual(info["dbname"], "studio_op967_test")
         self.assertIn(info["host"], {"127.0.0.1", "localhost"})
+        query = CATALOGUE.read_text()
 
-        path = Path(__file__).resolve().parents[2] / "studio-release/op967-data.py"
-        spec = importlib.util.spec_from_file_location("op967_data", path)
-        probe = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(probe)
+        def catalogue(*, read_only=True):
+            with psycopg.connect(DSN) as conn:
+                conn.read_only = read_only
+                return conn.execute(query).fetchone()[0]
+
+        def check_partial(admin, break_schema, restore_schema):
+            admin.execute(break_schema)
+            try:
+                self.assertEqual(catalogue(), "unverified")
+            finally:
+                admin.execute(restore_schema)
 
         role = "studio_op967_probe"
         with psycopg.connect(DSN, autocommit=True) as admin:
             with admin.transaction():
                 admin.execute("CREATE ROLE studio_op967_probe")
                 admin.execute("CREATE SCHEMA studio")
-            # Clean up the schema and grants before dropping the role.
+            engine = connect_engine(DSN)
             try:
                 admin.execute("GRANT USAGE ON SCHEMA studio TO studio_op967_probe")
-                engine = connect_engine(DSN)
+                migrate(engine, target="0011_worker_lane_grants", runtime_role=role)
+                self.assertEqual(catalogue(), "unverified")
 
-                def catalogue(conn):
-                    conn.execute("SET LOCAL ROLE studio_op967_probe")
-                    results = {}
-                    with redirect_stderr(StringIO()):
-                        probe.database_snapshot(conn, "retry-preflight", results)
-                    return results
+                migrate(engine, target="0012_release_constraints", runtime_role=role)
+                self.assertEqual(catalogue(), "0012_release_constraints")
+                self.assertEqual(catalogue(read_only=False), "unverified")
+                add_column = "ALTER TABLE studio.media_jobs ADD COLUMN matte_releases smallint DEFAULT 0 NOT NULL"
+                drop_column = "ALTER TABLE studio.media_jobs DROP COLUMN matte_releases"
+                check_partial(admin, add_column, drop_column)
+                check_partial(admin, """
+                    ALTER TABLE studio.media_job_lanes DROP CONSTRAINT media_job_lanes_lane_check,
+                        ADD CONSTRAINT media_job_lanes_lane_check CHECK (lane IN ('image', 'voice', 'matte'))
+                """, """
+                    ALTER TABLE studio.media_job_lanes DROP CONSTRAINT media_job_lanes_lane_check,
+                        ADD CONSTRAINT media_job_lanes_lane_check CHECK (lane IN ('image', 'voice'))
+                """)
 
-                label = "0012 release constraints present and 0013 release column absent"
-                try:
-                    for revision, can_retry in (
-                        ("0011_worker_lane_grants", False),
-                        ("0012_release_constraints", True),
-                        ("0013_matte_jobs", False),
-                    ):
-                        with self.subTest(revision=revision):
-                            migrate(engine, target=revision, runtime_role=role)
-                            with psycopg.connect(DSN) as runtime:
-                                runtime.read_only = True
-                                results = catalogue(runtime)
-                            self.assertIs(results[label], can_retry)
-                            if revision == "0011_worker_lane_grants":
-                                self.assertTrue(results["required lanes idle (image, voice)"])
-                            if revision == "0012_release_constraints":
-                                for table, constraint in (
-                                    ("publications", "publications_package_run_target_fkey"),
-                                    ("archive_records", "archive_records_root_version_fkey"),
-                                ):
-                                    with self.subTest(missing=constraint), admin.transaction(force_rollback=True):
-                                        admin.execute(sql.SQL("ALTER TABLE {} DROP CONSTRAINT {}").format(
-                                            sql.Identifier("studio", table), sql.Identifier(constraint),
-                                        ))
-                                        self.assertIs(catalogue(admin)[label], False)
-                finally:
-                    engine.dispose()
+                migrate(engine, runtime_role=role)
+                self.assertEqual(catalogue(), "0013_matte_jobs")
+                migrate(engine, runtime_role=role)  # Replacement Job upgrades an already committed head.
+                self.assertEqual(catalogue(), "0013_matte_jobs")
+                check_partial(admin, drop_column, add_column)
+                check_partial(admin, "ALTER TABLE studio.media_jobs ALTER COLUMN matte_releases SET DEFAULT 1",
+                              "ALTER TABLE studio.media_jobs ALTER COLUMN matte_releases SET DEFAULT 0")
+                check_partial(admin, "DELETE FROM studio.media_job_lanes WHERE lane = 'matte'",
+                              "INSERT INTO studio.media_job_lanes (lane, next_position) VALUES ('matte', 1)")
+                check_partial(admin, "INSERT INTO studio.alembic_version VALUES ('0012_release_constraints')",
+                              "DELETE FROM studio.alembic_version WHERE version_num = '0012_release_constraints'")
+
+                for table, constraint in (
+                    ("publications", "publications_package_run_target_fkey"),
+                    ("archive_records", "archive_records_root_version_fkey"),
+                ):
+                    with self.subTest(missing=constraint):
+                        definition, = admin.execute("""
+                            SELECT pg_get_constraintdef(oid) FROM pg_constraint
+                            WHERE conrelid = %s::regclass AND conname = %s
+                        """, (f"studio.{table}", constraint)).fetchone()
+                        name = sql.Identifier("studio", table)
+                        key = sql.Identifier(constraint)
+                        check_partial(admin, sql.SQL("ALTER TABLE {} DROP CONSTRAINT {}").format(name, key),
+                                      sql.SQL("ALTER TABLE {} ADD CONSTRAINT {} {}").format(
+                                          name, key, sql.SQL(definition)))
             finally:
+                engine.dispose()
                 admin.execute("DROP SCHEMA studio CASCADE")
                 admin.execute("DROP ROLE studio_op967_probe")
 

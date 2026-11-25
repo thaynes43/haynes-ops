@@ -14,7 +14,6 @@ matting="$root/matting-pending/release/release.yaml"
 sidecar=$(yq -er '.data.image' "$matting") || exit 1
 profile=$(yq -er '.data.profileSha256' "$matting") || exit 1
 allocation=$(yq -er '.data.allocation' "$matting") || exit 1
-base=https://studio.haynesops.com
 phase=${1:-}
 failed=0
 results=()
@@ -50,6 +49,7 @@ preflight_checks=(
 retry_checks=(
   'original baseline and archived predecessor Job logs verified'
   'replacement migration Job and Flux health check match the terminal failure'
+  'catalogue is complete 0012 or verified 0013'
   'matte workload absent'
 )
 rollback_checks=(
@@ -140,6 +140,16 @@ archive_digest() (
   printf '%s\n' "${checksum%% *}"
 )
 
+verified_archive() {
+  local evidence=$1 archived_hash
+  job_archive=$(jq -er '.jobs_path | select(startswith("/"))' "$evidence") || return 1
+  archived_hash=$(jq -er '.jobs_sha256 | select(test("^[a-f0-9]{64}$"))' "$evidence") || return 1
+  if [[ $(archive_digest "$job_archive") != "$archived_hash" ]]; then
+    printf 'FAIL predecessor Job archive missing or changed: %s\n' "$job_archive" >&2
+    return 1
+  fi
+}
+
 fetch_main() {
   git fetch --quiet origin main:refs/remotes/origin/main || {
     printf 'FAIL could not fetch Ops main before checking revisions\n' >&2
@@ -168,6 +178,7 @@ merge_admitted() {
     rollback) required_checks=("${rollback_checks[@]}") ;;
     *) return 1 ;;
   esac
+  if [[ $mode != rollback ]]; then verified_archive "$receipt" || return 1; fi
   labels=$(printf '%s\n' "${required_checks[@]}" | jq -Rn '[inputs]') || return 1
   jq -e --arg mode "$mode" --arg head "$head" --arg tree "$tree" --arg baseline "$baseline" \
     --arg hash "$(file_digest "$baseline")" --argjson now "$now" \
@@ -185,7 +196,6 @@ merge_admitted() {
 retry_evidence() {
   local previous=${STUDIO_OP967_FAILED_OPS_REVISION:-} previous_receipt=${STUDIO_OP967_PREVIOUS_RECEIPT:-}
   fetch_main || return 1
-  local archived_hash
   [[ $previous != "$head" && -f $previous_receipt ]] && on_main "$previous" || return 1
   git merge-base --is-ancestor "$previous" "$head" || return 1
   jq -e --arg tree "$(git rev-parse --verify "$previous^{tree}")" '
@@ -193,9 +203,7 @@ retry_evidence() {
   ' "$previous_receipt" >/dev/null || return 1
   prior_baseline=$(jq -er '.baseline_path' "$previous_receipt") || return 1
   [[ $(file_digest "$prior_baseline") == "$(jq -er '.baseline_sha256' "$previous_receipt")" ]] || return 1
-  job_archive=$(jq -er '.jobs_path | select(startswith("/"))' "$previous_receipt") || return 1
-  archived_hash=$(jq -er '.jobs_sha256 | select(test("^[a-f0-9]{64}$"))' "$previous_receipt") || return 1
-  [[ $(archive_digest "$job_archive") == "$archived_hash" ]] || return 1
+  verified_archive "$previous_receipt" || return 1
   previous_ops_revision=$previous
 }
 
@@ -217,11 +225,36 @@ retry_job() {
   prior_gate=$(git show "$previous_ops_revision:$root/ks.yaml") || return 1
   [[ $(< "$root/migration/job.yaml") == "${source//name: $old_job/name: $new_job}" &&
      $(< "$root/ks.yaml") == "${prior_gate//name: $old_job/name: $new_job}" ]] || return 1
-  kubectl -n ai get "job/$old_job" -o json | jq -e --arg api "ghcr.io/thaynes43/haynes-studio@$api" '
+  kubectl -n ai get "job/$old_job" -o json | is_terminal_migration
+}
+
+is_terminal_migration() {
+  jq -e --arg api "ghcr.io/thaynes43/haynes-studio@$api" '
     any(.spec.template.spec.containers[]?; .name == "migrate" and .image == $api) and
     any(.status.conditions[]?; .type == "Failed" and .status == "True") and
     all(.status.conditions[]?; .type != "Complete" or .status != "True") and
     (.status.active // 0) == 0' >/dev/null
+}
+
+migration_catalogue() {
+  local primary
+  primary=$(kubectl -n database get cluster postgres16 -o json | jq -er '
+    .status.currentPrimary | select(type == "string" and startswith("postgres16-"))') || return 1
+  kubectl -n database exec -i "$primary" -c postgres -- \
+    env PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=5000' \
+    psql -X -w -h /controller/run -U postgres -d studio -qAt -v ON_ERROR_STOP=1 \
+    < "$script_dir/op967-catalogue.sql"
+}
+
+retry_catalogue() {
+  local state
+  state=$(migration_catalogue) || return 1
+  printf 'Migration catalogue: %s\n' "$state"
+  case $state in
+    0012_release_constraints) ;;
+    0013_matte_jobs) snapshot_phase=retry-preflight-0013 ;;
+    *) return 1 ;;
+  esac
 }
 
 flux_state() {
@@ -260,12 +293,16 @@ release_sequence() {
   flux_state release "$1" || state=$?
   case $state in 0|2|3) ;; *) return 1 ;; esac
   advanced=$(release_workloads) || return 1
-  if [[ $advanced == true || ${2:-} == require-migration ]]; then
+  if [[ $advanced == true || ${2:-} == rollback ]]; then
     if ((state == 3)); then
       printf 'FAIL workload advanced before the source reached the selected merge\n' >&2
       return 1
     fi
-    migration || return 1
+    if [[ ${2:-} == rollback ]]; then
+      rollback_migration || return 1
+    else
+      migration || return 1
+    fi
   fi
   return "$state"
 }
@@ -282,8 +319,27 @@ rollback_source() {
 
 rollback_sequence() {
   local state=0
-  release_sequence "$MERGED_OPS_REVISION" require-migration || state=$?
+  release_sequence "$MERGED_OPS_REVISION" rollback || state=$?
   ((state == 0 || state == 2))
+}
+
+rollback_migration() {
+  local job installed state health_count
+  job=$(yq -er 'select(.kind == "Job") | .metadata.name' "$root/migration/job.yaml") || return 1
+  installed=$(kubectl -n ai get "job/$job" -o json) || return 1
+  if ! is_terminal_migration <<< "$installed"; then
+    migration
+    return
+  fi
+  state=$(migration_catalogue) || return 1
+  printf 'Terminal migration Job %s, catalogue: %s\n' "$job" "$state"
+  [[ $state == 0013_matte_jobs ]] || return 1
+  health_count=$(yq -er 'select(.kind == "Kustomization" and .metadata.name == "studio-migration") |
+    .spec.healthChecks | length' "$root/ks.yaml") || return 1
+  if [[ $health_count != 0 ]]; then
+    printf 'FAIL rollback must remove the terminal migration Job health check\n' >&2
+    return 1
+  fi
 }
 
 wait_for_flux() {
@@ -458,7 +514,21 @@ weights_pin() {
 
 lan() {
   local path=$1 expected=$2 result
-  result=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$base/$path") || return 1
+  result=$(kubectl -n ai exec -i deploy/studio-mcp -c mcp -- python -I -B -c '
+import http.client
+import socket
+import ssl
+import sys
+
+host = "studio.haynesops.com"
+path = sys.argv[1]
+with socket.create_connection(("traefik-internal.network.svc.cluster.local", 443), timeout=10) as connection:
+    with ssl.create_default_context().wrap_socket(connection, server_hostname=host) as tls:
+        tls.sendall(f"GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n".encode("ascii"))
+        with http.client.HTTPResponse(tls) as response:
+            response.begin()
+            print(response.status)
+  ' "/$path") || return 1
   printf 'HTTP %s /%s\n' "$result" "$path"
   [[ $result == "$expected" ]]
 }
@@ -498,7 +568,7 @@ data_probe() {
     >/dev/null || return 1
   printf '%s\n' "$report"
   case $mode in
-    retry-preflight)
+    retry-preflight|retry-preflight-0013)
       jq -es 'length == 2 and .[0] == .[1]' "$prior_baseline" - <<< "$report" >/dev/null || return 1
       (umask 077; set -o noclobber; printf '%s\n' "$report" > "$baseline") ;;
     preflight|rollback-baseline)
@@ -770,6 +840,7 @@ case $phase in
     started=$(date -u +%s) || exit 1
     mode=release
     render_mode=predecessor
+    snapshot_phase=$phase
     predecessor_flux_stages=(kustomization/studio-migration kustomization/studio
       kustomization/studio-worker-registration kustomization/studio-worker
       kustomization/studio-media-worker-registration kustomization/studio-media-workers)
@@ -780,6 +851,9 @@ case $phase in
       check 'original baseline and archived predecessor Job logs verified' retry_evidence
       if (( ! failed )); then
         check 'replacement migration Job and Flux health check match the terminal failure' retry_job
+      fi
+      if (( ! failed )); then
+        check 'catalogue is complete 0012 or verified 0013' retry_catalogue
       fi
       check 'matte workload absent' matte_removed
     fi
@@ -805,7 +879,7 @@ case $phase in
       if [[ $mode == release ]]; then
         check 'predecessor Job logs saved' save_predecessor_logs
       fi
-      check 'empty queues, archived data and store baseline' data_probe "$phase" "$old_revision" "$old_digest"
+      check 'empty queues, archived data and store baseline' data_probe "$snapshot_phase" "$old_revision" "$old_digest"
     fi
     if ! write_receipt "$mode"; then
       printf 'FAIL cannot write a new preflight receipt\n' >&2

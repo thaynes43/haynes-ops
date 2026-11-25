@@ -34,8 +34,9 @@ REWIRED = "3" * 40
 EDITED = "4" * 40
 ROLLBACK = "5" * 40
 UNRELATED = "6" * 40
+OFF_MAIN = "7" * 40
 STAGES = ("studio-render", "studio-migration", "studio", "studio-worker-registration", "studio-worker",
-          "studio-media-worker-registration", "studio-media-workers", "studio-matte-worker",
+          "studio-media-worker-registration", "studio-media-workers", "studio-matte-policy", "studio-matte-worker",
           "studio-matte-worker-registration")
 NOW = 1760000050
 SNAPSHOT = {"store": {}, "runs": {}, "deliveries": {}, "delivery media": {}, "media jobs": {}}
@@ -94,9 +95,12 @@ def definition(name, commit):
         path, namespace = data["paths"][name], "ai"
     if commit == data["rewired"] and name == "studio":
         path = "./kubernetes/main/apps/ai/studio-worker-rewired"
-    return {"kind": "Kustomization", "metadata": {"name": name, "namespace": namespace},
-            "spec": {"path": path, "sourceRef": {"kind": "GitRepository",
-                     "namespace": "flux-system", "name": "haynes-ops"}}}
+    spec = {"path": path, "sourceRef": {"kind": "GitRepository", "namespace": "flux-system", "name": "haynes-ops"}}
+    if name == "studio":
+        spec.update(targetNamespace="ai", postBuild={"substitute": {"APP": "studio"}})
+    if name == data.get("suspended_stage"):
+        spec["suspend"] = True
+    return {"kind": "Kustomization", "metadata": {"name": name, "namespace": namespace}, "spec": spec}
 revision, api, web = data["new"] if data["workloads"] == "new" else data["old"]
 sidecar = data["sidecar"]
 studio = Path("kubernetes/main/apps/ai/studio")
@@ -134,6 +138,7 @@ def pods(workload):
                 ],
             },
             "status": {
+                "startTime": "2026-11-25T21:01:00Z",
                 "conditions": [{"type": "Ready", "status": "False" if data.get("api_unready") and workload == "api"
                                 else "True"}],
                 "containerStatuses": [
@@ -168,9 +173,9 @@ def stage(name):
     revision = data.get("stage_revisions", {}).get(name, data["artifact"])
     document = definition(name, data["artifact"])
     document["metadata"]["generation"] = 2
-    document["spec"]["suspend"] = name == data.get("suspended_stage")
-    if name == data.get("rewired_live_stage"):
-        document["spec"]["path"] = "./wrong-path"
+    document["spec"]["force"] = False
+    if name == "studio":
+        document["spec"].update(data.get("live_spec_override", {}))
     document["status"] = {
         "lastAppliedRevision": "main@sha1:" + revision,
         "lastAttemptedRevision": "main@sha1:" + data.get("attempted_revisions", {}).get(name, revision),
@@ -222,8 +227,8 @@ if cmd == "git":
             print("changed-tree" if commit == data["edited"] and path.endswith("/studio/app") else path)
         case ["status", "--porcelain", "--untracked-files=no"]:
             print(data.get("dirty", ""))
-        case ["merge-base", "--is-ancestor", _, "refs/remotes/origin/main"]:
-            sys.exit(not data.get("on_main", True))
+        case ["merge-base", "--is-ancestor", commit, "refs/remotes/origin/main"]:
+            sys.exit(not data.get("on_main", True) or commit in data.get("off_main", []))
         case ["merge-base", "--is-ancestor", "refs/remotes/origin/main", _]:
             sys.exit(not data.get("includes_main", True))
         case ["merge-base", "--is-ancestor", ancestor, descendant]:
@@ -251,7 +256,8 @@ elif cmd == "yq":
     docs = [doc for doc in yaml.safe_load_all(sys.stdin.read() if filename == "-" else Path(filename).read_text()) if doc]
     if "healthChecks" in query:
         stage = next(doc for doc in docs if doc["metadata"]["name"] == "studio-migration")
-        print(stage["spec"]["healthChecks"][0]["name"])
+        checks = stage["spec"].get("healthChecks", [])
+        print(len(checks) if query.endswith("| length") else checks[0]["name"])
     elif query.startswith("select"):
         print(next(doc["metadata"]["name"] for doc in docs if doc["kind"] == "Job"))
     else:
@@ -260,7 +266,7 @@ elif cmd == "yq":
             result = result[key]
         print(result)
 elif cmd == "curl":
-    print("401" if args[-1].endswith("/v1/me") else "200")
+    sys.exit(99)
 elif cmd == "flux":
     if args[:2] != ["build", "kustomization"] or "--dry-run" not in args:
         sys.exit(99)
@@ -274,9 +280,12 @@ elif cmd == "flux":
         if commit == data["rollback"]:
             stages = [stage for stage in stages if not stage.startswith("studio-matte-worker")]
         print(yaml.safe_dump_all([definition(stage, commit) for stage in stages]))
-    elif name == "studio-matte-worker" and not commit:
-        files = [studio / "matting-pending/activation/worker" / file
-                 for file in ("deployment.yaml", "networkpolicy.yaml")]
+    elif not commit:
+        files = [studio / file for file in {
+            "studio": ("app/api.yaml", "app/networkpolicy.yaml"),
+            "studio-matte-worker": ("matting-pending/activation/worker/deployment.yaml",),
+            "studio-matte-policy": ("matting-pending/worker-policy/networkpolicy.yaml",),
+        }.get(name, ())]
         documents = [doc for file in files for doc in yaml.safe_load_all(file.read_text()) if doc]
         for doc in documents:
             doc["metadata"]["namespace"] = "ai"
@@ -286,10 +295,16 @@ elif cmd == "kubectl":
         args = args[2:]
     match args:
         case ["get", "gitrepository", "haynes-ops", "-o", "json"]:
-            emit({**source, "status": {"artifact": {"revision": "main@sha1:" + data["artifact"]}}})
+            emit({**source, "spec": {**source["spec"], **data.get("live_source_override", {})},
+                  "status": {"artifact": {"revision": "main@sha1:" + data["artifact"]}}})
         case ["get", "kustomization", "cluster-apps", "-o", "json"]:
             emit(stage("cluster-apps"))
         case ["get", "kustomizations", "-o", "json"]:
+            if data.get("second_flux_read_unready"):
+                reads = [line for line in Path(env["COMMAND_LOG"]).read_text().splitlines()
+                         if json.loads(line) == ["kubectl", "-n", "ai", "get", "kustomizations", "-o", "json"]]
+                if len(reads) == 2:
+                    data["unready_stage"] = "studio"
             emit({"items": [stage(name) for name in data["stages"] if name not in data.get("missing_stages", [])]})
         case ["get", "deployments", "-o", "json"]:
             workloads = ("api", "mcp", "web", "worker", "voice-worker", "image-worker")
@@ -329,10 +344,15 @@ elif cmd == "kubectl":
         case ["get", "networkpolicies.networking.k8s.io,ciliumnetworkpolicies.cilium.io", "--all-namespaces", "-o", "json"]:
             manifests = [studio / "app/networkpolicy.yaml"]
             if data["workloads"] == "new":
-                manifests.append(studio / "matting-pending/activation/worker/networkpolicy.yaml")
+                manifests.append(studio / "matting-pending/worker-policy/networkpolicy.yaml")
             items = [doc for path in manifests for doc in yaml.safe_load_all(path.read_text()) if doc]
             for policy in items:
                 policy["metadata"]["namespace"] = "ai"
+                if policy["metadata"]["name"] == "studio-matte-worker":
+                    policy["metadata"]["creationTimestamp"] = data.get("policy_created", "2026-11-25T21:00:00Z")
+                if policy["metadata"]["name"] == "studio-api-ingress" and data["workloads"] == "old":
+                    policy["spec"]["ingress"][1]["from"][0]["podSelector"]["matchExpressions"][0]["values"].remove(
+                        "studio-matte-worker")
             if kind := data.get("helm_policy"):
                 metadata = {"namespace": data.get("helm_policy_namespace", "ai"), "name": "example-helm",
                             "labels": {"app.kubernetes.io/managed-by": "Helm"}}
@@ -341,6 +361,14 @@ elif cmd == "kubectl":
                         if kind == "NetworkPolicy" else
                         {"endpointSelector": matte, "ingress": [{}]})
                 items.append({"kind": kind, "metadata": metadata, "spec": spec})
+            if data.get("helm_api_deny"):
+                items.append({"kind": "CiliumNetworkPolicy",
+                              "metadata": {"name": "helm-api-deny", "namespace": "ai",
+                                           "labels": {"app.kubernetes.io/managed-by": "Helm"}},
+                              "spec": {"endpointSelector": {"matchLabels": {"app.kubernetes.io/name": "studio-api"}},
+                                       "ingressDeny": [{"fromEndpoints": [
+                                           {"matchLabels": {"app.kubernetes.io/name": "studio-matte-worker"}}
+                                       ], "toPorts": [{"ports": [{"port": "8002", "protocol": "TCP"}]}]}]}})
             emit({"items": items})
         case ["get", "configmap", "cilium-config", "-o", "json"]:
             emit({"data": {"cluster-name": "haynes-ops", "enable-policy": data.get("enforcement", "default")}})
@@ -372,7 +400,7 @@ elif cmd == "kubectl":
                 for pod in pods("api")
             ]}]})
         case ["get", "cluster", "postgres16", *_]:
-            emit({"spec": {"instances": 3}, "status": {"readyInstances": 3}})
+            emit({"spec": {"instances": 3}, "status": {"readyInstances": 3, "currentPrimary": "postgres16-primary"}})
         case ["get", "node", "talosw01", *_]:
             emit({"status": {"allocatable": {"cpu": "39", "memory": "111129616Ki"}}})
         case ["get", "deploy/studio-matte-worker", *_]:
@@ -405,11 +433,24 @@ elif cmd == "kubectl":
                 result = "wrong" if worker == "image-worker" and data.get("bad_registration_result") else worker
                 emit({"worker_id": "studio-" + result})
         case ["exec", *options]:
-            if "/v1/ready" in options[-1]:
+            if options[:2] == ["-i", "deploy/studio-mcp"]:
+                program = options[-2]
+                if not all(expected in program for expected in (
+                    "traefik-internal.network.svc.cluster.local", "server_hostname=host",
+                    'host = "studio.haynesops.com"', "GET {path}", "Host: {host}",
+                )):
+                    sys.exit(88)
+                print("401" if options[-1] == "/v1/me" else "200")
+            elif options[:2] == ["-i", "postgres16-primary"]:
+                if "default_transaction_read_only=on" not in " ".join(options):
+                    sys.exit(89)
+                print(data.get("catalogue", "0012_release_constraints"))
+            elif "/v1/ready" in options[-1]:
                 emit({"ready": True, "active_video_job": None, "active_foley_job": data.get("active_foley")})
             elif options[-1].endswith("/queue"):
                 emit({"queue_running": [], "queue_pending": []})
-            elif options[-2] in {"preflight", "retry-preflight", "postflight", "rollback-baseline", "compare"}:
+            elif options[-2] in {"preflight", "retry-preflight", "retry-preflight-0013",
+                                "postflight", "rollback-baseline", "compare"}:
                 mode, expected_build = options[-2:]
                 if expected_build != revision or options[1] not in {"api-0", "api-1"}:
                     sys.exit(87)
@@ -472,7 +513,7 @@ class PhaseTest(unittest.TestCase):
             "known_trees": {REVIEWED_HEAD: TREE, HEAD: TREE, FAILED_HEAD: FAILED_TREE},
             "known_merges": {},
             "ancestry": [[PREVIOUS, HEAD], [HEAD, REVIEWED_HEAD],
-                         *([HEAD, sha] for sha in (DESCENDANT, EDITED, REWIRED, ROLLBACK))],
+                         *([HEAD, sha] for sha in (DESCENDANT, EDITED, REWIRED, ROLLBACK, OFF_MAIN))],
             "stages": STAGES, "definitions": STAGES,
             "paths": {stage: f"./kubernetes/main/apps/ai/studio/{stage}" for stage in STAGES}
             | {"studio": "./kubernetes/main/apps/ai/studio/app"},
@@ -535,6 +576,7 @@ class PhaseTest(unittest.TestCase):
             "migrate.log", "register-image-worker.log", "register-voice-worker.log", "register-worker.log",
         ])
         self.run_phase("admit-merge", head=REVIEWED_HEAD)
+        self.assert_archive_damage_refused(logdir, mode="release", head=REVIEWED_HEAD)
         _, calls = self.run_phase("admit-merge", head=REVIEWED_HEAD, now=NOW + 3600, expected=1)
         self.assertFalse(any(call[0] == "kubectl" for call in calls))
         _, calls = self.run_phase("admit-merge", head=REVIEWED_HEAD, includes_main=False, expected=1)
@@ -556,7 +598,9 @@ class PhaseTest(unittest.TestCase):
                 self.assertFalse(any("exec" in call and "postflight" in call for call in calls))
 
     def test_merge_requires_fresh_passing_complete_receipt_for_reviewed_head_and_baseline(self):
-        self.baseline.write_text(json.dumps(SNAPSHOT))
+        self.run_phase("preflight", head=REVIEWED_HEAD)
+        original = json.loads(self.receipt.read_text())
+        archive = {key: original[key] for key in ("jobs_path", "jobs_sha256")}
         passing = [{"label": label, "result": "PASS"} for label in RELEASE_CHECKS]
         for case, receipt, overrides in (
             ("missing", None, {}),
@@ -578,9 +622,35 @@ class PhaseTest(unittest.TestCase):
             with self.subTest(case=case):
                 self.receipt.unlink(missing_ok=True)
                 if receipt is not None:
-                    self.admit(**receipt)
+                    self.admit(**{**archive, **receipt})
                 _, calls = self.run_phase("admit-merge", expected=1, head=REVIEWED_HEAD, **overrides)
                 self.assertFalse(any(call[0] == "kubectl" for call in calls))
+
+    def test_retry_admission_refuses_archive_lost_after_preflight(self):
+        previous, _, env = self.prepare_retry()
+        archive = Path(json.loads(previous.read_text())["jobs_path"])
+        self.run_phase("retry-preflight", head=RETRY_HEAD, extra_env=env)
+        self.run_phase("admit-merge", mode="retry", head=RETRY_HEAD)
+        self.assert_archive_damage_refused(archive, mode="retry", head=RETRY_HEAD)
+
+    def assert_archive_damage_refused(self, archive, *, mode, head):
+        saved_job = archive / "migrate.log"
+        original = saved_job.read_bytes()
+        parked = archive.with_suffix(".parked")
+        for damage in ("missing", "altered"):
+            with self.subTest(mode=mode, damage=damage):
+                if damage == "missing":
+                    archive.rename(parked)
+                else:
+                    saved_job.write_bytes(b"edited")
+                try:
+                    result, _ = self.run_phase("admit-merge", expected=1, mode=mode, head=head)
+                    self.assertIn("predecessor Job archive missing or changed", result.stderr)
+                finally:
+                    if damage == "missing":
+                        parked.rename(archive)
+                    else:
+                        saved_job.write_bytes(original)
 
     def test_flux_waits_for_predecessor_and_fails_at_pickup_deadline(self):
         result, calls = self.run_phase("wait", artifact=PREVIOUS, now=NOW + 35 * 60, expected=1)
@@ -608,6 +678,42 @@ class PhaseTest(unittest.TestCase):
                 self.assertIn(reason, result.stderr)
                 self.assertIn(observed, result.stderr)
                 self.assertFalse(any("logs" in call or "exec" in call for call in calls))
+
+    def test_flux_requires_the_exact_selected_checkout_and_observed_revision_on_main(self):
+        result, calls = self.run_phase("wait", head=DESCENDANT, expected=1)
+        self.assertIn("FAIL selected fourth-pin Ops revision on main", result.stderr)
+        self.assertFalse(any(call[0] == "kubectl" for call in calls))
+        result, _ = self.run_phase("wait", artifact=OFF_MAIN, off_main=[OFF_MAIN], expected=1)
+        self.assertIn(f"Flux revision {OFF_MAIN} is outside fetched main", result.stderr)
+
+    def test_flux_refuses_live_spec_changes_with_the_field_named(self):
+        result, _ = self.run_phase("wait", expected=1, live_source_override={"ref": {"branch": "other"}})
+        self.assertIn("live GitRepository spec differs", result.stderr)
+        for override, field in (
+            ({"postBuild": {"substitute": {"APP": "altered"}}}, "postBuild.substitute.APP"),
+            ({"patches": [{"patch": "[]", "target": {"kind": "Deployment"}}]}, "patches"),
+            ({"targetNamespace": "other"}, "targetNamespace"),
+            ({"path": "./wrong"}, "path"),
+            ({"sourceRef": {"kind": "GitRepository", "name": "other", "namespace": "flux-system"}}, "sourceRef.name"),
+            ({"force": True}, "force"),
+            ({"suspend": True}, "suspend"),
+        ):
+            with self.subTest(field=field):
+                result, _ = self.run_phase("wait", expected=1, live_spec_override=override)
+                self.assertIn(f"live studio spec.{field} differs", result.stderr)
+
+    def test_flux_refuses_ready_with_suspension_or_an_extra_studio_stage(self):
+        result, _ = self.run_phase("verify", expected=1, suspended_stage="studio")
+        self.assertIn(f"Flux studio: applied main@sha1:{HEAD}, ready at pin False", result.stdout)
+        extra = "studio-extra"
+        result, _ = self.run_phase("verify", expected=1, stages=(*STAGES, extra),
+                                   paths={**self.data["paths"], extra: "./extra"})
+        self.assertIn("FAIL Flux stages Ready at the selected release", result.stderr)
+
+    def test_flux_stops_at_readiness_deadline_after_pickup(self):
+        result, calls = self.run_phase("wait", expected=1, unready_stage="studio", clock_step=35 * 60)
+        self.assertIn("still pending 35 minutes after observing pickup", result.stderr)
+        self.assertEqual([call for call in calls if call[0] == "sleep"], [["sleep", "15"]])
 
     def test_flux_requires_applied_pin_and_current_generation(self):
         for changes in (
@@ -710,7 +816,9 @@ class PhaseTest(unittest.TestCase):
                     "register-matte-worker"):
             self.assertTrue(any(pod.startswith(f"studio-{job}-") for pod in logs), job)
         self.assertEqual({call[-1] for call in self.route_calls(calls)}, {"voice", "image", "run", "matte"})
-        self.assertEqual(len([call for call in calls if call[0] == "curl"]), 2)
+        ingress = [call[-1] for call in calls if call[:6] == ["kubectl", "-n", "ai", "exec", "-i", "deploy/studio-mcp"]]
+        self.assertEqual(ingress, ["/", "/v1/me"])
+        self.assertFalse(any(call[0] == "curl" for call in calls))
         self.assertFalse(any(call[0] == "flux" or "claim-validation" in call for call in calls))
 
     def test_failed_state_stops_before_the_first_listener_post(self):
@@ -737,10 +845,27 @@ class PhaseTest(unittest.TestCase):
         self.assertEqual(len(self.route_calls(calls[:recheck])), 4)
         self.assertFalse(any("claim-validation" in call for call in calls))
 
+    def test_postflight_second_flux_read_gates_every_listener_post(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        result, calls = self.run_phase("postflight", expected=1, workloads="new", second_flux_read_unready=True)
+        self.assertIn("PASS all queues idle, grants present and archived data and store identical", result.stderr)
+        self.assertIn("FAIL Flux stages still Ready before listener probes", result.stderr)
+        self.assertEqual(self.route_calls(calls), [])
+        self.assertFalse(any("claim-validation" in call for call in calls))
+
+    def test_postflight_requires_policy_created_before_matte_pod_start(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        for timestamp in ("2026-11-25T21:01:00Z", "2026-11-25T21:02:00Z"):
+            with self.subTest(created=timestamp):
+                result, calls = self.run_phase("postflight", expected=1, workloads="new", policy_created=timestamp)
+                self.assertIn("NetworkPolicy creation must precede the matte pod start", result.stderr)
+                self.assertEqual(self.route_calls(calls), [])
+
     def test_preflight_refuses_installed_helm_policy_for_projected_matte_labels(self):
         for override, reason in (
             ({"helm_policy": "NetworkPolicy"}, "matte worker effective egress"),
             ({"helm_policy": "CiliumNetworkPolicy"}, "unexpected Cilium policy example-helm"),
+            ({"helm_api_deny": True}, "unexpected Cilium policy helm-api-deny for studio-api-ingress ingress"),
             ({"clusterwide_projected": True}, "unexpected Cilium policy namespace-clusterwide"),
             ({"enforcement": "never"}, "does not enforce network policy"),
         ):
@@ -777,6 +902,39 @@ class PhaseTest(unittest.TestCase):
             self.run_phase("rollback-preflight", expected=1, head=REVIEWED_HEAD, **override)
             self.assertFalse(self.baseline.exists())
 
+    def test_rollback_admits_a_terminal_job_only_with_verified_0013_and_released_health_gate(self):
+        job = f"studio-migrate-{RELEASE['apiDigest'][7:19]}"
+        terminal = {"terminal_job": job, "unready_stage": "studio-migration", "migration_wait_failure": True}
+        result, _ = self.run_phase("rollback-preflight", expected=1, head=REVIEWED_HEAD,
+                                   catalogue="0013_matte_jobs", **terminal)
+        self.assertIn("rollback must remove the terminal migration Job health check", result.stderr)
+        stages_path = self.checkout / STUDIO / "ks.yaml"
+        stages = list(yaml.safe_load_all(stages_path.read_text()))
+        migration = next(stage for stage in stages if stage["metadata"]["name"] == "studio-migration")
+        del migration["spec"]["healthChecks"]
+        stages_path.write_text(yaml.safe_dump_all(stages))
+        for state in ("0012_release_constraints", "unverified", "0013_matte_jobs"):
+            with self.subTest(catalogue=state):
+                self.receipt.unlink(missing_ok=True)
+                complete = state == "0013_matte_jobs"
+                result, calls = self.run_phase("rollback-preflight", expected=0 if complete else 1,
+                                               head=REVIEWED_HEAD, catalogue=state, **terminal)
+                self.assertIn(f"Terminal migration Job {job}, catalogue: {state}", result.stdout)
+                self.assertFalse(any("logs" in call for call in calls))
+                self.assertEqual(self.baseline.exists(), complete)
+
+    def test_rollback_preflight_checks_forward_merge_ancestry_and_pin(self):
+        pin = STUDIO / "release.yaml"
+        for changes in (
+            {"off_main": [HEAD]},
+            {"ancestry": []},
+            {"previous_source": {str(pin): yaml.safe_dump({**RELEASE, "webDigest": OLD[2]})}},
+        ):
+            with self.subTest(changes=changes):
+                result, calls = self.run_phase("rollback-preflight", expected=1, head=REVIEWED_HEAD, **changes)
+                self.assertIn("FAIL selected fourth-pin Ops revision on main", result.stderr)
+                self.assertFalse(any(call[0] == "kubectl" for call in calls))
+
     def prepare_retry(self):
         failed_merge_time = NOW - 7200
         self.run_phase("preflight", head=REVIEWED_HEAD, tree=FAILED_TREE, now=failed_merge_time - 100)
@@ -802,12 +960,17 @@ class PhaseTest(unittest.TestCase):
 
     def test_retry_preflight_uses_archives_and_accepts_either_idle_render_environment(self):
         first_receipt, first_baseline, env = self.prepare_retry()
-        for version in ("18.1.0", "18.1.1"):
-            with self.subTest(render_version=version):
+        for version, state, snapshot_phase in (
+            ("18.1.0", "0012_release_constraints", "retry-preflight"),
+            ("18.1.1", "0013_matte_jobs", "retry-preflight-0013"),
+        ):
+            with self.subTest(render_version=version, catalogue=state):
                 self.receipt.unlink(missing_ok=True)
                 self.baseline.unlink(missing_ok=True)
-                result, calls = self.run_phase("retry-preflight", extra_env=env, render_version=version)
+                result, calls = self.run_phase("retry-preflight", extra_env=env, render_version=version, catalogue=state)
                 self.assertIn(f"Idle render venv complete (PyAV {version})", result.stdout)
+                self.assertIn(f"Migration catalogue: {state}", result.stdout)
+                self.assertTrue(any(snapshot_phase in call for call in calls))
                 self.assertTrue(any(f"job/{self.data['terminal_job']}" in call for call in calls))
                 self.assertFalse(any(call[0] == "flux" or "logs" in call or
                                      any(OLD[1][7:19] in arg for arg in call) for call in calls))
@@ -830,6 +993,7 @@ class PhaseTest(unittest.TestCase):
             ("replacement migration Job and Flux health check", {"retry_changed_paths": True}, ""),
             ("replacement migration Job and Flux health check", {}, "changed health gate"),
             ("replacement migration Job and Flux health check", {}, "changed Job spec"),
+            ("catalogue is complete 0012 or verified 0013", {"catalogue": "unverified"}, ""),
             ("matte workload absent", {"matte_present": True}, ""),
             ("empty queues, archived data and store baseline", {"snapshot": {**SNAPSHOT, "runs": 3}}, ""),
             ("old API endpoints", {"workloads": "new"}, ""),
@@ -871,13 +1035,45 @@ class StartupTest(unittest.TestCase):
         for block in re.findall(r"(?ms)^```bash\n(.*?)^```$", page):
             subprocess.run(["bash", "-n"], input=block, text=True, check=True, capture_output=True)
 
+    def exec_commands(self, text):
+        text = text.replace("\\\n", " ")
+        commands = re.compile(r"""\b(kubectl|flux)[ \t]+((?:'[^']*'|"[^"\n]*"|[^'"\n])*)""")
+        mutations = {
+            "flux": r"\b(?:reconcile|suspend|resume)\b",
+            "kubectl": (r"\b(?:create|apply|delete|patch|replace|scale|rollout|annotate|label|"
+                        r"cordon|drain|cp|port-forward)\b"),
+        }
+        executable = re.sub(r"(?m)^\s*#.*$", "", text)
+        self.assertNotRegex(executable, r"(?i)(?:\bPOST\b|(?<!\S)-XPOST\b)")
+        self.assertNotRegex(executable, r"(?m)\b(?:curl|wget)\b[^\n]*(?:\s-d|--data|--post-|--json|--form|\s-F)")
+        for tool, command in commands.findall(text):
+            prefix = command.split("-- ", 1)[0].split("|", 1)[0]
+            self.assertNotRegex(prefix, mutations[tool], command)
+            if tool == "kubectl" and re.search(r"\bexec\b", prefix):
+                yield command.strip()
+
+    def test_static_guard_rejects_cluster_writes_and_direct_http_posts(self):
+        for command in (
+            "kubectl cordon node",
+            "kubectl drain node",
+            "kubectl -n ai cp report.txt pod:/tmp/report.txt",
+            "kubectl -n ai port-forward svc/studio 8000:8000",
+            "curl -X POST https://studio.haynesops.com/v1/example",
+            "curl -XPOST https://studio.haynesops.com/v1/example",
+            "curl --data '{}' https://studio.haynesops.com/v1/example",
+        ):
+            with self.subTest(command=command), self.assertRaises(AssertionError):
+                list(self.exec_commands(command))
+
     def test_runbook_and_entrypoint_have_no_cluster_writes(self):
         # Fingerprint each reviewed exec, including the inline payload or local
         # script redirection, so a new remote command requires explicit review.
         readonly_exec = {
+            "5a8755822acec692da34e72895045f53947fa65c5ee7c38d6576c26f4b7bf8b0": "read-only primary catalogue",
             "09c42126e3f485ee5542663ef8f2422bb1c2a58db63289c6d97e502b3336eafe": "dependency HTTP reads",
             "935b3f7211df9a00c285156bb5f33335401c4ab1c817035ca931436f18253c4c": "idle render venv",
             "d366be0a7bd0d5bda7ddb97617b8b45cecd49f27a0668b459c428cc60721cdc7": "saved weights SHA-256",
+            "450618e9a8036f346e63d681fe2d7f85f197b817db36e51a59197ee2d958466c": "anonymous ingress GET",
             "6966ba8a89e8ef6073e89faa925d927c30629597cc1a97d376191a3ea4b91bf7": "read-only data snapshot",
             "180457d1c23c00daa288208d3ecb17f450686a76594168ff54004486167bbea5": "sidecar readiness",
             "913353e5c2d14c72be009bddeb515da6701642adecbf3d7b590e0d72d8134cc1": "Unix HTTP readiness",
@@ -891,23 +1087,16 @@ class StartupTest(unittest.TestCase):
         script = Path("scripts/studio-release/op967.sh").read_text()
         page = Path("docs/reference/studio-fourth-release.md").read_text()
         blocks = re.findall(r"(?ms)^```[^\n]*\n(.*?)^```$", page)
-        commands = re.compile(r"""\b(kubectl|flux)[ \t]+((?:'[^']*'|"[^"\n]*"|[^'"\n])*)""")
-        mutations = {
-            "flux": r"\b(?:reconcile|suspend|resume)\b",
-            "kubectl": r"\b(?:create|apply|delete|patch|replace|scale|rollout|annotate|label)\b",
-        }
         seen = set()
         for text in [script, *blocks]:
-            for tool, command in commands.findall(text.replace("\\\n", " ")):
-                prefix = command.split("-- ", 1)[0].split("|", 1)[0]
-                self.assertNotRegex(prefix, mutations[tool], command)
-                if tool == "kubectl" and re.search(r"\bexec\b", prefix):
-                    fingerprint = hashlib.sha256(command.strip().encode()).hexdigest()
-                    self.assertIn(fingerprint, readonly_exec, command)
-                    seen.add(fingerprint)
+            for command in self.exec_commands(text):
+                fingerprint = hashlib.sha256(command.encode()).hexdigest()
+                self.assertIn(fingerprint, readonly_exec, command)
+                seen.add(fingerprint)
         self.assertEqual(seen, readonly_exec.keys())
         for name, checksum in (
-            ("op967-data.py", "67285ff1c8c65008a95266ddeb50c653f98666c53b9cb74fb00af8926bc9a6e1"),
+            ("op967-data.py", "d3281bac7a3ae07f143d8c4cd7cf9a4ca8768cc0b2c19e2d78bdbe8a923408f7"),
+            ("op967-catalogue.sql", "3fcfeeef9764a17782e0eed7ea63861908018d040b041cdeebe2da62637bd1dc"),
             ("op967-routes.py", "b39a8f0afcb09accd8272afa69ec339495eb4a50659791d7e0384273f215da50"),
         ):
             self.assertEqual(hashlib.sha256(Path("scripts/studio-release", name).read_bytes()).hexdigest(),

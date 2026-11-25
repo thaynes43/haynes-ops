@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tarfile
+from datetime import datetime
 from fractions import Fraction
 from functools import cache
 from hashlib import sha256
@@ -43,6 +44,8 @@ RENDER_EXPORT = (
 )
 MATTE_WORKER = "studio-matte-worker"
 MATTE_ACTIVATION = "matting-pending/activation"
+MATTE_POLICY_STAGE = "studio-matte-policy"
+MATTE_POLICY_PATH = "matting-pending/worker-policy"
 MATTE_COMMAND = ["python", "-B", "/etc/studio/matte-start.py"]
 MATTE_PROGRESS = "/run/studio/worker-progress"
 MATTE_TOKEN_MOUNT = "/run/secrets/studio-worker"
@@ -55,6 +58,8 @@ NAMESPACE_POLICY_KINDS = {"NetworkPolicy", "CiliumNetworkPolicy"}
 CLUSTER_POLICY_KIND = "CiliumClusterwideNetworkPolicy"
 FLUX_ROOT = Path("kubernetes/main/flux/config/cluster.yaml")
 MATTE_STAGES = {"studio-matte-worker", "studio-matte-worker-registration"}
+# Flux Kustomization v1 CRD defaults. A field explicitly set in Git must match.
+FLUX_SPEC_DEFAULTS = {"force": False}
 STALE_MATTING_DIGESTS = {
     "sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f",
     "sha256:5c431978f3bfe7a48deb062c6b2854ca8b086d1a5d9c600e2db4b1e26d702d72",
@@ -318,6 +323,21 @@ def flux_ready(stage):
                     for condition in status.get("conditions", [])))
 
 
+def check_live_flux_spec(name, live, reviewed):
+    def compare(actual, expected, field):
+        if isinstance(actual, dict) and isinstance(expected, dict):
+            for key in sorted(actual.keys() | expected.keys()):
+                child = f"{field}.{key}"
+                if key not in actual or key not in expected:
+                    raise ValueError(f"different pin: live {name} {child} differs from the selected merge")
+                compare(actual[key], expected[key], child)
+        elif json.dumps(actual, sort_keys=True) != json.dumps(expected, sort_keys=True):
+            raise ValueError(f"different pin: live {name} {field} differs from the selected merge")
+
+    implicit = {key: value for key, value in FLUX_SPEC_DEFAULTS.items() if key in live}
+    compare(live, {**implicit, **reviewed}, "spec")
+
+
 def audit_flux(expected, mode, snapshot):
     """Return 0 when ready, 2 while stages converge, or 3 before source pickup."""
     source, inventory, stages = snapshot
@@ -372,6 +392,8 @@ def audit_flux(expected, mode, snapshot):
         matte = MATTE_STAGES.intersection(expected_stages)
         if matte != (MATTE_STAGES if mode == "release" else set()):
             raise ValueError(f"selected {mode} revision has unexpected matte stages")
+        if MATTE_POLICY_STAGE not in expected_stages:
+            raise ValueError(f"selected {mode} revision must retain {MATTE_POLICY_STAGE}")
         if {"timeout": "60s", **source["spec"]} != {"timeout": "60s", **pinned_inputs[0]}:
             raise ValueError("different pin: live GitRepository spec differs from the selected merge")
 
@@ -418,9 +440,7 @@ def audit_flux(expected, mode, snapshot):
                         if field == "lastAppliedRevision":
                             at_pin = True
             if at_pin:
-                wanted = {"metadata": stage["metadata"], "spec": spec}
-                if stage["spec"].get("path") != spec["path"] or flux_reference(stage) != flux_reference(wanted):
-                    raise ValueError(f"different pin: live {name} path or source differs from the selected merge")
+                check_live_flux_spec(name, stage["spec"], spec)
             ready = at_pin and flux_ready(stage)
             print(f"Flux {name}: applied {status.get('lastAppliedRevision', '-')}, ready at pin {ready}")
             return ready
@@ -665,15 +685,19 @@ def check_matting(path, flux):
     stage_spec = worker_stage["spec"]
     if (stage_spec["path"] != f"./{STUDIO_PATH}/{MATTE_ACTIVATION}" or not stage_spec["wait"]
             or not stage_spec["prune"] or stage_spec["dependsOn"] != [
-                {"name": "studio"}, {"name": "studio-render"}, {"name": "studio-media-worker-registration"},
+                {"name": "studio"}, {"name": "studio-render"}, {"name": MATTE_POLICY_STAGE},
+                {"name": "studio-media-worker-registration"},
             ]):
-        raise ValueError("matte deployment must wait for the API, offline render split and token projection")
+        raise ValueError("matte deployment must wait for the API, offline render split, matte policy and token projection")
+    matte_policy_stage = resource(flux, "Kustomization", MATTE_POLICY_STAGE)
+    if matte_policy_stage["spec"]["path"] != f"./{STUDIO_PATH}/{MATTE_POLICY_PATH}":
+        raise ValueError("the matte worker policy must have its own prerequisite path")
     policy_stage = resource(flux, "Kustomization", "studio-matting-policy")
     policy_path = f"./{STUDIO_PATH}/matting-pending/policy"
     if policy_stage["spec"]["path"] != policy_path or not policy_stage["spec"]["prune"]:
         raise ValueError("the Studio matting policy must use the policy path and prune")
     if any(
-        "matting-pending" in stage["spec"]["path"] and stage not in (policy_stage, worker_stage)
+        "matting-pending" in stage["spec"]["path"] and stage not in (policy_stage, matte_policy_stage, worker_stage)
         for stage in flux if stage["kind"] == "Kustomization"
     ):
         raise ValueError("matting provisioning, smoke and quality trial must stay staged")
@@ -945,8 +969,6 @@ def check_matte_policies(documents, api, matte, api_identity, matte_identity):
         rule("to", [listener], [(8002, "TCP")]),
     ], "matte worker effective egress must be DNS and the Studio port-8002 listener only")
     expect_rules(matte, matte_identity, MATTE_WORKER, "ingress", [], "matte worker must refuse pod ingress")
-    if api is None:
-        return
     traefik = {**peer(**{"app.kubernetes.io/instance": "traefik-internal-network"}),
                "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "network"}}}
     media = {"podSelector": {"matchExpressions": [{"key": app_label, "operator": "In", "values": media_names}]}}
@@ -997,17 +1019,30 @@ def check_installed_policies(data, *, stage_repo=None):
     if stage_repo is not None:
         (namespace,) = workloads
         _, _, _, stages = studio_inventory(stage_repo)
-        projected = flux_build(stage_repo, stages[MATTE_WORKER])
-        matte = resource(projected, "Deployment", MATTE_WORKER)["spec"]["template"]
-        # The Deployment and its policy arrive together. Include all policies
-        # deployed by that stage as well as installed Helm-managed policies.
-        policies.extend(doc for doc in projected if doc["kind"] in NAMESPACE_POLICY_KINDS | {CLUSTER_POLICY_KIND})
-        identity = cilium_labels(matte, namespace["metadata"]["labels"], cilium["data"]["cluster-name"])
+        api_stage = flux_build(stage_repo, stages["studio"])
+        matte_stage = flux_build(stage_repo, stages[MATTE_WORKER])
+        policy_stage = flux_build(stage_repo, stages[MATTE_POLICY_STAGE])
+        api = resource(api_stage, "Deployment", "studio-api")["spec"]["template"]
+        matte = resource(matte_stage, "Deployment", MATTE_WORKER)["spec"]["template"]
+        replacements = {
+            doc["metadata"]["name"]: doc for doc in (
+                resource(api_stage, "NetworkPolicy", "studio-api-ingress"),
+                resource(policy_stage, "NetworkPolicy", MATTE_WORKER),
+            )
+        }
+        policies = [doc for doc in policies if
+                    doc["kind"] != "NetworkPolicy" or doc["metadata"]["name"] not in replacements]
+        policies.extend(replacements.values())
+        labels = namespace["metadata"]["labels"]
+        cluster = cilium["data"]["cluster-name"]
+        api_identity = cilium_labels(api, labels, cluster)
+        matte_identity = cilium_labels(matte, labels, cluster)
         check_policy_selectors(policies)
-        matches = sorted({f"{doc['kind']}/{doc['metadata']['name']}"
-                          for doc, _ in selected_policies(policies, matte, identity)})
-        print(f"Projected {MATTE_WORKER} matching policies: {', '.join(matches)}")
-        check_matte_policies(policies, None, matte, None, identity)
+        for name, pod, identity in (("studio-api", api, api_identity), (MATTE_WORKER, matte, matte_identity)):
+            matches = sorted({f"{doc['kind']}/{doc['metadata']['name']}"
+                              for doc, _ in selected_policies(policies, pod, identity)})
+            print(f"Projected {name} matching policies: {', '.join(matches)}")
+        check_matte_policies(policies, api, matte, api_identity, matte_identity)
         return
     endpoints, api, matte = workloads
     if len(api["items"]) != 2 or len(matte["items"]) != 1:
@@ -1035,6 +1070,12 @@ def check_installed_policies(data, *, stage_repo=None):
                           for doc, _ in selected_policies(policies, pod, identity)})
         print(f"{name} matching policies: {', '.join(matches)}")
     matte_pod = matte["items"][0]
+    matte_policy = resource(policies, "NetworkPolicy", MATTE_WORKER)
+    created = datetime.fromisoformat(matte_policy["metadata"]["creationTimestamp"])
+    started = datetime.fromisoformat(matte_pod["status"]["startTime"])
+    if created >= started:
+        raise ValueError(f"{MATTE_WORKER} NetworkPolicy creation must precede the matte pod start")
+    print(f"{MATTE_WORKER} NetworkPolicy created {created.isoformat()}, pod started {started.isoformat()}")
     for pod in api["items"]:
         check_matte_policies(policies, pod, matte_pod, identities[pod["metadata"]["name"]],
                              identities[matte_pod["metadata"]["name"]])

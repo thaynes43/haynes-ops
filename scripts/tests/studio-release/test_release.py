@@ -5,6 +5,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import unittest
 from contextlib import ExitStack, redirect_stdout
@@ -23,6 +24,7 @@ render_cluster_inventory = guard.render_cluster_inventory
 repository_cluster_policies = guard.repository_cluster_policies
 STUDIO = guard.STUDIO_PATH
 MATTE = STUDIO / guard.MATTE_ACTIVATION
+MATTE_POLICY = STUDIO / guard.MATTE_POLICY_PATH
 AUTH_SOURCE = b"""
 class WorkerRoute(MetadataRoute):
     def get_route_handler(self):
@@ -100,7 +102,7 @@ class ReleaseFixture:
 
         def fixture_inventory(_):
             docs = [{"kind": "Namespace", "metadata": {"name": "ai"}}]
-            for stage in (STUDIO / "app", STUDIO / "worker", STUDIO / "media-workers", MATTE):
+            for stage in (STUDIO / "app", STUDIO / "worker", STUDIO / "media-workers", MATTE, MATTE_POLICY):
                 for doc in guard.render(stage):
                     if doc["kind"] in guard.NAMESPACE_POLICY_KINDS | {"Deployment"}:
                         docs.append({**doc, "metadata": {"namespace": "ai", **doc["metadata"]}})
@@ -229,7 +231,7 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
             policy["spec"]["egress"][1]["to"][0]["podSelector"]["matchLabels"]["pod-template-hash"] = "ignored"
 
         self.check_refuses_rendered_mutation(
-            STUDIO / guard.MATTE_ACTIVATION, mutate, "Cilium leaves out of pod identities",
+            MATTE_POLICY, mutate, "Cilium leaves out of pod identities",
         )
 
     def test_old_render_pyav_is_refused(self):
@@ -376,13 +378,13 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
     def test_effective_network_and_label_coverage(self):
         app = STUDIO / "app"
         for stage, kind, name, keys, value, error in (
-            (MATTE, "NetworkPolicy", guard.MATTE_WORKER, ("spec", "egress"),
+            (MATTE_POLICY, "NetworkPolicy", guard.MATTE_WORKER, ("spec", "egress"),
              lambda rules: [*rules, {}], "matte worker effective egress"),
-            (MATTE, "NetworkPolicy", guard.MATTE_WORKER, ("spec", "ingress"),
+            (MATTE_POLICY, "NetworkPolicy", guard.MATTE_WORKER, ("spec", "ingress"),
              [{}], "matte worker must refuse pod ingress"),
             (MATTE, "Deployment", guard.MATTE_WORKER, ("spec", "template", "metadata", "labels", "app.kubernetes.io/name"),
              "different", "pod labels must match"),
-            (MATTE, "NetworkPolicy", guard.MATTE_WORKER, ("spec", "podSelector", "matchLabels", "app.kubernetes.io/name"),
+            (MATTE_POLICY, "NetworkPolicy", guard.MATTE_WORKER, ("spec", "podSelector", "matchLabels", "app.kubernetes.io/name"),
              "different", "selector must cover the rendered pod labels"),
             (app, "NetworkPolicy", "studio-api-ingress", ("spec", "ingress"),
              lambda rules: [*rules, {}], "Studio API effective ingress"),
@@ -403,6 +405,33 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
                                        "ingress": [{}]}})
 
         self.check_refuses_rendered_mutation(app, second_policy, "Studio API effective ingress")
+
+    def test_rendered_matte_policy_precedes_the_worker_and_survives_workload_revert(self):
+        repo = Path.cwd()
+        _, _, _, stages = guard.studio_inventory(repo)
+        worker_stage = stages["studio-matte-worker"]
+        policy_stage = stages["studio-matte-policy"]
+        self.assertIn({"name": "studio-matte-policy"}, worker_stage["spec"]["dependsOn"])
+        worker_documents = guard.flux_build(repo, worker_stage)
+        self.assertFalse(any(doc["kind"] == "NetworkPolicy" for doc in worker_documents))
+        deployment = guard.resource(worker_documents, "Deployment", "studio-matte-worker")
+        policy_documents = guard.flux_build(repo, policy_stage)
+        self.assertEqual([doc["kind"] for doc in policy_documents], ["NetworkPolicy"])
+        policy = guard.resource(policy_documents, "NetworkPolicy", "studio-matte-worker")
+        labels = deployment["spec"]["template"]["metadata"]["labels"]
+        self.assertTrue(policy["spec"]["podSelector"]["matchLabels"].items() <= labels.items())
+        self.assertEqual(policy["metadata"]["namespace"], deployment["metadata"]["namespace"])
+
+        # Apply the documented stage removals to a copy of the active inventory.
+        revert = Path(self.enterContext(TemporaryDirectory(prefix="op967-revert-render-")))
+        shutil.copytree(repo / "kubernetes", revert / "kubernetes")
+        path = revert / STUDIO / "ks.yaml"
+        path.write_text(yaml.safe_dump_all(doc for doc in yaml.safe_load_all(path.read_text())
+                        if doc["metadata"]["name"] not in {"studio-matte-worker", "studio-matte-worker-registration"}))
+        _, _, _, reverted_stages = guard.studio_inventory(revert)
+        self.assertNotIn("studio-matte-worker", reverted_stages)
+        self.assertNotIn("studio-matte-worker-registration", reverted_stages)
+        self.assertEqual(guard.flux_build(revert, reverted_stages["studio-matte-policy"]), [policy])
 
     def test_effective_policies_include_another_rendered_flux_kustomization(self):
         self.check_effective_policy_in_flux_stage(sibling=False)
