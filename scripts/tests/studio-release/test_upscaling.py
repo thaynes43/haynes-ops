@@ -685,7 +685,7 @@ class ReleaseGuardTest(unittest.TestCase):
                     with self.subTest(role=role, outside=outside, probe=probe), self.assertRaises(ValueError):
                         COMPARE_JOB(template, **{**base, role: outside}, probe=probe)
 
-    def test_failed_content_checks_create_no_job_with_errexit_ignored(self):
+    def test_comparison_admission_and_probe_failure_with_errexit_ignored(self):
         runbook = Path("docs/reference/studio-upscaling-deployment.md").read_text()
         blocks = re.findall(r"(?ms)^```bash\n(.*?)^```$", runbook)
         helpers = next(block for block in blocks if "check_json() {" in block).split("\n(\n", 1)[0]
@@ -716,24 +716,36 @@ kubectl() {
       printf '%s\n' '{"spec":{"endpointSelector":{"matchLabels":{"app.kubernetes.io/name":"studio-upscaling-compare"}},
         "ingressDeny":[{"fromEntities":["all"]}],"egressDeny":[{"toEntities":["all"]}]}}'
       ;;
-    create:-f) printf 'create\n' >> "$TRACE"; return 1 ;;
+    create:-f)
+      jq -er '.metadata.name' >> "$TRACE" || return 99
+      return "$CREATE_STATUS"
+      ;;
     *) return 99 ;;
   esac
 }
-final_report() { printf '{"passed":true}\n'; }
+final_report() {
+  case "$1" in
+    studio-upscaling-smoke-*) printf '{"passed":true}\n' ;;
+    studio-upscaling-probe-*) printf '{"passed":false,"code":"fixture_probe_failure"}\n' ;;
+    *) return 99 ;;
+  esac
+}
 wait_for_job() { return 1; }
 """
-        for fail_path, expected, verdict in (
-            (proxy_path, [proxy_path], "content-addressed regular single-link input matches SHA-256"),
-            (master_path, [proxy_path, master_path], "content-addressed regular single-link master matches SHA-256"),
-            ("", [proxy_path, master_path, "create"], "probe Job created"),
+        probe = "studio-upscaling-probe-000000000001"
+        for verdict, fail_path, create_status, expected in (
+            ("content-addressed regular single-link input matches SHA-256", proxy_path, 0, [proxy_path]),
+            ("content-addressed regular single-link master matches SHA-256", master_path, 0, [proxy_path, master_path]),
+            ("probe Job created", "", 1, [proxy_path, master_path, probe]),
+            ("probe Job complete", "", 0, [proxy_path, master_path, probe]),
         ):
-            with self.subTest(fail_path=fail_path):
+            with self.subTest(verdict=verdict):
                 trace.write_text("")
                 result = subprocess.run(
                     ["bash", "--noprofile", "--norc"],
                     input=f"{helpers}\n{stubs}\nif (\n{comparison}\n); then exit 0; else exit \"$?\"; fi\n",
                     env={"PATH": os.environ["PATH"], "TRACE": str(trace), "FAIL_PATH": fail_path,
+                         "CREATE_STATUS": str(create_status),
                          "OP461_INPUT": PROXY, "OP461_MASTER": MASTER, "OP461_DELIVERY_ID": DELIVERY,
                          "OP461_FRAME_INDEX": "1", "OP461_RUN": "000000000001", "ALLOCATION": pin["allocation"],
                          "TEMPLATE": json.dumps(template),
@@ -743,6 +755,8 @@ wait_for_job() { return 1; }
                 self.assertEqual(result.returncode, 1, result.stderr)
                 self.assertIn(f"FAIL {verdict}", result.stderr)
                 self.assertEqual(trace.read_text().splitlines(), expected)
+                if verdict == "probe Job complete":
+                    self.assertEqual(json.loads(result.stdout)["code"], "fixture_probe_failure")
 
     def test_comparison_renderer_refuses_bad_arguments(self):
         template = self.guard.resource(self.guard.render(STAGE / "compare"), "Job")

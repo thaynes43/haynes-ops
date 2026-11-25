@@ -414,7 +414,10 @@ provides bounded worker scratch. Keep the rendered Job private.
     probe_spec=$(python3 -B "$stage/compare/render.py" "${options[@]}" --probe <<< "$template") || exit 1
     probe=$(jq -er '.metadata.name' <<< "$probe_spec") || exit 1
     check 'probe Job created' kubectl -n ai create -f - <<< "$probe_spec" || exit 1
-    check 'probe Job complete' wait_for_job "$probe" || exit 1
+    if ! check 'probe Job complete' wait_for_job "$probe"; then
+      final_report "$probe" || :
+      exit 1
+    fi
     report=$(final_report "$probe") || exit 1
     check 'probe JSON report present' test -n "$report" || exit 1
     printf '%s\n' "$report"
