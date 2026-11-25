@@ -5,6 +5,7 @@ metadata:
 spec:
   activeDeadlineSeconds: 1800
   backoffLimit: 0
+  podReplacementPolicy: Failed
   template:
     metadata:
       labels:

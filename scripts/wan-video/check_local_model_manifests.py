@@ -127,6 +127,7 @@ class ManifestTests(unittest.TestCase):
         job = resource(self.weights, "Job", "wan-local-model-provision")
         self.assertEqual(job["spec"]["activeDeadlineSeconds"], 1800)
         self.assertEqual(job["spec"]["backoffLimit"], 0)
+        self.assertEqual(job["spec"]["podReplacementPolicy"], "Failed")
         spec = job["spec"]["template"]["spec"]
         self.assertEqual(spec["restartPolicy"], "Never")
         provision, = spec["containers"]
