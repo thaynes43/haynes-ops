@@ -20,7 +20,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-migrate-4787d14f98a4
+      name: studio-migrate-c4fda0b05f60
       namespace: ai
   interval: 30m
   retryInterval: 1m
@@ -72,7 +72,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-worker-4787d14f98a4
+      name: studio-register-worker-c4fda0b05f60
       namespace: ai
     # studio-render's Kustomization applies the HelmRelease but does not wait
     # for Helm. Wait here so the worker cannot start until the 20-CPU cap is live.
@@ -140,11 +140,11 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-voice-worker-4787d14f98a4
+      name: studio-register-voice-worker-c4fda0b05f60
       namespace: ai
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-image-worker-4787d14f98a4
+      name: studio-register-image-worker-c4fda0b05f60
       namespace: ai
   interval: 30m
   retryInterval: 1m

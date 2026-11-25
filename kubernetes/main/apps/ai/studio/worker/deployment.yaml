@@ -35,7 +35,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: worker
-          image: ghcr.io/thaynes43/haynes-studio@sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
+          image: ghcr.io/thaynes43/haynes-studio@sha256:c4fda0b05f60086d7df542a402d864108f0ec4844d9f81afe6362bba975fd17b
           command: [studio-worker]
           env:
             - name: STUDIO_API_URL
@@ -58,9 +58,9 @@ spec:
             - name: STUDIO_BUILD_STAGE_ROOT
               value: /build-stage
             - name: STUDIO_BUILD_REVISION
-              value: git:393fe1d66070ac726739b4cdb001a9e6b2c467db
+              value: git:b182c1d6df67ec14dba86a22b576de7df99f8f5d
             - name: STUDIO_BUILD_IMAGE_DIGEST
-              value: sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
+              value: sha256:c4fda0b05f60086d7df542a402d864108f0ec4844d9f81afe6362bba975fd17b
             - name: STUDIO_WORKER_PROGRESS_FILE
               value: /run/studio/worker-progress
             - name: STUDIO_THREADS

@@ -42,7 +42,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: api
-          image: ghcr.io/thaynes43/haynes-studio@sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
+          image: ghcr.io/thaynes43/haynes-studio@sha256:c4fda0b05f60086d7df542a402d864108f0ec4844d9f81afe6362bba975fd17b
           command: [sh, -eu, -c]
           args:
             - |
@@ -79,7 +79,7 @@ spec:
             - name: STUDIO_STORE_ROOT
               value: /studio
             - name: STUDIO_BUILD_REVISION
-              value: git:393fe1d66070ac726739b4cdb001a9e6b2c467db
+              value: git:b182c1d6df67ec14dba86a22b576de7df99f8f5d
             - name: STUDIO_BUILD_STAGE_ROOT
               value: /build-stage
             - name: STUDIO_PUBLIC_ORIGIN
@@ -133,7 +133,7 @@ spec:
             - name: tmp
               mountPath: /tmp
         - name: media-worker-routes
-          image: ghcr.io/thaynes43/haynes-studio-web@sha256:e9ec3f2ed405afc3194f110dd086b15737aad3f183b07210df36b0e8e2607913
+          image: ghcr.io/thaynes43/haynes-studio-web@sha256:9226b604d68af95537dfd17bae013ecedc7eb1c26dc39723c551f91677f4f33e
           command: [/usr/sbin/nginx]
           args: [-c, /etc/studio-worker-routes/nginx.conf, -g, "daemon off;"]
           ports:

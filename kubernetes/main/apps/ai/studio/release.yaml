@@ -1,4 +1,4 @@
-# Successful "Studio images" publish from haynes-studio main, run 45552195213.
-revision: 393fe1d66070ac726739b4cdb001a9e6b2c467db
-apiDigest: sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
-webDigest: sha256:e9ec3f2ed405afc3194f110dd086b15737aad3f183b07210df36b0e8e2607913
+# Successful "Studio images" publish from haynes-studio main, run 45595651206.
+revision: b182c1d6df67ec14dba86a22b576de7df99f8f5d
+apiDigest: sha256:c4fda0b05f60086d7df542a402d864108f0ec4844d9f81afe6362bba975fd17b
+webDigest: sha256:9226b604d68af95537dfd17bae013ecedc7eb1c26dc39723c551f91677f4f33e
