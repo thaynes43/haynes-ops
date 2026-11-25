@@ -80,13 +80,15 @@ class ManifestTests(unittest.TestCase):
                     with self.assertRaisesRegex(product.RequestError, "Invalid local-model profile"):
                         local.load_profile(directory)
 
-    def test_wan_inventory_is_dormant_and_the_activation_overlay_stays_staged(self):
-        # Reverted on 2026-11-25: the sidecar never became Ready on activation (see
-        # "Changed" in docs/reference/local-model-hosting.md). The overlay is kept,
-        # unreferenced, for the next attempt; the checks on it below still run.
+    def test_activation_switches_only_the_existing_wan_inventory(self):
+        # Second activation, 2026-11-25. The first was reverted (see "Changed" in
+        # docs/reference/local-model-hosting.md). Neither Flux nor Helm waits on the
+        # roll-out, so a revert is never held behind an unhealthy pod; the operator's
+        # gates are the health proof.
         flux = resource(self.ai, "Kustomization", "wan-video")["spec"]
-        self.assertEqual(flux["path"], "./kubernetes/main/apps/ai/wan-video/app")
+        self.assertEqual(flux["path"], "./kubernetes/main/apps/ai/wan-video/local-model-pending/activation")
         self.assertEqual(flux["timeout"], "5m")
+        self.assertIs(flux["wait"], False)
         self.assertNotIn("healthChecks", flux)
         names = {doc["metadata"]["name"] for doc in self.ai}
         self.assertFalse(names & {
