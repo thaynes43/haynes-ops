@@ -10,6 +10,7 @@ import threading
 import time
 from types import SimpleNamespace
 import unittest
+import uuid
 from unittest.mock import patch
 
 from test_api import APP, api
@@ -350,8 +351,10 @@ class LocalModelTests(unittest.TestCase):
         self.memory = 5000
         with patch.object(local, "exchange", side_effect=ConnectionRefusedError) as exchange:
             api.recover_with_local()
-            job = self.generate("i2v")
-            self.assertEqual(job["admission_code"], "local_model_unavailable")
+            for kind in ("i2v", "s2v", None):
+                with self.subTest(kind=kind):
+                    job = self.generate(kind, uuid.uuid4().hex)
+                    self.assertEqual((job["state"], job["admission_code"]), ("failed", "local_model_unavailable"))
             with patch.object(product_foley, "CONFIG", self.config), \
                     patch.multiple(product_foley.service, ROOT=self.root, idle=api.check_local_queue), \
                     api.acquire_compute() as lease:
@@ -360,7 +363,7 @@ class LocalModelTests(unittest.TestCase):
                 self.assertEqual(refusal.exception.code, "local_model_unavailable")
             job = self.perform(LOAD, "load")
             self.assertEqual(job["error"], "local_model_unavailable")
-            self.assertEqual(exchange.call_count, 3)
+            self.assertEqual(exchange.call_count, 5)
             self.assertFalse(self.lane.path.exists())
         self.assertEqual(self.work("wan_prompt", "free_cache", "load"), [])
         self.assertEqual(self.generate("i2v", "e1" * 16)["state"], "succeeded")

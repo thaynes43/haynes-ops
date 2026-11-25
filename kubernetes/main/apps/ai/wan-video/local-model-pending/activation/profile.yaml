@@ -4,6 +4,7 @@ metadata:
   name: wan-local-model-profile
   namespace: ai
 data:
+  # OP442 calibration before merge: edit only the unloaded_max_mib line below.
   local-model.json: |
     {
       "model": "qwen3.5-9b-q5_k_m",

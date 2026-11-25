@@ -9,8 +9,11 @@ or Foley handover. The E10 benchmark and Tom's acceptance have separate gates.
 
 ## Part 2a dormant rollout
 
-**Expected.** On merge the main-only image workflow builds, runs the CPU smoke,
-publishes and signs the observed digest, with BuildKit provenance. Flux updates
+**Proven for part 2a.** The [main build](https://github.com/thaynes43/haynes-ops/actions/runs/45545041495)
+passed its CPU smoke, published and signed the image, and attached BuildKit
+provenance. The dormant rollout at `79fa01b5` recreated the Wan pod once.
+See comment 9924 on [story 442](https://work.haynesnetwork.com/work_packages/442)
+for the mounted code hashes and health reads. Flux updates
 `wan-video-config`. The existing Reloader annotation recreates the single Wan
 pod (Deployment strategy `Recreate`), including the app, Foley and API
 containers and existing provisioning init containers. Those init containers
@@ -26,6 +29,8 @@ and known idle ownership. Confirm the PVC is bound and the current init
 containers are healthy. Collect the previous revision, pod UID and code hashes.
 
 ```bash
+(
+set -euo pipefail
 wan_exec() { kubectl -n ai exec deploy/wan-video -c api -- "$@"; }
 at_wan() {
   wan_exec python -c 'import sys, urllib.request
@@ -47,6 +52,7 @@ wan_exec nvidia-smi --query-gpu=uuid,memory.used,utilization.gpu,temperature.gpu
 wan_exec nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory --format=csv
 wan_exec sha256sum /config/video/api.py /config/video/product_local.py \
   /config/video/local_model_sidecar.py /config/video/openapi.json
+)
 ```
 
 Declare disruptive work with
@@ -55,9 +61,9 @@ After independent review and while the gates still pass, reconcile the approved
 merge with `flux reconcile kustomization wan-video -n ai --with-source`. Wait
 for the new pod UID and `kubectl -n ai rollout status deploy/wan-video --timeout=35m`.
 Confirm the watched revision and new ConfigMap and mounted code hashes. Repeat
-the prechecks plus `at_wan 8080/ready`, `at_wan 8080/v1/profiles` (I2V, S2V,
-Foley), a read of a known legacy `/videos/<id>` and
-`at_wan 8080/v1/local-model/profile` (503 and `local_model_not_installed`).
+the prechecks plus `GET /ready`, `GET /v1/profiles` (I2V, S2V, Foley), a read
+of a known legacy `/videos/<id>` and `GET /v1/local-model/profile` (503 and
+`local_model_not_installed`).
 Check for a single healthy pod and release the activity declaration once settled.
 On failure keep dispatch quiesced, inspect the job/queue/hold and restore the
 previous dormant source through a GitOps revert and the same targeted
@@ -76,101 +82,292 @@ validates the projected profile with the production loader.
 
 ## Part 2b activation
 
-**Expected.** Use a separate GitOps PR or serial changes under coordinator
-ownership. Verify the observed main build and signature against
-`https://github.com/thaynes43/haynes-ops/.github/workflows/studio-local-model-build.yml@refs/heads/main`
-with the GitHub Actions OIDC issuer `https://token.actions.githubusercontent.com`.
-Record build provenance and the digest from that run. Replace the pending image
-tag with the published tag and digest.
+**Expected.** Merge A, B and C in order, after each preceding health gate. A
+installs the download policy. B starts a single CPU-only provisioning Job.
+Both leave the running Wan pod and its PVC unchanged. C retires the two
+temporary Flux Kustomizations and recreates the Wan pod with the sidecar and
+calibrated profile. Flux can pick up a merge on its interval. Do each merge
+with its prechecks complete and the lane quiesced, and reconcile to capture the
+exact revision.
+
+The PRs form a stack reviewed against `main`. After each squash merge rebase
+the next PR so its diff contains only its own step. Save the original A and
+B heads before updating branches. Use the original predecessor as the
+`git rebase --onto origin/main <original-predecessor-head>` boundary on the
+original next branch. Push with `--force-with-lease` to that branch and require
+its checks at the rebased head. Repeat for C after B. At C verify the diff
+removes both temporary references from `kubernetes/main/apps/ai/kustomization.yaml`.
+A pre-B merge base would hide that retirement from the diff.
+
+### Prepare evidence and verify the image
+
+Run from the PR C checkout throughout, including before merging A and B. Use one shell and set `OP442_EVIDENCE` to the
+printed directory for the commands below. Set `OP442_LEGACY_ID` to a known
+completed legacy video ID and keep its read private. Keep Studio dispatch and
+other direct producers quiesced from preflight through the smoke or rollback.
+Confirm OP410 and the queue worker are ready and no Studio dispatch is active.
 
 ```bash
-cosign verify --certificate-identity \
-  https://github.com/thaynes43/haynes-ops/.github/workflows/studio-local-model-build.yml@refs/heads/main \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com "$image_at_digest"
-docker buildx imagetools inspect "$image_at_digest" --format '{{ json .Provenance.SLSA }}'
+(
+  set -euo pipefail
+  umask 077
+  mkdir -p "$HOME/.local/state/op442"
+  mktemp -d "$HOME/.local/state/op442/rollout.XXXXXXXX"
+)
 ```
 
-Create a private evidence directory and reuse it in the smoke window.
+Use installed cosign or the pinned Linux amd64 tool below. The registry checks
+use an anonymous public pull token. They fetch the index, platform descriptors
+and attestation only. The signature binds the index, which binds the platform
+manifest and the provenance descriptor. Stop if any check fails.
 
 ```bash
-set -euo pipefail
-umask 077
-evidence=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/op442-smoke.XXXXXXXX")
+(
+  set -euo pipefail
+  umask 077
+  evidence=${OP442_EVIDENCE:?Set OP442_EVIDENCE to the private rollout directory}
+  cosign_bin=$(command -v cosign || true)
+  if [[ -z "$cosign_bin" ]]; then
+    [[ $(uname -m) == x86_64 ]]
+    mkdir -p "$HOME/.local/bin"
+    cosign_bin="$HOME/.local/bin/cosign-op442-v3.1.4"
+    checksum=424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa
+    if [[ ! -x "$cosign_bin" ]]; then
+      binary=$(mktemp "$HOME/.local/bin/.cosign-op442.XXXXXXXX")
+      curl -fsSL -o "$binary" \
+        https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-linux-amd64
+      printf '%s  %s\n' "$checksum" "$binary" | sha256sum -c
+      chmod 0700 "$binary"
+      mv -n "$binary" "$cosign_bin"
+    fi
+    printf '%s  %s\n' "$checksum" "$cosign_bin" | sha256sum -c
+  fi
+  export DOCKER_CONFIG="$evidence/registry-anon"
+  mkdir -p "$DOCKER_CONFIG"
+  export GOMAXPROCS=2
+
+  repo=thaynes43/studio-local-model
+  revision=79fa01b5ff27b2b7aeacc78b079be7d99864d252
+  tag="b12679-$revision-45545041495-1"
+  digest=sha256:e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03
+  image="ghcr.io/$repo@$digest"
+  "$cosign_bin" verify \
+    --certificate-identity https://github.com/thaynes43/haynes-ops/.github/workflows/studio-local-model-build.yml@refs/heads/main \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com "$image" > "$evidence/signature.json"
+  jq -e --arg digest "$digest" 'any(.[]; .critical.image["docker-manifest-digest"] == $digest)' "$evidence/signature.json"
+  token=$(curl -fsS "https://ghcr.io/token?scope=repository:$repo:pull&service=ghcr.io" | jq -er .token)
+  manifest() {
+    curl -fsS -H "Authorization: Bearer $token" -H "Accept: $1" "https://ghcr.io/v2/$repo/manifests/$2"
+  }
+  check_digest() {
+    printf '%s  %s\n' "${1#sha256:}" "$2" | sha256sum -c
+  }
+  for ref in "$digest" "$tag"; do
+    manifest application/vnd.oci.image.index.v1+json "$ref" > "$evidence/index.json"
+    check_digest "$digest" "$evidence/index.json"
+  done
+  platform=$(jq -er '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest' "$evidence/index.json")
+  attestation=$(jq -er --arg platform "$platform" '.manifests[] |
+    select(.annotations["vnd.docker.reference.type"] == "attestation-manifest" and
+           .annotations["vnd.docker.reference.digest"] == $platform) | .digest' "$evidence/index.json")
+  manifest application/vnd.oci.image.manifest.v1+json "$attestation" > "$evidence/attestation.json"
+  check_digest "$attestation" "$evidence/attestation.json"
+  layer=$(jq -er '.layers[] | select(.annotations["in-toto.io/predicate-type"] == "https://slsa.dev/provenance/v0.2") | .digest' "$evidence/attestation.json")
+  curl -fsSL -H "Authorization: Bearer $token" "https://ghcr.io/v2/$repo/blobs/$layer" > "$evidence/provenance.json"
+  check_digest "$layer" "$evidence/provenance.json"
+  jq -e --arg platform "${platform#sha256:}" --arg revision "$revision" '
+    .predicateType == "https://slsa.dev/provenance/v0.2" and
+    any(.subject[]; .digest.sha256 == $platform) and
+    (.predicate.metadata["https://mobyproject.org/buildkit@v1#metadata"].vcs |
+      .source == "https://github.com/thaynes43/haynes-ops" and .revision == $revision)
+  ' "$evidence/provenance.json"
+)
 ```
 
-1. Recheck the dormant health gate, OP410 readiness, node headroom (including
-   the sidecar's 8 GiB request and 16 GiB limit), PVC capacity and inodes. Keep
-   producers quiesced while downloading. Run `wan_exec df -Pk /workspace` and
-   `wan_exec df -Pi /workspace`. Budget 7,499,546,400 bytes, the 8 GiB reserve,
-   the 1,024-inode reserve, and up to 16 additional inodes.
-2. Create the Job's PVC subdirectory as Wan's UID 1000 before referring to it
-   as a `subPath`. Install and verify the provisioner's FQDN policy through
-   GitOps before introducing the Job. The Job mounts only
-   `local-model-weights` and makes one attempt. It starts at the pinned
-   `huggingface.co` revision and follows only HTTPS redirects under
-   `**.cdn.hf.co`. HEAD checks for both pinned files on 2026-11-25
-   returned `us.aws.cdn.hf.co`. The Hub also documents `us.gcp.cdn.hf.co`
-   as an edge. TLS uses standard certificate verification and the staged
-   files must match the pinned size and SHA-256 before the create-only
-   rename. [Hugging Face download hosts](https://huggingface.co/docs/hub/models-downloading)
-3. On Job success, read back both weights as shown below. Remove the
-   completed Job and policy from desired state after read-back. On failure,
-   account for the attempt under its `.quarantine-*` directory before retrying.
-   The published revision directory remains in place.
-4. Before mounting the profile, evict idle ComfyUI cache under the shared
-   compute lease using the commands below, capture several selected-UUID
-   samples. Identify the stable readings after asynchronous eviction and
-   verify known idle ownership without a model child. Set
-   `unloaded_max_mib` to the highest observed drained baseline on Card A,
-   subject to the staged design maximum of 512 MiB. Lower the staged value
-   when the measurement permits it. Stop before activation if a drained
-   baseline cannot be established within the cap. The cold-load and reload
-   receipts record their own fresh baselines.
-5. In Wan's existing Flux Kustomization set `spec.path` to
-   `./kubernetes/main/apps/ai/wan-video/local-model-pending/activation`. Keep
-   the same Kustomization identity and PVC prune protection. Render the
-   chart and verify the original mounts for Wan and Foley. The preparation
-   init creates the socket and ledger directory and staged inputs directory,
-   and opens the existing lock without changing its inode. The local sidecar
-   receives that lock and staged inputs read-only, the socket and ledger
-   directory read-write, and the weights read-only. Reconcile only after
-   checking queue and capacity again. Check the new pod, existing
-   Wan/Foley/legacy reads, profile discovery, the two-device allocation only
-   on `app`, the sidecar's UUID environment and listener-only readiness
-   probe. The sidecar starts unloaded.
+### A. Install only the download policy
+
+Before merging A, run the dormant gate and save the Wan pod and PVC UIDs. Check
+both idle GPU UUIDs, utilization and process ownership, the bound PVC and node
+Ready. Record a known legacy read with the completed job's ID. After merging A
+reconcile the parent and policy. Require the Cilium policy to match the
+provisioner's label and its DNS and HTTPS allowlists, require no Job or Job
+Kustomization, and check the same Wan pod is still Ready.
 
 ```bash
-# Before introducing the Job.
-wan_exec python -B -c '
+(
+  set -euo pipefail
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  python3 -B scripts/wan-video/op442_smoke.py dormant > "$evidence/before-a.health.json"
+  kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
+    jq -er '.items | select(length == 1) | .[0].metadata.uid' > "$evidence/dormant.uid"
+  kubectl -n ai get pvc wan-video -o json |
+    jq -er 'select(.status.phase == "Bound") | .metadata.uid' > "$evidence/pvc.uid"
+  kubectl get node talosw01 -o json |
+    jq -e '.status.nodeInfo.architecture == "amd64" and any(.status.conditions[]; .type == "Ready" and .status == "True")'
+  kubectl -n ai exec deploy/wan-video -c api -- nvidia-smi --query-gpu=uuid,memory.used,utilization.gpu,temperature.gpu --format=csv
+  kubectl -n ai exec deploy/wan-video -c api -- nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory --format=csv
+  id=${OP442_LEGACY_ID:?}
+  [[ $id =~ ^[0-9a-f]{32}$ ]]
+  kubectl -n ai exec deploy/wan-video -c api -- python -B -c '
+import json, sys
+from urllib.request import urlopen
+with urlopen("http://127.0.0.1:8080/videos/" + sys.argv[1], timeout=5) as response:
+    job = json.load(response)
+if job["id"] != sys.argv[1] or job["state"] != "succeeded":
+    raise SystemExit("Expected a completed legacy video")
+print(json.dumps({"id": job["id"], "state": job["state"]}))
+' "$id" > "$evidence/legacy.json"
+)
+```
+
+```bash
+(
+  set -euo pipefail
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  flux reconcile kustomization cluster-apps -n flux-system --with-source
+  flux reconcile kustomization wan-local-model-download-policy -n ai
+  flux get kustomizations -n ai wan-local-model-download-policy | tee "$evidence/a-flux.txt"
+  kubectl -n ai get ciliumnetworkpolicy wan-local-model-provision -o json |
+    jq -e '
+      .spec.endpointSelector.matchLabels["app.kubernetes.io/name"] == "wan-local-model-provision" and
+      (.spec.egress[0].toPorts[0].rules.dns ==
+        [{"matchName":"huggingface.co"},{"matchPattern":"**.cdn.hf.co"}]) and
+      (.spec.egress[1].toFQDNs ==
+        [{"matchName":"huggingface.co"},{"matchPattern":"**.cdn.hf.co"}]) and
+      (.spec.egress[1].toPorts[0].ports == [{"port":"443","protocol":"TCP"}])
+    '
+  job=$(kubectl -n ai get job wan-local-model-provision --ignore-not-found -o name)
+  job_inventory=$(kubectl -n ai get kustomization wan-local-model-weights --ignore-not-found -o name)
+  [[ -z "$job" && -z "$job_inventory" ]]
+  uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
+    jq -er '.items | select(length == 1) | .[0].metadata.uid')
+  [[ $uid == "$(cat "$evidence/dormant.uid")" ]]
+  python3 -B scripts/wan-video/op442_smoke.py dormant
+)
+```
+
+**Rollback A.** Before B, merge a revert of A and reconcile `cluster-apps`.
+Confirm the policy Kustomization and the Cilium policy disappear through Flux
+inventory pruning, the Job remains absent, and the dormant gate and both UIDs
+still pass. If B was already applied, retire B first.
+
+### B. Provision and read back the weights
+
+Before merging B, confirm A Ready at the correct revision and repeat the
+dormant and storage checks. Reserve 7,499,546,400 bytes for the files, 1 MiB for
+writes and metadata, and 8 GiB plus 1,024 inodes free. Budget 16 additional
+inodes for staging. Create the PVC subdirectory as the serving UID. If the
+pinned revision already exists, stop and review its provenance.
+
+```bash
+(
+  set -euo pipefail
+  kubectl -n ai exec deploy/wan-video -c api -- python -B -c '
 import os
 from pathlib import Path
-root = Path("/workspace/local-model-weights")
+
+if os.geteuid() != 1000:
+    raise SystemExit("Expected Wan UID 1000")
+workspace = Path("/workspace")
+space = os.statvfs(workspace)
+if space.f_bavail * space.f_frsize < 7499546400 + 1024**2 + 8 * 1024**3 or space.f_favail < 1040:
+    raise SystemExit("Weights capacity gate failed")
+root = workspace / "local-model-weights"
 root.mkdir(mode=0o750, exist_ok=True)
 if root.is_symlink() or not os.access(root, os.R_OK | os.W_OK | os.X_OK):
     raise SystemExit("Weights directory must be writable by UID 1000")
+target = root / "qwen3.5-9b-q5_k_m" / "3885219b6810b007914f3a7950a8d1b469d598a5"
+if os.path.lexists(target):
+    raise SystemExit("Pinned revision already exists")
+print({"free_bytes": space.f_bavail * space.f_frsize, "free_inodes": space.f_favail})
 '
-# After introducing the Job with the FQDN policy in place.
-kubectl -n ai wait --for=condition=complete job/wan-local-model-provision --timeout=30m
+)
 ```
 
-A failed or interrupted Job can leave one or more quarantined directories.
-After the Job's pod has stopped, list the matching entries under
-`/workspace/local-model-weights/qwen3.5-9b-q5_k_m/`. Record the Job ID,
-failure code, exact attempt path, allocated bytes (`du -s --block-size=1`) and
-entry count (`find -xdev -printf . | wc -c`). Recheck the byte and inode
-reserves before any retry. Keep the attempt while it is needed as evidence.
-For operator cleanup, select one exact `.quarantine-*` directory, resolve
-and verify its parent and name, and confirm it is a directory and has no
-active Job using it. As the owning UID, run `chmod u+w -- "$attempt"` if it
-was sealed, then `rm -r -- "$attempt"` using the verified path. Check that
-the path is gone and record the freed space. Leave the revision directory
-and other attempts in place.
-
-Run this calibration only with the dormant app, the checks above clear and
-other clients quiesced. Keep its output with the rollout evidence.
+B gives Flux a Job health check. The Job runs on talosw01 with the published
+Linux amd64 Python manifest, one attempt, a 30-minute CPU-only deadline and a
+mount limited to `local-model-weights`. It starts at the pinned Hub revision
+and records each redirect hostname. It follows only HTTPS redirects under
+`**.cdn.hf.co`. The first host observed in the preflight metadata was
+`us.aws.cdn.hf.co`. Byte caps, private staging, hashes and a create-only
+rename govern publication. On `unexpected_download_redirect` preserve the
+refused hostname and stop. A reviewed GitOps change must add only the
+necessary verified hostname to both the Job's HTTPS redirect allowlist and
+the Cilium DNS and FQDN rules, with the same file SHA-256s and caps. Require a
+new attempt after reviewing space and the refused Job. Keep path, query and
+signature values out of the evidence.
 
 ```bash
-wan_exec env PYTHONPATH=/config/video python -B -c '
+(
+  set -euo pipefail
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  flux reconcile kustomization cluster-apps -n flux-system --with-source
+  if ! flux --timeout=34m reconcile kustomization wan-local-model-weights -n ai; then
+    kubectl -n ai logs job/wan-local-model-provision > "$evidence/b-provision.log" || true
+    exit 1
+  fi
+  kubectl -n ai wait --for=condition=complete job/wan-local-model-provision --timeout=30s
+  kubectl -n ai logs job/wan-local-model-provision > "$evidence/b-provision.log"
+  provisioner=docker.io/library/python:3.12.16-slim-bookworm@sha256:1475c4f5b6bcb7d35e57661d6f5d7429ec4041275633c15f2b49350ac898276d
+  kubectl -n ai get pods -l app.kubernetes.io/name=wan-local-model-provision -o json |
+    jq -e --arg provisioner "$provisioner" '.items | select(length == 1) | .[0] |
+      select(.status.phase == "Succeeded" and .spec.containers[0].image == $provisioner) |
+      {uid: .metadata.uid, image: .spec.containers[0].image, imageID: .status.containerStatuses[0].imageID}' \
+      > "$evidence/b-image.json"
+  weights=/workspace/local-model-weights/qwen3.5-9b-q5_k_m/3885219b6810b007914f3a7950a8d1b469d598a5
+  pins=kubernetes/main/apps/ai/wan-video/local-model-pending/weights/weights.json
+  wan() { kubectl -n ai exec deploy/wan-video -c api -- "$@"; }
+  wan cat "$weights/manifest.json" > "$evidence/b-manifest.json"
+  diff -u <(jq -S . "$pins") <(jq -S . "$evidence/b-manifest.json")
+  while IFS=$'\t' read -r name bytes hash; do
+    [[ $(wan stat -c '%s' "$weights/$name") == "$bytes" ]]
+    read -r actual _ < <(wan nice -n 19 sha256sum "$weights/$name")
+    [[ $actual == "$hash" ]]
+    printf '%s %s %s\n' "$name" "$bytes" "$actual"
+  done < <(jq -r '.files[] | [.name,.bytes,.sha256] | @tsv' "$pins") | tee "$evidence/b-weights.txt"
+  wan df -Pk /workspace | tee "$evidence/b-bytes.txt" |
+    awk 'END { exit !(NR >= 2 && $4 >= 8 * 1024 * 1024) }'
+  wan df -Pi /workspace | tee "$evidence/b-inodes.txt" |
+    awk 'END { exit !(NR >= 2 && $4 >= 1024) }'
+  uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
+    jq -er '.items | select(length == 1) | .[0].metadata.uid')
+  [[ $uid == "$(cat "$evidence/dormant.uid")" ]]
+  python3 -B scripts/wan-video/op442_smoke.py dormant > "$evidence/b-health.json"
+)
+```
+
+**Rollback B.** Keep producers paused. Capture the Job UID, terminal state and
+logs. If the Job is still running, capture its current state and merge a
+revert that removes the weights Kustomization from the `ai` inventory, then
+reconcile `cluster-apps`. Flux prunes the Job and hashed ConfigMap. Check that
+the Job and its pods are gone, the policy is still present, the PVC UID is the
+same and the dormant health gate passes. Preserve any published revision and
+account for the exact bytes and inodes of every `.quarantine-*` attempt.
+Require fresh capacity evidence and a reviewed new Job attempt before retry.
+On success leave the completed Job in desired state through the read-back and
+calibration. C will prune the completed Job, ConfigMap and download policy.
+
+### C. Calibrate, activate and check ready
+
+Check the Job succeeded, the read-back and disk/inode reserves pass and Wan
+is still dormant. Check node headroom for an 8 GiB request and 16 GiB limit,
+including other workloads. Confirm known card ownership. With producers
+paused, drain ordinary ComfyUI cache under the existing lease, then collect
+Card A readings. Choose the highest stable drained reading rounded up as an
+integer in 1–512 MiB. Edit the marked `unloaded_max_mib` line in
+[the profile](../../kubernetes/main/apps/ai/wan-video/local-model-pending/activation/profile.yaml)
+in PR C before merging. If no stable readings fit, keep Wan dormant.
+
+```bash
+(
+  set -euo pipefail
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  kubectl -n ai exec -i deploy/wan-video -c api -- env PYTHONPATH=/config/video python -B - \
+    > "$evidence/calibration.jsonl" <<'PY'
 import json, time
 from urllib.request import urlopen
 import api
@@ -181,248 +378,177 @@ if lease is None:
 with lease:
     with urlopen("http://127.0.0.1:8080/health", timeout=5) as response:
         health = json.load(response)
-    if not health.get("accepting_jobs") or health["active_job"] is not None:
-        raise SystemExit("Wan is not idle and clear")
+    status, foley = api.foley("/v1/ready")
+    if (not health["accepting_jobs"] or health["active_job"] is not None
+            or status != 200 or foley["active_job"] is not None):
+        raise SystemExit("Wan or Foley is busy/unavailable")
+    if api.local.load_profile(api.CONFIG) is not None or api.local.state_path(api.ROOT).exists():
+        raise SystemExit("Expected dormant Wan with no residency")
     if not api.gpus_idle(api.gpu_sample()):
         raise SystemExit("Rack GPUs are not idle")
     api.require_empty_queue()
     api.engine("/free", {"unload_models": True, "free_memory": True})
     for _ in range(15):
         api.require_empty_queue()
-        print(json.dumps(api.gpu_sample()))
+        sample = api.gpu_sample()
+        if not api.gpus_idle(sample):
+            raise SystemExit("Unexpected GPU activity during calibration")
+        print(json.dumps(sample), flush=True)
         time.sleep(1)
-' > "$evidence/calibration.jsonl"
+PY
+  jq -r '.gpus[] | select(.uuid == "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a") | .memory_mib' "$evidence/calibration.jsonl"
+)
 ```
+
+C keeps the `ai/wan-video` Kustomization identity. Its rendered PVC stays the
+same and retains `kustomize.toolkit.fluxcd.io/prune: disabled`. The two retired
+Kustomizations own only the policy, Job and Job ConfigMap. Misplacing the
+PVC in a retiring inventory could delete the claim and leave Wan Pending.
+The activation initializer preserves the compute-lock inode. The sidecar
+mounts both weights read-only and has no second device allocation.
+
+After the calibrated PR checks pass, declare activity with
+`agent-run declare-activity start "Wan local model activation" --scope ai,talosw01,wan-video`.
+Merge C and reconcile the parent and existing Wan Kustomization. Each of the
+four containers must be Ready on the new pod, and init containers must have
+completed. The sidecar must answer its private listener probe before the Wan
+gate passes. Mounted profile discovery and the legacy `/health` can respond
+while the sidecar is starting. An otherwise admissible legacy Wan, typed I2V,
+S2V or Foley request then reaches the ledger as failed with
+`local_model_unavailable` before engine work. Check the CPU outage test
+`test_mounted_outage_refuses_without_latching_even_with_engine_cache` in the PR
+results and the live Ready and listener gates below. Keep producers paused
+for any unavailable sidecar. Use the activity ID to end the declaration once
+settled.
 
 ```bash
-weights=/workspace/local-model-weights/qwen3.5-9b-q5_k_m/3885219b6810b007914f3a7950a8d1b469d598a5
-wan_exec cat "$weights/manifest.json"
-wan_exec sha256sum "$weights/Qwen3.5-9B-Q5_K_M.gguf" "$weights/mmproj-BF16.gguf"
-wan_exec df -Pk /workspace
-wan_exec df -Pi /workspace
-at_wan 8080/v1/local-model/profile
-kubectl -n ai exec deploy/wan-video -c local-model -- python3 -m studio_local_backend ready --workspace /workspace
+(
+  set -euo pipefail
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  flux reconcile kustomization cluster-apps -n flux-system --with-source
+  flux --timeout=36m reconcile kustomization wan-video -n ai
+  kubectl -n ai rollout status deploy/wan-video --timeout=35m
+  image=ghcr.io/thaynes43/studio-local-model:b12679-79fa01b5ff27b2b7aeacc78b079be7d99864d252-45545041495-1@sha256:e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03
+  kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
+    jq -e --arg old "$(cat "$evidence/dormant.uid")" --arg image "$image" '
+      .items | select(length == 1) | .[0] |
+      select(.metadata.uid != $old and .spec.nodeName == "talosw01") |
+      select(any(.spec.containers[]; .name == "local-model" and .image == $image)) |
+      select(any(.status.initContainerStatuses[]; .name == "prepare-local-model")) |
+      select(([.status.containerStatuses[].name] | sort) == ["api","app","foley","local-model"]) |
+      select(all(.status.containerStatuses[]; .ready and .restartCount == 0)) |
+      select(all(.status.initContainerStatuses[]; .state.terminated.exitCode == 0)) |
+      {uid:.metadata.uid, containers:[.status.containerStatuses[] | {name,image,imageID,ready}]}
+    ' > "$evidence/c-pod.json"
+  [[ $(kubectl -n ai get pvc wan-video -o jsonpath='{.metadata.uid}') == "$(cat "$evidence/pvc.uid")" ]]
+  for name in wan-local-model-weights wan-local-model-download-policy; do
+    kubectl -n ai wait --for=delete "kustomization/$name" --timeout=120s
+  done
+  job=$(kubectl -n ai get job wan-local-model-provision --ignore-not-found -o name)
+  policy=$(kubectl -n ai get ciliumnetworkpolicy wan-local-model-provision --ignore-not-found -o name)
+  [[ -z "$job" && -z "$policy" ]]
+  kubectl -n ai get configmaps -o name |
+    awk '/^configmap\/wan-local-model-provision-/ { found=1 } END { exit found }'
+  python3 -B scripts/wan-video/op442_smoke.py active > "$evidence/c-health.json"
+  profile=kubernetes/main/apps/ai/wan-video/local-model-pending/activation/profile.yaml
+  ceiling=$(awk -F '[: ,]+' '/"unloaded_max_mib"/ {print $3}' "$profile")
+  [[ $ceiling =~ ^[0-9]+$ ]]
+  jq -e --argjson ceiling "$ceiling" '.discovery.unloaded_max_mib == $ceiling' "$evidence/c-health.json"
+  kubectl -n ai exec deploy/wan-video -c local-model -- printenv NVIDIA_VISIBLE_DEVICES CUDA_VISIBLE_DEVICES
+  kubectl -n ai get deployment wan-video -o json |
+    jq -e '[.spec.template.spec.containers[] | select(.resources.limits["nvidia.com/gpu"] != null) |
+      {name, limit:.resources.limits["nvidia.com/gpu"]}] == [{"name":"app","limit":"2"}]'
+)
 ```
 
-Compare both hashes and sizes with
-[the checked-in pins](../../kubernetes/main/apps/ai/wan-video/local-model-pending/weights/weights.json).
-The 30-minute GPU window starts with the first load submission. Complete
-image/weight verification and input staging before that point.
+**Rollback C.** Quiesce producers and check the Wan, Foley, queue and
+sidecar listener gates. Restore sidecar readiness before attempting release
+proof if it is unavailable. An unavailable sidecar still blocks Wan and
+Foley admission while the profile is mounted. Preserve any hold and resolve
+unknown work with the Wan recovery procedure. Once ownership is clear the
+rollback command below submits a tracked unload if the child is resident,
+validates its release receipt and proves no child, reservation or pending
+operation remains under the lease. It drains cache only after proving
+residency is clear. Stop on a failed proof and preserve the journal.
+
+```bash
+(
+  set -euo pipefail
+  umask 077
+  python3 -B scripts/wan-video/op442_smoke.py rollback --evidence "${OP442_EVIDENCE:?}"
+)
+```
+
+After proof, merge a GitOps change restoring `wan-video/ks.yaml` to the dormant
+app path and the original 5-minute timeout without the activation health
+checks. Keep the finished provisioning inventories retired. Reconcile
+`cluster-apps` and `wan-video`, check one new three-container pod, the same
+PVC UID, the dormant health gate, no model container or profile and
+`local_model_not_installed`. The persistent weights and evidence remain
+available. End the activity declaration after the dormant lane is settled.
 
 ## One private smoke window
 
-**Expected.** Run from a shell with `curl`, `jq`, Python 3 and the checkout.
-Reuse the private evidence directory from activation. Start a loopback-only
-`kubectl -n ai port-forward svc/wan-video 18080:8080` in a separate terminal.
-Keep the producer pause and all admission checks in effect.
+**Expected.** Use the active health gate, known idle ownership and the same
+producer pause and evidence directory. The smoke script stages only synthetic
+inputs generated by [smoke-inputs.py](../../scripts/studio-local-model/smoke-inputs.py).
+It uses loopback via pods/exec in `ai`. The 30-minute clock starts with the
+first leased load after input staging. Each admitted operation uses the same
+compute lease. Watch GPU ownership, utilization and temperature, and keep
+the terminal open through cleanup.
 
 ```bash
-base=http://127.0.0.1:18080
-python3 scripts/studio-local-model/smoke-inputs.py "$evidence/inputs"
-profile=$(curl -fsS "$base/v1/local-model/profile" | tee "$evidence/profile.json" | jq -er .profile.model)
-card=$(jq -er .profile.gpu_uuid "$evidence/profile.json")
-ceiling=$(jq -er '.profile.unloaded_max_mib | select(type == "number" and . <= 512)' "$evidence/profile.json")
-for file in "$evidence"/inputs/*.png "$evidence"/inputs/*.wav; do
-  name=${file##*/}
-  sha=$(jq -er --arg name "$name" '.[$name]' "$evidence/inputs/hashes.json")
-  curl -fsS --max-time 30 -X PUT --data-binary "@$file" \
-    "$base/v1/inputs/$sha.${name##*.}" > "$evidence/$name.upload.json"
-done
-
-new_id() { python3 -c 'from uuid import uuid4; print(uuid4().hex)'; }
-submit() {
-  local label=$1 route=$2 id=$3 body=$4
-  printf '%s\n' "$body" > "$evidence/$label.request.json"
-  printf '%s\n' "$id" > "$evidence/$label.id"
-  curl --fail-with-body --silent --show-error --max-time 15 -X PUT -H 'Content-Type: application/json' --data-binary "$body" \
-    "$base/$route/$id" > "$evidence/$label.put.json" ||
-    printf 'PUT reply uncertain for %s. Read the original ID before any repeat.\n' "$label" >&2
-}
-await_result() {
-  local label=$1 route=$2 id=$3 limit=$4 started=$SECONDS
-  while (( SECONDS - started < limit && SECONDS - window < 1800 )); do
-    curl --fail-with-body --silent --show-error --max-time 5 \
-      "$base/$route/$id" > "$evidence/$label.status.json" || return 1
-    case $(jq -er .state "$evidence/$label.status.json") in
-      succeeded) return 0 ;;
-      failed) jq -c '{error,reason_code,admission_code,baseline_memory_mib,released_memory_mib}' "$evidence/$label.status.json" >&2; return 1 ;;
-    esac
-    sleep 2
-  done
-  printf 'Stop. Deadline reached for %s. Review original ID %s.\n' "$label" "$id" >&2
-  return 1
-}
-local_request() {
-  local label=$1 limit=$2 body=$3 id
-  id=$(new_id)
-  submit "$label" v1/local-model/requests "$id" "$body"
-  await_result "$label" v1/local-model/requests "$id" "$limit"
-}
-operation() {
-  jq -nc --arg p "$profile" --arg op "$1" '{profile:$p,operation:$op}'
-}
-inference() {
-  jq -nc --arg p "$profile" --arg mode "$1" --arg text "$2" --argjson cap "$3" \
-    '{profile:$p,operation:"infer",mode:$mode,prompt:$text,max_output_tokens:$cap}'
-}
+(
+  set -euo pipefail
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  python3 -B scripts/wan-video/op442_smoke.py smoke --evidence "$evidence"
+)
 ```
 
-Start timestamped per-UUID measurements just before load, including resident
-memory, utilization and temperature, with process ownership samples for
-operator diagnosis. The admission code gets the model's child status from the
-private sidecar socket. Container PID reports are unnecessary for that decision. Stop the
-two samplers and port-forward when done. Keep their output private. Record the
-cold-load and reload wall times, checkpoint readings and possibility of a warm
-page cache. Capture loader logs and host memory peaks under the sidecar's
-16 GiB limit. Watch the measures throughout.
+| Step | Wall-time target and gate |
+| --- | --- |
+| Five release-drift cycles | Plan 5 × (60 s load + ~8 s unload/receipt). The first load stops at 120 s and may hit a warm PVC cache. Every unload must return a verified release, with memory at or below the ceiling and a signed post-exit-minus-baseline difference of at most 4 MiB. |
+| Load for text, vision and handover | Plan 60 s. One `plan_v1` text answer proves both bounded text and schema output (256 tokens, target ~20 s). One `frame_check_v1` has four ordered synthetic frames with known face, code and wardrobe differences (512 tokens, target ~35 s). |
+| Handover | Start only by 7m 50s elapsed with at least 1,280 s for S2V (1,200 s render plus admission and read-back) and 50 s reserved for idle proof and cleanup. Verify the internal unload receipt before the engine's start time and an empty engine queue at completion. |
+| Return load and final verification | If at least 185 s remain, time the return load with the same 60 s target and verify tracked unload. Reserve 50 s for cleanup. If short on time after S2V, skip the return load first and preserve S2V's verified unload plus final idle proof. If the S2V cutoff is missed, skip S2V and unload the current child. A skipped step leaves the smoke incomplete. |
 
-```bash
-timeout 30m kubectl -n ai exec deploy/wan-video -c api -- nvidia-smi \
-  --query-gpu=timestamp,uuid,memory.used,utilization.gpu,temperature.gpu --format=csv -l 1 > "$evidence/gpu.csv" &
-gpu_sample_pid=$!
-timeout 30m kubectl -n ai exec deploy/wan-video -c api -- nvidia-smi \
-  --query-compute-apps=timestamp,gpu_uuid,pid,process_name,used_gpu_memory --format=csv -l 1 > "$evidence/process.csv" &
-process_sample_pid=$!
-trap 'kill "$gpu_sample_pid" "$process_sample_pid" 2>/dev/null || true; wait "$gpu_sample_pid" "$process_sample_pid" 2>/dev/null || true' EXIT
+Every drift record saves the load baseline, the post-exit sample and the
+difference. A failed receipt may omit its sample. The script records a
+fresh diagnostic sample if the child exited and the lane can be read under
+the lease. A failed cycle, a difference greater than 4 MiB, or a reading above
+the calibrated ceiling stops handover. Leave the lane as the code left it,
+preserve its journal or hold and record the request IDs and samples. Raise
+the drift allowance only by a reviewed change with evidence. The proof still
+uses the absolute profile ceiling.
 
-window=$SECONDS
-cold_id=$(new_id)
-submit cold v1/local-model/requests "$cold_id" "$(operation load)"
-await_result cold v1/local-model/requests "$cold_id" "$((120 - (SECONDS - window)))"
-jq -e --argjson max 120 --argjson ceiling "$ceiling" \
-  '(.finished_at - .created_at) <= $max and
-   (.baseline_memory_mib|type)=="number" and .baseline_memory_mib <= $ceiling' \
-  "$evidence/cold.status.json"
-# Compare (.finished_at - .created_at) with the 60 s target. Stop at 120 s.
-
-local_request text 180 "$(inference plan_tool_v1 \
-  'For scene s01 use record_plan_v1 once. Propose two shots and hold the camera at eye level.' 256)"
-jq -e '.result.text|fromjson|.name == "record_plan_v1" and .arguments.scene_id == "s01" and .arguments.shot_count == 2' \
-  "$evidence/text.status.json"
-local_request plan 180 "$(inference plan_v1 \
-  'Make a short two-shot plan for scene s01. Hold an eye-level wide shot, then cut to a close view.' 256)"
-jq -e '.result.text|fromjson|.scene_id == "s01" and (.shots|length) == 2' "$evidence/plan.status.json"
-
-images=$(jq -c '[.["frame-1.png"],.["frame-2.png"],.["frame-3.png"],.["frame-4.png"]]' "$evidence/inputs/hashes.json")
-vision=$(inference frame_check_v1 \
-  'Report each image in order. The wardrobe record says green. Read the printed code when visible. Return null for unreadable code and uncertain when the garment is covered.' 512 |
-  jq -c --argjson images "$images" '. + {image_sha256s:$images}')
-local_request vision 180 "$vision"
-jq -e '.result.text|fromjson|.frames == [
-  {"face":"visible","code":"A17","wardrobe":"match"},
-  {"face":"hidden","code":"B24","wardrobe":"match"},
-  {"face":"visible","code":"C38","wardrobe":"mismatch"},
-  {"face":"visible","code":null,"wardrobe":"uncertain"}]' "$evidence/vision.status.json"
-```
-
-The worker enforces the full server-owned schemas. Keep all three validated
-responses and token counts. If any expected text/frame evidence differs, stop
-the trial and use the tracked unload when ownership and the lease are clear.
-
-For the single S2V trial keep at least 1,500 seconds available before
-submission so the 1,200-second render deadline leaves time to verify, reload
-and unload. Inspect `gpu.csv` and `process.csv` first. The local-model cap is
-12,288 MiB on Card A. Preserve the delayed request as its original ID and use
-GET after an ambiguous PUT. If that read returns `request_not_found`, repeat
-the exact saved PUT once with its original ID. There is no automatic replay
-under a new ID.
-
-```bash
-(( SECONDS - window <= 300 ))
-wan_exec ls /workspace/local-model/requests | sort > "$evidence/requests.before"
-s2v=$(new_id)
-body=$(jq -nc --slurpfile h "$evidence/inputs/hashes.json" '{
-  profile:"wan2.2-s2v-14b-lightning",
-  story:"https://work.haynesnetwork.com/work_packages/442", seed:442,
-  prompt:"A simple illustrated figure makes a brief speaking motion; locked camera.",
-  image_sha256:$h[0]["s2v.png"],audio_sha256:$h[0]["s2v.wav"],board_frames:48}')
-submit s2v v1/jobs/s2v "$s2v" "$body"
-await_result s2v v1/jobs/s2v "$s2v" 1280
-wan_exec ls /workspace/local-model/requests | sort > "$evidence/requests.after"
-handover=$(comm -13 "$evidence/requests.before" "$evidence/requests.after")
-[[ "$handover" =~ ^[0-9a-f]{32}\.json$ ]]
-wan_exec cat "/workspace/local-model/requests/$handover" > "$evidence/handover.json"
-started=$(jq -er .started_at "$evidence/s2v.status.json")
-jq -e --argjson ceiling "$ceiling" --argjson started "$started" \
-  --slurpfile load "$evidence/cold.status.json" \
-  '.internal and .operation=="unload" and .state=="succeeded" and
-    .baseline_memory_mib == $load[0].baseline_memory_mib and
-    (.released_memory_mib|type)=="number" and .released_memory_mib <= (.baseline_memory_mib + 4) and
-    .released_memory_mib <= $ceiling and .finished_at <= $started' \
-  "$evidence/handover.json"
-at_wan 8188/queue | tee "$evidence/queue-after-s2v"
-```
-
-Every new model load starts by verifying the lease and the engine queue in the
-sidecar. It uses the same `/free` request as Foley, rechecks the queue and
-records a fresh idle Card A sample before creating the child. Release requires
-a fresh idle reading at or below the profile ceiling and no more than 4 MiB
-above that baseline, after the supervisor has reaped the child and its process
-group. The 4 MiB allowance covers small GPU accounting variations. Record the
-observed variation during the first live smoke. The compute
-lease covers the proof before ComfyUI submission. Use the UUID samples and the
-Wan ledger's prompt ID and timestamps to record which card the engine used.
-
-A normal ComfyUI cache can remain after video. With no journal and no live
-sidecar child, cached memory does not prevent later Wan or Foley jobs. Allow
-the normal cache to remain after S2V and verify both queue lists are empty
-before reload. Reload performs its own cache eviction under the lease. Record
-the pre-reload and drained readings and the reload receipt. Stop if ownership
-is unclear or the card does not settle within the drained ceiling.
-
-```bash
-# Run after observing idle queue and utilization, with at least 150 s remaining.
-(( SECONDS - window <= 1650 ))
-local_request reload 120 "$(operation load)"
-local_request final-unload 30 "$(operation unload)"
-jq -e --argjson ceiling "$ceiling" --slurpfile load "$evidence/reload.status.json" \
-  '.baseline_memory_mib == $load[0].baseline_memory_mib and
-    (.released_memory_mib|type)=="number" and .released_memory_mib <= (.baseline_memory_mib + 4) and
-    .released_memory_mib <= $ceiling' "$evidence/final-unload.status.json"
-wan_exec test ! -e /workspace/local-model/state.json
-at_wan 8080/health
-at_wan 8188/queue
-(( SECONDS - window <= 1800 ))
-```
+Keep sampler files and receipts private. Check that both GPUs' samples cover
+the full smoke, record Card A VRAM peak against 12,288 MiB, sidecar cgroup memory
+peak against 16 GiB, and S2V ownership using the per-UUID process data and
+ledger prompt ID. Record cold and warm wall times. A sample is an observation
+of peak usage at its sampling interval. Keep the sidecar's logs privately for
+allocation diagnosis. The script verifies schema outputs and token bounds,
+keeps the source result IDs, and stops on ambiguity. After a transport failure
+it reads the original ID and repeats the exact saved PUT at most once, after
+a definitive absent response. If a polling deadline arrives with work still
+running, cleanup reads the same ID until it settles or the cleanup cutoff.
+It then verifies release or submits the tracked unload if needed. An unresolved
+original ID at the cutoff takes the Wan recovery path. Avoid new work while queue or ownership is
+unclear.
 
 ## Stops and evidence
 
-Stop for active or unknown engine work, a hold, GPU identity or ownership
-mismatch, capacity/reserve or hash failure, image or admission denial, lost
-telemetry, context or schema failure, exceeded VRAM, host RAM or deadline,
-failed unload or insufficient time for handover and cleanup. Read only the
-original request ID if an answer is ambiguous. A running job at the deadline
-is an incident under the existing Wan recovery procedure. Stop submitting work
-and preserve its ID and state.
+Stop on an access denial, hold, unknown ownership, malformed queue, bad image
+or weight digest, reserve failure, absent listener, failed release, caps or
+deadline. Keep dispatch quiesced through verified cleanup or recovery. Restore
+dispatch once the sidecar is Ready, the model and journal are cleared, the
+engine queue is empty and the rack checks pass. Keep failed attempts and
+published weights under their original paths. A fallback needs a new ruling
+and window.
 
-- Foreign work returns the existing engine code and leaves the model
-  reservation intact. Wait for known idle. Malformed queue replies fail closed.
-- A live child with a missing journal latches a hold. Preserve the journal and
-  pause dispatch for inspection. A sidecar outage returns
-  `local_model_unavailable` for attempts requiring residency evidence and adds
-  no hold. Restore the listener and recheck residency before using that lane.
-- A reaped backend failure, including load or decode failure, timeout or output
-  overflow, records its error and both memory readings when release is proved.
-  A release failure holds the lane and records the failure reason. Structured
-  failures can leave a live child. Use a tracked unload when the lease and
-  ownership are clear. Capped text reports `result.truncated: true` and omits
-  any partial trailing UTF-8 character.
-- Once the sidecar is reachable, no model child or journal remains, both
-  queues are empty and the normal rack checks pass, restore Wan/Foley dispatch.
-  Ordinary ComfyUI cache is allowed in this state. Keep dispatch paused if
-  any hold or unresolved residency remains.
-
-Before rolling back activation, quiesce producers, verify tracked unload and
-confirm no child and no journal. Use the verified receipt as proof of release,
-or repeat the lease-fenced idle calibration if no load occurred. Revert the
-Flux path to the dormant app and repeat its health gate. Preserve the weights,
-failed attempts and evidence. Inspect uncertain ownership or an unavailable
-sidecar before removing the profile. The fallback requires a new ruling.
-
-Record configured revision and digests, file sizes, available bytes/inodes,
-health read-backs, exact request IDs and states, input hashes, complete schema
-verdicts and token counts, elapsed cold/reload timings, UUID memory and process
-samples, allocation logs, drained baselines, unload receipts and the Wan
-engine ledger, final idle proof, refusals and any stopped step. Keep outputs and raw evidence private.
-Record source, built image, installed components, usable smoke and human
-acceptance as separate facts.
+Publish only IDs, states, hashes, measured times and memory samples to the
+tracker. Keep service logs, full model outputs, prompts, staged media and
+engine ledgers in the private evidence directory. Record source, built image,
+tested checks, installation, usable smoke and Tom's acceptance as separate
+facts. The E10 model quality verdict comes from its own benchmark.
