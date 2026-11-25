@@ -43,7 +43,9 @@ class ManifestTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.activation = documents("kustomize", "build", PENDING / "activation")
+        cls.policy = documents("kustomize", "build", PENDING / "download-policy")
         cls.weights = documents("kustomize", "build", PENDING / "weights")
+        cls.ai = documents("kustomize", "build", WAN.parent)
         cls.dormant = documents("kustomize", "build", WAN / "app")
         cls.active_pod = pod_spec(resource(cls.activation, "HelmRelease", "wan-video"))
         cls.dormant_pod = pod_spec(resource(cls.dormant, "HelmRelease", "wan-video"))
@@ -125,7 +127,14 @@ class ManifestTests(unittest.TestCase):
         })
 
     def test_provisioner_dns_and_https_allow_hub_and_cdn_subdomains(self):
-        policy = resource(self.weights, "CiliumNetworkPolicy", "wan-local-model-provision")
+        flux = resource(self.ai, "Kustomization", "wan-local-model-download-policy")
+        self.assertEqual(flux["spec"]["path"], f"./{(PENDING / 'download-policy').relative_to(WAN.parents[4])}")
+        self.assertTrue(flux["spec"]["prune"])
+        self.assertEqual({doc["kind"] for doc in self.policy}, {"CiliumNetworkPolicy"})
+        policy = resource(self.policy, "CiliumNetworkPolicy", "wan-local-model-provision")
+        self.assertEqual(policy["spec"]["endpointSelector"], {
+            "matchLabels": {"app.kubernetes.io/name": "wan-local-model-provision"},
+        })
         dns, https = policy["spec"]["egress"]
         allowed = [{"matchName": "huggingface.co"}, {"matchPattern": "**.cdn.hf.co"}]
         self.assertEqual(dns["toPorts"][0]["rules"]["dns"], allowed)

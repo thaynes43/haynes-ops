@@ -3,7 +3,6 @@ kind: Kustomization
 namespace: ai
 resources:
   - job.yaml
-  - networkpolicy.yaml
 configMapGenerator:
   - name: wan-local-model-provision
     files:
