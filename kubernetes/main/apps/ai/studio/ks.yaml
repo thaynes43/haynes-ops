@@ -20,7 +20,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-migrate-1aa9b4736da9
+      name: studio-migrate-4787d14f98a4
       namespace: ai
   interval: 30m
   retryInterval: 1m
@@ -72,7 +72,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-worker-1aa9b4736da9
+      name: studio-register-worker-4787d14f98a4
       namespace: ai
     # studio-render's Kustomization applies the HelmRelease but does not wait
     # for Helm. Wait here so the worker cannot start until the 20-CPU cap is live.
@@ -104,122 +104,6 @@ spec:
   interval: 30m
   retryInterval: 1m
   timeout: 5m
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: studio-archive-access
-  namespace: ai
-spec:
-  targetNamespace: ai
-  path: ./kubernetes/main/apps/ai/studio/archive-access
-  sourceRef:
-    kind: GitRepository
-    name: haynes-ops
-    namespace: flux-system
-  prune: true
-  interval: 30m
-  retryInterval: 1m
-  timeout: 1m
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: studio-import-one-more-meeting
-  namespace: ai
-spec:
-  targetNamespace: ai
-  dependsOn:
-    - name: studio-migration
-    - name: studio-archive-access
-  path: ./kubernetes/main/apps/ai/studio/import-one-more-meeting
-  sourceRef:
-    kind: GitRepository
-    name: haynes-ops
-    namespace: flux-system
-  prune: true
-  healthChecks:
-    - apiVersion: batch/v1
-      kind: Job
-      name: studio-import-one-more-meeting-1aa9b4736da9
-      namespace: ai
-  interval: 30m
-  retryInterval: 1m
-  timeout: 6m
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: studio-import-winter-menu
-  namespace: ai
-spec:
-  targetNamespace: ai
-  dependsOn:
-    - name: studio-migration
-    - name: studio-import-one-more-meeting
-  path: ./kubernetes/main/apps/ai/studio/import-winter-menu
-  sourceRef:
-    kind: GitRepository
-    name: haynes-ops
-    namespace: flux-system
-  prune: true
-  healthChecks:
-    - apiVersion: batch/v1
-      kind: Job
-      name: studio-import-winter-menu-1aa9b4736da9
-      namespace: ai
-  interval: 30m
-  retryInterval: 1m
-  timeout: 6m
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: studio-playback-registration
-  namespace: ai
-spec:
-  targetNamespace: ai
-  dependsOn:
-    - name: studio
-    - name: studio-import-winter-menu
-  path: ./kubernetes/main/apps/ai/studio/playback-registration
-  sourceRef:
-    kind: GitRepository
-    name: haynes-ops
-    namespace: flux-system
-  prune: true
-  healthChecks:
-    - apiVersion: batch/v1
-      kind: Job
-      name: studio-register-playback-1aa9b4736da9
-      namespace: ai
-  interval: 30m
-  retryInterval: 1m
-  timeout: 3m
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: studio-playback-proof
-  namespace: ai
-spec:
-  targetNamespace: ai
-  dependsOn:
-    - name: studio-playback-registration
-  path: ./kubernetes/main/apps/ai/studio/playback-proof
-  sourceRef:
-    kind: GitRepository
-    name: haynes-ops
-    namespace: flux-system
-  prune: true
-  healthChecks:
-    - apiVersion: batch/v1
-      kind: Job
-      name: studio-verify-playback-1aa9b4736da9
-      namespace: ai
-  interval: 30m
-  retryInterval: 1m
-  timeout: 3m
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization

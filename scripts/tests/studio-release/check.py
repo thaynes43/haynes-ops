@@ -1,16 +1,20 @@
 """Verify the rendered Studio image pins and their Flux Job gates."""
 
 import argparse
-from hashlib import sha256
+import json
 import re
 import subprocess
+from hashlib import sha256
 from pathlib import Path
+from urllib.request import Request, urlopen
 
 import yaml
 
 
 STUDIO_PATH = Path("kubernetes/main/apps/ai/studio")
 API_IMAGE = "ghcr.io/thaynes43/haynes-studio"
+MATTING_IMAGE = f"{API_IMAGE}-matting"
+PRE_CR38_IMAGE = "sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f"
 
 
 def resource(documents, kind, name=None):
@@ -56,54 +60,55 @@ def env(workload):
     return {entry["name"]: entry.get("value") for entry in container(workload)["env"]}
 
 
-def check_model_licences(app, api, worker, digest):
-    name = f"studio-model-licences-{digest.removeprefix('sha256:')[:12]}"
-    config = resource(app, "ConfigMap", name)
-    if config.get("immutable") is not True:
-        raise ValueError(f"{name} must be immutable")
-    annotations = config["metadata"].get("annotations", {})
-    if annotations.get("kustomize.toolkit.fluxcd.io/prune") != "disabled":
-        raise ValueError(f"{name} must be exempt from Flux pruning")
-    for deployment in (api, worker):
+def check_packaged_register(app, deployments):
+    for document in app:
+        if document and document["kind"] == "ConfigMap" and document["metadata"]["name"].startswith(
+            "studio-model-licences-"
+        ):
+            raise ValueError("Studio ships the licence register in the image")
+    for deployment in deployments:
         volumes = deployment["spec"]["template"]["spec"]["volumes"]
-        register, = [volume for volume in volumes if volume["name"] == "model-licences"]
-        if register["configMap"]["name"] != name:
-            raise ValueError(f"{deployment['metadata']['name']} must mount {name}")
+        if "STUDIO_MODEL_REGISTER" in env(deployment) or any(
+            volume.get("configMap", {}).get("name", "").startswith("studio-model-licences-")
+            for volume in volumes
+        ):
+            raise ValueError(f"{deployment['metadata']['name']} must use the packaged licence register")
 
 
-def check_receipt(path, documents, job):
-    volumes = job["spec"]["template"]["spec"]["volumes"]
-    receipt_volume, = [volume for volume in volumes if volume["name"] == "receipt"]
-    config = resource(documents, "ConfigMap", receipt_volume["configMap"]["name"])
-    source_bytes = (path / "receipt.json").read_bytes()
-    mounted_bytes = config["data"]["receipt.json"].encode("utf-8")
-    expected = env(job)["STUDIO_IMPORT_RECEIPT_SHA256"]
-    if source_bytes != mounted_bytes or sha256(mounted_bytes).hexdigest() != expected:
-        raise ValueError(f"{job['metadata']['name']} receipt SHA-256 or rendered bytes differ")
+def published_matting_memory(digest):
+    """Read the profile resource contract from the exact published image config."""
+    repository = MATTING_IMAGE.removeprefix("ghcr.io/")
+    base = f"https://ghcr.io/v2/{repository}"
 
+    def fetch(endpoint, expected, accept="application/json"):
+        if not re.fullmatch(r"sha256:[a-f0-9]{64}", expected):
+            raise ValueError("invalid OCI digest in matting image")
+        request = Request(f"{base}/{endpoint}/{expected}", headers={"Accept": accept})
+        request.add_unredirected_header("Authorization", "Bearer " + token)
+        with urlopen(request, timeout=15) as response:
+            data = response.read(1024 * 1024 + 1)
+        if len(data) > 1024 * 1024 or "sha256:" + sha256(data).hexdigest() != expected:
+            raise ValueError("matting image manifest or config SHA-256 differs from its pin")
+        return json.loads(data)
 
-def check_archive_jobs(path, flux, digest):
-    stages = (
-        ("import-one-more-meeting", "studio-import-one-more-meeting", {"studio-migration", "studio-archive-access"}),
-        ("import-winter-menu", "studio-import-winter-menu", {"studio-migration", "studio-import-one-more-meeting"}),
-        ("playback-registration", "studio-register-playback", {"studio", "studio-import-winter-menu"}),
-        ("playback-proof", "studio-verify-playback", {"studio-playback-registration"}),
-    )
-    resource(flux, "Kustomization", "studio-archive-access")
-    for folder, prefix, dependencies in stages:
-        stage = resource(flux, "Kustomization", f"studio-{folder}")
-        spec = stage["spec"]
-        if spec["path"] != f"./{STUDIO_PATH}/{folder}":
-            raise ValueError(f"{stage['metadata']['name']} points at the wrong Job directory")
-        if {item["name"] for item in spec["dependsOn"]} != dependencies:
-            raise ValueError(f"{stage['metadata']['name']} has the wrong dependencies")
-        documents = render(path / folder)
-        job = resource(documents, "Job")
-        if image_digest(job, API_IMAGE) != digest:
-            raise ValueError(f"{job['metadata']['name']} must use studio-api's digest {digest}")
-        check_job(job, stage, prefix, digest)
-        if folder.startswith("import-"):
-            check_receipt(path / folder, documents, job)
+    try:
+        with urlopen(f"https://ghcr.io/token?service=ghcr.io&scope=repository:{repository}:pull", timeout=15) as response:
+            token = json.loads(response.read(65536))["token"]
+        manifest = fetch("manifests", digest, "application/vnd.docker.distribution.manifest.v2+json, "
+                                            "application/vnd.oci.image.manifest.v1+json")
+        config = fetch("blobs", manifest["config"]["digest"])
+        label = config["config"]["Labels"]["io.haynes-studio.matting.resources"]
+        memory = json.loads(label)
+        request, limit = memory["request_gib"], memory["limit_gib"]
+        if (memory["schema"] != "studio.matting-resources/v1"
+                or type(request) is not int or type(limit) is not int or not 0 < request <= limit
+                or (config["os"], config["architecture"]) != ("linux", "amd64")
+                or config["config"]["Labels"]["org.opencontainers.image.source"]
+                != "https://github.com/thaynes43/haynes-studio"):
+            raise ValueError("invalid matting profile resource contract")
+    except (KeyError, OSError, TypeError, ValueError) as error:
+        raise ValueError("published matting image must carry the Studio profile resource contract") from error
+    return f"{request}Gi", f"{limit}Gi"
 
 
 def check_matting(path, flux):
@@ -113,9 +118,12 @@ def check_matting(path, flux):
     pin = yaml.safe_load((pending / "release/release.yaml").read_text())["data"]
     image = pin["image"]
     allocation = pin["allocation"]
-    if (not re.fullmatch(r"ghcr\.io/thaynes43/haynes-studio-matting@sha256:[0-9a-f]{64}", image)
-            or image.endswith("sha256:" + "0" * 64)):
+    match = re.fullmatch(rf"{re.escape(MATTING_IMAGE)}@(sha256:[0-9a-f]{{64}})", image)
+    if not match or match[1] in {PRE_CR38_IMAGE, "sha256:" + "0" * 64}:
         raise ValueError("set matting-pending/release/release.yaml data.image to the published matting digest")
+    memory = published_matting_memory(match[1])
+    if (pin["memoryRequest"], pin["memoryLimit"]) != memory:
+        raise ValueError("matting release request and limit must match the published Studio profile")
     if not re.fullmatch(r"matting-op459-birefnet-lite-v1-[0-9]{2}", allocation):
         raise ValueError("invalid create-only matting allocation")
 
@@ -156,8 +164,7 @@ def check_matting(path, flux):
     for name, uid in (("provision", 1000), ("smoke", 10001)):
         stage = render(pending / name)
         name_suffix = allocation.rsplit("-", 1)[1]
-        # The smoke is on its second attempt: see the comment in smoke/job.yaml.
-        attempt = "-r2" if name == "smoke" else ""
+        attempt = "-r3" if name == "smoke" else ""
         job = resource(stage, "Job", f"studio-matting-{name}-{name_suffix}{attempt}")
         pod = job["spec"]["template"]["spec"]
         if (job["spec"]["activeDeadlineSeconds"] != 300 or job["spec"]["backoffLimit"] != 0
@@ -190,10 +197,10 @@ def check_matting(path, flux):
         raise ValueError("the provisioner may write only inside the Studio jobs allocation")
 
     smoke, pod = jobs["smoke"]
-    if container(smoke)["command"] != ["studio-matting", "smoke"] or pod["securityContext"]["fsGroup"] != 10001:
-        raise ValueError("the smoke Job must run the pinned smoke with writable private scratch")
-    # 16Gi is a measuring allowance for the retried smoke, not a serving limit.
-    check_matting_mounts(container(smoke), pod, weight_path, "scratch", memory="16Gi")
+    if (container(smoke)["command"] != ["studio-matting", "smoke", "--no-cpu-arena"]
+            or pod["securityContext"]["fsGroup"] != 10001):
+        raise ValueError("the smoke Job must measure the CPU arena change with writable private scratch")
+    check_matting_mounts(container(smoke), pod, weight_path, "scratch", memory)
 
     stage = render(pending / "activation")
     worker = resource(stage, "Deployment", "studio-worker")
@@ -212,7 +219,7 @@ def check_matting(path, flux):
         raise ValueError("the staged sidecar must preserve the existing worker and share only scratch")
     sidecar = active["matting"]
     check_matting_container(sidecar, image)
-    check_matting_mounts(sidecar, worker_pod, weight_path, "matte-scratch")
+    check_matting_mounts(sidecar, worker_pod, weight_path, "matte-scratch", memory)
     if (sidecar["command"] != ["studio-matting", "serve"]
             or sidecar["securityContext"]["runAsUser"] != 10001
             or sidecar["securityContext"]["runAsGroup"] != 10001):
@@ -222,11 +229,11 @@ def check_matting(path, flux):
             raise ValueError("the matting sidecar probes must use Unix HTTP readiness")
 
     render_path = path.with_name("studio-render")
-    for overlay, cores in (("app", "20"), ("matting-pending", "18")):
+    for overlay, cores, limit in (("app", "20", "32Gi"), ("matting-pending", "18", "16Gi")):
         release = resource(render(render_path / overlay), "HelmRelease", "studio-render")
-        limits = release["spec"]["values"]["controllers"]["studio-render"]["containers"]["app"]["resources"]["limits"]
-        if limits["cpu"] != cores or limits["memory"] != "32Gi":
-            raise ValueError("the dormant matting split must take two CPUs from the offline render allocation")
+        render_app = release["spec"]["values"]["controllers"]["studio-render"]["containers"]["app"]
+        if render_app["resources"]["limits"] != {"cpu": cores, "memory": limit}:
+            raise ValueError("the dormant matting split must stage offline render at 18 CPUs and 16Gi")
 
 
 def check_matting_container(spec, image):
@@ -242,17 +249,18 @@ def check_matting_container(spec, image):
         raise ValueError("matting must use the selected image, no credentials, read-only root and CPU only")
 
 
-def check_matting_mounts(spec, pod, subpath, scratch_name, memory="6Gi"):
+def check_matting_mounts(spec, pod, subpath, scratch_name, memory):
     volumes = {item["name"]: item for item in pod["volumes"]}
     mounts = {item["name"]: item for item in spec["volumeMounts"]}
+    request, limit = memory
     if (mounts != {
             scratch_name: {"name": scratch_name, "mountPath": "/matting"},
             "weights": {"name": "weights", "mountPath": "/weights", "subPath": subpath, "readOnly": True},
         } or volumes[scratch_name]["emptyDir"]["sizeLimit"] != "256Mi"
             or not volumes["weights"]["nfs"]["readOnly"]
-            or spec["resources"]["limits"] != {"cpu": "2", "memory": memory}
-            or spec["resources"]["requests"]["memory"] != "2Gi"):
-        raise ValueError(f"matting needs 2 CPUs, 2Gi requested and {memory} limit, a private emptyDir "
+            or spec["resources"]["limits"] != {"cpu": "2", "memory": limit}
+            or spec["resources"]["requests"]["memory"] != request):
+        raise ValueError(f"matting needs 2 CPUs, {request} requested and {limit} limit, a private emptyDir "
                          "and read-only pinned weights")
 
 
@@ -288,9 +296,8 @@ def check(path):
     check_job(migration, resource(flux, "Kustomization", "studio-migration"), "studio-migrate", digest)
     check_job(registration, resource(flux, "Kustomization", "studio-worker-registration"),
               "studio-register-worker", digest)
-    check_model_licences(app, api, worker, digest)
-    check_archive_jobs(path, flux, digest)
-    print(f"Studio release pins, Job health gates and archive receipts agree for {revision} ({digest})")
+    check_packaged_register(app, (api, worker))
+    print(f"Studio release pins and Job health gates agree for {revision} ({digest})")
 
 
 def main():
