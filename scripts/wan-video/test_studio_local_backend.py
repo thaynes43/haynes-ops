@@ -1,13 +1,17 @@
 """CPU-only tests of the Python/native boundary and the isolated weight Job."""
 from contextlib import redirect_stdout
 import ctypes as c
+import fcntl
 from email.message import Message
 import hashlib
 import io
 import json
 import os
 from pathlib import Path
+from shlex import quote
+import shutil
 import socket
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -27,6 +31,10 @@ import sys
 WEIGHTS = APP.parent / "local-model-pending" / "weights"
 sys.path.insert(0, str(WEIGHTS))
 import provision
+sys.path.pop(0)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "studio-local-model"))
+from startup_smoke import fixture, install_nvidia_smi_fixture
+from startup_check import diagnose, wait_for_listener
 sys.path.pop(0)
 
 
@@ -77,7 +85,7 @@ class BackendTests(unittest.TestCase):
         (directory / "manifest.json").write_text(json.dumps(pins))
         self.lib = FakeLibrary()
         self.model = backend.LlamaBackend(self.profile, self.root, pins, library=lambda: self.lib)
-        with patch.dict(os.environ, {"NVIDIA_VISIBLE_DEVICES": CARD, "CUDA_VISIBLE_DEVICES": CARD}):
+        with patch.dict(os.environ, {"NVIDIA_VISIBLE_DEVICES": "void", "CUDA_VISIBLE_DEVICES": CARD}):
             self.model.load()
         self.addCleanup(self.model.unload)
         self.addCleanup(self.check_unload)
@@ -187,6 +195,214 @@ class BackendTests(unittest.TestCase):
             with self.assertRaises(BlockingIOError):
                 listener.accept()
         self.assertFalse(backend.listener_ready(self.root, os.getpid()))
+
+
+class StartupTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.card = fixture(self.root)
+        self.profile = self.root / "local-model.json"
+        self.workspace = self.root / "work"
+        self.workspace.mkdir()
+        self.lease_path = self.workspace / "compute.lock"
+        self.lease_path.touch()
+        self.image = self.root / "app"
+        self.image.mkdir()
+        for module in APP.glob("*.py"):
+            shutil.copyfile(module, self.image / module.name)
+        shutil.copyfile(WEIGHTS / "weights.json", self.image / "weights.json")
+        self.env = {**os.environ, **dict.fromkeys(sidecar.PIN_VARIABLES, self.card)}
+        self.bin = self.root / "bin"
+        self.env["PATH"] = f"{self.bin}:{os.defpath}"
+        self.driver_visible(self.card)
+        pins = json.loads((self.image / "weights.json").read_text())
+        self.weights = self.root / "weights" / pins["model"] / pins["revision"]
+        self.weight = self.weights / pins["files"][0]["name"]
+
+    def driver_visible(self, *cards):
+        script = "printf '%s\\n' " + " ".join(map(quote, cards)) if cards else ":"
+        install_nvidia_smi_fixture(self.bin, script)
+
+    def check_started(self, reason, *, visible=True, repair=None, leased_retry=None):
+        command = [sys.executable, "-B", "-m", "studio_local_backend"]
+        with subprocess.Popen(
+            [*command, "serve", "--workspace", str(self.workspace), "--profile", str(self.profile),
+             "--weights-root", str(self.root / "weights")],
+            cwd=self.image, env=self.env, stdout=subprocess.PIPE, bufsize=0,
+        ) as process:
+            try:
+                startup = wait_for_listener(process.stdout, sidecar.STARTUP_LOG)
+                self.assertEqual(startup["startup_error"], reason)
+                self.assertEqual(startup["reason_code"], reason)
+                observed = {name: self.env[name][:128] if name in self.env else None
+                            for name in sidecar.PIN_VARIABLES}
+                self.assertEqual(startup["pins"], observed)
+                expected = [self.card] if visible is True else visible
+                self.assertEqual(startup["visible_gpu_uuids"], expected)
+                self.assertEqual(startup["visible_gpu_count"], None if expected is None else len(expected))
+                subprocess.run(
+                    [*command, "ready", "--workspace", str(self.workspace), "--pid", str(process.pid)],
+                    cwd=self.image, env=self.env, timeout=5, check=True,
+                )
+                initial = local.exchange(self.workspace, {"action": "residency"})
+                self.assertEqual(initial.get("startup_error"), reason)
+                self.assertIs(initial["resident"], False)
+                self.assertIsNone(initial["receipt"])
+                if leased_retry is not None:
+                    fcntl.flock(leased_retry, fcntl.LOCK_UN)
+                    self.assertEqual(local.exchange(self.workspace, {"action": "residency"}), initial)
+                    fcntl.flock(leased_retry, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    proved = local.exchange(self.workspace, {"action": "residency"}, leased_retry)
+                    self.assertNotIn("startup_error", proved)
+                    self.assertIs(proved["resident"], False)
+                    proof = wait_for_listener(process.stdout, sidecar.PIN_PROOF_LOG)
+                    self.assertIsNone(proof["reason_code"])
+                    self.assertEqual(proof["visible_gpu_uuids"], [self.card])
+                elif reason:
+                    with self.lease_path.open("rb") as lease:
+                        fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        for operation in ("load", "infer"):
+                            reply = local.exchange(self.workspace, {
+                                "action": "run", "id": "a6" * 16, "request": {"operation": operation},
+                            }, lease)
+                            self.assertEqual(reply, local.StartupUnavailable(reason).body())
+                    self.assertEqual(local.exchange(self.workspace, {"action": "status"}), initial)
+                if repair:
+                    repair()
+                    self.assertEqual(local.exchange(self.workspace, {"action": "residency"}), initial)
+                self.assertFalse(local.state_path(self.workspace).exists())
+            finally:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                    raise
+
+    def test_serves_with_both_exact_pins(self):
+        self.check_started(None)
+
+    def test_wrong_nvidia_pin(self):
+        self.env["NVIDIA_VISIBLE_DEVICES"] = "all" * 100
+        self.check_started("nvidia_pin_mismatch")
+
+    def test_wrong_cuda_pin(self):
+        self.env["CUDA_VISIBLE_DEVICES"] = "0"
+        self.check_started("cuda_pin_mismatch")
+
+    def test_missing_nvidia_pin(self):
+        del self.env["NVIDIA_VISIBLE_DEVICES"]
+        self.check_started("nvidia_pin_missing")
+
+    def test_missing_cuda_pin(self):
+        del self.env["CUDA_VISIBLE_DEVICES"]
+        self.check_started("cuda_pin_missing")
+
+    def test_empty_nvidia_pin(self):
+        self.env["NVIDIA_VISIBLE_DEVICES"] = ""
+        self.check_started("nvidia_pin_empty")
+
+    def test_empty_cuda_pin(self):
+        self.env["CUDA_VISIBLE_DEVICES"] = ""
+        self.check_started("cuda_pin_empty")
+
+    def test_void_with_one_matching_card(self):
+        self.env["NVIDIA_VISIBLE_DEVICES"] = "void"
+        self.check_started(None)
+
+    def test_void_with_two_cards_refuses(self):
+        self.env["NVIDIA_VISIBLE_DEVICES"] = "void"
+        other, = local.APPROVED_CARDS - {self.card}
+        self.driver_visible(self.card, other)
+        self.check_started("gpu_visibility_multiple", visible=[self.card, other])
+
+    def test_void_with_wrong_card_refuses(self):
+        self.env["NVIDIA_VISIBLE_DEVICES"] = "void"
+        other, = local.APPROVED_CARDS - {self.card}
+        self.driver_visible(other)
+        self.check_started("gpu_visibility_mismatch", visible=[other])
+
+    def test_no_visible_cards_refuses(self):
+        self.driver_visible()
+        self.check_started("gpu_visibility_empty", visible=[])
+
+    def test_driver_read_failure_refuses(self):
+        install_nvidia_smi_fixture(self.bin, "exit 1")
+        self.check_started("gpu_visibility_unavailable", visible=None)
+
+    def test_driver_read_timeout_refuses(self):
+        install_nvidia_smi_fixture(self.bin, "exec sleep 60")
+        self.check_started("gpu_visibility_timeout", visible=None)
+
+    def test_startup_does_not_wait_for_lease_and_first_leased_read_proves_pin(self):
+        self.env["NVIDIA_VISIBLE_DEVICES"] = "void"
+        with self.lease_path.open("rb") as lease:
+            fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.check_started("gpu_pin_unproven", visible=None, leased_retry=lease)
+
+    def test_diagnostic_records_same_refusal_and_all_visible_cards(self):
+        self.lease_path.unlink()
+        driver_lock = self.root / "driver.lock"
+        driver_lock.touch()
+        self.workspace.joinpath("local-model-weights").symlink_to(self.root / "weights")
+        self.env.update(NVIDIA_VISIBLE_DEVICES="void", PYTHONPATH=str(self.image))
+        other, = local.APPROVED_CARDS - {self.card}
+        self.driver_visible(self.card, other)
+        output = io.StringIO()
+        with patch.dict(os.environ, self.env, clear=True), redirect_stdout(output):
+            result = diagnose(self.workspace, driver_lock, self.profile.read_text())
+        self.assertEqual(result, 1)
+        startup, status, library = map(json.loads, output.getvalue().splitlines())
+        self.assertEqual(startup["verdict"], "refused")
+        self.assertEqual(startup["reason_code"], "gpu_visibility_multiple")
+        self.assertEqual(startup["visible_gpu_uuids"], [self.card, other])
+        self.assertEqual(startup["visible_gpu_count"], 2)
+        self.assertEqual(startup["gpu_uuid"], self.card)
+        self.assertEqual(status["residency"]["startup_error"], startup["reason_code"])
+        self.assertTrue(status["ready"])
+        self.assertFalse(status["residency"]["resident"])
+        self.assertEqual(library, {"cuda_library_loaded": False})
+        self.assertFalse(self.lease_path.exists())
+
+    def test_missing_weights_stays_unavailable_until_restart(self):
+        moved = self.weight.with_suffix(".missing")
+        self.weight.rename(moved)
+        self.check_started("weights_missing", repair=lambda: moved.rename(self.weight))
+        self.check_started(None)
+
+    def test_wrong_weight_size(self):
+        with self.weight.open("r+b") as weight:
+            weight.truncate(1)
+        self.check_started("weights_mismatch")
+
+    def test_wrong_weight_manifest(self):
+        manifest = self.weights / "manifest.json"
+        pins = json.loads(manifest.read_text())
+        pins["files"][0]["sha256"] = "0" * 64
+        manifest.write_text(json.dumps(pins))
+        self.check_started("weights_mismatch")
+
+    def test_weights_manifest_io_error(self):
+        manifest = self.weights / "manifest.json"
+        manifest.unlink()
+        manifest.mkdir()
+        self.check_started("weights_unreadable")
+
+    def test_missing_profile(self):
+        self.profile.unlink()
+        self.check_started("profile_missing", visible=None)
+
+    def test_invalid_profile(self):
+        self.profile.write_text("{}")
+        self.check_started("profile_invalid", visible=None)
+
+    def test_unsupported_profile(self):
+        profile = json.loads(self.profile.read_text())
+        self.profile.write_text(json.dumps({**profile, "model": "other"}))
+        self.check_started("profile_unsupported")
 
 
 class DownloadResponse(io.BytesIO):

@@ -44,6 +44,7 @@ jobs:
             --file scripts/studio-local-model/Dockerfile .
           docker run --rm --read-only --network none --cpus 2 --memory 1g --user 1000:1000 \
             --env NVIDIA_VISIBLE_DEVICES=void --env CUDA_VISIBLE_DEVICES= studio-local-model:test self-check
+          python3 -B scripts/studio-local-model/startup_smoke.py studio-local-model:test
 
   publish:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -64,6 +65,7 @@ jobs:
             --file scripts/studio-local-model/Dockerfile .
           docker run --rm --read-only --network none --cpus 2 --memory 1g --user 1000:1000 \
             --env NVIDIA_VISIBLE_DEVICES=void --env CUDA_VISIBLE_DEVICES= studio-local-model:test self-check
+          python3 -B scripts/studio-local-model/startup_smoke.py studio-local-model:test
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:

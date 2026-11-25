@@ -765,7 +765,7 @@
             }
           },
           "503": {
-            "description": "Local model is unconfigured or configuration is invalid",
+            "description": "Local model is unconfigured or unavailable. A refused startup check includes a reason_code.",
             "content": {
               "application/json": {
                 "schema": {
@@ -864,7 +864,7 @@
             }
           },
           "503": {
-            "description": "Model admission unavailable or task could not start",
+            "description": "Model admission unavailable or task could not start. A refused startup check includes a reason_code.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1215,6 +1215,10 @@
           },
           "error": {
             "type": "string"
+          },
+          "reason_code": {
+            "type": "string",
+            "description": "Stable reason for a refused local-model startup check"
           }
         }
       },

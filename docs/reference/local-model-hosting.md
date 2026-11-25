@@ -27,32 +27,45 @@ queue dispatch and other direct clients. Check for no Wan or Foley job and no
 render hold. Check both Comfy queue lists empty and confirm the expected UUIDs
 and known idle ownership. Confirm the PVC is bound and the current init
 containers are healthy. Collect the previous revision, pod UID and code hashes.
+The Bash verification blocks run in their own shell. Each gate reports its
+result and a failed check stops the block, after collecting failure evidence
+where the block calls for it. Export the `OP442_*` inputs before running a block.
 
 ```bash
-(
+bash -s <<'BASH'
 set -euo pipefail
+source scripts/wan-video/op442_gate.sh
 wan_exec() { kubectl -n ai exec deploy/wan-video -c api -- "$@"; }
 at_wan() {
   wan_exec python -c 'import sys, urllib.request
-from urllib.error import HTTPError
-try:
-    response = urllib.request.urlopen("http://127.0.0.1:" + sys.argv[1], timeout=15)
-except HTTPError as error:
-    response = error
-with response:
-    print(response.status)
+with urllib.request.urlopen("http://127.0.0.1:" + sys.argv[1], timeout=15) as response:
+    if response.status != 200:
+        raise SystemExit("Expected HTTP 200")
     print(response.read().decode())' "$1"
 }
 
-at_wan 8080/health    # 200, accepting_jobs=true, active_job=null
-at_wan 8080/v1/ready # 200, active_video_job=null, active_foley_job=null
-at_wan 8189/v1/ready # 200, active_job=null
-at_wan 8188/queue    # queue_running=[], queue_pending=[]
+gate='Wan health and idle state'
+at_wan 8080/health | jq -e '.accepting_jobs == true and has("active_job") and .active_job == null'
+gate_passed
+gate='Wan product readiness and idle state'
+at_wan 8080/v1/ready | jq -e '.ready == true and has("active_video_job") and has("active_foley_job") and
+  .active_video_job == null and .active_foley_job == null'
+gate_passed
+gate='Foley readiness and idle state'
+at_wan 8189/v1/ready | jq -e 'has("active_job") and .active_job == null'
+gate_passed
+gate='Empty ComfyUI queue'
+at_wan 8188/queue | jq -e '.queue_running == [] and .queue_pending == []'
+gate_passed
+gate='Read rack GPU samples for operator review'
 wan_exec nvidia-smi --query-gpu=uuid,memory.used,utilization.gpu,temperature.gpu --format=csv
 wan_exec nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory --format=csv
+gate_passed
+gate='Read mounted code hashes'
 wan_exec sha256sum /config/video/api.py /config/video/product_local.py \
   /config/video/local_model_sidecar.py /config/video/openapi.json
-)
+gate_passed
+BASH
 ```
 
 Declare disruptive work with
@@ -80,6 +93,12 @@ and model behavior. The Wan CPU suite covers the private protocol, request
 limits, recovery and fake inference. CI also renders the staged manifests and
 validates the projected profile with the production loader.
 
+**Expected for the startup repair.** Its merge updates the same dormant
+ConfigMap and Reloader recreates Wan. Run the prechecks and post-rollout gate
+above, including one Ready Service endpoint on the new pod and the unchanged
+PVC UID. Keep Studio and direct producers paused across that window. The main
+workflow publishes a new signed digest. Leave the activation path staged.
+
 ## Part 2b activation
 
 **Expected.** Merge A, B and C in order, after each preceding health gate. A
@@ -90,15 +109,16 @@ calibrated profile. Flux can pick up a merge on its interval. Do each merge
 with its prechecks complete and the lane quiesced, and reconcile to capture the
 exact revision.
 
-After A and B squash-merge, merge `origin/main` into C's existing branch and
-push normally. Verify C's diff against main removes both temporary references
-from `kubernetes/main/apps/ai/kustomization.yaml`. Require checks on the exact
-merge and calibration head.
+A and B completed during the first attempt and their Flux references are retired.
+Keep their weights and read-back evidence. For the next C, start from current
+main and verify both temporary references stay absent from
+`kubernetes/main/apps/ai/kustomization.yaml`. Require checks on the exact
+activation and calibration head.
 
 ### Prepare evidence and verify the image
 
-Run from the PR C checkout throughout, including before merging A and B. Use one shell and set `OP442_EVIDENCE` to the
-printed directory for the commands below. Set `OP442_LEGACY_ID` to a known
+Run from the PR C checkout throughout. Export `OP442_EVIDENCE` with the printed
+directory for the commands below. Export `OP442_LEGACY_ID` with a known
 completed legacy video ID and keep its read private. Keep Studio dispatch and
 other direct producers quiesced from preflight through the smoke or rollback.
 Confirm OP410 and the queue worker are ready and no Studio dispatch is active.
@@ -115,13 +135,35 @@ Confirm OP410 and the queue worker are ready and no Studio dispatch is active.
 Use installed cosign or the pinned Linux amd64 tool below. The registry checks
 use an anonymous public pull token. They fetch the index, platform descriptors
 and attestation only. The signature binds the index, which binds the platform
-manifest and the provenance descriptor. Stop if any check fails.
+manifest and the provenance descriptor. In the activation patch, replace
+`pending-op442-startup-proof` with the `tag@sha256:...` from the signed main
+build. That image line also supplies the diagnostic Job and deployment health
+gate. The check below requires the latest image source revision on main and
+refuses the first activation's digest. Stop if any check fails.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   umask 077
   evidence=${OP442_EVIDENCE:?Set OP442_EVIDENCE to the private rollout directory}
+  rm -f "$evidence/verified-image"
+  base=kubernetes/main/apps/ai/wan-video
+  gate='Image pin matches the current startup source'
+  git fetch origin main
+  image_inputs=(scripts/studio-local-model "$base/app"
+    "$base/local-model-pending/weights/weights.json" .github/workflows/studio-local-model-build.yml)
+  revision=$(git log -1 --format=%H FETCH_HEAD -- "${image_inputs[@]}")
+  git grep -Fq 'STARTUP_LOG = "local-model-listening"' "$revision" -- "$base/app/local_model_sidecar.py"
+  git diff --quiet "$revision" -- "${image_inputs[@]}"
+  pin=$(awk '$1 == "tag:" {print $2}' "$base/local-model-pending/activation/sidecar.yaml")
+  [[ $pin =~ ^b12679-([0-9a-f]{40})-[0-9]+-[0-9]+@sha256:[0-9a-f]{64}$ ]]
+  [[ ${BASH_REMATCH[1]} == "$revision" ]]
+  tag=${pin%@*}
+  digest=${pin#*@}
+  [[ $digest != sha256:e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03 ]]
+  gate_passed
+  gate='Cosign available'
   cosign_bin=$(command -v cosign || true)
   if [[ -z "$cosign_bin" ]]; then
     [[ $(uname -m) == x86_64 ]]
@@ -138,19 +180,20 @@ manifest and the provenance descriptor. Stop if any check fails.
     fi
     printf '%s  %s\n' "$checksum" "$cosign_bin" | sha256sum -c
   fi
+  gate_passed
   export DOCKER_CONFIG="$evidence/registry-anon"
   mkdir -p "$DOCKER_CONFIG"
   export GOMAXPROCS=2
 
   repo=thaynes43/studio-local-model
-  revision=79fa01b5ff27b2b7aeacc78b079be7d99864d252
-  tag="b12679-$revision-45545041495-1"
-  digest=sha256:e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03
   image="ghcr.io/$repo@$digest"
+  gate='Image signature and workflow identity'
   "$cosign_bin" verify \
     --certificate-identity https://github.com/thaynes43/haynes-ops/.github/workflows/studio-local-model-build.yml@refs/heads/main \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com "$image" > "$evidence/signature.json"
   jq -e --arg digest "$digest" 'any(.[]; .critical.image["docker-manifest-digest"] == $digest)' "$evidence/signature.json"
+  gate_passed
+  gate='Tag, signed digest and platform descriptor'
   token=$(curl -fsS "https://ghcr.io/token?scope=repository:$repo:pull&service=ghcr.io" | jq -er .token)
   manifest() {
     curl -fsS -H "Authorization: Bearer $token" -H "Accept: $1" "https://ghcr.io/v2/$repo/manifests/$2"
@@ -166,6 +209,8 @@ manifest and the provenance descriptor. Stop if any check fails.
   attestation=$(jq -er --arg platform "$platform" '.manifests[] |
     select(.annotations["vnd.docker.reference.type"] == "attestation-manifest" and
            .annotations["vnd.docker.reference.digest"] == $platform) | .digest' "$evidence/index.json")
+  gate_passed
+  gate='Attestation digest, image provenance and source revision'
   manifest application/vnd.oci.image.manifest.v1+json "$attestation" > "$evidence/attestation.json"
   check_digest "$attestation" "$evidence/attestation.json"
   layer=$(jq -er '.layers[] | select(.annotations["in-toto.io/predicate-type"] == "https://slsa.dev/provenance/v0.2") | .digest' "$evidence/attestation.json")
@@ -177,7 +222,9 @@ manifest and the provenance descriptor. Stop if any check fails.
     (.predicate.metadata["https://mobyproject.org/buildkit@v1#metadata"].vcs |
       .source == "https://github.com/thaynes43/haynes-ops" and .revision == $revision)
   ' "$evidence/provenance.json"
-)
+  gate_passed
+  printf '%s\n' "ghcr.io/$repo:$pin" > "$evidence/verified-image"
+BASH
 ```
 
 ### A. Install only the download policy
@@ -190,19 +237,31 @@ provisioner's label and its DNS and HTTPS allowlists, require no Job or Job
 Kustomization, and check the same Wan pod is still Ready.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   umask 077
   evidence=${OP442_EVIDENCE:?}
+  gate='Dormant Wan, Foley and engine health'
   python3 -B scripts/wan-video/op442_smoke.py dormant > "$evidence/before-a.health.json"
+  gate_passed
+  gate='Record Wan pod UID'
   kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
     jq -er '.items | select(length == 1) | .[0].metadata.uid' > "$evidence/dormant.uid"
+  gate_passed
+  gate='Bound PVC and UID'
   kubectl -n ai get pvc wan-video -o json |
     jq -er 'select(.status.phase == "Bound") | .metadata.uid' > "$evidence/pvc.uid"
+  gate_passed
+  gate='Render node Ready on amd64'
   kubectl get node talosw01 -o json |
     jq -e '.status.nodeInfo.architecture == "amd64" and any(.status.conditions[]; .type == "Ready" and .status == "True")'
+  gate_passed
+  gate='Read rack GPU samples for operator review'
   kubectl -n ai exec deploy/wan-video -c api -- nvidia-smi --query-gpu=uuid,memory.used,utilization.gpu,temperature.gpu --format=csv
   kubectl -n ai exec deploy/wan-video -c api -- nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory --format=csv
+  gate_passed
+  gate='Known completed legacy video read'
   id=${OP442_LEGACY_ID:?}
   [[ $id =~ ^[0-9a-f]{32}$ ]]
   kubectl -n ai exec deploy/wan-video -c api -- python -B -c '
@@ -214,17 +273,22 @@ if job["id"] != sys.argv[1] or job["state"] != "succeeded":
     raise SystemExit("Expected a completed legacy video")
 print(json.dumps({"id": job["id"], "state": job["state"]}))
 ' "$id" > "$evidence/legacy.json"
-)
+  gate_passed
+BASH
 ```
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   umask 077
   evidence=${OP442_EVIDENCE:?}
+  gate='Reconcile download policy manifests'
   flux reconcile kustomization cluster-apps -n flux-system --with-source
   flux reconcile kustomization wan-local-model-download-policy -n ai
   flux get kustomizations -n ai wan-local-model-download-policy | tee "$evidence/a-flux.txt"
+  gate_passed
+  gate='Provisioner policy label and allowed DNS and HTTPS'
   kubectl -n ai get ciliumnetworkpolicy wan-local-model-provision -o json |
     jq -e '
       .spec.endpointSelector.matchLabels["app.kubernetes.io/name"] == "wan-local-model-provision" and
@@ -234,14 +298,23 @@ print(json.dumps({"id": job["id"], "state": job["state"]}))
         [{"matchName":"huggingface.co"},{"matchPattern":"**.cdn.hf.co"}]) and
       (.spec.egress[1].toPorts[0].ports == [{"port":"443","protocol":"TCP"}])
     '
+  gate_passed
+  gate='Provisioning Job and inventory are absent'
   job=$(kubectl -n ai get job wan-local-model-provision-r2 --ignore-not-found -o name)
   job_inventory=$(kubectl -n ai get kustomization wan-local-model-weights --ignore-not-found -o name)
   [[ -z "$job" && -z "$job_inventory" ]]
+  gate_passed
+  gate='Same Ready Wan pod UID'
+  old=$(cat "$evidence/dormant.uid")
   uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
-    jq -er '.items | select(length == 1) | .[0].metadata.uid')
-  [[ $uid == "$(cat "$evidence/dormant.uid")" ]]
+    jq -er '.items | select(length == 1) | .[0] |
+      select(any(.status.conditions[]; .type == "Ready" and .status == "True")) | .metadata.uid')
+  [[ -n "$old" && "$uid" == "$old" ]]
+  gate_passed
+  gate='Dormant health and discovery'
   python3 -B scripts/wan-video/op442_smoke.py dormant
-)
+  gate_passed
+BASH
 ```
 
 **Rollback A.** Before B, merge a revert of A and reconcile `cluster-apps`.
@@ -260,8 +333,10 @@ inodes for staging. Create the PVC subdirectory as the serving UID. If the
 pinned revision already exists, stop and review its provenance.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
+  gate='Weights capacity, directory permissions and unused revision'
   kubectl -n ai exec deploy/wan-video -c api -- python -B -c '
 import os
 from pathlib import Path
@@ -281,7 +356,8 @@ if os.path.lexists(target):
     raise SystemExit("Pinned revision already exists")
 print({"free_bytes": space.f_bavail * space.f_frsize, "free_inodes": space.f_favail})
 '
-)
+  gate_passed
+BASH
 ```
 
 B gives Flux a Job health check. The Job runs on talosw01 with the published
@@ -324,43 +400,68 @@ the path is gone and record the freed space. Leave the revision directory
 and other attempts in place.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   umask 077
   evidence=${OP442_EVIDENCE:?}
+  gate='Reconcile provisioning manifests'
   flux reconcile kustomization cluster-apps -n flux-system --with-source
   if ! flux --timeout=34m reconcile kustomization wan-local-model-weights -n ai; then
     kubectl -n ai logs job/wan-local-model-provision-r2 > "$evidence/b-provision.log" || true
     exit 1
   fi
+  gate_passed
+  gate='Provisioning Job complete and logs saved'
   kubectl -n ai wait --for=condition=complete job/wan-local-model-provision-r2 --timeout=30s
   kubectl -n ai logs job/wan-local-model-provision-r2 > "$evidence/b-provision.log"
+  gate_passed
+  gate='Successful pod ran the pinned provisioner'
   provisioner=docker.io/library/python:3.12.16-slim-bookworm@sha256:1475c4f5b6bcb7d35e57661d6f5d7429ec4041275633c15f2b49350ac898276d
   kubectl -n ai get pods -l batch.kubernetes.io/job-name=wan-local-model-provision-r2 -o json |
     jq -e --arg provisioner "$provisioner" '.items | select(length == 1) | .[0] |
       select(.status.phase == "Succeeded" and .spec.containers[0].image == $provisioner) |
       {uid: .metadata.uid, image: .spec.containers[0].image, imageID: .status.containerStatuses[0].imageID}' \
       > "$evidence/b-image.json"
+  gate_passed
+  gate='Provisioned manifest matches approved pins'
   weights=/workspace/local-model-weights/qwen3.5-9b-q5_k_m/3885219b6810b007914f3a7950a8d1b469d598a5
   pins=kubernetes/main/apps/ai/wan-video/local-model-pending/weights/weights.json
   wan() { kubectl -n ai exec deploy/wan-video -c api -- "$@"; }
   wan cat "$weights/manifest.json" > "$evidence/b-manifest.json"
-  diff -u <(jq -S . "$pins") <(jq -S . "$evidence/b-manifest.json")
+  jq -S . "$pins" > "$evidence/b-pins.sorted.json"
+  jq -S . "$evidence/b-manifest.json" > "$evidence/b-manifest.sorted.json"
+  diff -u "$evidence/b-pins.sorted.json" "$evidence/b-manifest.sorted.json"
+  files=$(jq -er '.files | select(length > 0) | .[] | [.name,.bytes,.sha256] | @tsv' "$pins")
+  gate_passed
   while IFS=$'\t' read -r name bytes hash; do
+    gate="Weight size and SHA-256 for $name"
     [[ $(wan stat -c '%s' "$weights/$name") == "$bytes" ]]
-    read -r actual _ < <(wan nice -n 19 sha256sum "$weights/$name")
+    checksum=$(wan nice -n 19 sha256sum "$weights/$name")
+    read -r actual _ <<< "$checksum"
     [[ $actual == "$hash" ]]
     printf '%s %s %s\n' "$name" "$bytes" "$actual"
-  done < <(jq -r '.files[] | [.name,.bytes,.sha256] | @tsv' "$pins") | tee "$evidence/b-weights.txt"
+    gate_passed
+  done <<< "$files" > "$evidence/b-weights.txt"
+  gate='PVC free byte reserve'
   wan df -Pk /workspace | tee "$evidence/b-bytes.txt" |
     awk 'END { exit !(NR >= 2 && $4 >= 8 * 1024 * 1024) }'
+  gate_passed
+  gate='PVC free inode reserve'
   wan df -Pi /workspace | tee "$evidence/b-inodes.txt" |
     awk 'END { exit !(NR >= 2 && $4 >= 1024) }'
+  gate_passed
+  gate='Same Wan pod and PVC UIDs'
+  old=$(cat "$evidence/dormant.uid")
   uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
     jq -er '.items | select(length == 1) | .[0].metadata.uid')
-  [[ $uid == "$(cat "$evidence/dormant.uid")" ]]
+  [[ -n "$old" && "$uid" == "$old" ]]
+  pvc_uid_matches "$evidence/pvc.uid"
+  gate_passed
+  gate='Dormant health and discovery'
   python3 -B scripts/wan-video/op442_smoke.py dormant > "$evidence/b-health.json"
-)
+  gate_passed
+BASH
 ```
 
 **Rollback B.** Keep producers paused. Capture the
@@ -382,28 +483,68 @@ ran in the dormant pod (15 samples on the model's card, all 266 MiB; ceiling
 270) and PR 5050 was merged at 06:15Z. The Wan pod was recreated with the
 sidecar at 06:17Z. Its three existing containers became Ready; the
 `local-model` container never did. It exited with status 1 immediately on
-every start (six restarts in eight minutes) after logging
-`ERROR: init 250 result=11` and
-`ValueError: Local-model sidecar must be pinned to its configured GPU UUID`
-from `local_model_sidecar.serve`. With the sidecar not Ready the pod had no
-Ready endpoint, so the Wan API was off its Service. The coordinator confirmed
-under the compute lease that the engine and workers were idle and that no
-residency journal existed, and used the direct revert below: the Wan
-Kustomization is back on the dormant `app` path. The weights, the image and
-this overlay are kept. The cause is not yet established: the sidecar has no
-device allocation of its own and is pinned by environment variable, as the
-Foley container is, and the check that failed reads the card's identity from
-inside the sidecar's image. Do not activate again before that check has been
-reproduced and fixed, and before a way to test the sidecar's start without
-taking Wan off its Service exists (the follow-up proposed in PR 5050's
-description).
+every observed start. The process raised
+`Local-model sidecar must be pinned to its configured GPU UUID`, so it never
+bound the private socket. The pod had no Ready Service endpoint. The
+coordinator proved the queue and workers idle under the lease and found no
+residency journal. PR 5056 (`0a521b75`) restored the dormant path. Helm waited
+until the Deployment reached its 30-minute progress deadline. The Flux
+Kustomization health check failed two seconds later on the failed HelmRelease
+and the revert could reconcile. The weights and activation configuration were
+retained.
+
+**Proven on CPU.** Anonymous GHCR extraction of the failed digest selected
+the Linux amd64 manifest `sha256:34336c097119df5ebecad0f5d5ba58a1bd0062a07a0c1ecdd89edba217706f1b`.
+The three Python modules matched `79fa01b5` byte for byte. Its CPython
+3.12.16 ran the real `serve` module with the staged profile. The weights
+fixture used the pinned manifest and sparse regular files of the pinned sizes.
+Startup checks that manifest, file type and size. The provisioning Job verifies
+the actual file hashes. Neither the fixture nor the test loads a model.
+With both process variables set to the profile UUID, `ready` passed and
+residency reported no child. Setting only `NVIDIA_VISIBLE_DEVICES=all` or only
+`CUDA_VISIBLE_DEVICES=0` reproduced the original Python traceback. The
+archived ReplicaSet records the correct named pins, and the failed process
+did not log its effective values. The specific live mismatch remains
+unverified. The Talos NVIDIA runtime has been observed rewriting
+`NVIDIA_VISIBLE_DEVICES` to `void` after mounting a pinned card. That could
+explain the failure. The diagnostic below checks the process values and
+driver-visible cards on talosw01. Foley starts without a startup equality
+check. Its leased worker verifies Card A
+through NVML and supplies the exact CUDA pin to its inference subprocess.
+[Talos NVIDIA runtime observation](../../.agents/runbooks/egpu-test-node.md)
+[ControlFoley worker source](../../scripts/controlfoley/service.py)
+
+The NVIDIA toolkit warning `ERROR: init 250 result=11` did not occur in the
+extracted image runtime. The archived logs show it in the same pod's healthy
+ComfyUI container, immediately before normal startup output. The
+talosw01 extension version `580.178.04-v1.19.1` contains
+`libnvidia-sandboxutils.so.580.178.04`. Its `Management::init` failure
+branch passes `init`, line 250 and the driver-initialization result to the
+log formatter. NVIDIA defines result 11 as a missing file path. The exact
+path was absent from the logs. The Python pin guard ran before loading a
+model library or querying the GPU.
+[NVIDIA status definitions](https://github.com/NVIDIA/nvidia-container-toolkit/blob/v1.19.1/internal/nvsandboxutils/nvsandboxutils.h)
+[Talos extensions issue 940](https://github.com/siderolabs/extensions/issues/940)
+
+**Expected after the repair.** The sidecar binds its private socket after a
+profile, pin or weights check fails. `ready` checks the listener and
+`residency` reports that this instance never started a child. Local discovery
+and new local requests return HTTP 503 `local_model_unavailable` with a
+`reason_code`. The CUDA pin must be the profile UUID and the NVIDIA pin must be
+that UUID or `void`. The same bounded NVML read used for card status queries
+all visible device UUIDs under the existing compute lease. Exactly one must
+match the profile. If the lease is occupied at startup, the listener reports
+`gpu_pin_unproven` immediately. The first local request or operator probe
+that passes the already-held lease completes the pin check. Discovery only
+reads the current verdict. A terminal refusal requires a restart after
+correcting the cause. With no older reservation and the lease and queue
+guards satisfied, Wan and Foley can proceed. A retained reservation still
+requires its normal release proof.
+Use the diagnostic below before changing the Wan pod.
 
 Check the Job succeeded, the read-back and disk/inode reserves pass and Wan
 is still dormant. Check node headroom for an 8 GiB request and 16 GiB limit,
-including other workloads. Starting with C, the Wan pod is Ready only when
-its local-model sidecar is Ready. Any sidecar restart briefly removes Wan
-from its Service, including access from the Studio worker, Open WebUI and the
-viewing route. A persistent sidecar failure keeps it off the Service.
+including other workloads.
 Run the [Wan-pod change check](#wan-pod-change-check) before every subsequent
 Wan-pod change. With producers paused, confirm known card ownership, drain
 ordinary ComfyUI cache under the existing lease, and collect Card A readings
@@ -425,10 +566,12 @@ idle card's memory against both the load baseline plus 4 MiB and the
 calibrated ceiling.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   umask 077
   evidence=${OP442_EVIDENCE:?}
+  gate='Leased idle proof, calibration and memory ceiling'
   kubectl -n ai exec -i deploy/wan-video -c api -- env PYTHONPATH=/config/video python -B - \
     > "$evidence/calibration.json" <<'PY'
 import json, math, subprocess, time
@@ -491,7 +634,8 @@ PY
   jq -r '.samples[].memory_mib' "$evidence/calibration.json"
   jq -r '.compute_apps_csv' "$evidence/calibration.json"
   jq -r '"Set unloaded_max_mib to \(.unloaded_max_mib) MiB"' "$evidence/calibration.json"
-)
+  gate_passed
+BASH
 ```
 
 C keeps the `ai/wan-video` Kustomization identity. Its rendered PVC stays the
@@ -505,42 +649,174 @@ Save the profile from the calibrated, checked PR head before merging. The
 hold-clearing command needs that exact profile if the mount has been removed.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   umask 077
   evidence=${OP442_EVIDENCE:?}
+  gate='Save the approved profile JSON'
   profile=kubernetes/main/apps/ai/wan-video/local-model-pending/activation/profile.yaml
   awk 'found { sub(/^    /, ""); print } /^  local-model.json: \|$/ { found=1 }' "$profile" |
     jq -e . > "$evidence/c-approved-profile.json"
-)
+  gate_passed
+BASH
 ```
 
-After the calibrated PR checks pass, declare activity with
-`agent-run declare-activity start "Wan local model activation" --scope ai,talosw01,wan-video`.
-Merge C and reconcile the parent and existing Wan Kustomization. Each of the
-four containers must be Ready on the new pod, and init containers must have
-completed. The sidecar must answer its private listener probe, and the
-Service must have a Ready endpoint for that pod. A sidecar restart briefly
-removes the Ready endpoint even if the other containers stay healthy. Mounted profile discovery and the legacy `/health` can respond
-while the sidecar is starting. An otherwise admissible legacy Wan, typed I2V,
-S2V or Foley request then reaches the ledger as failed with
-`local_model_unavailable` before engine work. Check the CPU outage test
-`test_mounted_outage_refuses_without_latching_even_with_engine_cache` in the PR
-results and the live Ready and listener gates below. Keep producers paused
-for any unavailable sidecar. Use the activity ID to end the declaration once
-settled.
+#### Run the one-shot startup diagnostic
+
+**Expected.** The coordinator decides whether to run the staged Job. Before
+creating it, run the dormant Wan-pod change check with producers paused.
+Confirm the queue and workers are empty, both GPU owners are known and idle,
+and the existing compute-lock file is present. Keep dispatch paused through
+the check. The Job uses the same container image, GPU environment, runtime
+class and security context as the sidecar. The NVIDIA runtime can expose Card A
+by UUID before the process acquires the lease, even without a device-plugin
+allocation. That gives the exact image a compute-capable device. Under this
+reviewed command, the wrapper writes the approved profile from a Job argument
+to its private `emptyDir` and calls the same startup function as the
+sidecar. Startup takes the original lease by inode for the read-only NVML
+enumeration. The wrapper checks that the CUDA library can be mapped under
+the same lease. It calls no CUDA initialization or model operation. The
+private workspace has no dispatch lease path, and the Wan PVC is read-only.
+Keep the overlay dormant if idle ownership or the nonblocking flock cannot
+be proved.
+An authorized equivalent is an isolated maintenance test on talosw01 with
+Wan stopped and proven idle, using the same container spec. The CPU smoke
+covers the real PID 1 listener and the `void` case off the NVIDIA runtime.
+The CPU runner bind-mounts a stand-in for the UUID query and gives only its
+disposable container a fixture PATH. The published image has no stand-in or
+test switch.
+
+Keep the Job and profile outside Flux. Use only the verified image from the
+step above. One Job create carries the approved profile and gets a unique
+attempt suffix. The 10-minute Job deadline includes scheduling and the
+image pull. Poll for either terminal condition and save the Job, pod
+termination state and logs for each attempt. Kubernetes cleans up the
+finished Job after 24 hours. Repeat the dormant health gate after collecting
+evidence. A failure keeps C on hold.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   umask 077
   evidence=${OP442_EVIDENCE:?}
+  attempt=$(mktemp -d "$evidence/start-check.XXXXXXXX")
+  base=kubernetes/main/apps/ai/wan-video/local-model-pending
+  gate='Verified image and approved profile'
+  pin=$(awk '$1 == "tag:" {print $2}' "$base/activation/sidecar.yaml")
+  image=$(cat "$evidence/verified-image")
+  [[ $image == "ghcr.io/thaynes43/studio-local-model:$pin" ]]
+  profile=$(jq -ce . "$evidence/c-approved-profile.json")
+  card=$(jq -er .gpu_uuid <<< "$profile")
+  gate_passed
+  gate='Existing Wan compute lock'
+  kubectl -n ai exec deploy/wan-video -c api -- test -f /workspace/compute.lock
+  gate_passed
+  gate='Create diagnostic Job'
+  yq -o=json '.' "$base/diagnostic/job.yaml" |
+    jq -e --arg image "$image" --arg profile "$profile" '
+      .spec.template.spec.containers[0] |= (.image = $image | .args[1] = $profile)
+    ' > "$attempt/spec.json"
+  kubectl -n ai create -f "$attempt/spec.json" -o json > "$attempt/created.json"
+  name=$(jq -er '.metadata.name | select(test("^wan-local-model-start-check-[a-z0-9]+$"))' "$attempt/created.json")
+  printf 'Diagnostic evidence directory %s, Job %s\n' "$attempt" "$name"
+  gate_passed
+  gate='Read diagnostic Job condition'
+  deadline=$((SECONDS + 660))
+  while :; do
+    kubectl -n ai get "job/$name" -o json --request-timeout=10s > "$attempt/job.json"
+    condition=$(jq -r '[.status.conditions[]? | select(.status == "True") | .type] |
+      if index("Failed") then "Failed" elif index("Complete") then "Complete" else "" end
+    ' "$attempt/job.json")
+    if [[ -n $condition ]] || (( SECONDS >= deadline )); then
+      break
+    fi
+    sleep 2
+  done
+  gate_passed
+  gate='Capture pod termination state'
+  kubectl -n ai get pods -l "batch.kubernetes.io/job-name=$name" -o json |
+    jq '{pods: [.items[] | {name: .metadata.name, status: .status}]}' > "$attempt/pods.json"
+  gate_passed
+  result=0
+  gate='Diagnostic Job completed'
+  if [[ $condition == Complete ]]; then
+    gate_passed
+  else
+    printf '%s failed (%s)\n' "$gate" "${condition:-deadline}" >&2
+    result=1
+  fi
+  gate='Capture diagnostic logs'
+  kubectl -n ai logs "job/$name" --pod-running-timeout=5s --request-timeout=15s \
+    > "$attempt/start-check.log" 2> "$attempt/logs.stderr"
+  gate_passed
+  gate='Diagnostic startup verdict and listener'
+  if sed -n 's/^[^{]*\({".*}\)$/\1/p' "$attempt/start-check.log" |
+    jq -se --arg card "$card" '
+      any(.[]; .event == "local-model-listening" and .verdict == "ready" and .reason_code == null and
+        .gpu_uuid == $card and (.pins.NVIDIA_VISIBLE_DEVICES == $card or .pins.NVIDIA_VISIBLE_DEVICES == "void") and
+        .pins.CUDA_VISIBLE_DEVICES == $card and .visible_gpu_count == 1 and .visible_gpu_uuids == [$card]) and
+      any(.[]; .ready == true and .residency.resident == false and .residency.receipt == null and
+        (.residency | has("startup_error") | not)) and
+      any(.[]; .cuda_library_loaded == true)
+    '; then
+    gate_passed
+  else
+    printf '%s failed\n' "$gate" >&2
+    result=1
+  fi
+  gate=''
+  exit "$result"
+BASH
+```
+
+#### Activate and verify the Service
+
+After the diagnostic and calibrated PR checks pass, declare activity with
+`agent-run declare-activity start "Wan local model activation" --scope ai,talosw01,wan-video`.
+In the Wan Flux Kustomization, change the path to the reviewed activation
+overlay. Keep `wait: false`, the 5-minute apply timeout, and the absence of
+`healthChecks`. The activation overlay sets HelmRelease
+`upgrade.disableWait: true` so its upgrade can finish applying resources
+while an image pull, init container or listener is still unhealthy. This
+allows the reviewed revert to reconcile without waiting for the Deployment
+progress deadline. Use the Deployment, EndpointSlice and discovery gates
+below as the workload proof. The dormant HelmRelease keeps its existing
+upgrade settings.
+
+Merge C and reconcile the parent and existing Wan Kustomization. Require four
+Ready containers on the new pod, completed init containers, a Ready Service
+endpoint, and healthy local discovery. The private probe remains Ready in the
+served failure state. Any complete listener outage can briefly remove Wan
+from the Service. While the listener is unavailable, an otherwise admissible
+legacy Wan, typed I2V, S2V or Foley request fails before engine work. Keep
+producers paused until the applicable gate passes. Use the activity ID to end
+the declaration once settled.
+
+The leased startup proof below resolves `gpu_pin_unproven` before discovery
+if the sidecar started while the API held the lease. The probe cannot
+dispatch model work.
+
+```bash
+bash -s <<'BASH'
+  set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  gate='Reconcile activation manifests'
   flux reconcile kustomization cluster-apps -n flux-system --with-source
-  flux --timeout=36m reconcile kustomization wan-video -n ai
+  flux reconcile kustomization wan-video -n ai
+  gate_passed
+  gate='Deployment rollout'
   kubectl -n ai rollout status deploy/wan-video --timeout=35m
-  image=ghcr.io/thaynes43/studio-local-model:b12679-79fa01b5ff27b2b7aeacc78b079be7d99864d252-45545041495-1@sha256:e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03
+  gate_passed
+  gate='New Ready pod, init containers and image'
+  image=$(cat "$evidence/verified-image")
+  old=$(cat "$evidence/dormant.uid")
+  [[ -n $old && -n $image ]]
   kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
-    jq -e --arg old "$(cat "$evidence/dormant.uid")" --arg image "$image" '
+    jq -e --arg old "$old" --arg image "$image" '
       .items | select(length == 1) | .[0] |
       select(.metadata.uid != $old and .spec.nodeName == "talosw01") |
       select(any(.spec.containers[]; .name == "local-model" and .image == $image)) |
@@ -550,29 +826,67 @@ settled.
       select(all(.status.initContainerStatuses[]; .state.terminated.exitCode == 0)) |
       {uid:.metadata.uid, containers:[.status.containerStatuses[] | {name,image,imageID,ready}]}
     ' > "$evidence/c-pod.json"
-  [[ $(kubectl -n ai get pvc wan-video -o jsonpath='{.metadata.uid}') == "$(cat "$evidence/pvc.uid")" ]]
+  gate_passed
+  gate='Same nonempty PVC UID'
+  pvc_uid_matches "$evidence/pvc.uid"
+  gate_passed
+  gate='New pod is a Ready Service endpoint'
+  uid=$(jq -er .uid "$evidence/c-pod.json")
   kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |
-    jq -e --arg uid "$(jq -r .uid "$evidence/c-pod.json")" '
+    jq -e --arg uid "$uid" '
       any(.items[].endpoints[]; .targetRef.uid == $uid and .conditions.ready == true)'
+  gate_passed
   for name in wan-local-model-weights wan-local-model-download-policy; do
+    gate="Retired inventory $name is absent"
     retired=$(kubectl -n ai get "kustomization/$name" --ignore-not-found -o name)
     [[ -z "$retired" ]]
+    gate_passed
   done
+  gate='Retired provisioning Job, policy and ConfigMap are absent'
   job=$(kubectl -n ai get job wan-local-model-provision-r2 --ignore-not-found -o name)
   policy=$(kubectl -n ai get ciliumnetworkpolicy wan-local-model-provision --ignore-not-found -o name)
   [[ -z "$job" && -z "$policy" ]]
   kubectl -n ai get configmaps -o name |
     awk '/^configmap\/wan-local-model-provision-/ { found=1 } END { exit found }'
+  gate_passed
+  gate='Local-model startup proof under the compute lease'
+  kubectl -n ai exec -i deploy/wan-video -c api -- env PYTHONPATH=/config/video python -B - <<'PY'
+import api
+
+lease = api.acquire_compute()
+if lease is None:
+    raise SystemExit("Compute is reserved")
+with lease:
+    lane = api.local.enabled_lane(api.ROOT, api.CONFIG)
+    if lane is None:
+        raise SystemExit("Expected an active local-model lane")
+    api.local.require_started(lane.status(residency_only=True, allow_unbound=True, lease=lease))
+PY
+  gate_passed
+  gate='Wan, Foley, queue and local discovery health'
   python3 -B scripts/wan-video/op442_smoke.py active > "$evidence/c-health.json"
-  profile=kubernetes/main/apps/ai/wan-video/local-model-pending/activation/profile.yaml
-  ceiling=$(awk -F '[: ,]+' '/"unloaded_max_mib"/ {print $3}' "$profile")
-  [[ $ceiling =~ ^[0-9]+$ ]]
+  gate_passed
+  gate='Discovery matches the approved ceiling'
+  ceiling=$(jq -er .unloaded_max_mib "$evidence/c-approved-profile.json")
   jq -e --argjson ceiling "$ceiling" '.discovery.unloaded_max_mib == $ceiling' "$evidence/c-health.json"
-  kubectl -n ai exec deploy/wan-video -c local-model -- printenv NVIDIA_VISIBLE_DEVICES CUDA_VISIBLE_DEVICES
+  gate_passed
+  gate='Sidecar log proves the GPU pin'
+  kubectl -n ai logs deploy/wan-video -c local-model > "$evidence/c-local-model.log"
+  card=$(jq -er .gpu_uuid "$evidence/c-approved-profile.json")
+  sed -n 's/^[^{]*\({".*}\)$/\1/p' "$evidence/c-local-model.log" |
+    jq -se --arg card "$card" '
+      any(.[]; (.event == "local-model-listening" or .event == "local-model-pin-proof") and
+        .reason_code == null and .gpu_uuid == $card and
+        (.pins.NVIDIA_VISIBLE_DEVICES == $card or .pins.NVIDIA_VISIBLE_DEVICES == "void") and
+        .pins.CUDA_VISIBLE_DEVICES == $card and .visible_gpu_count == 1 and .visible_gpu_uuids == [$card])
+    '
+  gate_passed
+  gate='GPU plugin allocation remains on ComfyUI'
   kubectl -n ai get deployment wan-video -o json |
     jq -e '[.spec.template.spec.containers[] | select(.resources.limits["nvidia.com/gpu"] != null) |
       {name, limit:.resources.limits["nvidia.com/gpu"]}] == [{"name":"app","limit":"2"}]'
-)
+  gate_passed
+BASH
 ```
 
 #### Wan-pod change check
@@ -587,28 +901,39 @@ Allow for a Service outage in the change window and repeat these checks
 after the replacement pod starts.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   mode=${OP442_WAN_MODE:-active}
   case "$mode" in
     active) containers='["api","app","foley","local-model"]' ;;
     dormant) containers='["api","app","foley"]' ;;
     *) printf 'Expected OP442_WAN_MODE=active or dormant\n' >&2; exit 1 ;;
   esac
+  gate='One Ready Wan pod with the expected containers'
   uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
     jq -er --argjson containers "$containers" '.items | select(length == 1) | .[0] |
       select(any(.status.conditions[]; .type == "Ready" and .status == "True")) |
       select(([.status.containerStatuses[].name] | sort) == $containers) |
       select(all(.status.containerStatuses[]; .ready)) | .metadata.uid')
   printf 'Wan pod UID %s\n' "$uid"
+  gate_passed
+  gate='Wan pod is a Ready Service endpoint'
   kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |
     jq -e --arg uid "$uid" 'any(.items[].endpoints[]; .targetRef.uid == $uid and .conditions.ready == true)'
+  gate_passed
+  gate='Read container status and image IDs'
   kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
     jq '.items[].status.containerStatuses[] | {name, imageID, ready, restartCount}'
+  gate_passed
+  gate='Wan, Foley, queue and model health'
   python3 -B scripts/wan-video/op442_smoke.py "$mode"
+  gate_passed
+  gate='Read rack process ownership for operator review'
   kubectl -n ai exec deploy/wan-video -c api -- nvidia-smi \
     --query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory --format=csv
-)
+  gate_passed
+BASH
 ```
 
 #### Clear a local-model hold
@@ -658,18 +983,62 @@ request receipts and avoid reusing an unresolved request ID. Start new work
 only after the health gate for the resulting active or dormant state.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   umask 077
   evidence=${OP442_EVIDENCE:?}
   receipt=$(mktemp "$evidence/hold-clear.XXXXXXXX")
   profile=${OP442_RECOVERY_PROFILE:-"$evidence/c-approved-profile.json"}
+  gate='Leased hold-clear proof and receipt'
   jq -en --slurpfile calibration "$evidence/calibration.json" \
     --slurpfile profile "$profile" \
     '{calibration: $calibration[0], profile: $profile[0]}' |
     kubectl -n ai exec -i deploy/wan-video -c api -- python -B /config/video/clear_local_model_hold.py |
     tee "$receipt"
-)
+  gate_passed
+BASH
+```
+
+#### Rollback C after a served startup refusal
+
+A Ready listener and HTTP 503 with a startup reason trigger this gate.
+Keep producers paused. Under the existing lease, confirm the queue and workers
+are idle, the journal path is absent, and the listener attests to a startup
+refusal with no child. Save that evidence and proceed to the GitOps revert.
+An existing journal or uncertain evidence requires the tracked rollback or
+hold-clearing path and the original release proof.
+
+```bash
+bash -s <<'BASH'
+  set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
+  umask 077
+  evidence=${OP442_EVIDENCE:?}
+  gate='Leased idle proof, no journal and served refusal with no child'
+  kubectl -n ai exec -i deploy/wan-video -c api -- env PYTHONPATH=/config/video python -B - \
+    > "$evidence/start-refusal-rollback.json" <<'PYTHON'
+import json
+import api
+from clear_local_model_hold import check_idle, path_present
+
+lease = api.acquire_compute()
+if lease is None:
+    raise SystemExit("Compute is reserved")
+with lease:
+    check_idle()
+    if path_present(api.local.state_path(api.ROOT)):
+        raise SystemExit("Residency journal exists. Use tracked rollback or hold clearing.")
+    lane = api.local.enabled_lane(api.ROOT, api.CONFIG)
+    if lane is None:
+        raise SystemExit("Expected an active local-model lane")
+    status = lane.status(residency_only=True, allow_unbound=True)
+    if not status.get("startup_error") or status["resident"]:
+        raise SystemExit("The listener did not report a startup refusal with no model child")
+    print(json.dumps(status))
+PYTHON
+  gate_passed
+BASH
 ```
 
 #### Rollback C after the sidecar served
@@ -689,17 +1058,20 @@ the profile has been removed through the reviewed dormant revert. Follow
 the dormant recovery gate for any retained journal before resuming dispatch.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   umask 077
+  gate='Tracked rollback and residency release'
   python3 -B scripts/wan-video/op442_smoke.py rollback --evidence "${OP442_EVIDENCE:?}"
-)
+  gate_passed
+BASH
 ```
 
 #### Rollback C when the sidecar never became Ready
 
-A bad image or missing weights can keep the sidecar from listening and leave
-the Service without a Ready endpoint. If rollout observation from pod creation
+An image that cannot run or a listener it cannot bind can leave the Service
+without a Ready endpoint. For a served startup refusal, use its leased no-child gate above. If rollout observation from pod creation
 shows the sidecar never became Ready, and the API container confirms
 `state.json` is absent, proceed directly to the GitOps revert. Every model load
 writes state before it starts a child. This path works without a sidecar
@@ -719,16 +1091,24 @@ Kubernetes reports an exit, read the previous container logs. Keep these
 records private. Require the inside-container proof to succeed on the same pod.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
+  gate='Read current Wan pod names'
   kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o wide
+  gate_passed
+  gate='Read failed sidecar status and pod events'
   pod=${OP442_FAILED_POD:?Set OP442_FAILED_POD to the failed Wan pod name}
   kubectl -n ai get pod "$pod" -o json |
     jq -e '.status.containerStatuses[] | select(.name == "local-model" and .ready == false) |
       {ready, started, restartCount, state, lastState}'
   kubectl -n ai describe pod "$pod"
+  gate_passed
+  gate='No Ready Service endpoint'
   kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |
     jq -e 'all(.items[].endpoints[]; .conditions.ready != true)'
+  gate_passed
+  gate='Read status and applicable sidecar logs'
   status=$(kubectl -n ai get pod "$pod" -o json |
     jq -ce '.status.containerStatuses[] | select(.name == "local-model")')
   if jq -e '.state.running or .state.terminated' <<< "$status" > /dev/null; then
@@ -737,13 +1117,16 @@ records private. Require the inside-container proof to succeed on the same pod.
   if jq -e '.lastState.terminated' <<< "$status" > /dev/null; then
     kubectl -n ai logs "$pod" -c local-model --previous --tail=80
   fi
-)
+  gate_passed
+BASH
 ```
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   pod=${OP442_FAILED_POD:?}
+  gate='Leased idle proof, activated profile and no residency journal'
   kubectl -n ai exec -i "$pod" -c api -- env PYTHONPATH=/config/video python -B - <<'PY'
 import api
 from clear_local_model_hold import check_idle, path_present
@@ -757,16 +1140,16 @@ with lease:
         raise SystemExit("Expected the activated profile on the failed pod")
     if path_present(api.local.state_path(api.ROOT)):
         raise SystemExit("Residency journal exists. Use the tracked rollback or hold clearing.")
-    print("Compute lease acquired, engine and workers idle, no residency journal")
 PY
-)
+  gate_passed
+BASH
 ```
 
 #### GitOps revert and dormant gate
 
-For either rollback, merge a reviewed revert of C's activation settings in
+After the applicable rollback proof, merge a reviewed revert of C's activation settings in
 `wan-video/ks.yaml`. Restore the dormant `./kubernetes/main/apps/ai/wan-video/app`
-path and 5-minute timeout and remove the activation health checks. Retain the
+path. Keep the 5-minute timeout and operator readiness gate. Retain the
 Wan app ConfigMap helper and keep both completed provisioning inventories
 retired. Reconcile the parent and existing Wan Kustomization. Set
 `OP442_ACTIVE_POD_UID` to the UID of the pod being replaced. Require a new
@@ -781,26 +1164,42 @@ the memory proof and the remaining gates. End the activity declaration once
 settled.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   umask 077
   evidence=${OP442_EVIDENCE:?}
   old=${OP442_ACTIVE_POD_UID:?Set OP442_ACTIVE_POD_UID to the pod being replaced}
+  gate='Reconcile dormant manifests'
   flux reconcile kustomization cluster-apps -n flux-system --with-source
   flux reconcile kustomization wan-video -n ai
+  gate_passed
+  gate='Dormant Deployment rollout'
   kubectl -n ai rollout status deploy/wan-video --timeout=35m
   flux get kustomizations -n ai wan-video > "$evidence/rollback-flux.txt"
+  gate_passed
+  gate='New Ready dormant pod and successful init containers'
   uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
     jq -er --arg old "$old" '.items | select(length == 1) | .[0] |
       select(.metadata.uid != $old) |
       select(([.status.containerStatuses[].name] | sort) == ["api","app","foley"]) |
-      select(all(.status.containerStatuses[]; .ready)) | .metadata.uid')
-  [[ $(kubectl -n ai get pvc wan-video -o jsonpath='{.metadata.uid}') == "$(cat "$evidence/pvc.uid")" ]]
+      select(all(.status.containerStatuses[]; .ready)) |
+      select(all(.status.initContainerStatuses[]; .state.terminated.exitCode == 0)) | .metadata.uid')
+  gate_passed
+  gate='Same nonempty PVC UID'
+  pvc_uid_matches "$evidence/pvc.uid"
+  gate_passed
+  gate='New pod is a Ready Service endpoint'
   kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |
     jq -e --arg uid "$uid" 'any(.items[].endpoints[]; .targetRef.uid == $uid and .conditions.ready == true)'
+  gate_passed
+  gate='Local-model profile mount is absent'
   kubectl -n ai exec deploy/wan-video -c api -- test ! -e /config/video/local-model.json
+  gate_passed
+  gate='Dormant health and discovery'
   python3 -B scripts/wan-video/op442_smoke.py dormant > "$evidence/rollback-health.json"
-)
+  gate_passed
+BASH
 ```
 
 ## Two private smoke windows
@@ -814,13 +1213,18 @@ first window. Each admitted operation uses the Wan compute lease. Each
 terminal open through cleanup and hold dispatch paused between windows.
 
 ```bash
-(
+bash -s <<'BASH'
   set -euo pipefail
+  source scripts/wan-video/op442_gate.sh
   umask 077
   evidence=${OP442_EVIDENCE:?}
+  gate='Window 1 cold load, text, vision, handover and final unload'
   python3 -B scripts/wan-video/op442_smoke.py window-1 --evidence "$evidence"
+  gate_passed
+  gate='Window 2 paired memory drift and final unload'
   python3 -B scripts/wan-video/op442_smoke.py window-2 --evidence "$evidence"
-)
+  gate_passed
+BASH
 ```
 
 ### Window 1. Cold load, text, vision and S2V
@@ -871,7 +1275,7 @@ window incomplete.
 | Dormant recovery finds a socket, an unresolvable process name or an unavailable process query | The helper archives a socket only after a refused connection under the lease. A live listener, non-socket, ambiguous probe or process proof failure stops recovery. Keep dispatch paused and preserve any moved socket. An empty process list still requires all three memory readings to pass. |
 | Release receipt missing, failed or inconsistent without a confirmed hold | Hold status unknown. Preserve the request and journal, and inspect under the lease. Use [hold clearing](#clear-a-local-model-hold) if held, or resume tracked cleanup only after ownership and residency are known. |
 | Unknown ownership, malformed queue, unsettled request or failed lease proof | Foreign work or lease contention alone does not latch the local-model hold. A malformed queue may latch a separate render hold or a local-model hold after dispatch. Resolve ownership and any Wan render hold first. Use [hold clearing](#clear-a-local-model-hold) for a latched local-model hold. |
-| Bad image, weights, reserve failure or unavailable listener | These preflight failures do not themselves latch a hold. Use the [direct rollback](#rollback-c-when-the-sidecar-never-became-ready) only with evidence of no Ready transition and no state file. If state is present, use the tracked rollback and [hold clearing](#clear-a-local-model-hold) if held. |
+| Startup refusal, reserve failure or unavailable listener | The startup refusal creates no hold. With a listening but unavailable process, verify prior residency under the lease before reverting. Use the [direct rollback](#rollback-c-when-the-sidecar-never-became-ready) only with evidence of no Ready transition and no state file. With state present, use the tracked rollback and [hold clearing](#clear-a-local-model-hold) if held. |
 | Access denial | The denial does not itself latch a hold. The state of any earlier request may be unknown. Stop without retrying through another route. An authorized operator can inspect and follow [hold clearing](#clear-a-local-model-hold) if held. |
 | Output check, cap or budget failure | No hold from the stop itself. Finish verified cleanup within the reserve if safe. If the API latches a hold during release, use [hold clearing](#clear-a-local-model-hold). |
 
