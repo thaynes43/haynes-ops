@@ -391,6 +391,17 @@ class RenderOverlayTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "segmentation activation must build on the matting render overlay"):
             guard._check_render_overlays(self.studio, self.pending)
 
+    def test_live_render_must_stay_on_base(self):
+        path = self.render / "ks.yaml"
+        path.write_text(f"spec:\n  path: ./{guard.STUDIO_PATH.with_name('studio-render')}/matting-pending\n")
+        with self.assertRaisesRegex(ValueError, "live studio-render Flux path must stay on the base"):
+            guard._check_render_overlays(self.studio, self.pending)
+
+    def test_activation_must_reference_its_render_substage(self):
+        self.write(self.pending / "activation")
+        with self.assertRaisesRegex(ValueError, "segmentation activation must build on the matting render overlay"):
+            guard._check_render_overlays(self.studio, self.pending)
+
     def test_unknown_render_overlay_can_supply_its_own_helmrelease(self):
         extra = self.studio.parent.parent / "other/render"
         self.write(extra, "release.json")

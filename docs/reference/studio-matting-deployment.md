@@ -116,8 +116,9 @@ PY
 Use an exclusive heavy-job window on `talosw01`. Confirm the window is
 clear of heavy render and Foley work and review node and render pod load
 before running the block. It records fresh readings and gates Job
-creation on Wan's `/health` reporting no active job and the image engine's
-queue being empty.
+creation on Wan's `/v1/ready` reporting readiness and both video and Foley
+idle, and the image engine's queue being empty. Before 2026-11-25 14:30Z,
+the idle gates read only `/health`.
 Run `studio-matting-smoke-03` once after the new pin's read-back. The Job
 uses plain `studio-matting smoke` with the serving profile. It requests
 8 GiB and limits the container to 2 CPUs and 10 GiB. It has a 300 s deadline,
@@ -147,6 +148,12 @@ with urlopen(sys.argv[1], timeout=5) as response:
     sys.stdout.buffer.write(response.read())
 ' "$url"
   }
+  wan_idle() {
+    read_endpoint deploy/wan-video api http://127.0.0.1:8080/v1/ready |
+      check_json 'Wan idle' '.ready == true and
+        has("active_video_job") and .active_video_job == null and
+        has("active_foley_job") and .active_foley_job == null'
+  }
   stage=kubernetes/main/apps/ai/studio/matting-pending
   allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
   provision="studio-matting-provision-${allocation##*-}"
@@ -156,8 +163,7 @@ with urlopen(sys.argv[1], timeout=5) as response:
   pin=$(yq '.data.image' "$stage/release/release.yaml")
   kubectl top node talosw01
   kubectl -n ai top pod --containers -l app.kubernetes.io/name=studio-render
-  read_endpoint deploy/wan-video api http://127.0.0.1:8080/health |
-    check_json 'Wan idle' 'has("active_job") and .active_job == null'
+  wan_idle
   read_endpoint comfyui-0 app http://127.0.0.1:8188/queue |
     check_json 'Image engine queue empty' '.queue_running == [] and .queue_pending == []'
   smoke=$(kustomize build "$stage/smoke")
@@ -223,7 +229,8 @@ and use the target height for its pinned cast slot. Keep the path, asset
 IDs and output locator private. Mark the iris interiors and visible hair
 before the trial. Run in an exclusive heavy-job window as for the smoke,
 including no concurrent Foley or heavy render. The block checks fresh
-node load, render load, Wan health and the shared image queue.
+node load, render load, Wan readiness and idleness for video and Foley,
+and the shared image queue.
 
 The staged template emits one Job with inline scripts. Its dedicated
 `studio-matting-quality` deny-all policy must be live before admission.
@@ -335,8 +342,10 @@ with urlopen(sys.argv[1], timeout=5) as response:
         "ingressDeny":[{"fromEntities":["all"]}], "egressDeny":[{"toEntities":["all"]}]}'
   }
   wan_idle() {
-    read_endpoint deploy/wan-video api http://127.0.0.1:8080/health |
-      assert_json 'length == 1 and (.[0] | has("active_job") and .active_job == null)'
+    read_endpoint deploy/wan-video api http://127.0.0.1:8080/v1/ready |
+      assert_json 'length == 1 and (.[0] | .ready == true and
+        has("active_video_job") and .active_video_job == null and
+        has("active_foley_job") and .active_foley_job == null)'
   }
   images_idle() {
     read_endpoint comfyui-0 app http://127.0.0.1:8188/queue |
