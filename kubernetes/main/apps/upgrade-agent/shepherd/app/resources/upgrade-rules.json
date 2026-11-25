@@ -575,6 +575,21 @@
         ]
       },
       {
+        "id": "studio-local-model-build",
+        "source": ".github/workflows/studio-local-model-build.yml",
+        "workflow": "Build Studio Local Model Image",
+        "filter": "on.pull_request.paths",
+        "paths": [
+          "scripts/studio-local-model/**",
+          "kubernetes/main/apps/ai/wan-video/app/**",
+          "kubernetes/main/apps/ai/wan-video/local-model-pending/weights/weights.json",
+          ".github/workflows/studio-local-model-build.yml"
+        ],
+        "checks": [
+          "validate"
+        ]
+      },
+      {
         "id": "upgrade-agent-build",
         "source": ".github/workflows/upgrade-agent-build.yml",
         "workflow": "Build and Push Upgrade Agent Image",
