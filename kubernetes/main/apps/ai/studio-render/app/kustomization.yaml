@@ -7,7 +7,11 @@ resources:
 components:
   - ../../../../../shared/components/common/repos/app-template
 configMapGenerator:
+  # The predecessor pod uses this exact config if it needs to restart before Helm upgrades.
   - name: studio-render-requirements
+    files:
+      - requirements.txt=requirements-op964.txt
+  - name: studio-render-environment-op967
     files:
       - requirements.txt
       - render-init.py

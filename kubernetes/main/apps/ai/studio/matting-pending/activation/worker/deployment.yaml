@@ -18,6 +18,7 @@ spec:
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
+      shareProcessNamespace: false
       serviceAccountName: studio-matte-worker
       priorityClassName: dev-env-agent
       nodeSelector:
@@ -38,11 +39,6 @@ spec:
           env:
             - name: STUDIO_API_URL
               value: http://studio-api.ai.svc.cluster.local:8002
-            - name: STUDIO_WORKER_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: studio-matte-worker-token
-                  key: STUDIO_WORKER_TOKEN
             - {name: STUDIO_MATTING_IMAGE, value: image-replaced-by-release}
             - {name: STUDIO_MATTING_REVISION, value: revision-replaced-by-release}
             - {name: STUDIO_MATTING_PROFILE_SHA256, value: profile-replaced-by-release}
@@ -80,6 +76,9 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
           volumeMounts:
+            - name: worker-token
+              mountPath: /run/secrets/studio-worker
+              readOnly: true
             - name: config
               mountPath: /etc/studio
               readOnly: true
@@ -89,6 +88,12 @@ spec:
             - name: progress
               mountPath: /run/studio
       volumes:
+        - name: worker-token
+          secret:
+            secretName: studio-matte-worker-token
+            defaultMode: 0440
+            items:
+              - {key: STUDIO_WORKER_TOKEN, path: token}
         - name: config
           configMap:
             name: studio-matte-worker-config

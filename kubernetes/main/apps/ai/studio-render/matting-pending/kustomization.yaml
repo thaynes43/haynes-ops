@@ -1,13 +1,6 @@
-# Reduce the offline budget before the matte worker and sidecar start.
+# Both the predecessor Flux path and this composed path yield the 17-CPU
+# HelmRelease during turnover. Segmentation composes on top of this path.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../app
-patches:
-  - target:
-      kind: HelmRelease
-      name: studio-render
-    patch: |-
-      - op: replace
-        path: /spec/values/controllers/studio-render/containers/app/resources/limits/cpu
-        value: "17"

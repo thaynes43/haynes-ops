@@ -46,6 +46,8 @@ jobs:
             kubernetes/main/apps/ai/studio/**
             kubernetes/main/apps/ai/studio-render/**
             scripts/tests/studio-release/**
+            scripts/studio-release/op967*
+            docs/reference/studio-fourth-release.md
             docs/reference/studio-matting-deployment.md
             docs/reference/studio-upscaling-deployment.md
             scripts/studio-segmentation/**
@@ -238,6 +240,7 @@ jobs:
             "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_upscaling.py
           PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
             "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_release.py
+          "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_op967.py
       - name: Check out the Studio matting source for the synthetic trial
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

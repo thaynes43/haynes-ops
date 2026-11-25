@@ -2,6 +2,7 @@
 
 import os
 import sys
+from pathlib import Path
 from time import sleep
 
 import httpx
@@ -12,7 +13,8 @@ from haynes_studio.queue.worker_tokens import worker_bearer
 
 def main():
     progress = ProgressFile(os.environ["STUDIO_WORKER_PROGRESS_FILE"])
-    token = worker_bearer(os.environ["STUDIO_WORKER_TOKEN"])
+    secret = Path("/run/secrets/studio-worker/token").read_text().strip()
+    token = worker_bearer(secret)
     headers = {"Authorization": f"Bearer {token}"}
     with httpx.Client(base_url=os.environ["STUDIO_API_URL"], headers=headers,
                       timeout=5, trust_env=False) as client:
@@ -30,7 +32,9 @@ def main():
             except (httpx.RequestError, ValueError):
                 pass
             sleep(5)
-    os.execvp(sys.argv[1], sys.argv[1:])
+    # The CLI consumes the bearer from its process environment. The token is
+    # projected only into this container, which has its own PID namespace.
+    os.execvpe(sys.argv[1], sys.argv[1:], {**os.environ, "STUDIO_WORKER_TOKEN": secret})
 
 
 if __name__ == "__main__":

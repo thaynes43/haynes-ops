@@ -2,6 +2,7 @@
 
 import os
 import sys
+from pathlib import Path
 
 import httpx
 
@@ -60,6 +61,9 @@ def probe(client, lane):
                                  json={"unexpected": True}))
 
     if lane == "matte":
+        for route in (*WORK_ROUTES, "release-matte"):
+            results.append(check(client, f"matte anonymous {route}", route, 401, "auth.required",
+                                 content=malformed, authenticated=False))
         results += [
             check(client, "matte POST release-matte reaches API validation", "release-matte", 422,
                   content=malformed),
@@ -76,6 +80,8 @@ def main():
     lane, *mode = sys.argv[1:]
     if lane not in LANES or (mode and (lane, mode) != ("matte", ["idle-claim"])):
         return 1
+    if lane == "matte":
+        os.environ["STUDIO_WORKER_TOKEN"] = Path("/run/secrets/studio-worker/token").read_text().strip()
     base = os.environ["STUDIO_API_URL"]
     port = 8000 if lane == "run" else 8002
     if base != f"http://studio-api.ai.svc.cluster.local:{port}":

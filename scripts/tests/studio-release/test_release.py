@@ -8,6 +8,7 @@ import re
 import subprocess
 import unittest
 from contextlib import ExitStack, redirect_stdout
+from hashlib import sha256
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,6 +19,35 @@ spec = importlib.util.spec_from_file_location("studio_release_check", Path(__fil
 guard = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guard)
 STUDIO = guard.STUDIO_PATH
+MATTE = STUDIO / guard.MATTE_ACTIVATION
+AUTH_SOURCE = b"""
+class WorkerRoute(MetadataRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+        async def authenticated(request):
+            await run_in_threadpool(worker_access, request)
+            return await handler(request)
+        return authenticated
+
+def worker_access(request):
+    if len(headers) != 1:
+        raise unauthenticated()
+    if scheme.lower() != 'bearer' or not valid_worker_bearer(token):
+        raise unauthenticated()
+    worker = identity.get_worker_lane(conn, token)
+    if worker is None:
+        raise unauthenticated()
+    return worker
+"""
+ROUTES_SOURCE = ("""
+from .auth import WorkerRoute
+class WorkRoute(WorkerRoute):
+    pass
+def worker_router():
+    router = APIRouter(prefix="/internal/v1/work", route_class=WorkRoute)
+""" + "\n".join(f"    @router.post('/{route}')\n    def route_{index}(): pass"
+               for index, route in enumerate(guard.MEDIA_ROUTES))).encode()
+REVIEWED_MIGRATION = b"reviewed 0013 migration bytes"
 
 
 class ReleaseFixture:
@@ -34,6 +64,12 @@ class ReleaseFixture:
         release = yaml.safe_load((STUDIO / "release.yaml").read_text())
         digests = {guard.API_IMAGE: release["apiDigest"], f"{guard.API_IMAGE}-web": release["webDigest"]}
         self.enterContext(patch.object(guard, "studio_image_digest", side_effect=lambda image, _: digests[image]))
+        sources = {
+            "api/run_routes.py": ROUTES_SOURCE, "api/auth.py": AUTH_SOURCE,
+            "db/migrations/versions/0013_matte_jobs.py": REVIEWED_MIGRATION,
+        }
+        self.enterContext(patch.object(guard, "studio_source", side_effect=lambda _, path: sources[path]))
+        self.enterContext(patch.object(guard, "MIGRATION_0013_SHA256", sha256(REVIEWED_MIGRATION).hexdigest()))
         configs = {}
         for backend, contract in contracts.items():
             configs[f"{guard.API_IMAGE}-{backend}"] = {
@@ -189,6 +225,209 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
             self.assertRaisesRegex(ValueError, "offline render must export PyAV 18.1.1"),
         ):
             guard.check(STUDIO)
+
+    def test_stage_wiring_and_sidecar_metadata(self):
+        path = STUDIO / "ks.yaml"
+        for stage, field, value, error in (
+            (guard.MATTE_WORKER, "dependsOn", [{"name": "studio"}], "matte deployment must wait"),
+            (guard.MATTE_WORKER, "path", "./wrong", "matte deployment must wait"),
+            (guard.MATTE_WORKER, "wait", False, "matte deployment must wait"),
+            (guard.MATTE_WORKER, "prune", False, "matte deployment must wait"),
+            ("studio-matting-policy", "path", "./wrong", "matting policy must use the policy path"),
+            ("studio-matting-policy", "prune", False, "matting policy must use the policy path"),
+            (f"{guard.MATTE_WORKER}-registration", "dependsOn", [{"name": "studio-migration"}],
+             "matte registration must wait"),
+            (f"{guard.MATTE_WORKER}-registration", "path", "./wrong", "matte registration must wait"),
+        ):
+            flux = list(yaml.safe_load_all(path.read_text()))
+            guard.resource(flux, "Kustomization", stage)["spec"][field] = value
+            with self.subTest(stage=stage, field=field), self.override_source(path, yaml.safe_dump_all(flux)):
+                with self.assertRaisesRegex(ValueError, error):
+                    guard.check(STUDIO)
+        path = STUDIO / "matting-pending/release/release.yaml"
+        for field, value in (("revision", "b" * 40), ("profileSha256", "wrong")):
+            pin = yaml.safe_load(path.read_text())
+            pin["data"][field] = value
+            with self.subTest(field=field), self.override_source(path, yaml.safe_dump(pin)):
+                with self.assertRaisesRegex(ValueError, "published sidecar revision and provisioned profile hash"):
+                    guard.check(STUDIO)
+
+    def test_worker_and_sidecar_runtime_contract(self):
+        work_error = "matte worker must use its lane, worker listener"
+        mount_error = "matte worker must share only scratch"
+        token_error = "matte token must be mounted only in the worker"
+        for name, keys, value, error in (
+            ("worker", ("command",), ["studio-worker"], work_error),
+            ("worker", ("args",), ["studio-worker", "--lane", "image"], work_error),
+            ("worker", ("env", "STUDIO_API_URL", "value"), "http://studio-api:8000", work_error),
+            ("worker", ("env", "STUDIO_MATTING_REVISION", "value"), "b" * 40, work_error),
+            ("worker", ("env", "STUDIO_MATTING_PROFILE_SHA256", "value"), "b" * 64, work_error),
+            ("worker", ("startupProbe", "exec", "command"), ["true"], "300-second progress marker"),
+            ("worker", ("livenessProbe", "exec", "command"), ["true"], "300-second progress marker"),
+            ("worker", ("volumeMounts", "matte-scratch", "mountPath"), "/wrong", mount_error),
+            ("worker", ("volumeMounts", "store", "subPath"), "data/studio", mount_error),
+            ("worker", ("volumeMounts", "worker-token", "readOnly"), False, token_error),
+            ("pod", ("volumes", "worker-token", "secret", "secretName"), "other", token_error),
+            ("pod", ("securityContext", "fsGroup"), 1000, mount_error),
+            ("pod", ("nodeSelector", "kubernetes.io/hostname"), "talosw02", mount_error),
+            ("pod", ("automountServiceAccountToken",), True, token_error),
+            ("pod", ("shareProcessNamespace",), True, token_error),
+            ("deployment", ("strategy", "type"), "RollingUpdate", mount_error),
+            ("matting", ("command",), ["studio-matting", "ready"], "must serve as 10001:10001"),
+            ("matting", ("securityContext", "runAsUser"), 1000, "must serve as 10001:10001"),
+            ("matting", ("securityContext", "readOnlyRootFilesystem"), False, "no credentials, read-only root"),
+            ("matting", ("envFrom",), [{"secretRef": {"name": "studio-matte-worker-token"}}], "no credentials"),
+            ("matting", ("livenessProbe", "exec", "command"), ["true"], "Unix HTTP readiness"),
+            ("matting", ("startupProbe", "exec", "command"), ["true"], "Unix HTTP readiness"),
+            ("matting", ("readinessProbe", "exec", "command", 3),
+             lambda value: value.replace("200 or", "200 and"), "exact profile hash"),
+            ("matting", ("volumeMounts", "weights", "readOnly"), False, "read-only pinned weights"),
+            ("matting", ("lifecycle", "preStop", "sleep", "seconds"), 0, "preStop sleep"),
+            ("worker", ("lifecycle", "preStop", "sleep", "seconds"), 0, "preStop sleep"),
+            ("account", ("automountServiceAccountToken",), True, token_error),
+        ):
+            def mutate(stage):
+                worker = guard.resource(stage, "Deployment", guard.MATTE_WORKER)
+                objects = {"deployment": worker["spec"], "pod": worker["spec"]["template"]["spec"],
+                           "account": guard.resource(stage, "ServiceAccount", guard.MATTE_WORKER),
+                           "worker": guard.container(worker, "worker"), "matting": guard.container(worker, "matting")}
+                change(objects[name], keys, value)
+
+            with self.subTest(container=name, field=keys):
+                self.check_refuses_rendered_mutation(MATTE, mutate, error)
+
+        def mount_token_in_sidecar(stage):
+            worker = guard.resource(stage, "Deployment", guard.MATTE_WORKER)
+            guard.container(worker, "matting")["volumeMounts"].append({
+                "name": "worker-token", "mountPath": "/etc/worker", "readOnly": True,
+            })
+
+        self.check_refuses_rendered_mutation(MATTE, mount_token_in_sidecar, token_error)
+
+    def test_effective_network_and_label_coverage(self):
+        app = STUDIO / "app"
+        for stage, kind, name, keys, value, error in (
+            (MATTE, "NetworkPolicy", guard.MATTE_WORKER, ("spec", "egress"),
+             lambda rules: [*rules, {}], "matte worker effective egress"),
+            (MATTE, "NetworkPolicy", guard.MATTE_WORKER, ("spec", "ingress"),
+             [{}], "matte worker must refuse pod ingress"),
+            (MATTE, "Deployment", guard.MATTE_WORKER, ("spec", "template", "metadata", "labels", "app.kubernetes.io/name"),
+             "different", "pod labels must match"),
+            (MATTE, "NetworkPolicy", guard.MATTE_WORKER, ("spec", "podSelector", "matchLabels", "app.kubernetes.io/name"),
+             "different", "selector must cover the rendered pod labels"),
+            (app, "NetworkPolicy", "studio-api-ingress", ("spec", "ingress"),
+             lambda rules: [*rules, {}], "Studio API effective ingress"),
+            (app, "NetworkPolicy", "studio-api-ingress", ("spec", "ingress", 1, "from"),
+             [], "Studio API effective ingress"),
+            (app, "NetworkPolicy", "studio-api-ingress", ("spec", "podSelector", "matchLabels", "app.kubernetes.io/name"),
+             "different", "selector must cover the rendered pod labels"),
+        ):
+            def mutate(documents):
+                change(guard.resource(documents, kind, name), keys, value)
+
+            with self.subTest(stage=stage, kind=kind, field=keys):
+                self.check_refuses_rendered_mutation(stage, mutate, error)
+
+        def second_policy(documents):
+            documents.append({"kind": "NetworkPolicy", "metadata": {"name": "bypass-from-all"},
+                              "spec": {"podSelector": {"matchLabels": {"app.kubernetes.io/name": "studio-api"}},
+                                       "ingress": [{}]}})
+
+        self.check_refuses_rendered_mutation(app, second_policy, "Studio API effective ingress")
+
+    def test_job_registration_and_projection_contract(self):
+        reg = STUDIO / "matte-worker-registration"
+        projection = STUDIO / "media-worker-registration"
+        for stage, kind, name, keys, value, error in (
+            (reg, "Job", None, ("spec", "template", "spec", "containers", "register", "args", 5), "voice",
+             "matte registration must bind"),
+            (reg, "Job", None, ("spec", "template", "spec", "volumes", "token", "secret", "secretName"), "wrong",
+             "matte registration must bind"),
+            (reg, "Job", None, ("spec", "template", "spec", "containers", "register", "volumeMounts", "token", "readOnly"),
+             False, "matte registration must bind"),
+            (projection, "Password", f"{guard.MATTE_WORKER}-token", ("spec", "length"), 48,
+             "independent|own stable generated token"),
+            (projection, "ExternalSecret", f"{guard.MATTE_WORKER}-token", ("spec", "refreshPolicy"), "Periodic",
+             "own stable generated token"),
+            (projection, "ExternalSecret", f"{guard.MATTE_WORKER}-token", ("spec", "target", "creationPolicy"), "Owner",
+             "own stable generated token"),
+        ):
+            def mutate(documents):
+                change(guard.resource(documents, kind, name), keys, value)
+
+            with self.subTest(field=keys):
+                self.check_refuses_rendered_mutation(stage, mutate, error)
+
+    def test_registry_digest_cross_check_and_unfixed_migration_refusal(self):
+        with (
+            patch.object(guard, "studio_image_digest", return_value="sha256:" + "a" * 64),
+            self.assertRaisesRegex(ValueError, "digest must match the published Studio revision"),
+        ):
+            guard.check(STUDIO)
+        source = guard.studio_source
+        with (
+            patch.object(guard, "studio_source",
+                         side_effect=lambda revision, name: b"old migration" if name.endswith("0013_matte_jobs.py")
+                         else source(revision, name)),
+            self.assertRaisesRegex(ValueError, "repin to published Studio main images"),
+        ):
+            guard.check(STUDIO)
+
+    def test_registry_listener_requires_worker_token_on_every_forwarded_route(self):
+        guard.check_listener_auth(ROUTES_SOURCE, AUTH_SOURCE)
+        for routes, auth in (
+            (ROUTES_SOURCE.replace(b"route_class=WorkRoute", b"route_class=MetadataRoute"), AUTH_SOURCE),
+            (ROUTES_SOURCE.replace(b"@router.post('/release-matte')", b"@router.get('/release-matte')"), AUTH_SOURCE),
+            (ROUTES_SOURCE, AUTH_SOURCE.replace(b"await run_in_threadpool(worker_access, request)", b"pass")),
+            (ROUTES_SOURCE, AUTH_SOURCE.replace(b"valid_worker_bearer(token)", b"True")),
+        ):
+            with self.assertRaisesRegex(ValueError, "every port-8002 route must require a worker token"):
+                guard.check_listener_auth(routes, auth)
+
+    def test_listener_predecessor_map_keeps_identity_content_and_prune_rule(self):
+        for keys, value in (
+            (("data", "nginx.conf"), "changed"),
+            (("metadata", "annotations", "kustomize.toolkit.fluxcd.io/prune"), None),
+        ):
+            def mutate(documents):
+                change(guard.resource(documents, "ConfigMap", guard.PREDECESSOR_LISTENER), keys, value)
+
+            with self.subTest(field=keys):
+                self.check_refuses_rendered_mutation(
+                    STUDIO / "app", mutate, "keep the exact predecessor listener ConfigMap",
+                )
+
+    def test_render_split_and_equal_rollout_paths(self):
+        render = STUDIO.with_name("studio-render")
+        compose = render / "matting-pending"
+
+        def revert_cpu(documents):
+            release = guard.resource(documents, "HelmRelease", "studio-render")
+            change(release, ("spec", "values", "controllers", "studio-render", "containers", "app",
+                             "resources", "limits", "cpu"), "20")
+
+        self.check_refuses_rendered_mutation(compose, revert_cpu, "both live Flux paths")
+
+        def old_render_changed(documents):
+            guard.resource(documents, "ConfigMap", "studio-render-requirements")["data"]["requirements.txt"] = "bad"
+
+        changed = guard.render(compose)
+        old_render_changed(changed)
+        render_docs = guard.render
+        with (
+            patch.object(guard, "render", side_effect=lambda path: changed if path in {compose, render / "app"}
+                         else render_docs(path)),
+            self.assertRaisesRegex(ValueError, "keep the byte-identical offline requirements"),
+        ):
+            guard.check(STUDIO)
+
+
+def change(document, keys, value):
+    for key in keys[:-1]:
+        document = (next(item for item in document if item["name"] == key)
+                    if isinstance(document, list) and isinstance(key, str) else document[key])
+    key = keys[-1]
+    document[key] = value(document[key]) if callable(value) else value
 
 
 class IdleGateTest(unittest.TestCase):

@@ -10,23 +10,30 @@ The [release record](../../kubernetes/main/apps/ai/studio/release.yaml) pins
 both amd64 images, including the web image for the API's worker listener.
 The [successful Studio images
 run](https://github.com/thaynes43/haynes-studio/actions/runs/45653635223)
-published the pair for `0f6ca21e48f8a8e4d6745cba91267c4726733b47`.
-To refresh a pin from a later qualifying successful `main` run, use
+published the previous candidate, `0f6ca21e48f8a8e4d6745cba91267c4726733b47`.
+The release guard refuses that build's migration. After the Studio fix
+merges, select a successful Studio images run on `main` whose commit carries
+the reviewed fix. Repin with
 `python3 scripts/tests/studio-release/check.py --pin <full-studio-revision> <run-id>`
 from the Ops checkout with PyYAML, Kustomize, uv and Python 3.12 available.
 It verifies both tags and their manifests and OCI revision labels, updates
 the digest-named Job references and exports the offline runtime requirements
-from the selected lock. Verify that the later revision still admits the
-provisioned matting profile before using it.
+from the selected lock. It also checks the published revision's worker-route
+authentication and the bytes of the reviewed migration. Verify that the
+selected revision still admits the provisioned matting profile.
+[Studio migration fix](https://github.com/thaynes43/haynes-studio/pull/146)
 
 ## Preflight
 
-Arrange a quiet window with Studio submissions closed and no offline renders.
-Keep the window through postflight. Flux can start reconciling immediately
-after merge. Check for a free eligible node for each API surge replica, as
-in [OP964](studio-deployment.md#op964-third-release). Use the reviewed Ops
-checkout from an authorized terminal with LAN access and `XDG_RUNTIME_DIR`
-set. The script prints each check and returns nonzero on a failure.
+**The merge is the apply gate.** Arrange a quiet window with Studio
+submissions closed and the offline render container idle. The offline
+render pod restarts on merge. Finish any offline render or exec session
+before preflight, and keep the quiet window through postflight. Check for
+a free eligible node for each API surge replica as in the [third pin
+runbook](studio-deployment.md#op964-third-release). Use a LAN-capable
+operator shell in the clean, reviewed PR head incorporating current Ops
+`main`. Use new receipt and baseline paths in a private directory outside
+the checkout. Keep the same paths through postflight.
 
 ```bash
 if ! bash scripts/studio-release/op967.sh preflight; then
@@ -36,18 +43,50 @@ fi
 printf 'PASS release admission\n'
 ```
 
-This reads the Wan API's `/v1/ready` and requires readiness plus both
-`active_video_job` and `active_foley_job` present and null. It reads
-`comfyui-0`'s shared queue and requires both lists empty. Node measurements
-must show at most 10% CPU and 25% memory on `talosw01` and at most 250m CPU
-in the offline render app. The read-only data probe requires zero queued,
-running or held jobs and verifies both archived runs, deliveries and media
-indices. It saves file count, byte count, content hash and a modification
-time hash for the canonical store, excluding API readiness scratch. It also
-saves counts and canonical hashes of run, delivery and job rows. Use
-`STUDIO_OP967_BASELINE` to select a new file for another admission window.
-Keep the original file through postflight. An existing baseline path
-causes a refusal.
+The preflight writes `STUDIO_OP967_RECEIPT` with the reviewed Ops revision
+and Git tree, UTC time, the result of each check and the baseline hash.
+Merge only with a passing receipt from the same hour, within 60 minutes of
+starting preflight. If the PR head or base changes, or the window is lost,
+run preflight on the resulting reviewed tree with new evidence paths before
+merging. The baseline at `STUDIO_OP967_BASELINE` records the archived
+deliveries, run and job rows and store file totals, content and modification
+time hashes. Before the merge, the script also saves the four predecessor
+Job logs under `${STUDIO_OP967_RECEIPT}.jobs` (a `.jobs` directory beside the
+receipt). Flux prunes those Jobs and their pod logs.
+
+Preflight requires Wan `/v1/ready` with both active-job fields present and
+null, the shared `comfyui-0` queues empty, and at most 10% CPU and 25%
+memory on `talosw01`. The offline app must measure at most 250m CPU, have
+only its idle PID 1 apart from the probe, and have the completed PyAV
+18.1.0 venv. Studio must have zero queued, running or held jobs.
+
+After merge, fetch Ops `main`, select the exact full merge SHA in
+`MERGED_OPS_REVISION`, and check out that SHA. Each later block checks the
+receipt against the clean merged tree and verifies that the merge landed
+within its window. The reconcile blocks also read the Flux source artifact
+revision before each call. Wait for Flux to fetch that revision. A different
+artifact revision stops manual reconciliation.
+
+| Flux stage | Added or changed automatically on merge | Pruned automatically |
+| --- | --- | --- |
+| AI inventory | Adds matte worker and registration stages. Updates render, migration and the existing registration gates. | |
+| `studio-render` | Adds the fourth-pin render ConfigMap and updates the HelmRelease. The offline render pod restarts once at 17 CPUs. The installed and composed paths render the same target. | |
+| `studio-migration` | Creates the digest-named 0013 migration Job. | Third-pin migration Job and pod logs. |
+| `studio` | Rolls API replicas, their worker listeners, web and MCP. Updates API ingress and adds the new listener ConfigMap. The old listener ConfigMap stays available for predecessor pod replacements during a stalled surge. | |
+| `studio-worker-registration` | Creates the new run registration Job. | Third-pin run registration Job and pod logs. |
+| `studio-worker` | Replaces the run worker pod. | |
+| `studio-media-worker-registration` | Creates the new voice and image registration Jobs and the independent matte token projection. | Third-pin voice and image registration Jobs and pod logs. |
+| `studio-media-workers` | Replaces the voice and image worker pods. | |
+| `studio-matte-worker` | Adds the Deployment, ConfigMap, ServiceAccount and NetworkPolicy. | |
+| `studio-matte-worker-registration` | Creates the matte registration Job after the exact-profile sidecar is Ready. | |
+
+Offline render and migration can start in parallel. API, web and MCP wait
+for the successful migration at the selected revision. The existing workers
+wait for their API and registration dependencies. Matte also waits for the
+offline render split. Keep the predecessor listener ConfigMap and its
+explicit Flux prune exemption through the next pin. After verified turnover
+on that pin, remove the exemption while Flux still owns the object, then
+remove its declaration in the pin after next.
 
 **Proven at pickup.** OP459's successful provision and smoke used matting
 image `sha256:209031a328957e3fd25e12a4acb5518abd08e67adbc5efe1c89b721964cac0a5`
@@ -70,8 +109,14 @@ blocks activation. [OP459](https://work.haynesnetwork.com/work_packages/459)
 board/story checks on `media_jobs`. It seeds the matte FIFO and adds
 `matte_releases SMALLINT NOT NULL DEFAULT 0` with column-scoped runtime
 UPDATE permission. The constraint changes and writes commit together.
-DDL can wait for or briefly block old requests. Keep sampling the old pods
-while the Job runs. Record when the active window is too short to sample.
+The migration locks grants, media lanes, pause events and media jobs in
+that order. It waits at most 500 ms for the first lock and fails immediately
+if a later one is busy. Ready checks and worker authentication or claims may
+wait briefly while the DDL commits. A lock error rolls back the transaction
+so the existing API and workers can continue and the Job can retry. The
+small-table PostgreSQL 16 fixture held its locks for under 10 ms in both
+interleavings. Keep sampling the old pods while the Job runs. Record when
+the active window is too short to sample.
 
 **Source verified.** The `80975a9` readiness probe selects existing columns
 and tables with `LIMIT 0`. It doesn't require an exact Alembic revision.
@@ -83,33 +128,19 @@ Old catalog, release and archive queries use the same columns and rows.
 The compatibility is for the original workloads. The old job provenance
 parser cannot display a matte job document, and the matte lane is absent
 from its queue controls. Retain those records for a forward recovery.
-[Migration](https://github.com/thaynes43/haynes-studio/blob/0f6ca21e48f8a8e4d6745cba91267c4726733b47/src/haynes_studio/db/migrations/versions/0013_matte_jobs.py)
-· [Old readiness](https://github.com/thaynes43/haynes-studio/blob/80975a9e958d0bed78ab530c2b20f1279bf7ebe6/src/haynes_studio/api/app.py#L226)
+[Old readiness](https://github.com/thaynes43/haynes-studio/blob/80975a9e958d0bed78ab530c2b20f1279bf7ebe6/src/haynes_studio/api/app.py#L226)
 · [Old queue SQL](https://github.com/thaynes43/haynes-studio/blob/80975a9e958d0bed78ab530c2b20f1279bf7ebe6/src/haynes_studio/db/jobs.py#L36)
 · [Old job parser](https://github.com/thaynes43/haynes-studio/blob/80975a9e958d0bed78ab530c2b20f1279bf7ebe6/src/haynes_studio/queue/media_inputs.py#L51)
 
 Flux owns the migration and registration Jobs. The `studio` apply stage
 depends on the migration Kustomization and its successful digest-named Job.
-The rollout keeps `maxUnavailable: 0` on the API. Use the preflight exit
-gate before merging or reconciling. After merge, sample the API and schema
-gate from the Ops checkout.
+The rollout keeps `maxUnavailable: 0` on the API. The reconciliation below
+accelerates the automatic inventory and migration reconciliation.
 
 ```bash
-root=kubernetes/main/apps/ai/studio
-job=$(yq -er 'select(.kind == "Job") | .metadata.name' "$root/migration/job.yaml") || exit 1
-if ! flux reconcile kustomization cluster-apps -n flux-system --with-source; then
-  printf 'FAIL Flux source and inventory\n' >&2; exit 1
-fi
-printf 'PASS Flux source and inventory\n'
-if ! kubectl -n ai get pods -l app.kubernetes.io/name=studio-api \
-    -o 'custom-columns=NAME:.metadata.name,IMAGE:.status.containerStatuses[0].imageID'; then
-  printf 'FAIL API pod sample\n' >&2; exit 1
-fi
-printf 'PASS API pod sample\n'
-if ! flux reconcile kustomization studio-migration -n ai ||
-   ! kubectl -n ai wait --for=condition=Complete --timeout=5m "job/$job" ||
-   ! bash scripts/studio-release/op967.sh migration; then
-  printf 'FAIL migration gate, hold rollout follow-up\n' >&2; exit 1
+if ! bash scripts/studio-release/op967.sh migration; then
+  printf 'FAIL migration gate, hold rollout follow-up\n' >&2
+  exit 1
 fi
 printf 'PASS migration gate\n'
 ```
@@ -157,30 +188,22 @@ uses the migration identity to register `studio-matte-worker` for `matte`.
 After it gets the expected validation refusal, the wrapper replaces
 itself with `studio-worker --lane matte`. The worker also verifies the
 sidecar before claims. Its progress liveness allowance is 300 seconds.
-The API admits matte, voice and image at port 8002. The matte pod's egress
-allows DNS and that port only. The listener strips forwarded headers and
-admits the exact `POST /internal/v1/work/release-matte` alongside its five
-existing POST routes.
+Under provisional coordinator ruling CR-59, the matting sidecar shares the
+matte worker's pod network namespace. NetworkPolicy applies to both
+containers. The release guard requires pod egress limited to DNS and the
+API's port-8002 listener. The worker token is mounted read-only in the
+worker container only. Its environment is local to the worker process, with
+separate PID and mount namespaces and no token on shared storage. The
+sidecar runs as UID 10001 with a read-only root filesystem and no
+service-account token. All six exact POST routes on 8002 require a worker
+token. The listener clears forwarded headers. The release guard checks the
+router and token requirements in the pinned source, and postflight checks
+that every allowed route refuses an anonymous request.
 
 ```bash
-: "${MERGED_OPS_REVISION:?Set to the full merged Ops release revision}"
-if ! bash scripts/studio-release/op967.sh migration; then
-  printf 'FAIL schema gate, hold rollout follow-up\n' >&2; exit 1
-fi
-failed=0
-for stage in studio-render studio studio-worker-registration studio-worker \
-    studio-media-worker-registration studio-media-workers studio-matte-worker studio-matte-worker-registration; do
-  timeout=7m
-  if [[ $stage == studio-render ]]; then timeout=23m; fi
-  if flux reconcile kustomization "$stage" -n ai --timeout="$timeout"; then
-    printf 'PASS reconcile %s\n' "$stage"
-  else
-    printf 'FAIL reconcile %s\n' "$stage" >&2
-    failed=1; break
-  fi
-done
-if ((failed)) || ! bash scripts/studio-release/op967.sh roll "$MERGED_OPS_REVISION"; then
-  printf 'FAIL rollout and grant gates\n' >&2; exit 1
+if ! bash scripts/studio-release/op967.sh roll; then
+  printf 'FAIL rollout and grant gates\n' >&2
+  exit 1
 fi
 printf 'PASS rollout and grant gates\n'
 ```
@@ -255,10 +278,14 @@ queued matte jobs must be preserved through rollback, pause the lane
 using the existing Studio lane control and wait for current work to settle.
 The rollback probe requires a recorded matte pause before admitting queued
 matte jobs. Keep the reviewed fourth-pin checkout for the data probes. Use a new private
-baseline path and make this check before issuing a workload rollback.
+`STUDIO_OP967_BASELINE` path and make this check before merging the workload
+rollback PR. Keep the fourth-pin receipt and `MERGED_OPS_REVISION`. The
+baseline selects a Ready non-terminating API pod on either verified image.
+It prefers the predecessor when the new pods have yet to become Ready and
+checks the committed schema separately using the matte lane and release
+column.
 
 ```bash
-: "${STUDIO_OP967_BASELINE:?Choose a new private rollback baseline path}"
 if ! bash scripts/studio-release/op967.sh rollback-baseline; then
   printf 'FAIL rollback admission\n' >&2; exit 1
 fi
@@ -280,6 +307,24 @@ pod has left, then restore its third-pin CPU split and requirements if
 doing a full workload rollback. Record the two gates separately in the
 rollback PR and adjust the release guard there to verify the split between
 the retained schema Job and the third workload pin.
+
+For a full offline rollback, keep the forwarding init and the new startup
+logic, restore 20 CPUs and supply the byte-identical
+`requirements-op964.txt` contents as the active `requirements.txt` alongside
+the init. The pin keeps completed venvs on NFS by Python version and
+requirements hash. The old venv is reused and its PyAV import verified
+before readiness. A missing or incomplete environment is rebuilt at that
+same key while the fourth-pin venv stays available.
+
+On 2026-11-25 the exact yanked wheel for the pinned Python 3.12,
+Debian Bookworm amd64 image downloaded successfully from PyPI. It is
+`av-18.1.0-cp311-abi3-manylinux_2_28_x86_64.whl`, compatible with 3.12
+through the stable ABI, with SHA-256
+`8a032e8d8ebc73dec079364b9b4a6837638a2d106e8472314e685ffbf163e700`.
+If the old venv is absent and the wheel becomes unavailable, retain the
+fourth-pin offline workload and close the full offline rollback gate.
+The API and queue workload rollback can still proceed. [PyPI wheel
+details](https://pypi.org/project/av/18.1.0/#av-18.1.0-cp311-abi3-manylinux_2_28_x86_64.whl)
 
 ```bash
 if ! bash scripts/studio-release/op967.sh compare; then

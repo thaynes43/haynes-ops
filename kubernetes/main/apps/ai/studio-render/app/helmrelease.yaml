@@ -48,11 +48,16 @@ spec:
                 py=$(python -c 'import sys; print("%d%d" % sys.version_info[:2])')
                 req=$(sha256sum /config/requirements.txt | cut -c1-12)
                 V=/studio/.venv/py$py-$req
-                # Only this worker uses /studio/.venv: drop envs from older pins.
-                for old in /studio/.venv/*; do [ "$old" = "$V" ] || rm -rf "$old"; done
-                if [ ! -f "$V/.complete" ]; then
+                # Keep completed environments for workload rollback on the same NFS share.
+                expected=$(sed -n 's/^av==//p' /config/requirements.txt)
+                test -n "$expected"
+                verify_av() {
+                  "$V/bin/python" -I -B -c 'import av, sys; sys.exit(av.__version__ != sys.argv[1])' "$expected"
+                }
+                if [ ! -f "$V/.complete" ] || ! verify_av; then
                   rm -rf "$V"; python -m venv "$V"
                   "$V/bin/pip" install --no-cache-dir -q -r /config/requirements.txt
+                  verify_av
                   touch "$V/.complete"
                 fi
                 ln -sfn "$V" /tmp/venv
@@ -75,7 +80,7 @@ spec:
                   periodSeconds: 10
             resources:
               requests: {cpu: 250m, memory: 1Gi}
-              limits: {cpu: "20", memory: 32Gi}
+              limits: {cpu: "17", memory: 32Gi}
     defaultPodOptions:
       securityContext:
         runAsNonRoot: true
@@ -99,7 +104,7 @@ spec:
             subPath: data/studio
       config:
         type: configMap
-        name: studio-render-requirements
+        name: studio-render-environment-op967
         globalMounts:
           - path: /config
             readOnly: true

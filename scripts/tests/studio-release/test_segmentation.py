@@ -289,6 +289,25 @@ class ReleaseTests(unittest.TestCase):
                     else:
                         guard.check_segmentation_stage(STUDIO, self.flux)
 
+    def test_composed_budget_requires_the_matte_pair_and_separate_run_split(self):
+        render = guard.render
+        for stage, deployment, mutate, refusal in (
+            (STUDIO / guard.MATTE_ACTIVATION, guard.MATTE_WORKER,
+             lambda containers: containers.pop(), "requires the matte worker and its matting companion"),
+            (STUDIO / "worker", "studio-worker",
+             lambda containers: containers[0]["resources"]["limits"].update(cpu="3"),
+             "run worker must keep its separate 4-CPU and 8-GiB allocation"),
+        ):
+            with self.subTest(deployment=deployment):
+                documents = render(stage)
+                spec = guard.resource(documents, "Deployment", deployment)["spec"]["template"]["spec"]
+                mutate(spec["containers"])
+                with (
+                    patch.object(guard, "render", side_effect=lambda path: documents if path == stage else render(path)),
+                    self.assertRaisesRegex(ValueError, refusal),
+                ):
+                    guard.check_segmentation_stage(STUDIO, self.flux)
+
     def test_activation_checks_termination_grace(self):
         stage = PENDING / "activation"
         render = guard.render
