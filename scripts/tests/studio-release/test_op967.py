@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -24,9 +25,32 @@ OLD = ("80975a9e958d0bed78ab530c2b20f1279bf7ebe6",
 HEAD = "a" * 40
 REVIEWED_HEAD = "b" * 40
 TREE = "c" * 40
+FAILED_HEAD = "d" * 40
+FAILED_TREE = "e" * 40
+RETRY_HEAD = "f" * 40
 NOW = 1760000050
 SNAPSHOT = {"store": {}, "runs": {}, "deliveries": {}, "delivery media": {}, "media jobs": {}}
-POST_MERGE = ("migration", "roll", "postflight", "rollback-baseline", "compare")
+ROLLOUT = ("migration", "roll", "postflight")
+RELEASE_CHECKS = (
+    "new private receipt and baseline paths supplied",
+    "reviewed Ops checkout has a clean tracked tree",
+    "three postgres16 instances Ready",
+    "installed dependencies and predecessor credential projections Ready",
+    *(f"studio-{workload} pod image, placement and restart counts"
+      for workload in ("api", "mcp", "web", "worker", "voice-worker", "image-worker")),
+    "third-pin workload set",
+    "old API endpoints",
+    "talosw01 capacity",
+    "talosw01 CPU <=10%, memory <=25%",
+    "offline render app idle and admitted venv complete",
+    "Wan ready and both active jobs null",
+    "shared ComfyUI queue empty",
+    "retained matting allocation exact profile",
+    "LAN root available",
+    "LAN API anonymous access refused",
+    "predecessor Job logs saved",
+    "empty queues, archived data and store baseline",
+)
 
 # Every fixture command is selected via PATH. The stubs never shell out.
 COMMANDS = r'''
@@ -44,6 +68,8 @@ env = os.environ
 data = json.loads(env["FIXTURE"])
 revision, api, web = data["new"] if data["workloads"] == "new" else data["old"]
 sidecar = data["sidecar"]
+studio = Path("kubernetes/main/apps/ai/studio")
+old_job_suffix = data["old"][1][7:19]
 
 def emit(value):
     print(json.dumps(value))
@@ -66,7 +92,7 @@ def pods(workload):
             for name, digest in names.items()
         }
         result.append({
-            "metadata": {"name": pod, "uid": pod},
+            "metadata": {"name": pod, "uid": pod, "labels": {"app.kubernetes.io/name": "studio-" + workload}},
             "spec": {
                 "nodeName": "talosw01" if workload in {"worker", "matte-worker", "render"} else f"other-{index}",
                 "containers": [
@@ -87,6 +113,24 @@ def pods(workload):
         })
     return result
 
+def job_pods(job):
+    container = "migrate" if job.startswith("studio-migrate-") else "register"
+    modes = {"none": ("failed",), "many": ("failed", "succeeded", "also-succeeded")}
+    states = modes.get(data.get("pod_selection"), ("failed", "succeeded"))
+    if data.get("pod_order") == "reverse":
+        states = states[::-1]
+    def pod(state, uid):
+        failed = state == "failed"
+        return {
+            "metadata": {"name": f"{job}-{state}",
+                         "ownerReferences": [{"uid": uid, "kind": "Job", "controller": True}]},
+            "status": {"phase": "Failed" if failed else "Succeeded",
+                       "containerStatuses": [{"name": container, "state": {"terminated": {
+                           "exitCode": 1 if failed else 0}}}]},
+        }
+    # A stale pod can carry the selector label. Ownership still must match.
+    return [pod(state, job) for state in states] + [pod("unrelated", "different-uid")]
+
 if cmd in {"kubectl", "flux"}:
     with open(env["COMMAND_LOG"], "a") as log:
         log.write(json.dumps([cmd, *args]) + "\n")
@@ -97,20 +141,39 @@ if cmd == "git":
             print(data["head"])
         case ["rev-parse", "--verify", "HEAD^{tree}"]:
             print(data["tree"])
+        case ["rev-parse", "--verify", ref] if ref.endswith("^{tree}"):
+            tree = data["known_trees"].get(ref.removesuffix("^{tree}"))
+            if tree is None:
+                sys.exit(1)
+            print(tree)
         case ["status", "--porcelain", "--untracked-files=no"]:
             print(data.get("dirty", ""))
         case ["merge-base", "--is-ancestor", _, "refs/remotes/origin/main"]:
             sys.exit(not data.get("on_main", True))
-        case ["show", "-s", "--format=%ct", _]:
-            print(data["merged_at"])
+        case ["merge-base", "--is-ancestor", _, _]:
+            sys.exit(not data.get("retry_descendant", True))
+        case ["show", "-s", "--format=%ct", ref]:
+            print(data.get("known_merges", {}).get(ref, data["merged_at"]))
+        case ["show", ref] if ":kubernetes/main/" in ref:
+            print(data["previous_source"][ref.split(":", 1)[1]], end="")
+        case ["diff", "--name-only", *_]:
+            print(f"{studio}/ks.yaml\n{studio}/migration/job.yaml")
+            if data.get("retry_changed_paths"):
+                print(f"{studio}/app/api.yaml")
         case _:
             sys.exit(99)
 elif cmd == "date":
-    print(data["now"] if args[-1] == "+%s" else "2026-11-25T17:00:00Z")
+    now = data["now"]
+    if data.get("expire_after") and data["expire_after"] in Path(env["COMMAND_LOG"]).read_text():
+        now += 3600
+    print(now if args[-1] == "+%s" else "2026-11-25T17:00:00Z")
 elif cmd == "yq":
     query, filename = args[-2:]
-    docs = [doc for doc in yaml.safe_load_all(Path(filename).read_text()) if doc]
-    if query.startswith("select"):
+    docs = [doc for doc in yaml.safe_load_all(sys.stdin.read() if filename == "-" else Path(filename).read_text()) if doc]
+    if "healthChecks" in query:
+        stage = next(doc for doc in docs if doc["metadata"]["name"] == "studio-migration")
+        print(stage["spec"]["healthChecks"][0]["name"])
+    elif query.startswith("select"):
         print(next(doc["metadata"]["name"] for doc in docs if doc["kind"] == "Job"))
     else:
         result = docs[0]
@@ -127,10 +190,45 @@ elif cmd == "kubectl":
     match args:
         case ["get", "gitrepository", "haynes-ops", "-o", "json"]:
             emit({"status": {"artifact": {"revision": "main@sha1:" + data["artifact"]}}})
+        case ["get", "pods", "-l", label, "-o", "json"] if label.startswith("batch.kubernetes.io/controller-uid="):
+            emit({"items": job_pods(label.split("=", 1)[1])})
         case ["get", "pods", "-l", label, "-o", "json"]:
             emit({"items": pods(label.split("=studio-", 1)[1])})
         case ["get", "pods", *_]:
+            if data.get("sample_failure"):
+                sys.exit(1)
             print("sample")
+        case ["get", resource, "-o", "json"] if resource.startswith("job/"):
+            job = resource.removeprefix("job/")
+            if data.get("predecessor_pruned") and job.endswith(old_job_suffix):
+                sys.exit(1)
+            condition = "Failed" if job == data.get("terminal_job") else "Complete"
+            emit({"metadata": {"uid": job}, "status": {"conditions": [{"type": condition,"status": "True"}],
+                                                      "active": data.get("terminal_active", 0)},
+                  "spec": {"template": {"spec": {"containers": [{"name": "migrate",
+                      "image": "ghcr.io/thaynes43/haynes-studio@" + data["new"][1]}]}}}})
+        case ["get", "networkpolicies.networking.k8s.io,ciliumnetworkpolicies.cilium.io", "-o", "json"]:
+            manifests = (studio / "app/networkpolicy.yaml", studio / "matting-pending/activation/worker/networkpolicy.yaml")
+            items = [doc for path in manifests for doc in yaml.safe_load_all(path.read_text()) if doc]
+            for policy in items:
+                policy["metadata"]["namespace"] = "ai"
+            if data.get("bypass_policy"):
+                items[-1]["spec"]["egress"].append({})
+            emit({"items": items})
+        case ["get", "ciliumclusterwidenetworkpolicies.cilium.io", "-o", "json"]:
+            emit({"items": [{"kind": "CiliumClusterwideNetworkPolicy", "metadata": {"name": "endpoint-bypass"},
+                             "spec": {"endpointSelector": {"matchLabels": {"k8s:runtime-only": "present"}},
+                                      "egress": [{}]}}] if data.get("cilium_bypass_policy") else []})
+        case ["get", "ciliumendpoints.cilium.io", "-o", "json"]:
+            items = []
+            for workload in ("api", "matte-worker"):
+                for pod in pods(workload):
+                    pod_name = pod["metadata"]["name"]
+                    items.append({"metadata": {"name": pod_name, "ownerReferences": [
+                        {"kind": "Pod", "uid": "wrong-uid" if data.get("bad_endpoint_uid") else pod_name},
+                    ]}, "status": {"identity": {"labels": [f"k8s:app.kubernetes.io/name=studio-{workload}",
+                        *(["k8s:runtime-only=present"] if workload == "matte-worker" else [])]}}})
+            emit({"items": items})
         case ["get", "endpointslices", *_]:
             emit({"items": [{"endpoints": [
                 {"conditions": {"ready": True}, "targetRef": {"uid": pod["metadata"]["uid"]}}
@@ -146,45 +244,56 @@ elif cmd == "kubectl":
                  "conditions": [{"type": "Ready", "status": "True"}]}} for stage in stages
             ]})
         case ["get", "deploy/studio-matte-worker", *_]:
-            pass
+            if data.get("matte_present"):
+                print("deployment.apps/studio-matte-worker")
         case ["top", "node", *_]:
             print("talosw01 100m 2% 100Mi 10%")
         case ["top", "pod", *_]:
             print("render-0 app 50m 100Mi")
         case ["wait", *_]:
             sys.exit(bool(data.get("migration_wait_failure") and "condition=Complete" in " ".join(args)))
-        case ["logs", job, "--all-pods=true", "-c", _]:
+        case ["logs", pod, "-c", container] if pod.endswith("-succeeded"):
+            job = pod.removesuffix("-succeeded")
             if data.get("bad_logs") and "voice" in job:
                 sys.exit(1)
-            print("saved predecessor job audit")
-        case ["logs", job, "-c", "migrate"]:
-            print("studio_migrator: connected to studio over TLS")
-            print("studio_migrator: HBA rejected first check")
-            print("studio_migrator: HBA rejected second check")
-            print("Alembic revision: 0013_matte_jobs")
-        case ["logs", job, "-c", "register"]:
             print("diagnostic before JSON")
-            emit({"worker_id": "irrelevant", "status": 500})
-            worker = re.sub(r"-[a-f0-9]{12}(?:-r[1-9][0-9]*)?$", "",
-                            job.removeprefix("job/studio-register-"))
-            emit({"worker_id": "studio-" + worker, "status": 201 if worker == "matte-worker" else 200})
+            emit({"irrelevant": "first JSON object"})
+            if container == "migrate":
+                if job.endswith(old_job_suffix):
+                    print("Alembic revision: 0012_release_constraints")
+                else:
+                    emit({"revision": "0013_matte_jobs", "user": "studio_migrator", "database": "studio",
+                          "tls": True, "hba_rejected": ["other database", "plaintext"]})
+            else:
+                worker = re.sub(r"-[a-f0-9]{12}(?:-r[1-9][0-9]*)?$", "", job.removeprefix("studio-register-"))
+                status = 201 if worker == "matte-worker" else 200
+                if worker == "image-worker" and data.get("bad_registration_audit"):
+                    status = 409
+                emit({"action": "worker_tokens.register", "worker_id": "studio-" + worker, "status": status})
+                result = "wrong" if worker == "image-worker" and data.get("bad_registration_result") else worker
+                emit({"worker_id": "studio-" + result})
         case ["exec", *options]:
             if "/v1/ready" in options[-1]:
                 emit({"ready": True, "active_video_job": None, "active_foley_job": data.get("active_foley")})
             elif options[-1].endswith("/queue"):
                 emit({"queue_running": [], "queue_pending": []})
-            elif options[-2] in {"preflight", "postflight", "rollback-baseline", "compare"}:
+            elif options[-2] in {"preflight", "retry-preflight", "postflight", "rollback-baseline", "compare"}:
                 mode, expected_build = options[-2:]
                 if expected_build != revision or options[1] not in {"api-0", "api-1"}:
                     sys.exit(87)
-                if data.get("wrong_schema") and mode == "rollback-baseline":
-                    print("FAIL 0013 release column visible", file=sys.stderr)
+                if data.get("wrong_schema") and mode in {"rollback-baseline", "retry-preflight"}:
+                    print("FAIL expected schema", file=sys.stderr)
                     sys.exit(1)
                 print("diagnostic before JSON")
                 emit({"wrong": "first JSON object"})
                 emit(data["snapshot"])
-            elif any("other render-container processes" in arg for arg in options):
-                sys.exit(bool(data.get("render_busy")))
+            elif any("Idle render venv complete" in arg for arg in options):
+                if "Idle render venv complete" in options[-2]:
+                    version = data.get("render_version", "18.1.0")
+                    if (data.get("render_busy") or version not in {"18.1.0", "18.1.1"}
+                            or (version == "18.1.1" and options[-1] != "retry")):
+                        sys.exit(1)
+                    print(f"Idle render venv complete (PyAV {version})")
             elif any("av.library_versions" in arg for arg in options):
                 emit({"pyav": "18.1.1", "libraries": {f"libav{name}": [1, 2, 3] for name in (
                     "codec", "format", "filter", "util", "device", "video", "audio"
@@ -205,7 +314,7 @@ class PhaseTest(unittest.TestCase):
             phase = re.search(r"bash scripts/studio-release/op967\.sh ([\w-]+)", block)
             if phase:
                 cls.blocks[phase[1]] = block
-        cls.assert_blocks = set(cls.blocks) == {"preflight", *POST_MERGE}
+        cls.assert_blocks = set(cls.blocks) == {"preflight", "retry-preflight", *ROLLOUT, "rollback-baseline", "compare"}
 
     def setUp(self):
         self.assertTrue(self.assert_blocks, self.blocks)
@@ -213,6 +322,10 @@ class PhaseTest(unittest.TestCase):
         self.receipt = self.root / "receipt.json"
         self.baseline = self.root / "baseline.json"
         self.log = self.root / "commands"
+        self.checkout = self.root / "checkout"
+        self.checkout.mkdir()
+        shutil.copytree(STUDIO, self.checkout / STUDIO)
+        (self.checkout / "scripts").symlink_to(Path("scripts").resolve())
         stub = self.root / "command"
         stub.write_text(f"#!{sys.executable}\n" + COMMANDS)
         stub.chmod(0o700)
@@ -220,6 +333,7 @@ class PhaseTest(unittest.TestCase):
             (self.root / name).symlink_to(stub)
         self.data = {
             "head": HEAD, "tree": TREE, "artifact": HEAD, "merged_at": NOW - 10, "now": NOW,
+            "known_trees": {REVIEWED_HEAD: TREE, HEAD: TREE, FAILED_HEAD: FAILED_TREE},
             "new": [RELEASE[key] for key in ("revision", "apiDigest", "webDigest")],
             "old": OLD, "workloads": "old", "snapshot": SNAPSHOT,
             "sidecar": yaml.safe_load((STUDIO / "matting-pending/release/release.yaml").read_text())["data"]["image"],
@@ -227,30 +341,31 @@ class PhaseTest(unittest.TestCase):
 
     def admit(self, **changes):
         data = {
-            "schema": "studio-op967/v1", "ops_revision": REVIEWED_HEAD, "ops_tree": TREE,
+            "schema": "studio-op967/v2", "mode": "release", "ops_revision": REVIEWED_HEAD, "ops_tree": TREE,
             "started_epoch": NOW - 100, "finished_epoch": NOW - 50, "passed": True,
+            "baseline_path": str(self.baseline),
             "baseline_sha256": hashlib.sha256(self.baseline.read_bytes()).hexdigest()
             if self.baseline.exists() else "0" * 64,
-            "checks": [{"label": label, "result": "PASS"} for label in (
-                "predecessor Job logs saved", "empty queues, archived data and store baseline",
-            )],
+            "checks": [{"label": label, "result": "PASS"} for label in RELEASE_CHECKS],
             **changes,
         }
         self.receipt.write_text(json.dumps(data))
 
-    def run_phase(self, phase, *, expected=0, selected=HEAD, **changes):
+    def run_phase(self, phase, *, expected=0, selected=HEAD, extra_env=None, **changes):
         self.log.write_text("")
         env = {
-            "PATH": f"{self.root}:{os.environ['PATH']}", "FIXTURE": json.dumps({**self.data, **changes}),
+            "PATH": f"{self.root}:{Path(sys.executable).parent}:{os.environ['PATH']}",
+            "FIXTURE": json.dumps({**self.data, **changes}),
             "COMMAND_LOG": str(self.log), "STUDIO_OP967_RECEIPT": str(self.receipt),
             "STUDIO_OP967_BASELINE": str(self.baseline), "MERGED_OPS_REVISION": selected,
+            **(extra_env or {}),
         }
         # The documented if ! bash ... suppresses errexit throughout the sourced
         # phase. A naked failed check followed by Flux would still be observed.
         runner = 'set -e\nbash() { ( source "$@" ); }\n' + self.blocks[phase]
         result = subprocess.run(
             ["bash", "--noprofile", "--norc"], input=runner, env=env,
-            text=True, capture_output=True, timeout=20,
+            text=True, capture_output=True, timeout=20, cwd=self.checkout,
         )
         self.assertEqual(result.returncode, expected, result.stderr)
         return result, [json.loads(line) for line in self.log.read_text().splitlines()]
@@ -262,7 +377,8 @@ class PhaseTest(unittest.TestCase):
         self.assertEqual((receipt["ops_revision"], receipt["ops_tree"]), (REVIEWED_HEAD, TREE))
         self.assertEqual(receipt["finished_epoch"], NOW)
         self.assertEqual(set(item["result"] for item in receipt["checks"]), {"PASS"})
-        self.assertGreater(len(receipt["checks"]), 15)
+        self.assertCountEqual([item["label"] for item in receipt["checks"]], RELEASE_CHECKS)
+        self.assertEqual(Path(receipt["baseline_path"]), self.baseline)
         self.assertEqual(json.loads(self.baseline.read_text()), SNAPSHOT)
         logdir = self.receipt.with_suffix(".json.jobs")
         self.assertEqual(sorted(path.name for path in logdir.iterdir()), [
@@ -273,7 +389,7 @@ class PhaseTest(unittest.TestCase):
     def test_preflight_failed_checks_leave_a_failed_receipt(self):
         for failed_check, override in (
             ("Wan ready and both active jobs null", {"active_foley": "busy"}),
-            ("offline render app idle and predecessor venv complete", {"render_busy": True}),
+            ("offline render app idle and admitted venv complete", {"render_busy": True}),
             ("predecessor Job logs saved", {"bad_logs": True}),
         ):
             with self.subTest(check=failed_check):
@@ -285,26 +401,71 @@ class PhaseTest(unittest.TestCase):
                 self.assertIn({"label": failed_check, "result": "FAIL"}, receipt["checks"])
                 self.assertFalse(any(call[0] == "flux" for call in calls))
 
-    def test_all_later_blocks_refuse_missing_failed_stale_and_mismatched_receipts(self):
-        for phase in POST_MERGE:
+    def test_mutating_blocks_refuse_missing_failed_stale_and_mismatched_receipts(self):
+        passing_checks = [{"label": label, "result": "PASS"} for label in RELEASE_CHECKS]
+        for phase in ROLLOUT:
             for label, receipt, extra in (
                 ("missing", None, {}),
                 ("failed", {"passed": False}, {}),
                 ("stale", {"started_epoch": NOW - 3700}, {}),
+                ("late use", {}, {"now": NOW + 86400}),
+                ("exactly one hour after merge", {}, {"now": NOW - 10 + 3600}),
                 ("future", {"finished_epoch": NOW + 1}, {}),
-                ("wrong tree", {"ops_tree": "d" * 40}, {}),
-                ("wrong selected revision", {}, {"selected": "d" * 40}),
+                ("future merge", {}, {"merged_at": NOW + 1}),
+                ("wrong tree", {"ops_tree": FAILED_TREE}, {}),
+                ("wrong admitted revision", {"ops_revision": FAILED_HEAD}, {}),
+                ("wrong selected revision", {}, {"selected": FAILED_HEAD}),
+                ("invalid selected revision", {}, {"selected": "d" * 12}),
                 ("not merged", {}, {"on_main": False}),
                 ("dirty checkout", {}, {"dirty": " M docs/reference/studio-fourth-release.md"}),
+                ("schema", {"schema": "studio-op967/v1"}, {}),
+                ("non-integer epoch", {"started_epoch": NOW - 100.5}, {}),
+                ("invalid revision syntax", {"ops_revision": "not-a-sha"}, {"known_trees": {"not-a-sha": TREE}}),
+                ("invalid hash syntax", {"baseline_sha256": "wrong"}, {}),
+                ("partial checks", {"checks": passing_checks[-2:]}, {}),
+                ("duplicate check", {"checks": [*passing_checks, passing_checks[0]]}, {}),
+                ("failed required check", {"checks": [{**passing_checks[0], "result": "FAIL"}, *passing_checks[1:]]}, {}),
             ):
                 with self.subTest(phase=phase, case=label):
                     self.receipt.unlink(missing_ok=True)
+                    self.baseline.write_text(json.dumps(SNAPSHOT))
                     if receipt is not None:
                         self.admit(**receipt)
                     _, calls = self.run_phase(phase, expected=1, **extra)
                     self.assertEqual(calls, [])
 
+    def test_mutating_blocks_require_named_unchanged_baseline(self):
+        for phase in ROLLOUT:
+            for damage in ("missing", "changed", "different path"):
+                with self.subTest(phase=phase, damage=damage):
+                    self.baseline.write_text(json.dumps(SNAPSHOT))
+                    self.admit()
+                    extra = {}
+                    if damage == "missing":
+                        self.baseline.unlink()
+                    elif damage == "changed":
+                        self.baseline.write_text("{}")
+                    else:
+                        other = self.root / "other-baseline"
+                        other.write_bytes(self.baseline.read_bytes())
+                        extra["STUDIO_OP967_BASELINE"] = str(other)
+                    _, calls = self.run_phase(phase, expected=1, extra_env=extra)
+                    self.assertEqual(calls, [])
+
+    def test_receipt_is_rechecked_immediately_before_mutations(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        self.admit()
+        for phase in ("migration", "roll"):
+            with self.subTest(phase=phase):
+                _, calls = self.run_phase(phase, expected=1, expire_after='"gitrepository"')
+                self.assertTrue(any("gitrepository" in call for call in calls))
+                self.assertFalse(any(call[0] == "flux" for call in calls))
+        result, calls = self.run_phase("postflight", expected=1, workloads="new", expire_after='"-", "matte"]')
+        self.assertIn("FAIL receipt still current before the idle claim", result.stderr)
+        self.assertFalse(any("idle-claim" in call for call in calls))
+
     def test_migration_and_roll_check_flux_artifact_before_reconciliation(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
         self.admit()
         for phase in ("migration", "roll"):
             with self.subTest(phase=phase):
@@ -321,6 +482,38 @@ class PhaseTest(unittest.TestCase):
         ])
         _, calls = self.run_phase("roll", expected=1, migration_wait_failure=True)
         self.assertFalse(any(call[0] == "flux" for call in calls))
+        for phase, failure, first_stage in (("migration", "sample_failure", "cluster-apps"),
+                                            ("roll", "flux_failure", "studio-render")):
+            _, calls = self.run_phase(phase, expected=1, **{failure: True})
+            self.assertEqual([call[3] for call in calls if call[0] == "flux"], [first_stage])
+
+    def test_jobs_select_the_succeeded_pod_of_each_job_in_both_orders(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        self.admit()
+        for order in ("normal", "reverse"):
+            with self.subTest(order=order):
+                _, calls = self.run_phase("roll", pod_order=order)
+                logs = [call[4] for call in calls if call[:4] == ["kubectl", "-n", "ai", "logs"]]
+                self.assertEqual(len(logs), 5)
+                self.assertTrue(all(name.endswith("-succeeded") for name in logs), logs)
+                self.assertEqual(len([name for name in logs if "-register-" in name]), 4)
+
+    def test_complete_job_refuses_missing_or_multiple_succeeded_pods(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        self.admit()
+        for selection, detail in (("none", "no succeeded pod"), ("many", "more than one succeeded pod")):
+            with self.subTest(selection=selection):
+                result, calls = self.run_phase("roll", expected=1, pod_selection=selection)
+                self.assertIn(detail + " for UID", result.stderr)
+                self.assertFalse(any(call[0] == "flux" or "logs" in call for call in calls))
+
+    def test_registration_requires_the_last_worker_result_and_matching_status_audit(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        self.admit()
+        for failure in ("bad_registration_audit", "bad_registration_result"):
+            with self.subTest(failure=failure):
+                result, _ = self.run_phase("roll", expected=1, **{failure: True})
+                self.assertIn("FAIL image worker registration reused its token", result.stderr)
 
     def test_postflight_rechecks_baseline_and_holds_idle_claim_on_difference(self):
         self.baseline.write_text(json.dumps(SNAPSHOT))
@@ -329,27 +522,135 @@ class PhaseTest(unittest.TestCase):
         self.assertTrue(any("idle-claim" in call for call in calls))
         _, calls = self.run_phase("postflight", expected=1, workloads="new", snapshot={**SNAPSHOT, "runs": 3})
         self.assertFalse(any("idle-claim" in call for call in calls))
+        result, calls = self.run_phase("postflight", expected=1, workloads="new", bypass_policy=True)
+        self.assertIn("matte worker effective egress", result.stderr)
+        self.assertFalse(any("idle-claim" in call for call in calls))
+        result, calls = self.run_phase("postflight", expected=1, workloads="new", cilium_bypass_policy=True)
+        self.assertIn("unexpected Cilium policy endpoint-bypass", result.stderr)
+        self.assertFalse(any("idle-claim" in call for call in calls))
+        result, calls = self.run_phase("postflight", expected=1, workloads="new", bad_endpoint_uid=True)
+        self.assertIn("missing installed Cilium endpoint", result.stderr)
+        self.assertFalse(any("idle-claim" in call for call in calls))
         self.baseline.write_text("{}")
         _, calls = self.run_phase("postflight", expected=1, workloads="new")
         self.assertEqual(calls, [])
 
     def test_rollback_accepts_either_ready_verified_build_and_requires_committed_schema(self):
-        self.admit()
         for pods, revision in (("old", OLD[0]), ("new", RELEASE["revision"])):
             with self.subTest(pods=pods):
                 self.baseline.unlink(missing_ok=True)
-                _, calls = self.run_phase("rollback-baseline", workloads=pods)
+                self.receipt.unlink(missing_ok=True)
+                _, calls = self.run_phase("rollback-baseline", workloads=pods, merged_at=NOW - 86400)
                 self.assertEqual([call[-1] for call in calls if "rollback-baseline" in call], [revision])
                 self.assertEqual(json.loads(self.baseline.read_text()), SNAPSHOT)
+                self.assertEqual(json.loads(self.receipt.read_text())["mode"], "rollback")
         self.run_phase("compare")
         self.run_phase("compare", expected=1, snapshot={**SNAPSHOT, "runs": 3})
+        _, calls = self.run_phase("compare", expected=1, now=NOW + 3600)
+        self.assertEqual(calls, [])
         self.baseline.unlink()
+        self.receipt.unlink()
         self.run_phase("rollback-baseline", expected=1, wrong_schema=True)
+        self.receipt.unlink()
         self.run_phase("rollback-baseline", expected=1, api_unready=True)
         self.assertFalse(self.baseline.exists())
 
+    def prepare_retry(self):
+        failed_merge_time = NOW - 7200
+        self.run_phase("preflight", head=REVIEWED_HEAD, tree=FAILED_TREE, now=failed_merge_time - 100)
+        first_receipt = self.receipt
+        first_baseline = self.baseline
+        paths = (STUDIO / "migration/job.yaml", STUDIO / "ks.yaml")
+        previous_source = {str(path): (self.checkout / path).read_text() for path in paths}
+        old_job = next(doc["metadata"]["name"] for doc in yaml.safe_load_all(previous_source[str(paths[0])])
+                       if doc["kind"] == "Job")
+        for path in paths:
+            (self.checkout / path).write_text(previous_source[str(path)].replace(f"name: {old_job}", f"name: {old_job}-r1"))
+        self.data.update(
+            terminal_job=old_job, predecessor_pruned=True, previous_source=previous_source,
+            known_merges={FAILED_HEAD: failed_merge_time},
+            known_trees={REVIEWED_HEAD: FAILED_TREE, FAILED_HEAD: FAILED_TREE, HEAD: TREE, RETRY_HEAD: TREE},
+        )
+        self.receipt = self.root / "retry-receipt"
+        self.baseline = self.root / "retry-baseline"
+        return first_receipt, first_baseline, {
+            "STUDIO_OP967_FAILED_OPS_REVISION": FAILED_HEAD, "STUDIO_OP967_PREVIOUS_RECEIPT": str(first_receipt),
+        }
+
+    def test_retry_preflight_uses_archives_and_accepts_either_idle_render_environment(self):
+        first_receipt, first_baseline, env = self.prepare_retry()
+        for version in ("18.1.0", "18.1.1"):
+            with self.subTest(render_version=version):
+                self.receipt.unlink(missing_ok=True)
+                self.baseline.unlink(missing_ok=True)
+                result, calls = self.run_phase("retry-preflight", extra_env=env, render_version=version)
+                self.assertIn(f"Idle render venv complete (PyAV {version})", result.stdout)
+                self.assertTrue(any(f"job/{self.data['terminal_job']}" in call for call in calls))
+                self.assertFalse(any(call[0] == "flux" or "logs" in call or
+                                     any(OLD[1][7:19] in arg for arg in call) for call in calls))
+                previous = json.loads(first_receipt.read_text())
+                retry = json.loads(self.receipt.read_text())
+                self.assertEqual((retry["mode"], retry["ops_tree"]), ("retry", TREE))
+                self.assertEqual((retry["jobs_path"], retry["jobs_sha256"]),
+                                 (previous["jobs_path"], previous["jobs_sha256"]))
+                self.assertEqual(self.baseline.read_bytes(), first_baseline.read_bytes())
+                self.run_phase("migration", head=RETRY_HEAD, selected=RETRY_HEAD, artifact=RETRY_HEAD,
+                               merged_at=NOW + 10, now=NOW + 20)
+
+    def test_retry_preflight_refuses_missing_or_changed_evidence_and_wrong_live_state(self):
+        first_receipt, _, env = self.prepare_retry()
+        archive_file = Path(json.loads(first_receipt.read_text())["jobs_path"]) / "migrate.log"
+        original = archive_file.read_bytes()
+        for detail, changes, damage in (
+            ("archived predecessor Job logs verified", {}, "missing archive"),
+            ("archived predecessor Job logs verified", {}, "changed archive"),
+            ("replacement migration Job and Flux health check", {"terminal_job": ""}, ""),
+            ("replacement migration Job and Flux health check", {"terminal_active": 1}, ""),
+            ("replacement migration Job and Flux health check", {"retry_changed_paths": True}, ""),
+            ("replacement migration Job and Flux health check", {}, "changed health gate"),
+            ("replacement migration Job and Flux health check", {}, "changed Job spec"),
+            ("matte workload absent", {"matte_present": True}, ""),
+            ("empty queues, archived data and store baseline", {"wrong_schema": True}, ""),
+            ("empty queues, archived data and store baseline", {"snapshot": {**SNAPSHOT, "runs": 3}}, ""),
+            ("old API endpoints", {"workloads": "new"}, ""),
+            ("offline render app idle", {"render_busy": True}, ""),
+            ("offline render app idle", {"render_version": "18.0.0"}, ""),
+        ):
+            with self.subTest(check=detail, changes=changes, damage=damage):
+                self.receipt.unlink(missing_ok=True)
+                path, clean_source = None, None
+                if damage == "missing archive":
+                    archive_file.unlink()
+                elif damage == "changed archive":
+                    archive_file.write_text("changed")
+                elif damage == "changed health gate":
+                    path = self.checkout / STUDIO / "ks.yaml"
+                    clean_source = path.read_text()
+                    path.write_text(clean_source.replace(self.data["terminal_job"] + "-r1", "wrong-job"))
+                elif damage == "changed Job spec":
+                    path = self.checkout / STUDIO / "migration/job.yaml"
+                    clean_source = path.read_text()
+                    path.write_text(clean_source.replace("backoffLimit: 2", "backoffLimit: 3"))
+                try:
+                    result, calls = self.run_phase("retry-preflight", expected=1, extra_env=env, **changes)
+                    self.assertRegex(result.stderr, rf"FAIL [^\n]*{re.escape(detail)}")
+                    self.assertFalse(any(call[0] == "flux" for call in calls))
+                    self.assertFalse(json.loads(self.receipt.read_text())["passed"])
+                    self.assertFalse(self.baseline.exists())
+                finally:
+                    if damage.endswith("archive"):
+                        archive_file.write_bytes(original)
+                    if path is not None:
+                        path.write_text(clean_source)
+
 
 class StartupTest(unittest.TestCase):
+    def test_runbook_and_entrypoint_parse_as_bash(self):
+        subprocess.run(["bash", "-n", "scripts/studio-release/op967.sh"], check=True, capture_output=True)
+        page = Path("docs/reference/studio-fourth-release.md").read_text()
+        for block in re.findall(r"(?ms)^```bash\n(.*?)^```$", page):
+            subprocess.run(["bash", "-n"], input=block, text=True, check=True, capture_output=True)
+
     def test_matte_start_reads_private_file_and_waits_for_grant_before_exec(self):
         path = STUDIO / "matting-pending/activation/worker/matte-start.py"
         spec = importlib.util.spec_from_file_location("matte_start", path)

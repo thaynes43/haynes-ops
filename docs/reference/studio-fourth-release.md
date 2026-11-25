@@ -15,7 +15,8 @@ The release guard refuses that build's migration. After the Studio fix
 merges, select a successful Studio images run on `main` whose commit carries
 the reviewed fix. Repin with
 `python3 scripts/tests/studio-release/check.py --pin <full-studio-revision> <run-id>`
-from the Ops checkout with PyYAML, Kustomize, uv and Python 3.12 available.
+from the Ops checkout with PyYAML, Flux CLI 2.10, Kustomize, uv and Python
+3.12 available.
 It verifies both tags and their manifests and OCI revision labels, updates
 the digest-named Job references and exports the offline runtime requirements
 from the selected lock. It also checks the published revision's worker-route
@@ -30,9 +31,9 @@ submissions closed and the offline render container idle. The offline
 render pod restarts on merge. Finish any offline render or exec session
 before preflight, and keep the quiet window through postflight. Check for
 a free eligible node for each API surge replica as in the [third pin
-runbook](studio-deployment.md#op964-third-release). Use a LAN-capable
-operator shell in the clean, reviewed PR head incorporating current Ops
-`main`. Use new receipt and baseline paths in a private directory outside
+runbook](studio-deployment.md#op964-third-release). Use a LAN-capable Bash
+shell with GNU coreutils and PyYAML in the clean, reviewed PR head
+incorporating current Ops `main`. Use new receipt and baseline paths in a private directory outside
 the checkout. Keep the same paths through postflight.
 
 ```bash
@@ -44,15 +45,16 @@ printf 'PASS release admission\n'
 ```
 
 The preflight writes `STUDIO_OP967_RECEIPT` with the reviewed Ops revision
-and Git tree, UTC time, the result of each check and the baseline hash.
-Merge only with a passing receipt from the same hour, within 60 minutes of
-starting preflight. If the PR head or base changes, or the window is lost,
-run preflight on the resulting reviewed tree with new evidence paths before
-merging. The baseline at `STUDIO_OP967_BASELINE` records the archived
+and Git tree, UTC time, every required check, and the baseline path and
+hash. Merge within 60 minutes of starting a passing preflight. If the PR
+head or base changes, or the window is lost, run preflight on the resulting
+reviewed tree with new evidence paths before merging. The baseline at
+`STUDIO_OP967_BASELINE` records the archived
 deliveries, run and job rows and store file totals, content and modification
 time hashes. Before the merge, the script also saves the four predecessor
-Job logs under `${STUDIO_OP967_RECEIPT}.jobs` (a `.jobs` directory beside the
-receipt). Flux prunes those Jobs and their pod logs.
+Job logs from their succeeded pods under `${STUDIO_OP967_RECEIPT}.jobs`.
+The receipt records the archive's path and hash. Keep the receipt, baseline
+and logs together for a possible retry. Flux prunes those Jobs and their pod logs.
 
 Preflight requires Wan `/v1/ready` with both active-job fields present and
 null, the shared `comfyui-0` queues empty, and at most 10% CPU and 25%
@@ -61,11 +63,17 @@ only its idle PID 1 apart from the probe, and have the completed PyAV
 18.1.0 venv. Studio must have zero queued, running or held jobs.
 
 After merge, fetch Ops `main`, select the exact full merge SHA in
-`MERGED_OPS_REVISION`, and check out that SHA. Each later block checks the
-receipt against the clean merged tree and verifies that the merge landed
-within its window. The reconcile blocks also read the Flux source artifact
-revision before each call. Wait for Flux to fetch that revision. A different
-artifact revision stops manual reconciliation.
+`MERGED_OPS_REVISION`, and check out that SHA. Migration, roll and postflight
+require the selected merge on `origin/main`, its tree equal to the reviewed
+tree, every required receipt check marked PASS and the named baseline file
+present with its recorded hash. The gate stays open for 60 minutes after the
+selected merge's commit time so manual actions still fall in the admitted
+quiet window. The checks run at block entry and before each reconciliation
+and the idle claim. If the window closes, stop manual actions and assess the live state.
+Terminal retry and workload rollback use their own admission below. The
+reconcile blocks read the Flux source artifact revision before each reconcile.
+Wait for the exact revision to arrive. A different revision stops manual
+reconciliation.
 
 | Flux stage | Added or changed automatically on merge | Pruned automatically |
 | --- | --- | --- |
@@ -107,7 +115,7 @@ blocks activation. [OP459](https://work.haynesnetwork.com/work_packages/459)
 `release.yaml` still names the pre-fix candidate until the coordinator
 repins. The lock order and timings below apply to the corrected 0013 in
 the next published Studio image. The current candidate fails the release
-guard and is held from deployment. [Reviewed migration lock code](https://github.com/thaynes43/haynes-studio/blob/ad48829a14555639abb3980dac7fd60c1c1bd952/src/haynes_studio/db/migrations/versions/0013_matte_jobs.py#L20-L30)
+guard and is held from deployment. [Studio migration fix](https://github.com/thaynes43/haynes-studio/pull/146)
 
 `0013_matte_jobs` widens the three lane checks on `media_job_lanes`,
 `queue_lane_events` and `worker_lane_grants`, and the kind, lane and
@@ -115,13 +123,16 @@ board/story checks on `media_jobs`. It seeds the matte FIFO and adds
 `matte_releases SMALLINT NOT NULL DEFAULT 0` with column-scoped runtime
 UPDATE permission. The constraint changes and writes commit together.
 The migration locks grants, media lanes, pause events and media jobs in
-that order. It waits at most 500 ms for the first lock and fails immediately
-if a later one is busy. Ready checks and worker authentication or claims may
-wait briefly while the DDL commits. A lock error rolls back the transaction
-so the existing API and workers can continue and the Job can retry. The
-small-table PostgreSQL 16 fixture held its locks for under 10 ms in both
-interleavings. Keep sampling the old pods while the Job runs. Record when
-the active window is too short to sample.
+that order. PostgreSQL's 500 ms timeout applies per lock acquisition. The
+grant lock can queue and the other three prelocks use `NOWAIT`. A readiness
+or worker-authentication read queued behind the migration can wait for the
+grant lock budget plus DDL and commit, about 10 ms at the installed table
+sizes. The independent fixture measured a 502 ms grant read when the holder
+released just before timeout. The guarantee covers lock acquisition. API
+readiness and worker requests can take longer. A lock timeout rolls the
+upgrade back to `0012_release_constraints` and the Job retries within its
+two-retry, 300-second budget. Keep sampling the old pods while the Job runs.
+Record when the active window is too short to sample.
 
 **Source verified.** The `80975a9` readiness probe selects existing columns
 and tables with `LIMIT 0`. It doesn't require an exact Alembic revision.
@@ -150,9 +161,59 @@ fi
 printf 'PASS migration gate\n'
 ```
 
-The migration Job verifies the TLS login before running the upgrade, then
-reports its actual head. If the upgrade transaction fails, the prior schema and serving pods stay in place. Use a reviewed forward fix. At the same image digest
-a retry needs a new `-rN` Job name and matching Flux health check.
+The migration Job verifies the TLS login before upgrading and reports its
+committed head. Each migration and registration read identifies the current
+Job UID, requires exactly one succeeded pod owned by that Job and reads the
+last line starting with `{` from its successful container. For a registration
+the last JSON result identifies the worker and the earlier matching audit
+line confirms its status. An older failed pod is normal after a retry. A
+Complete Job with zero or multiple succeeded pods fails the audit.
+
+### Admit a terminal migration retry
+
+After retries are exhausted, keep submissions closed. The old API and queue
+workloads can still be serving while the offline render worker has already
+turned over to PyAV 18.1.1 and Flux has pruned the predecessor migration Job.
+Preserve the first admission's receipt, baseline and archives. On an Ops
+branch based on `main`, increment the migration Job suffix to `-r1` or the
+next `-rN` and change the matching `studio-migration` Flux health check to
+that exact name. This path retries the same reviewed image and Job spec. A
+code or config change needs a separately reviewed recovery plan.
+
+Run the retry preflight on the clean, reviewed retry PR head before merging.
+Set `STUDIO_OP967_FAILED_OPS_REVISION` to the exact merged revision that
+created the terminal Job and `STUDIO_OP967_PREVIOUS_RECEIPT` to the admission
+receipt for that merge. Set `STUDIO_OP967_RECEIPT` and `STUDIO_OP967_BASELINE`
+to new private paths for the retry.
+
+```bash
+if ! bash scripts/studio-release/op967.sh retry-preflight; then
+  printf 'FAIL retry admission, hold the merge\n' >&2
+  exit 1
+fi
+printf 'PASS retry admission\n'
+```
+
+The check requires the original admission and hashes for the predecessor
+Job logs and baseline. It reads the terminal fourth-pin Job and requires
+Failed, no Complete condition and no active pod. It refuses changes to
+the admitted Studio workload or Job spec apart from the Job name and matching
+health check. It checks the predecessor workload images and both old API
+endpoints, no matte Deployment, the 0012 catalog constraints and no 0013
+release column or matte FIFO. It compares the live database and store
+snapshot with the saved baseline. Either the completed idle 18.1.0 render
+environment or the completed idle 18.1.1 environment under its forwarding
+init is accepted. The ordinary dependency, capacity, queue and LAN checks
+still apply. A missing or changed archive, a different schema, a workload
+already on the new image, active render or unsupported environment refuses
+the retry. The original Job logs are read from the archives and the retry
+does no live lookup of the pruned predecessor Jobs.
+
+Merge only with the fresh passing `retry` receipt for that tree, within
+60 minutes of its start. After merge, select the retry's merge SHA and use
+its receipt and baseline through migration, roll and postflight, within the
+same post-merge window. The old receipt serves as historical evidence for
+the retry preflight.
 
 ## Roll the workloads
 
@@ -195,10 +256,14 @@ itself with `studio-worker --lane matte`. The worker also verifies the
 sidecar before claims. Its progress liveness allowance is 300 seconds.
 Under provisional coordinator ruling CR-59, the matting sidecar shares the
 matte worker's pod network namespace. NetworkPolicy applies to both
-containers. The release guard requires pod egress limited to DNS and the
-API's port-8002 listener. The worker token is mounted read-only in the
-worker container only. Its environment is local to the worker process, with
-separate PID and mount namespaces and no token on shared storage. The
+containers. The release guard unions matching policies in the rendered
+Flux application inventory and checks clusterwide policy definitions in the
+repository. It requires pod egress limited to DNS and the API's port-8002
+listener, no allowed pod ingress, and the reviewed API ingress. It refuses
+matching Cilium allow or deny rules on the checked directions. The worker
+token is mounted read-only in the worker container only. The worker's
+environment is local to its process, with separate PID and mount namespaces
+and no token on shared storage. The
 sidecar runs as UID 10001 with a read-only root filesystem and no
 service-account token. All six exact POST routes on 8002 require a worker
 token. The listener clears forwarded headers. The release guard checks the
@@ -223,7 +288,11 @@ Run from the same revision and with the same baseline as preflight. The
 script only permits the final idle matte claim after the old API pods have
 left, both selected endpoints are Ready, the four grants and idle queues
 are proven, the other route probes pass and the postflight data is equal
-to the preflight snapshot.
+to the preflight snapshot. It also lists the installed NetworkPolicies and
+Cilium policies that select each API pod and the matte pod, using actual pod
+labels and the Cilium endpoint identity for each pod UID. The read covers the
+`ai` namespace and clusterwide policies. Unexpected effective ingress or
+egress stops postflight.
 
 ```bash
 if ! bash scripts/studio-release/op967.sh postflight; then
@@ -282,9 +351,12 @@ Hold submissions and wait for running or dispatched work to settle. If
 queued matte jobs must be preserved through rollback, pause the lane
 using the existing Studio lane control and wait for current work to settle.
 The rollback probe requires a recorded matte pause before admitting queued
-matte jobs. Keep the reviewed fourth-pin checkout for the data probes. Use a new private
-`STUDIO_OP967_BASELINE` path and make this check before merging the workload
-rollback PR. Keep the fourth-pin receipt and `MERGED_OPS_REVISION`. The
+matte jobs. Keep the reviewed fourth-pin checkout for the data probes and
+its merge SHA in `MERGED_OPS_REVISION`. Set new private
+`STUDIO_OP967_RECEIPT` and `STUDIO_OP967_BASELINE` paths. Make this check
+before merging the workload rollback PR. Its own receipt binds the rollback
+snapshot to the selected fourth-pin checkout. Use it for `compare` within
+60 minutes of starting the rollback check. The
 baseline selects a Ready non-terminating API pod on either verified image.
 It prefers the predecessor when the new pods have yet to become Ready and
 checks the committed schema separately using the matte lane and release

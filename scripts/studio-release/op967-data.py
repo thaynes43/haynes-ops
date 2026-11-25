@@ -85,7 +85,21 @@ def database_snapshot(conn, phase, results):
     """).fetchall()
     media_lanes = {row[0] for row in conn.execute("SELECT lane FROM studio.media_job_lanes")}
     rollback = phase in {"rollback-baseline", "compare"}
-    expected_lanes = {"voice", "image"} if phase == "preflight" else {"voice", "image", "matte"}
+    predecessor = phase in {"preflight", "retry-preflight"}
+    expected_lanes = {"voice", "image"} if predecessor else {"voice", "image", "matte"}
+    if phase == "retry-preflight":
+        # studio_app can inspect the schema but cannot read alembic_version.
+        # Check the 0012 constraints and the absence of 0013's new column.
+        results["0012 release constraints present and 0013 release column absent"] = conn.execute("""
+            SELECT EXISTS (SELECT FROM pg_constraint
+                WHERE conrelid = 'studio.publications'::regclass
+                  AND conname = 'publications_package_run_target_fkey' AND convalidated),
+                   EXISTS (SELECT FROM pg_constraint
+                WHERE conrelid = 'studio.archive_records'::regclass
+                  AND conname = 'archive_records_root_version_fkey' AND convalidated),
+                   EXISTS (SELECT FROM information_schema.columns
+                WHERE table_schema = 'studio' AND table_name = 'media_jobs' AND column_name = 'matte_releases')
+        """).fetchone() == (True, True, False)
     matte_paused = False
     if rollback:
         matte_paused = conn.execute("""

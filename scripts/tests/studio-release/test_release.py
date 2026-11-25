@@ -10,6 +10,7 @@ import unittest
 from contextlib import ExitStack, redirect_stdout
 from hashlib import sha256
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import yaml
@@ -18,6 +19,8 @@ import yaml
 spec = importlib.util.spec_from_file_location("studio_release_check", Path(__file__).with_name("check.py"))
 guard = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guard)
+render_cluster_inventory = guard.render_cluster_inventory
+repository_cluster_policies = guard.repository_cluster_policies
 STUDIO = guard.STUDIO_PATH
 MATTE = STUDIO / guard.MATTE_ACTIVATION
 AUTH_SOURCE = b"""
@@ -94,6 +97,17 @@ class ReleaseFixture:
         # The segmentation suite exercises refusal of the actual stale digests.
         self.enterContext(patch.object(guard, "check_segmentation_stage",
                                        side_effect=segmentation_stage_with_test_digest))
+
+        def fixture_inventory(_):
+            docs = [{"kind": "Namespace", "metadata": {"name": "ai"}}]
+            for stage in (STUDIO / "app", STUDIO / "worker", STUDIO / "media-workers", MATTE):
+                for doc in guard.render(stage):
+                    if doc["kind"] in guard.NAMESPACE_POLICY_KINDS:
+                        docs.append({**doc, "metadata": {"namespace": "ai", **doc["metadata"]}})
+            return docs
+
+        self.enterContext(patch.object(guard, "render_cluster_inventory", side_effect=fixture_inventory))
+        self.enterContext(patch.object(guard, "repository_cluster_policies", return_value=[]))
 
     def override_source(self, path, content):
         read_text = Path.read_text
@@ -266,6 +280,10 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
             ("worker", ("livenessProbe", "exec", "command"), ["true"], "300-second progress marker"),
             ("worker", ("volumeMounts", "matte-scratch", "mountPath"), "/wrong", mount_error),
             ("worker", ("volumeMounts", "store", "subPath"), "data/studio", mount_error),
+            ("worker", ("env", "STUDIO_STORE_ROOT", "value"), "/wrong", mount_error),
+            ("worker", ("volumeMounts",), lambda mounts: [*mounts, {"name": "weights", "mountPath": "/weights"}],
+             mount_error),
+            ("pod", ("volumes", "store", "nfs", "path"), "/wrong", mount_error),
             ("worker", ("volumeMounts", "worker-token", "readOnly"), False, token_error),
             ("pod", ("volumes", "worker-token", "secret", "secretName"), "other", token_error),
             ("pod", ("securityContext", "fsGroup"), 1000, mount_error),
@@ -304,6 +322,57 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
 
         self.check_refuses_rendered_mutation(MATTE, mount_token_in_sidecar, token_error)
 
+    def test_worker_token_sources_and_sidecar_environment(self):
+        unset = {"secretKeyRef": {"name": "studio-matte-worker-token", "key": "STUDIO_WORKER_TOKEN"}}
+        for component, keys, value in (
+            ("worker", ("env",), lambda env: [*env, {"name": "STUDIO_WORKER_TOKEN", "value": "synthetic"}]),
+            ("worker", ("env",), lambda env: [*env, {"name": "EXTRA", "valueFrom": unset}]),
+            ("worker", ("envFrom",), [{"secretRef": {"name": "studio-matte-worker-token"}}]),
+            ("worker", ("volumeMounts", "worker-token", "mountPath"), "/wrong"),
+            ("matting", ("env",), lambda env: [*env, {"name": "EXTRA", "value": "synthetic"}]),
+        ):
+            def mutate(documents):
+                deployment = guard.resource(documents, "Deployment", guard.MATTE_WORKER)
+                change(guard.container(deployment, component), keys, value)
+
+            with self.subTest(container=component, field=keys, value=value):
+                self.check_refuses_rendered_mutation(MATTE, mutate, "matte token must be mounted only in the worker")
+
+    def test_worker_identity_host_network_and_exact_limits(self):
+        for component, keys, value, message in (
+            ("pod", ("securityContext", "runAsUser"), 1001, "must run as UID and GID 1000"),
+            ("pod", ("securityContext", "runAsGroup"), 10001, "must run as UID and GID 1000"),
+            ("worker", ("securityContext", "runAsUser"), 10001, "must run as UID and GID 1000"),
+            ("pod", ("serviceAccountName",), "default", "no service-account token"),
+            ("pod", ("hostPID",), True, "separate PID"),
+            ("pod", ("hostNetwork",), True, "matte worker must share only scratch"),
+            ("worker", ("resources", "limits", "cpu"), "1200m", "matte worker must share only scratch"),
+            ("worker", ("resources", "limits", "memory"), "2Gi", "matte worker must share only scratch"),
+            ("deployment", ("replicas",), 2, "matte worker must share only scratch"),
+        ):
+            def mutate(documents):
+                deployment = guard.resource(documents, "Deployment", guard.MATTE_WORKER)
+                target = {"pod": deployment["spec"]["template"]["spec"],
+                          "worker": guard.container(deployment, "worker"), "deployment": deployment["spec"]}
+                change(target[component], keys, value)
+
+            with self.subTest(component=component, field=keys):
+                self.check_refuses_rendered_mutation(MATTE, mutate, message)
+
+    def test_readiness_probe_requires_the_reviewed_socket_setup_and_profile_binding(self):
+        pin = yaml.safe_load((STUDIO / "matting-pending/release/release.yaml").read_text())["data"]["profileSha256"]
+        for keys, value in (
+            (("readinessProbe", "exec", "command", 1), "-I"),
+            (("readinessProbe", "exec", "command", 3), lambda program: program.replace("/v1/ready", "/v1/progress")),
+            (("readinessProbe", "exec", "command", 3), lambda program: program.replace("raise SystemExit", "result = ")),
+            (("env", "STUDIO_MATTING_PROFILE_SHA256", "value"), "wrong-profile"),
+        ):
+            with self.subTest(field=keys, value=value):
+                sidecar = guard.container(guard.resource(guard.render(MATTE), "Deployment", guard.MATTE_WORKER), "matting")
+                change(sidecar, keys, value)
+                with self.assertRaisesRegex(ValueError, "exact profile hash"):
+                    guard.check_matte_readiness(sidecar, pin)
+
     def test_effective_network_and_label_coverage(self):
         app = STUDIO / "app"
         for stage, kind, name, keys, value, error in (
@@ -335,10 +404,110 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
 
         self.check_refuses_rendered_mutation(app, second_policy, "Studio API effective ingress")
 
+    def test_effective_policies_include_another_rendered_flux_kustomization(self):
+        repo = Path(self.enterContext(TemporaryDirectory(prefix="op967-policy-inventory-")))
+        cluster = repo / "kubernetes/main"
+        (cluster / "flux/config").mkdir(parents=True)
+        source = {"kind": "GitRepository", "name": "haynes-ops", "namespace": "flux-system"}
+
+        def flux(name, path, **extra):
+            return {"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization",
+                    "metadata": {"name": name, "namespace": "flux-system"},
+                    "spec": {"path": f"./kubernetes/main/{path}", "sourceRef": source, **extra}}
+
+        (cluster / "flux/config/cluster.yaml").write_text(yaml.safe_dump(flux("cluster", "flux")))
+        (cluster / "flux/apps.yaml").write_text(yaml.safe_dump(flux("cluster-apps", "apps")))
+        other = cluster / "apps/other-stage/app"
+        other.mkdir(parents=True)
+        (cluster / "apps/kustomization.yaml").write_text(yaml.safe_dump({
+            "apiVersion": "kustomize.config.k8s.io/v1beta1", "kind": "Kustomization",
+            "resources": ["other-stage/ks.yaml"],
+        }))
+        stage = other.parent / "ks.yaml"
+        for namespace, should_refuse in (("elsewhere", False), ("ai", True)):
+            with self.subTest(target_namespace=namespace):
+                stage.write_text(yaml.safe_dump(flux("other-stage", "apps/other-stage/app", targetNamespace=namespace)))
+                (other / "extra-policy.yaml").write_text(yaml.safe_dump({
+                    "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+                    "metadata": {"name": "other-stage-unrestricted"}, "spec": {
+                        "podSelector": {"matchExpressions": [{"key": "app.kubernetes.io/name", "operator": "In",
+                                                             "values": [guard.MATTE_WORKER]}]},
+                        "egress": [{}],
+                    },
+                }))
+                fixture_inventory = guard.render_cluster_inventory
+                with patch.object(guard, "render_cluster_inventory", side_effect=lambda root:
+                                  fixture_inventory(root) + render_cluster_inventory(repo)):
+                    if should_refuse:
+                        with self.assertRaisesRegex(ValueError, "matte worker effective egress"):
+                            guard.check(STUDIO)
+                    else:
+                        guard.check(STUDIO)
+
+    def test_cilium_policy_specs_rules_and_scope(self):
+        key = "k8s:app.kubernetes.io/name"
+        label = {"matchExpressions": [{"key": key, "operator": "In", "values": [guard.MATTE_WORKER]}]}
+        for kind, namespace, field, rule, error in (
+            ("CiliumNetworkPolicy", "ai", "spec", {"egress": [{}]}, "egress"),
+            ("CiliumNetworkPolicy", "ai", "specs", {"ingressDeny": [{}]}, "ingress"),
+            ("CiliumNetworkPolicy", "elsewhere", "spec", {"egress": [{}]}, None),
+            (guard.CLUSTER_POLICY_KIND, None, "specs", {"egressDeny": [{}]}, "egress"),
+            (guard.CLUSTER_POLICY_KIND, None, "spec", {"ingress": [{}]}, "ingress"),
+        ):
+            spec = {"endpointSelector": label, **rule}
+            metadata = {"name": "other-policy"}
+            if namespace is not None:
+                metadata["namespace"] = namespace
+            policy = {"kind": kind, "metadata": metadata, field: spec if field == "spec" else [spec]}
+            inventory = guard.render_cluster_inventory
+            with (
+                self.subTest(kind=kind, namespace=namespace, field=field, rule=rule),
+                patch.object(guard, "render_cluster_inventory", side_effect=lambda root: [*inventory(root), policy]),
+            ):
+                if error:
+                    with self.assertRaisesRegex(ValueError, rf"unexpected Cilium policy other-policy.*{error}"):
+                        guard.check(STUDIO)
+                else:
+                    guard.check(STUDIO)
+
+    def test_repository_clusterwide_policy_outside_the_app_inventory_is_checked(self):
+        repo = Path(self.enterContext(TemporaryDirectory(prefix="op967-clusterwide-policy-")))
+        folder = repo / "kubernetes/staged"
+        folder.mkdir(parents=True)
+        (folder / "example.json").write_text(json.dumps({
+            "kind": guard.CLUSTER_POLICY_KIND, "metadata": {"name": "future-bypass"},
+            "spec": {"endpointSelector": {"matchLabels": {"any:app.kubernetes.io/name": guard.MATTE_WORKER}},
+                     "egress": [{}]},
+        }))
+        with (
+            patch.object(guard, "repository_cluster_policies", side_effect=lambda _: repository_cluster_policies(repo)),
+            self.assertRaisesRegex(ValueError, "unexpected Cilium policy future-bypass"),
+        ):
+            guard.check(STUDIO)
+
+    def test_policy_selector_expressions_cover_matching_and_nonmatching_pods(self):
+        labels = {"app.kubernetes.io/name": guard.MATTE_WORKER, "example": "present"}
+        for op, key, values, matches in (
+            ("In", "example", ["present"], True), ("In", "example", ["elsewhere"], False),
+            ("NotIn", "example", ["elsewhere"], True), ("NotIn", "example", ["present"], False),
+            ("NotIn", "missing", ["present"], True),
+            ("Exists", "example", [], True), ("Exists", "missing", [], False),
+            ("DoesNotExist", "missing", [], True), ("DoesNotExist", "example", [], False),
+        ):
+            with self.subTest(operator=op, key=key, values=values):
+                selector = {"matchExpressions": [{"key": key, "operator": op, "values": values}]}
+                self.assertEqual(guard.selector_matches(selector, labels), matches)
+
     def test_job_registration_and_projection_contract(self):
         reg = STUDIO / "matte-worker-registration"
         projection = STUDIO / "media-worker-registration"
         for stage, kind, name, keys, value, error in (
+            (reg, "Job", None, ("spec", "template", "spec", "containers", "register", "command"), ["true"],
+             "matte registration must bind"),
+            (reg, "Job", None, ("spec", "template", "spec", "serviceAccountName"), "default",
+             "matte registration must bind"),
+            (reg, "Job", None, ("spec", "template", "spec", "automountServiceAccountToken"), True,
+             "matte registration must bind"),
             (reg, "Job", None, ("spec", "template", "spec", "containers", "register", "args", 5), "voice",
              "matte registration must bind"),
             (reg, "Job", None, ("spec", "template", "spec", "volumes", "token", "secret", "secretName"), "wrong",
@@ -380,9 +549,46 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
             (ROUTES_SOURCE.replace(b"@router.post('/release-matte')", b"@router.get('/release-matte')"), AUTH_SOURCE),
             (ROUTES_SOURCE, AUTH_SOURCE.replace(b"await run_in_threadpool(worker_access, request)", b"pass")),
             (ROUTES_SOURCE, AUTH_SOURCE.replace(b"valid_worker_bearer(token)", b"True")),
+            (ROUTES_SOURCE, AUTH_SOURCE.replace(b"identity.get_worker_lane(conn, token)", b"'wrong grant'")),
+            (ROUTES_SOURCE.replace(b"/internal/v1/work", b"/other"), AUTH_SOURCE),
+            (ROUTES_SOURCE.replace(b"class WorkRoute(WorkerRoute)", b"class WorkRoute(MetadataRoute)"), AUTH_SOURCE),
+            (ROUTES_SOURCE.replace(b"from .auth import WorkerRoute", b"from .other import WorkerRoute"), AUTH_SOURCE),
+            (ROUTES_SOURCE.replace(b"    pass", b"    def get_route_handler(self): pass", 1), AUTH_SOURCE),
+            (ROUTES_SOURCE, AUTH_SOURCE.replace(b"return authenticated", b"return handler")),
         ):
             with self.assertRaisesRegex(ValueError, "every port-8002 route must require a worker token"):
                 guard.check_listener_auth(routes, auth)
+        with self.assertRaisesRegex(ValueError, "must define worker_access exactly once"):
+            guard.check_listener_auth(ROUTES_SOURCE, AUTH_SOURCE + b"\ndef worker_access(request): pass\n")
+
+    def test_entrypoint_refuses_a_listener_without_the_bearer_handler_or_grant_lookup(self):
+        for previous, replacement in (
+            (b"await run_in_threadpool(worker_access, request)", b"pass"),
+            (b"identity.get_worker_lane(conn, token)", b"'wrong grant'"),
+        ):
+            studio_source = guard.studio_source
+            with (
+                self.subTest(source=previous),
+                patch.object(guard, "studio_source", side_effect=lambda rev, name:
+                             AUTH_SOURCE.replace(previous, replacement) if name == "api/auth.py" else studio_source(rev, name)),
+                self.assertRaisesRegex(ValueError, "every port-8002 route must require a worker token"),
+            ):
+                guard.check(STUDIO)
+
+    def test_listener_must_mount_and_read_the_new_config(self):
+        for target, keys, value in (
+            ("pod", ("volumes", "media-worker-routes", "configMap", "name"), guard.PREDECESSOR_LISTENER),
+            ("listener", ("volumeMounts", "media-worker-routes", "mountPath"), "/wrong"),
+            ("listener", ("volumeMounts", "media-worker-routes", "readOnly"), False),
+            ("listener", ("args", 1), "/wrong/nginx.conf"),
+        ):
+            def mutate(documents):
+                api = guard.resource(documents, "Deployment", "studio-api")
+                objects = {"pod": api["spec"]["template"]["spec"], "listener": guard.container(api, "media-worker-routes")}
+                change(objects[target], keys, value)
+
+            with self.subTest(field=keys):
+                self.check_refuses_rendered_mutation(STUDIO / "app", mutate, "must mount the new rendered listener allowlist")
 
     def test_listener_predecessor_map_keeps_identity_content_and_prune_rule(self):
         for keys, value in (
@@ -420,6 +626,32 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
             self.assertRaisesRegex(ValueError, "keep the byte-identical offline requirements"),
         ):
             guard.check(STUDIO)
+
+    def test_render_turnover_requires_its_config_contents_init_and_recreate(self):
+        render_path = STUDIO.with_name("studio-render")
+        requirements = (render_path / "app/requirements.txt").read_text()
+        render = guard.render
+        for target, field, value in (
+            ("config", "requirements.txt", "wrong export"),
+            ("config", "render-init.py", "wrong init"),
+            ("app", "command", ["sleep", "infinity"]),
+            ("controller", "strategy", "RollingUpdate"),
+            ("volume", "name", "studio-render-requirements"),
+        ):
+            docs = render(render_path / "app")
+            values = guard.resource(docs, "HelmRelease", "studio-render")["spec"]["values"]
+            controller = values["controllers"]["studio-render"]
+            volume = values["persistence"]["config"]
+            config = guard.resource(docs, "ConfigMap", volume["name"])["data"]
+            objects = {"controller": controller, "app": controller["containers"]["app"],
+                       "volume": volume, "config": config}
+            objects[target][field] = value
+            with (
+                self.subTest(target=target, field=field),
+                patch.object(guard, "render", return_value=docs),
+                self.assertRaisesRegex(ValueError, "offline replacement must use its own config"),
+            ):
+                guard.check_render_turnover(STUDIO, requirements)
 
 
 def change(document, keys, value):

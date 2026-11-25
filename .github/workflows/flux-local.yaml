@@ -217,6 +217,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Install Flux for offline policy inventory rendering
+        run: |
+          mkdir "$RUNNER_TEMP/studio-flux"
+          cd "$RUNNER_TEMP/studio-flux"
+          curl --fail --silent --show-error --location \
+            https://github.com/fluxcd/flux2/releases/download/v2.10.0/flux_2.10.0_linux_amd64.tar.gz \
+            --output flux.tar.gz
+          printf '%s\n' '208dd7012c04fedeed5b2d0b6e63df3b15b1c34a381527811685c098bc9f8659  flux.tar.gz' | sha256sum --check
+          tar -xzf flux.tar.gz flux
+          printf '%s\n' "$PWD" >> "$GITHUB_PATH"
       - name: Test Studio Flux Job gates
         run: |
           python3 -m venv "$RUNNER_TEMP/studio-release-venv"

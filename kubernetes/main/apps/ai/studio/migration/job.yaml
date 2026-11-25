@@ -36,6 +36,7 @@ spec:
           args:
             - |
               python - <<'PY'
+              import json
               import os
               import subprocess
 
@@ -69,6 +70,8 @@ spec:
                   with psycopg.connect(dsn) as conn:
                       revision = conn.execute("SELECT version_num FROM studio.alembic_version").fetchone()[0]
                   print("Alembic revision:", revision)
+                  print(json.dumps({"revision": revision, "user": "studio_migrator", "database": "studio",
+                                    "tls": True, "hba_rejected": ["other database", "plaintext"]}))
 
               try:
                   dsn = os.environ["STUDIO_MIGRATION_DATABASE_URL"]

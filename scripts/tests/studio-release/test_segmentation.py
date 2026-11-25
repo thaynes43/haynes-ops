@@ -308,6 +308,22 @@ class ReleaseTests(unittest.TestCase):
                 ):
                     guard.check_segmentation_stage(STUDIO, self.flux)
 
+    def test_render_splits_require_the_exact_cpu_limits_even_below_budget(self):
+        render_path = STUDIO.with_name("studio-render")
+        render = guard.render
+        for stage, cpu in ((render_path / "app", "16"), (render_path / "matting-pending", "16"),
+                           (PENDING / "activation", "14")):
+            documents = render(stage)
+            release = guard.resource(documents, "HelmRelease", "studio-render")
+            app = release["spec"]["values"]["controllers"]["studio-render"]["containers"]["app"]
+            app["resources"]["limits"]["cpu"] = cpu
+            with (
+                self.subTest(stage=stage),
+                patch.object(guard, "render", side_effect=lambda path: documents if path == stage else render(path)),
+                self.assertRaisesRegex(ValueError, "offline render must keep 32 GiB"),
+            ):
+                guard.check_segmentation_stage(STUDIO, self.flux)
+
     def test_activation_checks_termination_grace(self):
         stage = PENDING / "activation"
         render = guard.render

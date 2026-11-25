@@ -3,8 +3,10 @@
 import argparse
 import ast
 import json
+import os
 import re
 import subprocess
+import sys
 from fractions import Fraction
 from hashlib import sha256
 from pathlib import Path
@@ -46,7 +48,9 @@ MEDIA_ROUTES = ("claim", "heartbeat", "publish", "complete", "fail", "release-ma
 PREDECESSOR_LISTENER = "studio-media-worker-routes-cbf48cht27"
 PREDECESSOR_LISTENER_SHA256 = "f8b500a868d689f51ee5a0239a6208580d25790a36511b1a2b3069c973b736f1"
 PREDECESSOR_RENDER_SHA256 = "51d95b693bf4a07a2f5818d5e8e9143d889b763fe5bc7d4442a62988efd5c4be"
-MIGRATION_0013_SHA256 = "2509de323f807ee3ed697a739a24fd923fbb92ad3e7c92cd669977b7a296a1d3"
+MIGRATION_0013_SHA256 = "6e68c22881ed4129b9557402accaee5a054eb490bb3fc58b3d04b399019d71be"
+NAMESPACE_POLICY_KINDS = {"NetworkPolicy", "CiliumNetworkPolicy"}
+CLUSTER_POLICY_KIND = "CiliumClusterwideNetworkPolicy"
 STALE_MATTING_DIGESTS = {
     "sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f",
     "sha256:5c431978f3bfe7a48deb062c6b2854ca8b086d1a5d9c600e2db4b1e26d702d72",
@@ -268,6 +272,40 @@ def render(path):
     return list(yaml.safe_load_all(output))
 
 
+def render_cluster_inventory(repo):
+    """Render the active Ops application inventory, including Flux transformations."""
+    bootstrap = repo / "kubernetes/main/flux/config/cluster.yaml"
+    cluster = resource(list(yaml.safe_load_all(bootstrap.read_text())), "Kustomization", "cluster")
+
+    def build(stage, filename, options=()):
+        output = subprocess.check_output([
+            "flux", "build", "kustomization", stage["metadata"]["name"],
+            "--path", stage["spec"]["path"], "--kustomization-file", str(filename),
+            "--dry-run", "--in-memory-build", *options,
+        ], cwd=repo, env={**os.environ, "GOMAXPROCS": "2"}, text=True)
+        return [doc for doc in yaml.load_all(output, Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)) if doc]
+
+    with TemporaryDirectory(prefix="studio-flux-inventory-") as directory:
+        manifest = Path(directory) / "flux-stage.yaml"
+        manifest.write_text(yaml.safe_dump(cluster))
+        roots = build(cluster, manifest)
+        apps = resource(roots, "Kustomization", "cluster-apps")
+        manifest.write_text(yaml.safe_dump(apps))
+        workloads = build(apps, manifest, ("--recursive", "--local-sources", "GitRepository/flux-system/haynes-ops=."))
+    return roots + workloads
+
+
+def repository_cluster_policies(repo):
+    """Also include clusterwide policy definitions outside the active app inventory."""
+    for file in (repo / "kubernetes").rglob("*"):
+        if file.suffix not in {".yaml", ".yml", ".json"} or not file.is_file():
+            continue
+        text = file.read_text()
+        if CLUSTER_POLICY_KIND in text:
+            yield from (doc for doc in yaml.safe_load_all(text)
+                        if isinstance(doc, dict) and doc.get("kind") == CLUSTER_POLICY_KIND)
+
+
 def container(workload, name=None):
     containers = workload["spec"]["template"]["spec"]["containers"]
     (selected,) = [item for item in containers if name is None or item["name"] == name]
@@ -385,21 +423,21 @@ def check_policy_selectors(documents, *, app_labels_only=False):
         yield from (item["key"] for item in selector.get("matchExpressions") or [])
 
     for policy in documents:
-        spec = policy["spec"] if policy["kind"] in {"NetworkPolicy", "CiliumNetworkPolicy"} else None
-        if spec is None:
-            continue
         selectors = []
         if policy["kind"] == "NetworkPolicy":
+            spec = policy["spec"]
             selectors.append(spec.get("podSelector"))
             for rule in [*(spec.get("ingress") or []), *(spec.get("egress") or [])]:
                 for peer in [*(rule.get("to") or []), *(rule.get("from") or [])]:
                     selectors += [peer.get("podSelector"), peer.get("namespaceSelector")]
-        else:
-            selectors.append(spec.get("endpointSelector"))
-            for direction, peers in (("ingress", "fromEndpoints"), ("egress", "toEndpoints")):
-                for rule in [*spec.get(direction, []), *spec.get(direction + "Deny", [])]:
-                    selectors.extend(rule.get(peers, []))
-        used = {key.removeprefix("k8s:") for selector in selectors for key in keys(selector)}
+        elif policy["kind"] in {"CiliumNetworkPolicy", CLUSTER_POLICY_KIND}:
+            for spec in [policy.get("spec"), *(policy.get("specs") or [])]:
+                if spec:
+                    selectors.append(spec.get("endpointSelector"))
+                    for direction, peers in (("ingress", "fromEndpoints"), ("egress", "toEndpoints")):
+                        for rule in [*(spec.get(direction) or []), *(spec.get(direction + "Deny") or [])]:
+                            selectors.extend(rule.get(peers, []))
+        used = {key.removeprefix("k8s:").removeprefix("any:") for selector in selectors for key in keys(selector)}
         if bad := sorted(used.intersection(IDENTITY_EXCLUDED_LABELS)):
             raise ValueError(f"{policy['metadata']['name']} selects by {bad[0]}, which Cilium leaves "
                              "out of pod identities; the rule would never match")
@@ -533,9 +571,13 @@ def check_matte_token(stage, pod, worker, sidecar):
             or pod.get("automountServiceAccountToken") is not False
             or pod.get("serviceAccountName") != MATTE_WORKER
             or resource(stage, "ServiceAccount", MATTE_WORKER).get("automountServiceAccountToken") is not False
-            or any(pod.get(key) for key in ("shareProcessNamespace", "hostPID", "initContainers", "ephemeralContainers"))
-            or pod["securityContext"].get("runAsUser") != 1000):
+            or any(pod.get(key) for key in ("shareProcessNamespace", "hostPID", "initContainers", "ephemeralContainers"))):
         raise ValueError("matte token must be mounted only in the worker with separate PID and no service-account token")
+    pod_identity = pod["securityContext"]
+    worker_identity = worker["securityContext"]
+    for field in ("runAsUser", "runAsGroup"):
+        if pod_identity.get(field) != 1000 or worker_identity.get(field, 1000) != 1000:
+            raise ValueError("matte worker must run as UID and GID 1000")
 
 
 def check_matte_readiness(sidecar, profile):
@@ -629,11 +671,11 @@ def check_matte_worker(stage, api, run, pin, memory):
 
 
 def selector_matches(selector, labels):
-    if any(labels.get(key.removeprefix("k8s:")) != value
+    if any(labels.get(key) != value
            for key, value in selector.get("matchLabels", {}).items()):
         return False
     for expression in selector.get("matchExpressions", []):
-        key, op = expression["key"].removeprefix("k8s:"), expression["operator"]
+        key, op = expression["key"], expression["operator"]
         values = expression.get("values", [])
         if not {
             "In": labels.get(key) in values, "NotIn": labels.get(key) not in values,
@@ -643,31 +685,49 @@ def selector_matches(selector, labels):
     return True
 
 
-def check_matte_network(documents, api, matte, voice, image, run, mcp):
-    def labels(workload):
-        return workload["spec"]["template"]["metadata"]["labels"]
+def cilium_labels(pod, namespace_labels, cluster_name):
+    labels = {key: value for key, value in pod["metadata"]["labels"].items()
+              if key not in IDENTITY_EXCLUDED_LABELS}
+    labels["io.kubernetes.pod.namespace"] = "ai"
+    labels["io.cilium.k8s.policy.serviceaccount"] = pod["spec"].get("serviceAccountName", "default")
+    labels["io.cilium.k8s.policy.cluster"] = cluster_name
+    labels.update({f"io.cilium.k8s.namespace.labels.{key}": value for key, value in namespace_labels.items()})
+    return {f"{source}{key}": value for key, value in labels.items() for source in ("", "k8s:", "any:")}
 
-    def policy_rules(workload, policy_name, direction):
-        pod_labels = {**labels(workload), "io.kubernetes.pod.namespace": "ai"}
-        expected = resource(documents, "NetworkPolicy", policy_name)["spec"]
-        if (not selector_matches(expected["podSelector"], pod_labels)
-                or direction.capitalize() not in expected["policyTypes"]):
-            raise ValueError(f"{policy_name} {direction} selector must cover the rendered pod labels")
+
+def selected_policies(documents, pod, endpoint_labels):
+    pod_labels = pod["metadata"]["labels"]
+    for document in documents:
+        kind = document["kind"]
+        if kind in NAMESPACE_POLICY_KINDS and document["metadata"].get("namespace") != "ai":
+            continue
+        if kind == "NetworkPolicy":
+            spec = document["spec"]
+            if selector_matches(spec["podSelector"], pod_labels):
+                yield document, spec
+        elif kind in {"CiliumNetworkPolicy", CLUSTER_POLICY_KIND}:
+            for spec in [document.get("spec"), *(document.get("specs") or [])]:
+                if spec and "endpointSelector" in spec and selector_matches(spec["endpointSelector"], endpoint_labels):
+                    yield document, spec
+
+
+def check_matte_policies(documents, api, matte, api_identity, matte_identity):
+    def policy_rules(workload, identity, policy_name, direction):
+        expected_selected = False
         rules = []
-        for document in documents:
-            if document["metadata"].get("namespace", "ai") != "ai":
-                continue
+        for document, spec in selected_policies(documents, workload, identity):
+            name = document["metadata"]["name"]
             if document["kind"] == "NetworkPolicy":
-                spec = document["spec"]
                 types = spec.get("policyTypes", ["Ingress", *(["Egress"] if spec.get("egress") else [])])
-                if direction.capitalize() in types and selector_matches(spec["podSelector"], pod_labels):
+                if direction.capitalize() in types:
+                    expected_selected = expected_selected or name == policy_name
                     rules.extend(spec.get(direction) or [])
-            if document["kind"] in {"CiliumNetworkPolicy", "CiliumClusterwideNetworkPolicy"}:
-                for spec in [document.get("spec"), *document.get("specs", [])]:
-                    if spec and selector_matches(spec.get("endpointSelector", {}), pod_labels) and (
-                        spec.get(direction) or spec.get(direction + "Deny")
-                    ):
-                        raise ValueError(f"unexpected Cilium policy for {policy_name} {direction}")
+            elif spec.get(direction) or spec.get(direction + "Deny"):
+                # The reviewed allowlist is expressed entirely in NetworkPolicy.
+                # A matching Cilium rule can add to it or override it with a deny.
+                raise ValueError(f"unexpected Cilium policy {name} for {policy_name} {direction}")
+        if not expected_selected:
+            raise ValueError(f"{policy_name} {direction} selector must cover the rendered pod labels")
         return {json.dumps(rule, sort_keys=True) for rule in rules}
 
     def peer(**match):
@@ -676,32 +736,79 @@ def check_matte_network(documents, api, matte, voice, image, run, mcp):
     def rule(direction, peers, ports):
         return {direction: peers, "ports": [{"port": port, "protocol": protocol} for port, protocol in ports]}
 
-    def expect_rules(workload, name, direction, expected, message):
-        if policy_rules(workload, name, direction) != {json.dumps(item, sort_keys=True) for item in expected}:
+    def expect_rules(workload, identity, name, direction, expected, message):
+        if policy_rules(workload, identity, name, direction) != {json.dumps(item, sort_keys=True) for item in expected}:
             raise ValueError(message)
 
     app_label = "app.kubernetes.io/name"
     media_names = ["studio-voice-worker", "studio-image-worker", MATTE_WORKER]
-    for workload, name in zip((api, voice, image, matte, run, mcp),
-                              ("studio-api", *media_names, "studio-worker", "studio-mcp"), strict=True):
-        if labels(workload).get(app_label) != name:
-            raise ValueError(f"{name} pod labels must match its rendered NetworkPolicy selectors")
-
     dns = {**peer(**{"k8s-app": "kube-dns"}),
            "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}}}
     listener = peer(**{app_label: "studio-api"})
-    expect_rules(matte, MATTE_WORKER, "egress", [
+    expect_rules(matte, matte_identity, MATTE_WORKER, "egress", [
         rule("to", [dns], [(53, "UDP"), (53, "TCP")]),
         rule("to", [listener], [(8002, "TCP")]),
     ], "matte worker effective egress must be DNS and the Studio port-8002 listener only")
-    expect_rules(matte, MATTE_WORKER, "ingress", [], "matte worker must refuse pod ingress")
+    expect_rules(matte, matte_identity, MATTE_WORKER, "ingress", [], "matte worker must refuse pod ingress")
     traefik = {**peer(**{"app.kubernetes.io/instance": "traefik-internal-network"}),
                "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "network"}}}
     media = {"podSelector": {"matchExpressions": [{"key": app_label, "operator": "In", "values": media_names}]}}
-    expect_rules(api, "studio-api-ingress", "ingress", [
+    expect_rules(api, api_identity, "studio-api-ingress", "ingress", [
         rule("from", [traefik, peer(**{app_label: "studio-mcp"}), peer(**{app_label: "studio-worker"})], [(8000, "TCP")]),
         rule("from", [media], [(8002, "TCP")]),
     ], "Studio API effective ingress must admit only its reviewed callers and the three media worker labels")
+
+
+def check_matte_network(documents, api, matte, voice, image, run, mcp, cluster_name):
+    app_label = "app.kubernetes.io/name"
+    workload_names = ("studio-api", "studio-voice-worker", "studio-image-worker", MATTE_WORKER,
+                      "studio-worker", "studio-mcp")
+    for workload, name in zip((api, voice, image, matte, run, mcp), workload_names, strict=True):
+        if workload["spec"]["template"]["metadata"]["labels"].get(app_label) != name:
+            raise ValueError(f"{name} pod labels must match its rendered NetworkPolicy selectors")
+    namespace = resource(documents, "Namespace", "ai")
+    policies = [doc for doc in documents if doc["kind"] == CLUSTER_POLICY_KIND or (
+        doc["kind"] in NAMESPACE_POLICY_KINDS and doc["metadata"].get("namespace") == "ai"
+    )]
+    check_policy_selectors(policies)
+    labels = {"kubernetes.io/metadata.name": "ai", **namespace["metadata"].get("labels", {})}
+    api_pod, matte_pod = api["spec"]["template"], matte["spec"]["template"]
+    check_matte_policies(policies, api_pod, matte_pod,
+                         cilium_labels(api_pod, labels, cluster_name), cilium_labels(matte_pod, labels, cluster_name))
+
+
+def check_installed_policies(data):
+    namespaced, clusterwide, endpoints, api, matte = data
+    if len(api["items"]) != 2 or len(matte["items"]) != 1:
+        raise ValueError("expected two installed API pods and one matte worker pod for the policy read")
+    policies = namespaced["items"] + clusterwide["items"]
+    check_policy_selectors(policies)
+    endpoint_by_name = {ep["metadata"]["name"]: ep for ep in endpoints["items"]}
+    identities = {}
+    for pod in api["items"] + matte["items"]:
+        name = pod["metadata"]["name"]
+        endpoint = endpoint_by_name.get(name, {})
+        if not any(ref["kind"] == "Pod" and ref["uid"] == pod["metadata"]["uid"]
+                   for ref in endpoint.get("metadata", {}).get("ownerReferences", [])):
+            raise ValueError(f"missing installed Cilium endpoint for pod {name}")
+        labels = endpoint["status"]["identity"]["labels"]
+        if not labels:
+            raise ValueError(f"missing installed Cilium identity labels for pod {name}")
+        exact = {}
+        for label in labels:
+            key, _, value = label.partition("=")
+            exact[key] = value
+        generic = {key.split(":", 1)[1]: value for key, value in exact.items() if ":" in key}
+        identity = {**generic, **{f"any:{key}": value for key, value in generic.items()}, **exact}
+        identities[name] = identity
+        matches = sorted({f"{doc['kind']}/{doc['metadata']['name']}"
+                          for doc, _ in selected_policies(policies, pod, identity)})
+        print(f"{name} matching policies: {', '.join(matches)}")
+    matte_pod = matte["items"][0]
+    for pod in api["items"]:
+        check_matte_policies(policies, pod, matte_pod, identities[pod["metadata"]["name"]],
+                             identities[matte_pod["metadata"]["name"]])
+
 
 def check_matting_deny_all(spec, name):
     if spec != {
@@ -1304,10 +1411,10 @@ def check(path):
     image = resource(media, "Deployment", "studio-image-worker")
     matte_stage = render(path / MATTE_ACTIVATION)
     matte = check_matte_worker(matte_stage, api, worker, matting_pin, matting_memory)
-    for stage in (app, media, worker_stage, matte_stage):
-        check_policy_selectors(stage)
-
-    check_matte_network(app + media + worker_stage + matte_stage, api, matte, voice, image, worker, mcp)
+    repo = path.resolve().parents[len(STUDIO_PATH.parts) - 1]
+    policies = render_cluster_inventory(repo) + list(repository_cluster_policies(repo))
+    cilium = yaml.safe_load((repo / "kubernetes/main/apps/kube-system/cilium/app/helm-values.yaml").read_text())
+    check_matte_network(policies, api, matte, voice, image, worker, mcp, cilium["cluster"]["name"])
     digest, web_digest = release["apiDigest"], release["webDigest"]
     if (image_digest(api, API_IMAGE, name="api") != digest
             or image_digest(web, API_IMAGE + "-web") != web_digest):
@@ -1382,7 +1489,11 @@ def check(path):
 
     api_pod = api["spec"]["template"]["spec"]
     listener_config = resource_volume(api_pod, "media-worker-routes")["configMap"]["name"]
-    if resource(app, "ConfigMap", listener_config)["data"]["nginx.conf"] != routes:
+    listener = container(api, "media-worker-routes")
+    if (resource(app, "ConfigMap", listener_config)["data"]["nginx.conf"] != routes
+            or {"name": "media-worker-routes", "mountPath": "/etc/studio-worker-routes", "readOnly": True}
+            not in listener["volumeMounts"]
+            or listener["args"] != ["-c", "/etc/studio-worker-routes/nginx.conf", "-g", "daemon off;"]):
         raise ValueError("the API must mount the new rendered listener allowlist")
     check_listener_auth(studio_source(release["revision"], "api/run_routes.py"),
                         studio_source(release["revision"], "api/auth.py"))
@@ -1421,8 +1532,13 @@ def main():
     parser.add_argument("studio_path", type=Path, nargs="?", default=STUDIO_PATH)
     parser.add_argument("--pin", nargs=2, metavar=("STUDIO_REVISION", "PUBLISH_RUN"),
                         help="verify the published image pair and update all release references")
+    parser.add_argument("--installed-policies", action="store_true",
+                        help="verify namespace and clusterwide policy JSON and installed pod labels on stdin")
     args = parser.parse_args()
     try:
+        if args.installed_policies:
+            check_installed_policies(json.load(sys.stdin))
+            return
         if args.pin:
             repin(args.studio_path, *args.pin)
         check(args.studio_path)
