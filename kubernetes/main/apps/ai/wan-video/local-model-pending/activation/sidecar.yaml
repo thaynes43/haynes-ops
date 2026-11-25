@@ -15,7 +15,7 @@
     image:
       repository: ghcr.io/thaynes43/studio-local-model
       # Set to the published, verified tag@digest before the activation PR.
-      tag: pending-op442-startup-proof
+      tag: b12679-1840480c35060a590d1c464da75162d8fbcd2904-45576973328-1@sha256:33e76e0a90490b74d3b6330d76fb90f5d8171ef70bb5255fdfbf7bff83b648e6
     command: [python3, -m, studio_local_backend, serve]
     env:
       NVIDIA_VISIBLE_DEVICES: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a
