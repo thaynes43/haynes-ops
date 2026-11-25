@@ -1,0 +1,100 @@
+- op: add
+  path: /spec/values/controllers/wan-video/containers/local-model
+  value:
+    image:
+      repository: ghcr.io/thaynes43/studio-local-model
+      # Part 2b replaces this with the published sha tag and digest.
+      tag: pending-op442-part-2b
+    command: [python3, -m, studio_local_backend, serve]
+    env:
+      NVIDIA_VISIBLE_DEVICES: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      CUDA_VISIBLE_DEVICES: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "1"
+      CUDA_CACHE_DISABLE: "1"
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 1000
+      runAsNonRoot: true
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities: {drop: [ALL]}
+    resources:
+      requests: {cpu: "1", memory: 8Gi}
+      limits: {cpu: "2", memory: 16Gi}
+    probes:
+      startup:
+        enabled: true
+        custom: true
+        spec:
+          exec:
+            command: [python3, -m, studio_local_backend, ready, --workspace, /workspace]
+          periodSeconds: 5
+          timeoutSeconds: 10
+          failureThreshold: 12
+      readiness:
+        enabled: true
+        custom: true
+        spec:
+          exec:
+            command: [python3, -m, studio_local_backend, ready, --workspace, /workspace]
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
+- op: add
+  path: /spec/values/controllers/wan-video/annotations/configmap.reloader.stakater.com~1reload
+  value: wan-video-config,wan-local-model-profile
+- op: replace
+  path: /spec/values/persistence/config
+  value:
+    type: projected
+    sources:
+      - configMap: {name: wan-video-config}
+      - configMap: {name: wan-local-model-profile}
+    globalMounts:
+      - {path: /config/video, readOnly: true}
+# Mount the existing lock by inode. Kubelet would create a directory for a
+# missing subPath, so prepare the file before it starts the serving containers.
+- op: add
+  path: /spec/values/controllers/wan-video/initContainers/prepare-local-model
+  value:
+    command:
+      - python
+      - -B
+      - -c
+      - |
+        from pathlib import Path
+        root = Path("/workspace")
+        with (root / "compute.lock").open("a"):
+            pass
+        (root / "local-model").mkdir(mode=0o700, exist_ok=True)
+        (root / "input" / "studio-v1").mkdir(parents=True, exist_ok=True)
+    env:
+      NVIDIA_VISIBLE_DEVICES: void
+    resources:
+      requests: {cpu: 50m, memory: 32Mi}
+      limits: {cpu: "1", memory: 128Mi}
+- op: copy
+  from: /spec/values/controllers/wan-video/containers/app/image
+  path: /spec/values/controllers/wan-video/initContainers/prepare-local-model/image
+- op: remove
+  path: /spec/values/persistence/workspace/globalMounts
+- op: add
+  path: /spec/values/persistence/workspace/advancedMounts
+  value:
+    wan-video:
+      app: &wan-mounts
+        - {path: /workspace}
+        - {path: /opt/ComfyUI/models, subPath: models}
+      foley: *wan-mounts
+      api: *wan-mounts
+      provision-models: *wan-mounts
+      provision-foley-models: *wan-mounts
+      prepare-local-model:
+        - {path: /workspace}
+      local-model:
+        - {path: /workspace/compute.lock, subPath: compute.lock, readOnly: true}
+        - {path: /workspace/local-model, subPath: local-model}
+        - {path: /workspace/input/studio-v1, subPath: input/studio-v1, readOnly: true}
+        - {path: /workspace/local-model-weights, subPath: local-model-weights, readOnly: true}

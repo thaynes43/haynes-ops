@@ -16,4 +16,30 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.15'
-      - run: python -m unittest discover -s scripts/wan-video -v
+      - name: Run the serial CPU suite
+        env:
+          STUDIO_THREADS: "2"
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "1"
+        run: python -B -m unittest discover -s scripts/wan-video -v
+      - name: Verify the staged profile and rendered workspace mounts
+        env:
+          GOMAXPROCS: "2"
+        run: |
+          /usr/bin/python3 -m venv "$RUNNER_TEMP/wan-manifests-venv"
+          "$RUNNER_TEMP/wan-manifests-venv/bin/python" -I -m pip install \
+            --only-binary=:all: --no-deps --disable-pip-version-check PyYAML==6.0.3
+          mkdir "$RUNNER_TEMP/wan-manifests"
+          (
+            cd "$RUNNER_TEMP/wan-manifests"
+            curl --fail --silent --show-error --location \
+              https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.8.3/kustomize_v5.8.3_linux_amd64.tar.gz \
+              --output kustomize_v5.8.3_linux_amd64.tar.gz
+            sha256sum --check "$GITHUB_WORKSPACE/scripts/tests/portal178-m5a/kustomize.sha256"
+            tar -xzf kustomize_v5.8.3_linux_amd64.tar.gz
+            helm pull --untar oci://ghcr.io/bjw-s-labs/helm/app-template@sha256:0e13b145656490310ada364d8eb708e5f4f6384c7deb60d3f5f0fa56950ff63a
+          )
+          PATH="$RUNNER_TEMP/wan-manifests:$PATH" \
+            WAN_HELM_CHART="$RUNNER_TEMP/wan-manifests/app-template" \
+            "$RUNNER_TEMP/wan-manifests-venv/bin/python" -I -B \
+            scripts/wan-video/check_local_model_manifests.py -v

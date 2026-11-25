@@ -571,7 +571,8 @@ def check_local_queue():
     try:
         require_empty_queue()
     except local.UnknownEngineWork as exc:
-        UNSAFE = True
+        if not exc.engine_busy:
+            UNSAFE = True
         raise local.busy(str(exc), "engine_busy") from exc
     except (OSError, HTTPException) as exc:
         raise local.busy("ComfyUI queue is temporarily unavailable", "engine_busy") from exc
@@ -594,23 +595,10 @@ def check_local_compute():
         raise local.busy("Rack GPUs are busy", "gpu_busy")
 
 
-def clear_local_load_memory(lane):
-    # As with Foley, free only the idle ComfyUI cache, never interrupt a job.
-    check_local_compute()
-    engine("/free", {"unload_models": True, "free_memory": True})
-    for _ in range(5):
-        check_local_compute()
-        snapshot = lane.reconcile()
-        if lane.unloaded(snapshot):
-            return snapshot
-        time.sleep(1)
-    return snapshot
-
-
 def run_local_request(lane, job, request, lease):
     global ACTIVE
     try:
-        lane.run(job, request, lease, check_local_compute, ensure_load_memory=clear_local_load_memory)
+        lane.run(job, request, lease, check_local_compute)
     finally:
         lease.close()
         with LOCK:
@@ -668,7 +656,12 @@ def get_local_request(lane, job_id):
                     if state is not None and state.get("pending") == job_id:
                         lane.reconcile()
                     else:
+                        if state is None:
+                            lane.reconcile()
                         lane.finish(job, error="submission_lost")
+                except product.RequestError as exc:
+                    if exc.code == "local_model_unavailable":
+                        raise
                 except (OSError, ValueError):
                     pass
                 job = lane.read(job_id)

@@ -1,0 +1,4 @@
+**
+!scripts/studio-local-model/backend.cpp
+!kubernetes/main/apps/ai/wan-video/app/*.py
+!kubernetes/main/apps/ai/wan-video/local-model-pending/weights/weights.json

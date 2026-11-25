@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ai
+resources:
+  - job.yaml
+  - networkpolicy.yaml
+configMapGenerator:
+  - name: wan-local-model-provision
+    files:
+      - provision.py
+      - weights.json
+generatorOptions:
+  annotations:
+    kustomize.toolkit.fluxcd.io/substitute: disabled

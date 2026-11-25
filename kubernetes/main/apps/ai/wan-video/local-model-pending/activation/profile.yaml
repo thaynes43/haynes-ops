@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wan-local-model-profile
+  namespace: ai
+data:
+  local-model.json: |
+    {
+      "model": "qwen3.5-9b-q5_k_m",
+      "gpu_uuid": "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
+      "context_tokens": 8192,
+      "max_output_tokens": 2048,
+      "load_timeout_seconds": 120,
+      "infer_timeout_seconds": 180,
+      "unload_timeout_seconds": 15,
+      "unloaded_max_mib": 512,
+      "resident_min_mib": 5120,
+      "resident_max_mib": 12288
+    }
