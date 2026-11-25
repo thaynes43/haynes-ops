@@ -190,6 +190,12 @@ The corrected idle gate confirmed Wan ready and both video and Foley idle
 before provisioning and again before the serving smoke.
 [Story 460, comment 10186](https://work.haynesnetwork.com/projects/haynes-studio/work_packages/460/activity#comment-10186).
 
+**Proven (2026-11-25).** `studio-segmentation-provision-06` ran from 16:24Z
+to 16:25Z and published allocation `segmentation-op460-dino-sam-v1-06` with
+serving profile hash
+`780b8c33fcd74b7699059fb91a4883a552513d9d7501c0e97fe7a195aadb9046`. The
+read-back passed. [Story 460, comment 10228](https://work.haynesnetwork.com/work_packages/460).
+
 ## Run the serving smoke
 
 Reserve an exclusive heavy-job window on talosw01. The idle gate requires
@@ -400,6 +406,31 @@ during a reclaim dip, so the end sample rose 64.09 MiB against the 64 MiB
 tolerance and failed the verdict. A passing serving smoke is required
 before activation.
 [Story 460, comment 10186](https://work.haynesnetwork.com/projects/haynes-studio/work_packages/460/activity#comment-10186).
+
+### Allocation 06 serving result
+
+**Proven (2026-11-25).** `studio-segmentation-smoke-06` ran from 16:25:45Z to
+16:27:39Z on talosw01 and passed every check in the block above, on image
+`sha256:f41c8dd4a167ccb79dca561c32fbba6c907b1e3c9e07a1552b5bd8ea61d227f1`. The
+idle gate before it read node CPU 1%, node memory 12%, the render app at 2m
+CPU, Wan ready with the video and Foley jobs both idle, and an empty shared
+ComfyUI queue.
+
+| Measured | Value |
+|---|---|
+| Cgroup limit and peak | 5,368,709,120 and 2,940,841,984 bytes |
+| Cold load | 21.5 s |
+| Maximum worker resident, passes 2 and 3 | 1,734,676,480 and 1,734,680,576 bytes |
+| Maximum cgroup resident, passes 2 and 3 | 1,851,334,656 and 1,851,744,256 bytes |
+| Detection and mask, three passes | 8.4 to 11.1 s |
+| Point, foreground, face and prop masks | 2.3 to 2.5 s |
+
+All eighteen calls returned their expected status, the create-only replay was
+refused, and readiness was exact before and after. This is the fourth serving
+smoke; the three before it failed on the memory verdict alone, as recorded
+above. It does not show behaviour over hundreds of requests, quality on a real
+Studio frame, or the sidecar serving in its pod.
+[Story 460, comment 10228](https://work.haynesnetwork.com/work_packages/460).
 
 ## Measuring evidence
 

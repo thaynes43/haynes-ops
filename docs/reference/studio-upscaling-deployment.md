@@ -478,6 +478,27 @@ synthetic smoke covers edge-spread, text, flatness and cadence gates. The
 fuller authorized excerpt and Tom's delivery review are tracked by
 [story 453](https://work.haynesnetwork.com/work_packages/453).
 
+**Proven, 2026-11-25 16:30Z.** Run `2d253c3f7e8b` passed all 24 checks of the
+block above from the revision that carries `storeSubPath`. The API verified
+delivery `dlv_01M7C5D3KFX3MFVWCXBCVJHMG7` for proxy `0212a7de…748d` and master
+`92d1efa3…09bc`; both files matched in the canonical store; the probe resolved
+frame 543 of 1,087 on both zero-based clocks; the idle gate passed; and
+`studio-upscaling-compare-03-2d253c3f7e8b` finished in 10 s with a whole-Job
+cgroup peak of 1,265,393,664 bytes.
+
+| Against the master's frame | Lanczos | FSRCNN |
+|---|---|---|
+| Luma PSNR | 38.62 dB | 38.39 dB |
+| Luma SSIM | 0.9651 | 0.9629 |
+| Luma mean absolute error | 0.00757 | 0.00795 |
+
+The proxy is an encoded downscale of the master, so these figures reward
+undoing that encode and do not establish quality on real low-resolution
+sources. The frame was chosen without viewing it. The four PNGs and the report
+are in the private output directory `upscaling-op461-compare-2d253c3f7e8b`
+under the Studio jobs tree. Tom's visual verdict is pending and delivery stays
+on Lanczos. [Story 461, comment 10229](https://work.haynesnetwork.com/work_packages/461).
+
 ## Handoff, retries and rollback
 
 Record the Git revisions, published digest, Jobs and final reports in OP461.
