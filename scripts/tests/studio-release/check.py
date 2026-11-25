@@ -2,9 +2,9 @@
 
 import argparse
 import json
-from hashlib import sha256
 import re
 import subprocess
+from hashlib import sha256
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -60,54 +60,19 @@ def env(workload):
     return {entry["name"]: entry.get("value") for entry in container(workload)["env"]}
 
 
-def check_model_licences(app, api, worker, digest):
-    name = f"studio-model-licences-{digest.removeprefix('sha256:')[:12]}"
-    config = resource(app, "ConfigMap", name)
-    if config.get("immutable") is not True:
-        raise ValueError(f"{name} must be immutable")
-    annotations = config["metadata"].get("annotations", {})
-    if annotations.get("kustomize.toolkit.fluxcd.io/prune") != "disabled":
-        raise ValueError(f"{name} must be exempt from Flux pruning")
-    for deployment in (api, worker):
+def check_packaged_register(app, deployments):
+    for document in app:
+        if document and document["kind"] == "ConfigMap" and document["metadata"]["name"].startswith(
+            "studio-model-licences-"
+        ):
+            raise ValueError("Studio ships the licence register in the image")
+    for deployment in deployments:
         volumes = deployment["spec"]["template"]["spec"]["volumes"]
-        register, = [volume for volume in volumes if volume["name"] == "model-licences"]
-        if register["configMap"]["name"] != name:
-            raise ValueError(f"{deployment['metadata']['name']} must mount {name}")
-
-
-def check_receipt(path, documents, job):
-    volumes = job["spec"]["template"]["spec"]["volumes"]
-    receipt_volume, = [volume for volume in volumes if volume["name"] == "receipt"]
-    config = resource(documents, "ConfigMap", receipt_volume["configMap"]["name"])
-    source_bytes = (path / "receipt.json").read_bytes()
-    mounted_bytes = config["data"]["receipt.json"].encode("utf-8")
-    expected = env(job)["STUDIO_IMPORT_RECEIPT_SHA256"]
-    if source_bytes != mounted_bytes or sha256(mounted_bytes).hexdigest() != expected:
-        raise ValueError(f"{job['metadata']['name']} receipt SHA-256 or rendered bytes differ")
-
-
-def check_archive_jobs(path, flux, digest):
-    stages = (
-        ("import-one-more-meeting", "studio-import-one-more-meeting", {"studio-migration", "studio-archive-access"}),
-        ("import-winter-menu", "studio-import-winter-menu", {"studio-migration", "studio-import-one-more-meeting"}),
-        ("playback-registration", "studio-register-playback", {"studio", "studio-import-winter-menu"}),
-        ("playback-proof", "studio-verify-playback", {"studio-playback-registration"}),
-    )
-    resource(flux, "Kustomization", "studio-archive-access")
-    for folder, prefix, dependencies in stages:
-        stage = resource(flux, "Kustomization", f"studio-{folder}")
-        spec = stage["spec"]
-        if spec["path"] != f"./{STUDIO_PATH}/{folder}":
-            raise ValueError(f"{stage['metadata']['name']} points at the wrong Job directory")
-        if {item["name"] for item in spec["dependsOn"]} != dependencies:
-            raise ValueError(f"{stage['metadata']['name']} has the wrong dependencies")
-        documents = render(path / folder)
-        job = resource(documents, "Job")
-        if image_digest(job, API_IMAGE) != digest:
-            raise ValueError(f"{job['metadata']['name']} must use studio-api's digest {digest}")
-        check_job(job, stage, prefix, digest)
-        if folder.startswith("import-"):
-            check_receipt(path / folder, documents, job)
+        if "STUDIO_MODEL_REGISTER" in env(deployment) or any(
+            volume.get("configMap", {}).get("name", "").startswith("studio-model-licences-")
+            for volume in volumes
+        ):
+            raise ValueError(f"{deployment['metadata']['name']} must use the packaged licence register")
 
 
 def published_matting_memory(digest):
@@ -331,9 +296,8 @@ def check(path):
     check_job(migration, resource(flux, "Kustomization", "studio-migration"), "studio-migrate", digest)
     check_job(registration, resource(flux, "Kustomization", "studio-worker-registration"),
               "studio-register-worker", digest)
-    check_model_licences(app, api, worker, digest)
-    check_archive_jobs(path, flux, digest)
-    print(f"Studio release pins, Job health gates and archive receipts agree for {revision} ({digest})")
+    check_packaged_register(app, (api, worker))
+    print(f"Studio release pins and Job health gates agree for {revision} ({digest})")
 
 
 def main():

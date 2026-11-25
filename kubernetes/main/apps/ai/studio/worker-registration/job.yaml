@@ -9,7 +9,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   # Keep this name and its Flux health check tied to the image digest.
-  name: studio-register-worker-1aa9b4736da9
+  name: studio-register-worker-4787d14f98a4
 spec:
   activeDeadlineSeconds: 300
   backoffLimit: 2
@@ -29,7 +29,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: register
-          image: ghcr.io/thaynes43/haynes-studio@sha256:1aa9b4736da902031613d957d5db3ddd17831c6cc344c5e108d761b485f3501c
+          image: ghcr.io/thaynes43/haynes-studio@sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
           command: [studio-api-admin]
           args:
             - worker-token

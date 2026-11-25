@@ -31,10 +31,11 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
+        fsGroup: 1000
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: worker
-          image: ghcr.io/thaynes43/haynes-studio@sha256:1aa9b4736da902031613d957d5db3ddd17831c6cc344c5e108d761b485f3501c
+          image: ghcr.io/thaynes43/haynes-studio@sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
           command: [studio-worker]
           env:
             - name: STUDIO_API_URL
@@ -57,13 +58,27 @@ spec:
             - name: STUDIO_BUILD_STAGE_ROOT
               value: /build-stage
             - name: STUDIO_BUILD_REVISION
-              value: git:f30445ff312bcdb04519765e9000a5fe1295c223
+              value: git:393fe1d66070ac726739b4cdb001a9e6b2c467db
             - name: STUDIO_BUILD_IMAGE_DIGEST
-              value: sha256:1aa9b4736da902031613d957d5db3ddd17831c6cc344c5e108d761b485f3501c
-            - name: STUDIO_MODEL_REGISTER
-              value: /etc/studio/model-licences.json
+              value: sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
+            - name: STUDIO_WORKER_PROGRESS_FILE
+              value: /run/studio/worker-progress
             - name: STUDIO_THREADS
               value: "2"
+          startupProbe:
+            exec:
+              command: [studio-worker, --check-progress, "1500"]
+            periodSeconds: 10
+            timeoutSeconds: 8
+            failureThreshold: 12
+          # A healthy Wan clip can take 20 minutes. Its polling refreshes this
+          # marker, and the 25-minute budget also covers long local steps.
+          livenessProbe:
+            exec:
+              command: [studio-worker, --check-progress, "1500"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
           resources:
             requests: {cpu: 250m, memory: 2Gi}
             limits: {cpu: "4", memory: 8Gi}
@@ -79,9 +94,8 @@ spec:
             - name: media
               mountPath: /build-stage
               subPath: data/studio/build-stage-v1
-            - name: model-licences
-              mountPath: /etc/studio
-              readOnly: true
+            - name: progress
+              mountPath: /run/studio
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -89,10 +103,9 @@ spec:
           nfs:
             server: gasha01.haynesnetwork
             path: /hdd-nfs-repl
-        - name: model-licences
-          configMap:
-            # Refresh model-licences.json from the pinned Studio source on promotion.
-            name: studio-model-licences-1aa9b4736da9
+        - name: progress
+          emptyDir:
+            sizeLimit: 1Mi
         - name: tmp
           emptyDir:
             sizeLimit: 8Gi
