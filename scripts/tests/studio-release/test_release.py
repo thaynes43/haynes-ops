@@ -405,6 +405,12 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
         self.check_refuses_rendered_mutation(app, second_policy, "Studio API effective ingress")
 
     def test_effective_policies_include_another_rendered_flux_kustomization(self):
+        self.check_effective_policy_in_flux_stage(sibling=False)
+
+    def test_effective_policies_include_active_siblings_of_cluster_apps(self):
+        self.check_effective_policy_in_flux_stage(sibling=True)
+
+    def check_effective_policy_in_flux_stage(self, *, sibling):
         repo = Path(self.enterContext(TemporaryDirectory(prefix="op967-policy-inventory-")))
         cluster = repo / "kubernetes/main"
         (cluster / "flux/config").mkdir(parents=True)
@@ -417,16 +423,24 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
 
         (cluster / "flux/config/cluster.yaml").write_text(yaml.safe_dump(flux("cluster", "flux")))
         (cluster / "flux/apps.yaml").write_text(yaml.safe_dump(flux("cluster-apps", "apps")))
-        other = cluster / "apps/other-stage/app"
+        (cluster / "apps").mkdir()
+        path = "policy" if sibling else "apps/other-stage/app"
+        other = cluster / path
         other.mkdir(parents=True)
-        (cluster / "apps/kustomization.yaml").write_text(yaml.safe_dump({
-            "apiVersion": "kustomize.config.k8s.io/v1beta1", "kind": "Kustomization",
-            "resources": ["other-stage/ks.yaml"],
-        }))
-        stage = other.parent / "ks.yaml"
+        if sibling:
+            stage = cluster / "flux/other-stage.yaml"
+            (cluster / "apps/placeholder.yaml").write_text(yaml.safe_dump({
+                "apiVersion": "v1", "kind": "Namespace", "metadata": {"name": "other"},
+            }))
+        else:
+            stage = other.parent / "ks.yaml"
+            (cluster / "apps/kustomization.yaml").write_text(yaml.safe_dump({
+                "apiVersion": "kustomize.config.k8s.io/v1beta1", "kind": "Kustomization",
+                "resources": ["other-stage/ks.yaml"],
+            }))
         for namespace, should_refuse in (("elsewhere", False), ("ai", True)):
             with self.subTest(target_namespace=namespace):
-                stage.write_text(yaml.safe_dump(flux("other-stage", "apps/other-stage/app", targetNamespace=namespace)))
+                stage.write_text(yaml.safe_dump(flux("other-stage", path, targetNamespace=namespace)))
                 (other / "extra-policy.yaml").write_text(yaml.safe_dump({
                     "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
                     "metadata": {"name": "other-stage-unrestricted"}, "spec": {
@@ -443,6 +457,18 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
                             guard.check(STUDIO)
                     else:
                         guard.check(STUDIO)
+
+    def test_effective_egress_applies_empty_kubernetes_policy_types_default(self):
+        def unrestricted(documents):
+            documents.append({
+                "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+                "metadata": {"name": "empty-policy-types"}, "spec": {
+                    "podSelector": {"matchLabels": {"app.kubernetes.io/name": guard.MATTE_WORKER}},
+                    "policyTypes": [], "egress": [{}],
+                },
+            })
+
+        self.check_refuses_rendered_mutation(MATTE, unrestricted, "matte worker effective egress")
 
     def test_cilium_policy_specs_rules_and_scope(self):
         key = "k8s:app.kubernetes.io/name"

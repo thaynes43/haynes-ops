@@ -28,6 +28,12 @@ TREE = "c" * 40
 FAILED_HEAD = "d" * 40
 FAILED_TREE = "e" * 40
 RETRY_HEAD = "f" * 40
+DESCENDANT = "1" * 40
+PREVIOUS = "2" * 40
+UNRELATED = "3" * 40
+STAGES = ("studio-render", "studio-migration", "studio", "studio-worker-registration", "studio-worker",
+          "studio-media-worker-registration", "studio-media-workers", "studio-matte-worker",
+          "studio-matte-worker-registration")
 NOW = 1760000050
 SNAPSHOT = {"store": {}, "runs": {}, "deliveries": {}, "delivery media": {}, "media jobs": {}}
 ROLLOUT = ("migration", "roll", "postflight")
@@ -115,7 +121,8 @@ def pods(workload):
 
 def job_pods(job):
     container = "migrate" if job.startswith("studio-migrate-") else "register"
-    modes = {"none": ("failed",), "many": ("failed", "succeeded", "also-succeeded")}
+    modes = {"none": ("failed",), "many": ("failed", "succeeded", "also-succeeded"),
+             "wrong-phase": ("wrong-phase",), "wrong-exit": ("wrong-exit",)}
     states = modes.get(data.get("pod_selection"), ("failed", "succeeded"))
     if data.get("pod_order") == "reverse":
         states = states[::-1]
@@ -124,14 +131,27 @@ def job_pods(job):
         return {
             "metadata": {"name": f"{job}-{state}",
                          "ownerReferences": [{"uid": uid, "kind": "Job", "controller": True}]},
-            "status": {"phase": "Failed" if failed else "Succeeded",
+            "status": {"phase": "Failed" if failed or state == "wrong-phase" else "Succeeded",
                        "containerStatuses": [{"name": container, "state": {"terminated": {
-                           "exitCode": 1 if failed else 0}}}]},
+                           "exitCode": 1 if failed or state == "wrong-exit" else 0}}},
+                           {"name": "unrelated", "state": {"terminated": {"exitCode": 0}}}]},
         }
     # A stale pod can carry the selector label. Ownership still must match.
     return [pod(state, job) for state in states] + [pod("unrelated", "different-uid")]
 
-if cmd in {"kubectl", "flux"}:
+def stage(name):
+    revision = data.get("stage_revisions", {}).get(name, data["artifact"])
+    return {
+        "metadata": {"name": name, "generation": 2},
+        "spec": {"sourceRef": {"kind": "GitRepository", "namespace": "flux-system", "name": "haynes-ops"},
+                 "suspend": name == data.get("suspended_stage")},
+        "status": {"lastAppliedRevision": "main@sha1:" + revision,
+                   "lastAttemptedRevision": "main@sha1:" + data.get("attempted_revisions", {}).get(name, revision),
+                   "observedGeneration": 2,
+                   "conditions": [{"type": "Ready", "status": "False" if name == data.get("unready_stage") else "True"}]},
+    }
+
+if cmd in {"kubectl", "flux", "curl"}:
     with open(env["COMMAND_LOG"], "a") as log:
         log.write(json.dumps([cmd, *args]) + "\n")
 
@@ -150,8 +170,12 @@ if cmd == "git":
             print(data.get("dirty", ""))
         case ["merge-base", "--is-ancestor", _, "refs/remotes/origin/main"]:
             sys.exit(not data.get("on_main", True))
-        case ["merge-base", "--is-ancestor", _, _]:
-            sys.exit(not data.get("retry_descendant", True))
+        case ["merge-base", "--is-ancestor", "refs/remotes/origin/main", _]:
+            sys.exit(not data.get("includes_main", True))
+        case ["merge-base", "--is-ancestor", ancestor, descendant]:
+            sys.exit([ancestor, descendant] not in data["ancestry"])
+        case ["diff", "--quiet", expected, actual, "--", *_]:
+            sys.exit(expected != actual and data.get("descendant_pin_drift", False))
         case ["show", "-s", "--format=%ct", ref]:
             print(data.get("known_merges", {}).get(ref, data["merged_at"]))
         case ["show", ref] if ":kubernetes/main/" in ref:
@@ -163,10 +187,7 @@ if cmd == "git":
         case _:
             sys.exit(99)
 elif cmd == "date":
-    now = data["now"]
-    if data.get("expire_after") and data["expire_after"] in Path(env["COMMAND_LOG"]).read_text():
-        now += 3600
-    print(now if args[-1] == "+%s" else "2026-11-25T17:00:00Z")
+    print(data["now"] if args[-1] == "+%s" else "2026-11-25T17:00:00Z")
 elif cmd == "yq":
     query, filename = args[-2:]
     docs = [doc for doc in yaml.safe_load_all(sys.stdin.read() if filename == "-" else Path(filename).read_text()) if doc]
@@ -190,6 +211,21 @@ elif cmd == "kubectl":
     match args:
         case ["get", "gitrepository", "haynes-ops", "-o", "json"]:
             emit({"status": {"artifact": {"revision": "main@sha1:" + data["artifact"]}}})
+        case ["get", "kustomization", "cluster-apps", "-o", "json"]:
+            emit(stage("cluster-apps"))
+        case ["get", "kustomizations", "-o", "json"]:
+            emit({"items": [stage(name) for name in data["stages"] if name not in data.get("missing_stages", [])]})
+        case ["get", "deployments", "-o", "json"]:
+            workloads = ("api", "mcp", "web", "worker", "voice-worker", "image-worker")
+            if data["workloads"] == "new":
+                workloads += ("matte-worker",)
+            items = []
+            for workload in workloads:
+                spec = pods(workload)[0]["spec"]
+                if workload == data.get("wrong_deployment"):
+                    spec["containers"][0]["image"] = "unexpected"
+                items.append({"metadata": {"name": "studio-" + workload}, "spec": {"template": {"spec": spec}}})
+            emit({"items": items})
         case ["get", "pods", "-l", label, "-o", "json"] if label.startswith("batch.kubernetes.io/controller-uid="):
             emit({"items": job_pods(label.split("=", 1)[1])})
         case ["get", "pods", "-l", label, "-o", "json"]:
@@ -238,11 +274,6 @@ elif cmd == "kubectl":
             emit({"spec": {"instances": 3}, "status": {"readyInstances": 3}})
         case ["get", "node", "talosw01", *_]:
             emit({"status": {"allocatable": {"cpu": "39", "memory": "111129616Ki"}}})
-        case ["get", "kustomization", *stages, "-o", "json"]:
-            emit({"items": [
-                {"metadata": {"name": stage}, "status": {"lastAppliedRevision": "main@sha1:" + data["artifact"],
-                 "conditions": [{"type": "Ready", "status": "True"}]}} for stage in stages
-            ]})
         case ["get", "deploy/studio-matte-worker", *_]:
             if data.get("matte_present"):
                 print("deployment.apps/studio-matte-worker")
@@ -252,8 +283,8 @@ elif cmd == "kubectl":
             print("render-0 app 50m 100Mi")
         case ["wait", *_]:
             sys.exit(bool(data.get("migration_wait_failure") and "condition=Complete" in " ".join(args)))
-        case ["logs", pod, "-c", container] if pod.endswith("-succeeded"):
-            job = pod.removesuffix("-succeeded")
+        case ["logs", pod, "-c", container] if pod.endswith(("-succeeded", "-wrong-phase", "-wrong-exit")):
+            job = re.sub(r"-(succeeded|wrong-phase|wrong-exit)$", "", pod)
             if data.get("bad_logs") and "voice" in job:
                 sys.exit(1)
             print("diagnostic before JSON")
@@ -281,7 +312,7 @@ elif cmd == "kubectl":
                 mode, expected_build = options[-2:]
                 if expected_build != revision or options[1] not in {"api-0", "api-1"}:
                     sys.exit(87)
-                if data.get("wrong_schema") and mode in {"rollback-baseline", "retry-preflight"}:
+                if data.get("wrong_schema") and mode == "rollback-baseline":
                     print("FAIL expected schema", file=sys.stderr)
                     sys.exit(1)
                 print("diagnostic before JSON")
@@ -315,7 +346,7 @@ class PhaseTest(unittest.TestCase):
             if phase:
                 cls.blocks[phase[1]] = block
         cls.assert_blocks = set(cls.blocks) == {
-            "preflight", "retry-preflight", *ROLLOUT, "verify", "rollback-baseline", "compare",
+            "preflight", "retry-preflight", "admit-merge", *ROLLOUT, "verify", "rollback-baseline", "compare",
         }
 
     def setUp(self):
@@ -323,6 +354,8 @@ class PhaseTest(unittest.TestCase):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory(prefix="op967-phases-")))
         self.receipt = self.root / "receipt.json"
         self.baseline = self.root / "baseline.json"
+        self.rollback_receipt = self.root / "rollback-receipt.json"
+        self.rollback_baseline = self.root / "rollback-baseline.json"
         self.log = self.root / "commands"
         self.checkout = self.root / "checkout"
         self.checkout.mkdir()
@@ -336,6 +369,9 @@ class PhaseTest(unittest.TestCase):
         self.data = {
             "head": HEAD, "tree": TREE, "artifact": HEAD, "merged_at": NOW - 10, "now": NOW,
             "known_trees": {REVIEWED_HEAD: TREE, HEAD: TREE, FAILED_HEAD: FAILED_TREE},
+            "known_merges": {DESCENDANT: NOW + 1800},
+            "ancestry": [[PREVIOUS, HEAD], [HEAD, DESCENDANT], [PREVIOUS, DESCENDANT]],
+            "stages": STAGES,
             "new": [RELEASE[key] for key in ("revision", "apiDigest", "webDigest")],
             "old": OLD, "workloads": "old", "snapshot": SNAPSHOT,
             "sidecar": yaml.safe_load((STUDIO / "matting-pending/release/release.yaml").read_text())["data"]["image"],
@@ -360,7 +396,9 @@ class PhaseTest(unittest.TestCase):
             "FIXTURE": json.dumps({**self.data, **changes}),
             "COMMAND_LOG": str(self.log), "STUDIO_OP967_RECEIPT": str(self.receipt),
             "STUDIO_OP967_BASELINE": str(self.baseline), "MERGED_OPS_REVISION": selected,
-            **(extra_env or {}),
+            "STUDIO_OP967_ROLLBACK_RECEIPT": str(self.rollback_receipt),
+            "STUDIO_OP967_ROLLBACK_BASELINE": str(self.rollback_baseline),
+            "ROLLBACK_OPS_REVISION": DESCENDANT, **(extra_env or {}),
         }
         # The documented if ! bash ... suppresses errexit throughout the sourced
         # phase. A naked failed check followed by Flux would still be observed.
@@ -386,6 +424,11 @@ class PhaseTest(unittest.TestCase):
         self.assertEqual(sorted(path.name for path in logdir.iterdir()), [
             "migrate.log", "register-image-worker.log", "register-voice-worker.log", "register-worker.log",
         ])
+        self.run_phase("admit-merge", head=REVIEWED_HEAD)
+        _, calls = self.run_phase("admit-merge", head=REVIEWED_HEAD, now=NOW + 3600, expected=1)
+        self.assertEqual(calls, [])
+        _, calls = self.run_phase("admit-merge", head=REVIEWED_HEAD, includes_main=False, expected=1)
+        self.assertEqual(calls, [])
         self.run_phase("migration", merged_at=NOW + 10, now=NOW + 20)
 
     def test_preflight_failed_checks_leave_a_failed_receipt(self):
@@ -405,15 +448,12 @@ class PhaseTest(unittest.TestCase):
 
     def test_mutating_blocks_refuse_missing_failed_stale_and_mismatched_receipts(self):
         passing_checks = [{"label": label, "result": "PASS"} for label in RELEASE_CHECKS]
-        for phase in ROLLOUT:
+        for phase in (*ROLLOUT, "rollback-baseline", "compare"):
             for label, receipt, extra in (
                 ("missing", None, {}),
                 ("failed", {"passed": False}, {}),
                 ("stale", {"started_epoch": NOW - 3700}, {}),
-                ("late use", {}, {"now": NOW + 86400}),
-                ("exactly one hour after merge", {}, {"now": NOW - 10 + 3600}),
                 ("future", {"finished_epoch": NOW + 1}, {}),
-                ("future merge", {}, {"merged_at": NOW + 1}),
                 ("wrong tree", {"ops_tree": FAILED_TREE}, {}),
                 ("wrong admitted revision", {"ops_revision": FAILED_HEAD}, {}),
                 ("wrong selected revision", {}, {"selected": FAILED_HEAD}),
@@ -454,17 +494,45 @@ class PhaseTest(unittest.TestCase):
                     _, calls = self.run_phase(phase, expected=1, extra_env=extra)
                     self.assertEqual(calls, [])
 
-    def test_receipt_is_rechecked_immediately_before_mutations(self):
+    def test_release_receipt_valid_at_merge_completes_two_hours_later(self):
         self.baseline.write_text(json.dumps(SNAPSHOT))
         self.admit()
-        for phase in ("migration", "roll"):
+        for phase in (*ROLLOUT, "rollback-baseline"):
             with self.subTest(phase=phase):
-                _, calls = self.run_phase(phase, expected=1, expire_after='"gitrepository"')
-                self.assertTrue(any("gitrepository" in call for call in calls))
+                result, calls = self.run_phase(phase, now=NOW + 7200,
+                                               workloads="new" if phase == "postflight" else "old")
+                self.assertIn("PASS OP967 " + phase, result.stderr)
+                if phase in ("migration", "roll"):
+                    self.assertTrue(any(call[0] == "flux" for call in calls))
+                if phase == "postflight":
+                    self.assertTrue(any("idle-claim" in call for call in calls))
+        self.run_phase("compare", artifact=DESCENDANT, stages=STAGES[:-2], now=NOW + 14400,
+                       known_merges={DESCENDANT: NOW + 7210})
+
+    def test_missing_receipt_cannot_start_a_rollout_flux_has_not_reached(self):
+        for phase in ROLLOUT:
+            with self.subTest(phase=phase):
+                _, calls = self.run_phase(phase, expected=1, artifact=PREVIOUS)
+                self.assertEqual(calls, [])
+
+    def test_rollout_can_hurry_pending_stages_on_a_matching_descendant(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        self.admit()
+        _, calls = self.run_phase(
+            "migration", artifact=DESCENDANT,
+            stage_revisions={stage: PREVIOUS for stage in ("cluster-apps", *STAGES)},
+            missing_stages=STAGES[-2:],
+        )
+        self.assertEqual([call[3] for call in calls if call[0] == "flux"], ["cluster-apps", "studio-migration"])
+        for changes in (
+            {"artifact": DESCENDANT, "descendant_pin_drift": True},
+            {"attempted_revisions": {"studio": UNRELATED}},
+            {"suspended_stage": "studio"},
+            {"wrong_deployment": "api"},
+        ):
+            with self.subTest(changes=changes):
+                _, calls = self.run_phase("migration", expected=1, **changes)
                 self.assertFalse(any(call[0] == "flux" for call in calls))
-        result, calls = self.run_phase("postflight", expected=1, workloads="new", expire_after='"-", "matte"]')
-        self.assertIn("FAIL receipt still current before the idle claim", result.stderr)
-        self.assertFalse(any("idle-claim" in call for call in calls))
 
     def test_migration_and_roll_check_flux_artifact_before_reconciliation(self):
         self.baseline.write_text(json.dumps(SNAPSHOT))
@@ -503,7 +571,10 @@ class PhaseTest(unittest.TestCase):
     def test_complete_job_refuses_missing_or_multiple_succeeded_pods(self):
         self.baseline.write_text(json.dumps(SNAPSHOT))
         self.admit()
-        for selection, detail in (("none", "no succeeded pod"), ("many", "more than one succeeded pod")):
+        for selection, detail in (
+            ("none", "no succeeded pod"), ("many", "more than one succeeded pod"),
+            ("wrong-phase", "no succeeded pod"), ("wrong-exit", "no succeeded pod"),
+        ):
             with self.subTest(selection=selection):
                 result, calls = self.run_phase("roll", expected=1, pod_selection=selection)
                 self.assertIn(detail + " for UID", result.stderr)
@@ -537,42 +608,62 @@ class PhaseTest(unittest.TestCase):
         _, calls = self.run_phase("postflight", expected=1, workloads="new")
         self.assertEqual(calls, [])
 
-    def test_read_only_verification_uses_a_historical_receipt_without_mutation(self):
+    @staticmethod
+    def route_calls(calls):
+        return [call for call in calls
+                if call[-2] == "-" and call[-1] in {"voice", "image", "run", "matte"}]
+
+    def test_verify_without_a_receipt_reads_every_audit(self):
+        result, calls = self.run_phase("verify", now=NOW + 7200, workloads="new",
+                                       extra_env={"STUDIO_OP967_BASELINE": ""})
+        self.assertIn("PASS read-only release verification", result.stdout)
+        for expected in ("gitrepository", "cluster-apps", "kustomizations", "ciliumendpoints.cilium.io", "postflight"):
+            self.assertTrue(any(expected in call for call in calls), expected)
+        logs = [call[4] for call in calls if call[:4] == ["kubectl", "-n", "ai", "logs"]]
+        for job in ("migrate", "register-worker", "register-voice-worker", "register-image-worker",
+                    "register-matte-worker"):
+            self.assertTrue(any(pod.startswith(f"studio-{job}-") for pod in logs), job)
+        self.assertEqual({call[-1] for call in self.route_calls(calls)}, {"voice", "image", "run", "matte"})
+        self.assertEqual(len([call for call in calls if call[0] == "curl"]), 2)
+        self.assertFalse(any(call[0] == "flux" or "idle-claim" in call for call in calls))
+
+    def test_failed_state_stops_before_the_first_listener_post(self):
         self.baseline.write_text(json.dumps(SNAPSHOT))
         self.admit()
-        result, calls = self.run_phase("verify", now=NOW + 86400, workloads="new")
-        self.assertIn("PASS read-only release verification", result.stdout)
-        self.assertTrue(any("ciliumendpoints.cilium.io" in call for call in calls))
-        self.assertTrue(any("postflight" in call for call in calls))
-        self.assertFalse(any(call[0] == "flux" or "idle-claim" in call or
-                             (call[-2] == "-" and call[-1] in {"voice", "image", "run", "matte"}) for call in calls))
-        _, calls = self.run_phase("postflight", expected=1, now=NOW + 86400, workloads="new")
-        self.assertEqual(calls, [])
-        _, calls = self.run_phase("verify", expected=1, now=NOW - 11, workloads="new")
-        self.assertEqual(calls, [])
-        self.baseline.write_text("{}")
-        _, calls = self.run_phase("verify", expected=1, now=NOW + 86400, workloads="new")
-        self.assertEqual(calls, [])
+        for phase in ("postflight", "verify"):
+            for changes in (
+                {"unready_stage": "studio"},
+                {"migration_wait_failure": True},
+                {"bad_registration_audit": True},
+                {"snapshot": {**SNAPSHOT, "runs": 3}},
+            ):
+                with self.subTest(phase=phase, changes=changes):
+                    _, calls = self.run_phase(phase, expected=1, workloads="new", **changes)
+                    self.assertTrue(any("postflight" in call for call in calls))
+                    self.assertEqual(self.route_calls(calls), [])
+                    self.assertFalse(any("idle-claim" in call for call in calls))
 
     def test_rollback_accepts_either_ready_verified_build_and_requires_committed_schema(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        self.admit()
         for pods, revision in (("old", OLD[0]), ("new", RELEASE["revision"])):
             with self.subTest(pods=pods):
-                self.baseline.unlink(missing_ok=True)
-                self.receipt.unlink(missing_ok=True)
-                _, calls = self.run_phase("rollback-baseline", workloads=pods, merged_at=NOW - 86400)
+                self.rollback_baseline.unlink(missing_ok=True)
+                self.rollback_receipt.unlink(missing_ok=True)
+                _, calls = self.run_phase("rollback-baseline", workloads=pods, now=NOW + 600)
                 self.assertEqual([call[-1] for call in calls if "rollback-baseline" in call], [revision])
-                self.assertEqual(json.loads(self.baseline.read_text()), SNAPSHOT)
-                self.assertEqual(json.loads(self.receipt.read_text())["mode"], "rollback")
-        self.run_phase("compare")
-        self.run_phase("compare", expected=1, snapshot={**SNAPSHOT, "runs": 3})
-        _, calls = self.run_phase("compare", expected=1, now=NOW + 3600)
-        self.assertEqual(calls, [])
-        self.baseline.unlink()
-        self.receipt.unlink()
+                self.assertEqual(json.loads(self.rollback_baseline.read_text()), SNAPSHOT)
+                self.assertEqual(json.loads(self.rollback_receipt.read_text())["mode"], "rollback")
+        rollback = {"artifact": DESCENDANT, "stages": STAGES[:-2], "now": NOW + 14400}
+        self.run_phase("compare", **rollback)
+        self.run_phase("compare", expected=1, snapshot={**SNAPSHOT, "runs": 3}, **rollback)
+        self.run_phase("compare", expected=1, **{**rollback, "artifact": HEAD})
+        self.rollback_baseline.unlink()
+        self.rollback_receipt.unlink()
         self.run_phase("rollback-baseline", expected=1, wrong_schema=True)
-        self.receipt.unlink()
+        self.rollback_receipt.unlink()
         self.run_phase("rollback-baseline", expected=1, api_unready=True)
-        self.assertFalse(self.baseline.exists())
+        self.assertFalse(self.rollback_baseline.exists())
 
     def prepare_retry(self):
         failed_merge_time = NOW - 7200
@@ -588,6 +679,7 @@ class PhaseTest(unittest.TestCase):
         self.data.update(
             terminal_job=old_job, predecessor_pruned=True, previous_source=previous_source,
             known_merges={FAILED_HEAD: failed_merge_time},
+            ancestry=[[FAILED_HEAD, HEAD], [FAILED_HEAD, RETRY_HEAD]],
             known_trees={REVIEWED_HEAD: FAILED_TREE, FAILED_HEAD: FAILED_TREE, HEAD: TREE, RETRY_HEAD: TREE},
         )
         self.receipt = self.root / "retry-receipt"
@@ -629,7 +721,6 @@ class PhaseTest(unittest.TestCase):
             ("replacement migration Job and Flux health check", {}, "changed health gate"),
             ("replacement migration Job and Flux health check", {}, "changed Job spec"),
             ("matte workload absent", {"matte_present": True}, ""),
-            ("empty queues, archived data and store baseline", {"wrong_schema": True}, ""),
             ("empty queues, archived data and store baseline", {"snapshot": {**SNAPSHOT, "runs": 3}}, ""),
             ("old API endpoints", {"workloads": "new"}, ""),
             ("offline render app idle", {"render_busy": True}, ""),

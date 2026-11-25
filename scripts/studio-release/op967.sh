@@ -3,6 +3,7 @@
 set -uo pipefail
 
 root=kubernetes/main/apps/ai/studio
+render_root=kubernetes/main/apps/ai/studio-render
 script_dir=scripts/studio-release
 old_revision=80975a9e958d0bed78ab530c2b20f1279bf7ebe6
 old_digest=sha256:08ac310f246cdc43225478e9496e480af6430b53751f4ae93f3e34206714c3e7
@@ -22,6 +23,9 @@ receipt=${STUDIO_OP967_RECEIPT:-}
 baseline=${STUDIO_OP967_BASELINE:-}
 job_archive=
 admission_window_seconds=3600
+studio_stages=(studio-render studio-migration studio studio-worker-registration studio-worker
+  studio-media-worker-registration studio-media-workers)
+matte_stages=(studio-matte-worker studio-matte-worker-registration)
 predecessor_jobs=(migrate register-worker register-voice-worker register-image-worker)
 preflight_checks=(
   'new private receipt and baseline paths supplied'
@@ -53,7 +57,8 @@ retry_checks=(
 )
 rollback_checks=(
   'new private receipt and baseline paths supplied'
-  'selected fourth-pin Ops revision on main'
+  'passing preflight receipt for the selected merged Ops revision'
+  'Flux stages and workload images on the selected release sequence'
   'snapshots before a workload rollback'
 )
 
@@ -141,7 +146,7 @@ selected_checkout() {
 }
 
 validate_receipt() {
-  local file=$1 expected_tree=$2 admitted_at=$3 now=$4 purpose=$5 expected_baseline=$6
+  local file=$1 expected_tree=$2 admitted_at=$3 purpose=$4 expected_baseline=$5
   local mode reviewed labels recorded_path recorded_hash actual_hash
   [[ -f $file ]] || return 1
   mode=$(jq -er '.mode' "$file") || return 1
@@ -153,14 +158,14 @@ validate_receipt() {
     *) return 1 ;;
   esac
   labels=$(printf '%s\n' "${required_checks[@]}" | jq -Rn '[inputs]') || return 1
-  jq -e --arg tree "$expected_tree" --argjson admitted_at "$admitted_at" --argjson now "$now" \
+  jq -e --arg tree "$expected_tree" --argjson admitted_at "$admitted_at" --arg purpose "$purpose" \
     --argjson window "$admission_window_seconds" --argjson labels "$labels" '
     def epoch: type == "number" and . == floor and . >= 0;
     .schema == "studio-op967/v2" and .ops_tree == $tree and
     (.ops_revision | test("^[a-f0-9]{40}$")) and .passed == true and
     (.started_epoch | epoch) and (.finished_epoch | epoch) and
-    .started_epoch <= .finished_epoch and .finished_epoch <= $admitted_at and $admitted_at <= $now and
-    ($admitted_at - .started_epoch) < $window and ($now - $admitted_at) < $window and
+    .started_epoch <= .finished_epoch and .finished_epoch <= $admitted_at and
+    ($purpose == "rollback" or ($admitted_at - .started_epoch) < $window) and
     (.baseline_path | type == "string" and startswith("/")) and
     (.baseline_sha256 | test("^[a-f0-9]{64}$")) and
     ([.checks[].label] | sort) == ($labels | sort) and
@@ -175,27 +180,34 @@ validate_receipt() {
   [[ $actual_hash == "$recorded_hash" ]]
 }
 
+merge_admitted() {
+  local now
+  [[ -n $baseline && -n $receipt ]] || return 1
+  baseline=$(realpath -m -- "$baseline") || return 1
+  checkout || return 1
+  git merge-base --is-ancestor refs/remotes/origin/main "$head" || return 1
+  now=$(date -u +%s) || return 1
+  validate_receipt "$receipt" "$tree" "$now" rollout "$baseline"
+}
+
 release_admitted() {
-  local freshness=${1:-current} merged_at now
+  local merged_at
   [[ -n $baseline && -n $receipt ]] || return 1
   baseline=$(realpath -m -- "$baseline") || return 1
   selected_checkout || return 1
   merged_at=$(git show -s --format=%ct "$head") || return 1
-  now=$(date -u +%s) || return 1
-  if [[ $freshness == historical ]]; then
-    (( merged_at <= now )) || return 1
-    now=$merged_at
-  fi
-  validate_receipt "$receipt" "$tree" "$merged_at" "$now" rollout "$baseline"
+  validate_receipt "$receipt" "$tree" "$merged_at" rollout "$baseline"
 }
 
 rollback_admitted() {
-  local now
+  local rollback_merge=$1 merged_at
   [[ -n $baseline && -n $receipt ]] || return 1
   baseline=$(realpath -m -- "$baseline") || return 1
-  selected_checkout || return 1
-  now=$(date -u +%s) || return 1
-  validate_receipt "$receipt" "$tree" "$now" "$now" rollback "$baseline"
+  revision_at_or_after "$rollback_merge" "$head" || return 1
+  [[ $rollback_merge != "$head" ]] || return 1
+  git merge-base --is-ancestor "$rollback_merge" refs/remotes/origin/main || return 1
+  merged_at=$(git show -s --format=%ct "$rollback_merge") || return 1
+  validate_receipt "$receipt" "$tree" "$merged_at" rollback "$baseline"
 }
 
 retry_evidence() {
@@ -207,9 +219,8 @@ retry_evidence() {
   previous_tree=$(git rev-parse --verify "$previous^{tree}") || return 1
   previous_merge=$(git show -s --format=%ct "$previous") || return 1
   (( previous_merge <= started )) || return 1
-  # Prove historical admission at the original merge time. The new receipt
-  # has its own time window and must match the retry's merged tree.
-  validate_receipt "$previous_receipt" "$previous_tree" "$previous_merge" "$previous_merge" rollout '' || return 1
+  # The retry merge needs its own admission for the new tree.
+  validate_receipt "$previous_receipt" "$previous_tree" "$previous_merge" rollout '' || return 1
   prior_baseline=$(jq -er '.baseline_path' "$previous_receipt") || return 1
   job_archive=$(jq -er '.jobs_path | select(startswith("/"))' "$previous_receipt") || return 1
   archived_hash=$(jq -er '.jobs_sha256 | select(test("^[a-f0-9]{64}$"))' "$previous_receipt") || return 1
@@ -230,7 +241,7 @@ retry_job() {
   health=$(yq -er 'select(.kind == "Kustomization" and .metadata.name == "studio-migration") |
     .spec.healthChecks[] | select(.kind == "Job" and .namespace == "ai") | .name' "$root/ks.yaml") || return 1
   [[ $health == "$new_job" ]] || return 1
-  changed=$(git diff --name-only "$previous_ops_revision" "$head" -- "$root" "$root-render") || return 1
+  changed=$(git diff --name-only "$previous_ops_revision" "$head" -- "$root" "$render_root") || return 1
   [[ $changed == "$root/ks.yaml"$'\n'"$root/migration/job.yaml" ]] || return 1
   prior_gate=$(git show "$previous_ops_revision:$root/ks.yaml") || return 1
   [[ $(< "$root/migration/job.yaml") == "${source//name: $old_job/name: $new_job}" &&
@@ -242,17 +253,130 @@ retry_job() {
     (.status.active // 0) == 0' >/dev/null
 }
 
-selected_source() {
+revision_at_or_after() {
+  local observed=$1 expected=$2
+  [[ $observed =~ ^[0-9a-f]{40}$ && $expected =~ ^[0-9a-f]{40}$ ]] || return 1
+  [[ $observed == "$expected" ]] || git merge-base --is-ancestor "$expected" "$observed"
+}
+
+source_artifact() {
   kubectl -n flux-system get gitrepository haynes-ops -o json |
-    jq -er --arg revision "$MERGED_OPS_REVISION" '
-      .status.artifact.revision | select(. == ("main@sha1:" + $revision))'
+    jq -er '.status.artifact.revision | select(test("^main@sha1:[0-9a-f]{40}$")) | sub("^main@sha1:"; "")'
+}
+
+same_pin() {
+  local observed=$1 expected=$2
+  revision_at_or_after "$observed" "$expected" || return 1
+  # A descendant may include unrelated changes, but must still carry this pin.
+  git diff --quiet "$expected" "$observed" -- "$root" "$render_root"
+}
+
+flux_stage() {
+  local namespace=$1 row=$2 expected=$3 artifact=$4 applied attempted observed fields
+  fields=$(jq -er --arg namespace "$namespace" '
+    select(.metadata.deletionTimestamp == null and .spec.suspend != true and
+      .spec.sourceRef.kind == "GitRepository" and .spec.sourceRef.name == "haynes-ops" and
+      (.spec.sourceRef.namespace // $namespace) == "flux-system") |
+    [(.status.lastAppliedRevision // "-"), (.status.lastAttemptedRevision // "-"),
+     ((.status.observedGeneration == .metadata.generation and
+       any(.status.conditions[]?; .type == "Ready" and .status == "True")) | tostring)] | @tsv
+  ' <<< "$row") || return 1
+  read -r applied attempted stage_ready <<< "$fields"
+  for observed in "$applied" "$attempted"; do
+    if [[ $observed == - ]]; then continue; fi
+    [[ $observed == main@sha1:* ]] || return 1
+    revision_at_or_after "$artifact" "${observed#main@sha1:}" || return 1
+  done
+  stage_applied=${applied#main@sha1:}
+  stage_attempted=${attempted#main@sha1:}
+  if revision_at_or_after "$stage_applied" "$expected"; then
+    same_pin "$stage_applied" "$expected" || return 1
+  else
+    # With the selected artifact available, an active stage on the same source
+    # can still be waiting for its dependencies to reach that artifact.
+    stage_ready=false
+  fi
+}
+
+flux_state() {
+  local mode=$1 expected=${2:-$head} artifact inventory stages row stage stage_applied stage_attempted stage_ready
+  local inventory_applied failed_stage=0 failed_read=0
+  local expected_stages=("${studio_stages[@]}")
+  if [[ $mode != rollback ]]; then expected_stages+=("${matte_stages[@]}"); fi
+  artifact=$(source_artifact) || failed_read=1
+  inventory=$(kubectl -n flux-system get kustomization cluster-apps -o json) || failed_read=1
+  stages=$(kubectl -n ai get kustomizations -o json) || failed_read=1
+  if ((failed_read)); then return 1; fi
+  same_pin "$artifact" "$expected" || return 1
+  flux_stage flux-system "$inventory" "$expected" "$artifact" || return 1
+  inventory_applied=$stage_applied
+  printf 'Flux cluster-apps applied %s, selected source %s
+' "$stage_applied" "$artifact"
+  if [[ $mode != pending && $stage_ready != true ]]; then failed_stage=1; fi
+  for stage in "${expected_stages[@]}"; do
+    if ! row=$(jq -cer --arg name "$stage" 'first(.items[] | select(.metadata.name == $name))' <<< "$stages"); then
+      if [[ $mode == pending && ( $stage == "${matte_stages[0]}" || $stage == "${matte_stages[1]}" ) ]] &&
+         ! revision_at_or_after "$inventory_applied" "$expected"; then
+        printf 'Flux %s pending inventory from %s
+' "$stage" "$artifact"
+        continue
+      fi
+      printf 'FAIL missing Flux stage %s
+' "$stage" >&2
+      failed_stage=1
+      continue
+    fi
+    if flux_stage ai "$row" "$expected" "$artifact"; then
+      printf 'Flux %s applied %s, ready at selected revision %s
+' "$stage" "$stage_applied" "$stage_ready"
+      if [[ $mode != pending && $stage_ready != true ]]; then failed_stage=1; fi
+    else
+      printf 'FAIL unexpected Flux state for %s
+' "$stage" >&2
+      failed_stage=1
+    fi
+  done
+  if [[ $mode == rollback ]]; then
+    jq -e 'all(.items[]; .metadata.name != "studio-matte-worker" and
+                         .metadata.name != "studio-matte-worker-registration")' <<< "$stages" >/dev/null || return 1
+  fi
+  (( ! failed_stage ))
 }
 
 reconcile() {
-  local stage=$1 namespace=$2 timeout=$3
-  selected_source || return 1
+  local stage=$1 namespace=$2 timeout=$3 artifact
   release_admitted || return 1
+  artifact=$(source_artifact) || return 1
+  same_pin "$artifact" "$head" || return 1
   flux reconcile kustomization "$stage" -n "$namespace" --timeout="$timeout"
+}
+
+release_workloads() {
+  # Deployment templates may advance while predecessor pods still serve.
+  # Only the two admitted image pairs are valid while Flux applies the pin.
+  kubectl -n ai get deployments -o json | jq -er     --arg old "ghcr.io/thaynes43/haynes-studio@$old_digest"     --arg old_web "ghcr.io/thaynes43/haynes-studio-web@$old_web"     --arg api "ghcr.io/thaynes43/haynes-studio@$api"     --arg web "ghcr.io/thaynes43/haynes-studio-web@$web" --arg sidecar "$sidecar" '
+    def containers: .spec.template.spec.containers | map({key: .name, value: .image}) | from_entries;
+    def pair($a; $w): {
+      "studio-api": {api:$a, "media-worker-routes":$w}, "studio-mcp": {mcp:$a}, "studio-web": {nginx:$w},
+      "studio-worker": {worker:$a}, "studio-voice-worker": {worker:$a}, "studio-image-worker": {worker:$a}
+    };
+    pair($old; $old_web) as $predecessor |
+    (pair($api; $web) + {"studio-matte-worker": {worker:$api, matting:$sidecar}}) as $target |
+    [.items[] | {key: .metadata.name, value: containers}] | from_entries | . as $actual |
+    select(all($predecessor | keys[]; . as $name |
+      ($actual[$name] == $predecessor[$name] or $actual[$name] == $target[$name]))) |
+    select($actual["studio-matte-worker"] == null or $actual["studio-matte-worker"] == $target["studio-matte-worker"]) |
+    select($actual["studio-api"] == $target["studio-api"] or
+      all(["studio-worker", "studio-voice-worker", "studio-image-worker", "studio-matte-worker"][];
+        . as $name | $actual[$name] == $predecessor[$name])) |
+    any($target | keys[]; . as $name | $actual[$name] == $target[$name]) | tostring'
+}
+
+release_sequence() {
+  local advanced
+  flux_state pending || return 1
+  advanced=$(release_workloads) || return 1
+  if [[ $advanced == true ]]; then migration; fi
 }
 
 save_predecessor_logs() {
@@ -415,11 +539,12 @@ ready_api_pod() {
 
 data_probe() {
   local mode=$1 build=$2 digest=$3 pod report output
-  [[ -n $baseline ]] || return 1
   if pod=$(ready_api_pod "$digest"); then
     :
   elif [[ $mode == rollback-baseline ]] && pod=$(ready_api_pod "$api"); then
     build=$revision
+  elif [[ $phase == verify ]] && pod=$(ready_api_pod "$old_digest"); then
+    build=$old_revision
   else
     printf 'FAIL no Ready API pod on an admitted build\n' >&2
     return 1
@@ -438,7 +563,9 @@ data_probe() {
     preflight|rollback-baseline)
       (umask 077; set -o noclobber; printf '%s\n' "$report" > "$baseline") ;;
     postflight|compare)
-      jq -es 'length == 2 and .[0] == .[1]' "$baseline" - <<< "$report" >/dev/null ;;
+      if [[ $phase != verify || -n $baseline ]]; then
+        jq -es 'length == 2 and .[0] == .[1]' "$baseline" - <<< "$report" >/dev/null
+      fi ;;
   esac
 }
 
@@ -514,6 +641,13 @@ registration() {
   local logs
   logs=$(successful_job_logs "$job" register) || return 1
   registration_status "studio-$lane" "$expected" <<< "$logs"
+}
+
+registration_audits() {
+  check 'run worker registration reused its token' registration worker '[200]'
+  check 'voice worker registration reused its token' registration voice-worker '[200]'
+  check 'image worker registration reused its token' registration image-worker '[200]'
+  check 'matte grant registered or reused the same token on retry' registration matte-worker '[201,200]'
 }
 
 migration() {
@@ -625,17 +759,6 @@ worker_routes() {
   done
 }
 
-flux_current() {
-  local expected=$1
-  shift
-  kubectl -n ai get kustomization "$@" -o json |
-    jq -er --arg revision "$expected" --argjson count "$#" '
-      .items | select(length == $count and all(.[];
-        .status.lastAppliedRevision == ("main@sha1:" + $revision) and
-        any(.status.conditions[]?; .type == "Ready" and .status == "True"))) |
-      .[] | [.metadata.name, .status.lastAppliedRevision] | @tsv'
-}
-
 matte_removed() {
   local result
   result=$(kubectl -n ai get deploy/studio-matte-worker --ignore-not-found -o name) || return 1
@@ -654,21 +777,20 @@ installed_policies() {
 }
 
 case $phase in
-  migration|roll|postflight)
+  migration|roll|postflight|rollback-baseline|compare)
     check 'passing preflight receipt for the selected merged Ops revision' release_admitted
     if ((failed)); then finish; fi
     ;;
   verify)
-    check 'historical preflight receipt for the selected merged Ops revision' release_admitted historical
-    if ((failed)); then finish; fi
-    ;;
-  compare)
-    check 'current rollback receipt for the selected fourth-pin Ops revision' rollback_admitted
+    check 'selected fourth-pin Ops revision on main' selected_checkout
     if ((failed)); then finish; fi
     ;;
 esac
 
 case $phase in
+  admit-merge)
+    check 'passing preflight receipt within the merge window' merge_admitted
+    ;;
   preflight|retry-preflight)
     check 'new private receipt and baseline paths supplied' receipt_paths
     check 'reviewed Ops checkout has a clean tracked tree' checkout
@@ -719,6 +841,8 @@ case $phase in
     printf 'Preflight receipt %s\n' "$receipt"
     ;;
   migration)
+    check 'Flux stages and workload images on the selected release sequence' release_sequence
+    if ((failed)); then finish; fi
     check 'Flux source revision and inventory' reconcile cluster-apps flux-system 7m
     if ((failed)); then finish; fi
     check 'API pod sample' kubectl -n ai get pods -l app.kubernetes.io/name=studio-api \
@@ -731,24 +855,24 @@ case $phase in
     check 'LAN API still refuses anonymous access' lan v1/me 401
     ;;
   roll)
+    check 'Flux stages and workload images on the selected release sequence' release_sequence
+    if ((failed)); then finish; fi
     check 'migration Job completed at 0013 with correct identity' migration
     if ((failed)); then finish; fi
-    for stage in studio-render studio studio-worker-registration studio-worker \
-      studio-media-worker-registration studio-media-workers studio-matte-worker studio-matte-worker-registration; do
+    for stage in "${studio_stages[@]}" "${matte_stages[@]}"; do
+      if [[ $stage == studio-migration ]]; then continue; fi
       timeout=7m
       if [[ $stage == studio-render ]]; then timeout=23m; fi
       check "reconcile $stage" reconcile "$stage" ai "$timeout"
       if ((failed)); then finish; fi
     done
-    check 'Flux installed this revision and all apply stages are Ready' flux_current "$MERGED_OPS_REVISION" \
-      studio-render studio-migration studio studio-worker-registration studio-worker \
-      studio-media-worker-registration studio-media-workers studio-matte-worker studio-matte-worker-registration
-    check 'run worker registration reused its token' registration worker '[200]'
-    check 'voice worker registration reused its token' registration voice-worker '[200]'
-    check 'image worker registration reused its token' registration image-worker '[200]'
-    check 'matte grant registered or reused the same token on retry' registration matte-worker '[201,200]'
+    check 'Flux stages Ready at the selected release or a matching descendant' flux_state complete
+    registration_audits
     ;;
   postflight|verify)
+    check 'Flux stages Ready at the selected release or a matching descendant' flux_state complete
+    check 'migration Job completed at 0013 with correct identity' migration
+    registration_audits
     check 'fourth-pin workload set' pins "$api" "$web" yes
     check 'both selected API endpoints Ready' api_endpoints
     check 'installed effective matte policy and API ingress' installed_policies
@@ -761,11 +885,21 @@ case $phase in
     check 'one PyAV 18.1.1 encoder and bundled libraries' encoders
     check 'LAN root available' lan '' 200
     check 'LAN API still refuses anonymous access' lan v1/me 401
-    check 'all queues idle, grants present and archived data and store identical' data_probe postflight "$revision" "$api"
+    snapshot_check='all queues idle, grants present and archived data and store identical'
+    if [[ $phase == verify && -z $baseline ]]; then
+      snapshot_check='all queues idle, grants present and archived data and store read'
+    fi
+    check "$snapshot_check" data_probe postflight "$revision" "$api"
+    if (( ! failed )); then
+      if [[ $phase == postflight ]]; then
+        check 'passing preflight receipt before listener probes' release_admitted
+      fi
+      check 'Flux stages still Ready before listener probes' flux_state complete
+    fi
+    if (( ! failed )); then worker_routes; fi
     if [[ $phase == postflight ]]; then
-      if (( ! failed )); then worker_routes; fi
       if (( ! failed )); then
-        check 'receipt still current before the idle claim' release_admitted
+        check 'passing preflight receipt before the idle claim' release_admitted
       fi
       if (( ! failed )); then
         check 'matte idle claim over port 8002' kubectl -n ai exec -i deploy/studio-matte-worker \
@@ -776,8 +910,10 @@ case $phase in
     fi
     ;;
   rollback-baseline)
+    check 'Flux stages and workload images on the selected release sequence' release_sequence
+    receipt=${STUDIO_OP967_ROLLBACK_RECEIPT:-}
+    baseline=${STUDIO_OP967_ROLLBACK_BASELINE:-}
     check 'new private receipt and baseline paths supplied' receipt_paths
-    check 'selected fourth-pin Ops revision on main' selected_checkout
     if ((failed)); then finish; fi
     started=$(date -u +%s) || exit 1
     check 'snapshots before a workload rollback' data_probe rollback-baseline "$old_revision" "$old_digest"
@@ -787,6 +923,11 @@ case $phase in
     fi
     ;;
   compare)
+    receipt=${STUDIO_OP967_ROLLBACK_RECEIPT:-}
+    baseline=${STUDIO_OP967_ROLLBACK_BASELINE:-}
+    check 'passing rollback snapshot for the selected release' rollback_admitted "${ROLLBACK_OPS_REVISION:-}"
+    if ((failed)); then finish; fi
+    check 'Flux stages Ready on the selected rollback sequence' flux_state rollback "$ROLLBACK_OPS_REVISION"
     check 'third-pin workload set' pins "$old_digest" "$old_web" no
     check 'matte worker removed' matte_removed
     check 'old API endpoints' api_endpoints "$old_digest"
@@ -794,6 +935,6 @@ case $phase in
     check 'LAN API still refuses anonymous access' lan v1/me 401
     check '0013 retained and archived data and store identical' data_probe compare "$old_revision" "$old_digest"
     ;;
-  *) printf 'Usage: bash %s {preflight|retry-preflight|migration|roll|postflight|verify|rollback-baseline|compare}\n' "$0" >&2; exit 2 ;;
+  *) printf 'Usage: bash %s {preflight|retry-preflight|admit-merge|migration|roll|postflight|verify|rollback-baseline|compare}\n' "$0" >&2; exit 2 ;;
 esac
 finish

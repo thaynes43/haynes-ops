@@ -273,26 +273,58 @@ def render(path):
 
 
 def render_cluster_inventory(repo):
-    """Render the active Ops application inventory, including Flux transformations."""
+    """Render the complete active Flux tree rooted at the cluster Kustomization."""
     bootstrap = repo / "kubernetes/main/flux/config/cluster.yaml"
     cluster = resource(list(yaml.safe_load_all(bootstrap.read_text())), "Kustomization", "cluster")
-
-    def build(stage, filename, options=()):
-        output = subprocess.check_output([
-            "flux", "build", "kustomization", stage["metadata"]["name"],
-            "--path", stage["spec"]["path"], "--kustomization-file", str(filename),
-            "--dry-run", "--in-memory-build", *options,
-        ], cwd=repo, env={**os.environ, "GOMAXPROCS": "2"}, text=True)
-        return [doc for doc in yaml.load_all(output, Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)) if doc]
+    flux_env = {**os.environ, "GOMAXPROCS": "2"}
+    loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
     with TemporaryDirectory(prefix="studio-flux-inventory-") as directory:
-        manifest = Path(directory) / "flux-stage.yaml"
+        temporary = Path(directory)
+        manifest = temporary / "flux-stage.yaml"
         manifest.write_text(yaml.safe_dump(cluster))
-        roots = build(cluster, manifest)
-        apps = resource(roots, "Kustomization", "cluster-apps")
-        manifest.write_text(yaml.safe_dump(apps))
-        workloads = build(apps, manifest, ("--recursive", "--local-sources", "GitRepository/flux-system/haynes-ops=."))
-    return roots + workloads
+        command = [
+            "flux", "build", "kustomization", cluster["metadata"]["name"],
+            "--path", cluster["spec"]["path"], "--kustomization-file", str(manifest),
+            "--dry-run", "--in-memory-build",
+        ]
+        # The root also declares the Flux controllers' OCI source. Materialize
+        # that source so its sibling Kustomization is built with its patches.
+        roots = subprocess.check_output(command, cwd=repo, env=flux_env, text=True)
+        root_documents = [doc for doc in yaml.load_all(roots, Loader=loader) if doc]
+        oci_sources = {
+            (doc["metadata"]["namespace"], doc["metadata"]["name"]): doc["spec"]
+            for doc in root_documents if doc["kind"] == "OCIRepository"
+        }
+        local_sources = {"GitRepository/flux-system/haynes-ops": "."}
+        for stage in root_documents:
+            if (stage["kind"] != "Kustomization"
+                    or not stage["apiVersion"].startswith("kustomize.toolkit.fluxcd.io/")):
+                continue
+            ref = stage["spec"]["sourceRef"]
+            if ref["kind"] != "OCIRepository":
+                continue
+            namespace = ref.get("namespace", stage["metadata"]["namespace"])
+            name = ref["name"]
+            key = f"OCIRepository/{namespace}/{name}"
+            if key in local_sources:
+                continue
+            source = oci_sources[(namespace, name)]
+            pin = source["ref"]
+            if digest := pin.get("digest"):
+                artifact = f"{source['url']}@{digest}"
+            else:
+                artifact = f"{source['url']}:{pin['tag']}"
+            destination = temporary / f"source-{len(local_sources)}"
+            destination.mkdir()
+            subprocess.run(["flux", "pull", "artifact", artifact, "--output", str(destination)],
+                           check=True, capture_output=True, env=flux_env, text=True)
+            local_sources[key] = str(destination)
+        mappings = ",".join(f"{key}={path}" for key, path in local_sources.items())
+        output = subprocess.check_output(
+            [*command, "--recursive", "--local-sources", mappings], cwd=repo, env=flux_env, text=True,
+        )
+    return [doc for doc in yaml.load_all(output, Loader=loader) if doc]
 
 
 def repository_cluster_policies(repo):
@@ -718,7 +750,8 @@ def check_matte_policies(documents, api, matte, api_identity, matte_identity):
         for document, spec in selected_policies(documents, workload, identity):
             name = document["metadata"]["name"]
             if document["kind"] == "NetworkPolicy":
-                types = spec.get("policyTypes", ["Ingress", *(["Egress"] if spec.get("egress") else [])])
+                # Kubernetes defaults both an omitted and an empty policyTypes list.
+                types = spec.get("policyTypes") or ["Ingress", *(["Egress"] if spec.get("egress") else [])]
                 if direction.capitalize() in types:
                     expected_selected = expected_selected or name == policy_name
                     rules.extend(spec.get(direction) or [])

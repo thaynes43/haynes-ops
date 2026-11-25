@@ -42,9 +42,9 @@ jobs:
         id: studio-files
         uses: bjw-s-labs/action-changed-files@147be9638332cf68fd60714a610509d7a9360d60 # v0.7.0
         with:
+          # Any active Flux source or shared base can add a selecting policy.
           patterns: |
-            kubernetes/main/apps/ai/studio/**
-            kubernetes/main/apps/ai/studio-render/**
+            kubernetes/**/*
             scripts/tests/studio-release/**
             scripts/studio-release/op967*
             docs/reference/studio-fourth-release.md
@@ -213,6 +213,19 @@ jobs:
     needs: filter
     name: Flux Local - Studio release guard
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16@sha256:63e83b5a3dc36a917dccb76fe1bd2ac51f1ec9c1deb47ff20d4f04233bf6eae9
+        env:
+          POSTGRES_DB: studio_op967_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres -d studio_op967_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -279,6 +292,19 @@ jobs:
           uv sync --project studio-trial-source --locked --python 3.12
           PYTHONPATH="$GITHUB_WORKSPACE/studio-trial-source" \
             studio-trial-source/.venv/bin/python -B scripts/tests/studio-release/test_matting_trial.py
+      - name: Check out the retry probe's Studio migrations
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: thaynes43/haynes-studio
+          # First released source containing all three schema revisions under test.
+          ref: 0f6ca21e48f8a8e4d6745cba91267c4726733b47
+          path: studio-retry-source
+          persist-credentials: false
+      - name: Exercise the retry probe against PostgreSQL
+        env:
+          STUDIO_OP967_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:${{ job.services.postgres.ports[5432] }}/studio_op967_test
+          PYTHONPATH: ${{ github.workspace }}/studio-retry-source/src
+        run: studio-trial-source/.venv/bin/python -B scripts/tests/studio-release/test_retry_schema.py -v
       - name: Verify Studio release pins
         run: |
           PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
