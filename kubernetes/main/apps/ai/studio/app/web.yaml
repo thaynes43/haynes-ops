@@ -33,10 +33,15 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: nginx
-          image: ghcr.io/thaynes43/haynes-studio-web@sha256:e9ec3f2ed405afc3194f110dd086b15737aad3f183b07210df36b0e8e2607913
+          image: ghcr.io/thaynes43/haynes-studio-web@sha256:497e020b8846f09cdeab6d822aa1536dfeb325edd26205cd6e28f0061bb6d9ca
           ports:
             - name: http
               containerPort: 8080
+          lifecycle:
+            # The ingress keeps a terminating pod in rotation for a moment. Keep
+            # serving while it is removed, then stop: no 502 on a delete or a roll.
+            preStop:
+              sleep: {seconds: 8}
           readinessProbe:
             httpGet: {path: /index.html, port: http}
             periodSeconds: 5

@@ -42,7 +42,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: api
-          image: ghcr.io/thaynes43/haynes-studio@sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
+          image: ghcr.io/thaynes43/haynes-studio@sha256:08ac310f246cdc43225478e9496e480af6430b53751f4ae93f3e34206714c3e7
           command: [sh, -eu, -c]
           args:
             - |
@@ -79,7 +79,7 @@ spec:
             - name: STUDIO_STORE_ROOT
               value: /studio
             - name: STUDIO_BUILD_REVISION
-              value: git:393fe1d66070ac726739b4cdb001a9e6b2c467db
+              value: git:80975a9e958d0bed78ab530c2b20f1279bf7ebe6
             - name: STUDIO_BUILD_STAGE_ROOT
               value: /build-stage
             - name: STUDIO_PUBLIC_ORIGIN
@@ -102,6 +102,11 @@ spec:
           ports:
             - name: http
               containerPort: 8000
+          lifecycle:
+            # The ingress keeps a terminating pod in rotation for a moment. Keep
+            # serving while it is removed, then stop: no 502 on a delete or a roll.
+            preStop:
+              sleep: {seconds: 8}
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 5
@@ -133,12 +138,17 @@ spec:
             - name: tmp
               mountPath: /tmp
         - name: media-worker-routes
-          image: ghcr.io/thaynes43/haynes-studio-web@sha256:e9ec3f2ed405afc3194f110dd086b15737aad3f183b07210df36b0e8e2607913
+          image: ghcr.io/thaynes43/haynes-studio-web@sha256:497e020b8846f09cdeab6d822aa1536dfeb325edd26205cd6e28f0061bb6d9ca
           command: [/usr/sbin/nginx]
           args: [-c, /etc/studio-worker-routes/nginx.conf, -g, "daemon off;"]
           ports:
             - name: worker-http
               containerPort: 8002
+          lifecycle:
+            # The ingress keeps a terminating pod in rotation for a moment. Keep
+            # serving while it is removed, then stop: no 502 on a delete or a roll.
+            preStop:
+              sleep: {seconds: 8}
           readinessProbe:
             tcpSocket: {port: worker-http}
             periodSeconds: 5

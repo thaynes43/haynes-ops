@@ -3,7 +3,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   # Keep this name and its Flux health check tied to the image digest.
-  name: studio-register-voice-worker-4787d14f98a4
+  name: studio-register-voice-worker-08ac310f246c
 spec:
   activeDeadlineSeconds: 300
   backoffLimit: 2
@@ -23,7 +23,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: register
-          image: ghcr.io/thaynes43/haynes-studio@sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
+          image: ghcr.io/thaynes43/haynes-studio@sha256:08ac310f246cdc43225478e9496e480af6430b53751f4ae93f3e34206714c3e7
           command: [studio-api-admin]
           args:
             - worker-token
@@ -32,10 +32,7 @@ spec:
             - studio-voice-worker
             - --token-file
             - /run/studio-credentials/token
-            # The same token is a no-op. A different token (a deliberate rotation:
-            # a new Job name with an -rN suffix) revokes the old one and registers
-            # the new one, instead of failing with a conflict.
-            - --replace
+            # A digest-only upgrade uses the same token. Fail if rotation would be required.
           env:
             - name: STUDIO_DATABASE_SCHEMA
               value: studio
