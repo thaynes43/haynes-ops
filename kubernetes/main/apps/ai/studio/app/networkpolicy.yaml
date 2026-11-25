@@ -19,6 +19,9 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: studio-mcp
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: studio-worker
       ports:
         - port: 8000
           protocol: TCP
@@ -62,10 +65,8 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: dev-agents
         - podSelector:
-            matchExpressions:
-              - key: app.kubernetes.io/name
-                operator: In
-                values: [studio-api, studio-worker]
+            matchLabels:
+              app.kubernetes.io/name: studio-api
       ports:
         - port: 8001
           protocol: TCP

@@ -42,7 +42,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: api
-          image: ghcr.io/thaynes43/haynes-studio@sha256:8de1942e806c03146ad9543b0b6720ab439582a060eff5655f05963034565d20
+          image: ghcr.io/thaynes43/haynes-studio@sha256:b8460c3da82287ceae6162da8e58b818c478da1ece86ed493b97d12d2a6a38bb
           command: [sh, -eu, -c]
           args:
             - |
@@ -78,6 +78,10 @@ spec:
                   key: STUDIO_DATABASE_URL
             - name: STUDIO_STORE_ROOT
               value: /studio
+            - name: STUDIO_BUILD_REVISION
+              value: git:c75086b85a3278ead1d42b7a26da3b70da8b5793
+            - name: STUDIO_BUILD_STAGE_ROOT
+              value: /build-stage
             - name: STUDIO_PUBLIC_ORIGIN
               value: https://studio.haynesops.com
             - name: STUDIO_OIDC_ISSUER
@@ -119,6 +123,9 @@ spec:
             - name: media
               mountPath: /studio
               subPath: data/studio/api-store-v1
+            - name: media
+              mountPath: /build-stage
+              subPath: data/studio/build-stage-v1
             - name: tmp
               mountPath: /tmp
       volumes:

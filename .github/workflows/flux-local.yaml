@@ -59,6 +59,23 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check Studio release pins and Flux Job gates
+        run: |
+          python3 -m venv "$RUNNER_TEMP/studio-release-venv"
+          "$RUNNER_TEMP/studio-release-venv/bin/python" -I -m pip install \
+            --only-binary=:all: --no-deps --disable-pip-version-check PyYAML==6.0.3
+          mkdir "$RUNNER_TEMP/studio-kustomize"
+          (
+            cd "$RUNNER_TEMP/studio-kustomize"
+            curl --fail --silent --show-error --location \
+              https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.8.3/kustomize_v5.8.3_linux_amd64.tar.gz \
+              --output kustomize_v5.8.3_linux_amd64.tar.gz
+            sha256sum --check "$GITHUB_WORKSPACE/scripts/tests/portal178-m5a/kustomize.sha256"
+            tar -xzf kustomize_v5.8.3_linux_amd64.tar.gz
+          )
+          PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
+            "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/check.py
+
       - name: Run flux-local test
         uses: docker://ghcr.io/allenporter/flux-local:v8.4.0@sha256:c0be852e30f299ce6a220cc992b0c21a2a0b0684cc17713b9d718e18d9c8beff
         with:

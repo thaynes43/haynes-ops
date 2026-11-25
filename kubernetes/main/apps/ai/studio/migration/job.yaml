@@ -9,7 +9,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   # Change this name and the Flux health check together for a changed Job spec.
-  name: studio-migrate-8de1942e806c
+  name: studio-migrate-b8460c3da822
   labels:
     app.kubernetes.io/name: studio-migration
 spec:
@@ -31,7 +31,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: migrate
-          image: ghcr.io/thaynes43/haynes-studio@sha256:8de1942e806c03146ad9543b0b6720ab439582a060eff5655f05963034565d20
+          image: ghcr.io/thaynes43/haynes-studio@sha256:b8460c3da82287ceae6162da8e58b818c478da1ece86ed493b97d12d2a6a38bb
           command: [sh, -eu, -c]
           args:
             - |
@@ -65,27 +65,8 @@ spec:
 
                   print("studio_migrator: connected to studio over TLS")
 
-              def grant_runtime_access(dsn):
+              def report_revision(dsn):
                   with psycopg.connect(dsn) as conn:
-                      conn.execute("SET LOCAL lock_timeout = '5s'")
-                      conn.execute("SET LOCAL statement_timeout = '30s'")
-                      conn.execute("""
-                          GRANT USAGE ON SCHEMA studio TO studio_app;
-                          GRANT SELECT, INSERT ON studio.productions, studio.stories,
-                              studio.boards, studio.selections TO studio_app;
-                          REVOKE UPDATE ON studio.productions, studio.stories,
-                              studio.boards, studio.selections FROM studio_app;
-                          GRANT UPDATE (document) ON studio.productions, studio.stories TO studio_app;
-                          GRANT UPDATE (document, tombstone) ON studio.boards TO studio_app;
-                          GRANT UPDATE (document, revision) ON studio.selections TO studio_app;
-                          GRANT SELECT, INSERT ON studio.media_types, studio.draft_ids, studio.assets,
-                              studio.asset_versions, studio.asset_sources, studio.asset_media,
-                              studio.deliveries, studio.delivery_media TO studio_app;
-                          GRANT SELECT, INSERT, DELETE ON studio.login_attempts, studio.sessions,
-                              studio.story_asset_refs TO studio_app;
-                          GRANT SELECT ON studio.agent_keys, studio.agent_grants,
-                              studio.worker_tokens TO studio_app;
-                      """)
                       revision = conn.execute("SELECT version_num FROM studio.alembic_version").fetchone()[0]
                   print("Alembic revision:", revision)
 
@@ -93,15 +74,17 @@ spec:
                   dsn = os.environ["STUDIO_MIGRATION_DATABASE_URL"]
                   verify_login(dsn)
                   subprocess.run(["studio-api-migrate", "upgrade", "head"], check=True)
-                  grant_runtime_access(dsn)
+                  report_revision(dsn)
               except subprocess.CalledProcessError as error:
                   raise SystemExit(error.returncode) from None
               except psycopg.Error as error:
-                  raise SystemExit(f"Studio migration verification or grants failed ({type(error).__name__})") from None
+                  raise SystemExit(f"Studio migration verification failed ({type(error).__name__})") from None
               PY
           env:
             - name: STUDIO_DATABASE_SCHEMA
               value: studio
+            - name: STUDIO_RUNTIME_ROLE
+              value: studio_app
             - name: STUDIO_MIGRATION_DATABASE_URL
               valueFrom:
                 secretKeyRef:

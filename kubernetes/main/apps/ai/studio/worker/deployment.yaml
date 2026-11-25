@@ -1,0 +1,98 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: studio-worker
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: studio-worker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  minReadySeconds: 20
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: studio-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: studio-worker
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: studio-worker
+      nodeSelector:
+        kubernetes.io/hostname: talosw01
+      priorityClassName: dev-env-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: worker
+          image: ghcr.io/thaynes43/haynes-studio@sha256:b8460c3da82287ceae6162da8e58b818c478da1ece86ed493b97d12d2a6a38bb
+          command: [studio-worker]
+          env:
+            - name: STUDIO_API_URL
+              value: http://studio-api.ai.svc.cluster.local:8000
+            - name: STUDIO_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: studio-worker-token
+                  key: STUDIO_WORKER_TOKEN
+            - name: STUDIO_WAN_URL
+              value: http://wan-video.ai.svc.cluster.local:8080
+            - name: STUDIO_WAN_STORY_URL
+              value: https://work.haynesnetwork.com/work_packages/362
+            - name: STUDIO_ASR_HOST
+              value: whisper.ai.svc.cluster.local
+            - name: STUDIO_ASR_PORT
+              value: "10300"
+            - name: STUDIO_STORE_ROOT
+              value: /studio
+            - name: STUDIO_BUILD_STAGE_ROOT
+              value: /build-stage
+            - name: STUDIO_BUILD_REVISION
+              value: git:c75086b85a3278ead1d42b7a26da3b70da8b5793
+            - name: STUDIO_BUILD_IMAGE_DIGEST
+              value: sha256:b8460c3da82287ceae6162da8e58b818c478da1ece86ed493b97d12d2a6a38bb
+            - name: STUDIO_MODEL_REGISTER
+              value: /etc/studio/model-licences.json
+            - name: STUDIO_THREADS
+              value: "2"
+          resources:
+            requests: {cpu: 250m, memory: 2Gi}
+            limits: {cpu: "4", memory: 8Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - name: media
+              mountPath: /studio
+              subPath: data/studio/api-store-v1
+              readOnly: true
+            - name: media
+              mountPath: /build-stage
+              subPath: data/studio/build-stage-v1
+            - name: model-licences
+              mountPath: /etc/studio
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: media
+          nfs:
+            server: gasha01.haynesnetwork
+            path: /hdd-nfs-repl
+        - name: model-licences
+          configMap:
+            # Refresh model-licences.json from the pinned Studio source on promotion.
+            name: studio-worker-model-licences
+        - name: tmp
+          emptyDir:
+            sizeLimit: 8Gi
