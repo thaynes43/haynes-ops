@@ -1,4 +1,4 @@
-# Dormant. Apply this CPU and memory split before the staged Studio worker sidecar.
+# Dormant. Apply this CPU split before the staged Studio worker sidecar.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -11,6 +11,3 @@ patches:
       - op: replace
         path: /spec/values/controllers/studio-render/containers/app/resources/limits/cpu
         value: "18"
-      - op: replace
-        path: /spec/values/controllers/studio-render/containers/app/resources/limits/memory
-        value: 16Gi

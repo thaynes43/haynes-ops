@@ -14,7 +14,11 @@ import yaml
 STUDIO_PATH = Path("kubernetes/main/apps/ai/studio")
 API_IMAGE = "ghcr.io/thaynes43/haynes-studio"
 MATTING_IMAGE = f"{API_IMAGE}-matting"
-PRE_CR38_IMAGE = "sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f"
+STALE_MATTING_DIGESTS = {
+    "sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f",
+    "sha256:5c431978f3bfe7a48deb062c6b2854ca8b086d1a5d9c600e2db4b1e26d702d72",
+    "sha256:" + "0" * 64,
+}
 
 
 def resource(documents, kind, name=None):
@@ -119,7 +123,7 @@ def check_matting(path, flux):
     image = pin["image"]
     allocation = pin["allocation"]
     match = re.fullmatch(rf"{re.escape(MATTING_IMAGE)}@(sha256:[0-9a-f]{{64}})", image)
-    if not match or match[1] in {PRE_CR38_IMAGE, "sha256:" + "0" * 64}:
+    if not match or match[1] in STALE_MATTING_DIGESTS:
         raise ValueError("set matting-pending/release/release.yaml data.image to the published matting digest")
     memory = published_matting_memory(match[1])
     if (pin["memoryRequest"], pin["memoryLimit"]) != memory:
@@ -161,11 +165,10 @@ def check_matting(path, flux):
 
     jobs = {}
     weight_path = f"data/studio/jobs/{allocation}/weights"
+    name_suffix = allocation.rsplit("-", 1)[1]
     for name, uid in (("provision", 1000), ("smoke", 10001)):
         stage = render(pending / name)
-        name_suffix = allocation.rsplit("-", 1)[1]
-        attempt = "-r3" if name == "smoke" else ""
-        job = resource(stage, "Job", f"studio-matting-{name}-{name_suffix}{attempt}")
+        job = resource(stage, "Job", f"studio-matting-{name}-{name_suffix}")
         pod = job["spec"]["template"]["spec"]
         if (job["spec"]["activeDeadlineSeconds"] != 300 or job["spec"]["backoffLimit"] != 0
                 or job["spec"]["ttlSecondsAfterFinished"] != 86400
@@ -197,9 +200,9 @@ def check_matting(path, flux):
         raise ValueError("the provisioner may write only inside the Studio jobs allocation")
 
     smoke, pod = jobs["smoke"]
-    if (container(smoke)["command"] != ["studio-matting", "smoke", "--no-cpu-arena"]
+    if (container(smoke)["command"] != ["studio-matting", "smoke"]
             or pod["securityContext"]["fsGroup"] != 10001):
-        raise ValueError("the smoke Job must measure the CPU arena change with writable private scratch")
+        raise ValueError("the smoke Job must run the serving defaults with writable private scratch")
     check_matting_mounts(container(smoke), pod, weight_path, "scratch", memory)
 
     stage = render(pending / "activation")
@@ -229,11 +232,11 @@ def check_matting(path, flux):
             raise ValueError("the matting sidecar probes must use Unix HTTP readiness")
 
     render_path = path.with_name("studio-render")
-    for overlay, cores, limit in (("app", "20", "32Gi"), ("matting-pending", "18", "16Gi")):
+    for overlay, cores in (("app", "20"), ("matting-pending", "18")):
         release = resource(render(render_path / overlay), "HelmRelease", "studio-render")
         render_app = release["spec"]["values"]["controllers"]["studio-render"]["containers"]["app"]
-        if render_app["resources"]["limits"] != {"cpu": cores, "memory": limit}:
-            raise ValueError("the dormant matting split must stage offline render at 18 CPUs and 16Gi")
+        if render_app["resources"]["limits"] != {"cpu": cores, "memory": "32Gi"}:
+            raise ValueError(f"offline render {overlay} must limit CPU to {cores} and memory to 32Gi")
 
 
 def check_matting_container(spec, image):
