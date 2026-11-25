@@ -10,6 +10,7 @@ import threading
 import time
 from types import SimpleNamespace
 import unittest
+import uuid
 from unittest.mock import patch
 
 from test_api import APP, api
@@ -350,8 +351,10 @@ class LocalModelTests(unittest.TestCase):
         self.memory = 5000
         with patch.object(local, "exchange", side_effect=ConnectionRefusedError) as exchange:
             api.recover_with_local()
-            job = self.generate("i2v")
-            self.assertEqual(job["admission_code"], "local_model_unavailable")
+            for kind in ("i2v", "s2v", None):
+                with self.subTest(kind=kind):
+                    job = self.generate(kind, uuid.uuid4().hex)
+                    self.assertEqual((job["state"], job["admission_code"]), ("failed", "local_model_unavailable"))
             with patch.object(product_foley, "CONFIG", self.config), \
                     patch.multiple(product_foley.service, ROOT=self.root, idle=api.check_local_queue), \
                     api.acquire_compute() as lease:
@@ -360,7 +363,7 @@ class LocalModelTests(unittest.TestCase):
                 self.assertEqual(refusal.exception.code, "local_model_unavailable")
             job = self.perform(LOAD, "load")
             self.assertEqual(job["error"], "local_model_unavailable")
-            self.assertEqual(exchange.call_count, 3)
+            self.assertEqual(exchange.call_count, 5)
             self.assertFalse(self.lane.path.exists())
         self.assertEqual(self.work("wan_prompt", "free_cache", "load"), [])
         self.assertEqual(self.generate("i2v", "e1" * 16)["state"], "succeeded")
@@ -991,6 +994,30 @@ class LocalModelTests(unittest.TestCase):
         self.assertEqual((released["state"], released["released_memory_mib"]), ("succeeded", 96))
         self.assertEqual(released["baseline_memory_mib"], 96)
         self.assertFalse(self.lane.path.exists())
+
+    def test_unload_with_two_or_four_mib_drift_passes_at_calibrated_ceiling(self):
+        # PROFILE's ceiling is 128 MiB for a drained baseline of 124 MiB.
+        for drift in (2, 4):
+            with self.subTest(drift=drift):
+                self.memory = self.drained_memory = 124
+                loaded = self.perform(f"{10 + drift:032x}", "load")
+                self.assertEqual((loaded["state"], loaded["baseline_memory_mib"]), ("succeeded", 124))
+                self.drained_memory = 124 + drift
+                with patch.object(local.time, "sleep"):
+                    released = self.perform(f"{20 + drift:032x}", "unload")
+                self.assertEqual((released["state"], released["released_memory_mib"]), ("succeeded", 124 + drift))
+                self.assertFalse(self.lane.path.exists())
+
+    def test_unload_with_five_mib_drift_latches_hold_at_calibrated_ceiling(self):
+        self.memory = self.drained_memory = 124
+        loaded = self.perform(LOAD, "load")
+        self.assertEqual((loaded["state"], loaded["baseline_memory_mib"]), ("succeeded", 124))
+        self.drained_memory = 129
+        with patch.object(local.time, "sleep"):
+            released = self.perform(UNLOAD, "unload")
+        self.assertEqual(released["error"], "residency_unverified")
+        self.assertFalse(self.worker.model.alive())
+        self.assertTrue(product.read_job(self.lane.path)["held"])
 
     def test_load_rechecks_queue_before_evicting_cache_and_after_post(self):
         self.memory = 5600

@@ -18,6 +18,7 @@ FREE_BYTES = 8 * 1024**3
 FREE_INODES = 1024
 STAGING_INODES = 16
 CHUNK = 1024 * 1024
+FLUSH_EVERY = 64 * CHUNK
 RENAME_NOREPLACE = 1
 AT_FDCWD = -100
 
@@ -75,6 +76,17 @@ class PinnedRedirect(HTTPRedirectHandler):
     http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
 
 
+def settle(fd):
+    """Write what has been written so far to the volume and let its pages go.
+
+    A multi-gigabyte file written with one fsync at the end keeps its pages in the
+    container's memory account until then; the first attempt was killed for memory
+    after 570 MB. Flushing every FLUSH_EVERY bytes bounds that to one interval.
+    """
+    os.fsync(fd)
+    os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+
+
 def download(opener, url, target, item, cap):
     expected = item["bytes"]
     if expected > cap:
@@ -85,7 +97,7 @@ def download(opener, url, target, item, cap):
         length = source.headers.get("Content-Length")
         if source.status != 200 or (length is not None and length != str(expected)):
             raise ProvisionError("unexpected_download_length")
-        actual = 0
+        actual = flushed = 0
         with target.open("xb", buffering=0) as file:
             while block := source.read(min(CHUNK, expected - actual + 1)):
                 actual += len(block)
@@ -94,11 +106,21 @@ def download(opener, url, target, item, cap):
                 reserve(target.parent, size=len(block) + CHUNK)
                 if file.write(block) != len(block):
                     raise ProvisionError("short_write")
-            os.fsync(file.fileno())
+                if actual - flushed >= FLUSH_EVERY:
+                    settle(file.fileno())
+                    flushed = actual
+            settle(file.fileno())
         if actual != expected:
             raise ProvisionError("unexpected_download_length")
-    with target.open("rb") as file:
-        actual_hash = hashlib.file_digest(file, "sha256").hexdigest()
+    digest = hashlib.sha256()
+    with target.open("rb", buffering=0) as file:
+        seen = 0
+        while block := file.read(CHUNK):
+            digest.update(block)
+            seen += len(block)
+            if seen % FLUSH_EVERY < CHUNK:
+                os.posix_fadvise(file.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+    actual_hash = digest.hexdigest()
     if actual_hash != item["sha256"]:
         raise ProvisionError("download_hash_mismatch")
     target.chmod(0o444)

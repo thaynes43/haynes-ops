@@ -46,11 +46,14 @@ class ManifestTests(unittest.TestCase):
         cls.policy = documents("kustomize", "build", PENDING / "download-policy")
         cls.weights = documents("kustomize", "build", PENDING / "weights")
         cls.ai = documents("kustomize", "build", WAN.parent)
+        cls.provisioning_flux = [
+            yaml.safe_load((PENDING / f"{name}-ks.yaml").read_text()) for name in ("download-policy", "weights")
+        ]
         cls.dormant = documents("kustomize", "build", WAN / "app")
         cls.active_pod = pod_spec(resource(cls.activation, "HelmRelease", "wan-video"))
         cls.dormant_pod = pod_spec(resource(cls.dormant, "HelmRelease", "wan-video"))
 
-    def test_rendered_profile_loads_and_rejects_above_design_ceiling(self):
+    def test_rendered_profile_accepts_only_integer_ceilings_from_1_to_512(self):
         config = resource(self.activation, "ConfigMap", "wan-local-model-profile")
         config_volume, = [v for v in self.active_pod["volumes"] if v["name"] == "config"]
         self.assertIn({"configMap": {"name": config["metadata"]["name"]}},
@@ -64,14 +67,41 @@ class ManifestTests(unittest.TestCase):
             path = directory / "local-model.json"
             path.write_text(content)
             profile = local.load_profile(directory)
-            self.assertEqual(profile["unloaded_max_mib"], 512)
-            path.write_text(json.dumps({**profile, "unloaded_max_mib": 513}))
-            with self.assertRaisesRegex(product.RequestError, "Invalid local-model profile"):
-                local.load_profile(directory)
+            self.assertIs(type(profile["unloaded_max_mib"]), int)
+            self.assertIn(profile["unloaded_max_mib"], range(1, 513))
+            for value in (1, 266, 512):
+                with self.subTest(valid=value):
+                    path.write_text(json.dumps({**profile, "unloaded_max_mib": value}))
+                    self.assertEqual(local.load_profile(directory)["unloaded_max_mib"], value)
+            for value in (-1, 0, 513, 266.0, True, None, "266"):
+                with self.subTest(invalid=value):
+                    path.write_text(json.dumps({**profile, "unloaded_max_mib": value}))
+                    with self.assertRaisesRegex(product.RequestError, "Invalid local-model profile"):
+                        local.load_profile(directory)
+
+    def test_wan_inventory_is_dormant_and_the_activation_overlay_stays_staged(self):
+        # Reverted on 2026-11-25: the sidecar never became Ready on activation (see
+        # "Changed" in docs/reference/local-model-hosting.md). The overlay is kept,
+        # unreferenced, for the next attempt; the checks on it below still run.
+        flux = resource(self.ai, "Kustomization", "wan-video")["spec"]
+        self.assertEqual(flux["path"], "./kubernetes/main/apps/ai/wan-video/app")
+        self.assertEqual(flux["timeout"], "5m")
+        self.assertNotIn("healthChecks", flux)
+        names = {doc["metadata"]["name"] for doc in self.ai}
+        self.assertFalse(names & {"wan-local-model-download-policy", "wan-local-model-weights"})
+        self.assertFalse({doc["kind"] for doc in self.activation} & {"Job", "CiliumNetworkPolicy"})
+        dormant_pvc = resource(self.dormant, "PersistentVolumeClaim", "wan-video")
+        active_pvc = resource(self.activation, "PersistentVolumeClaim", "wan-video")
+        self.assertEqual(active_pvc, dormant_pvc)
+        self.assertEqual(active_pvc["metadata"]["annotations"]["kustomize.toolkit.fluxcd.io/prune"], "disabled")
+
+    def test_recovery_helper_is_in_the_api_code_config_for_both_paths(self):
+        for rendered in (self.dormant, self.activation):
+            data = resource(rendered, "ConfigMap", "wan-video-config")["data"]
+            self.assertEqual(data["clear_local_model_hold.py"],
+                             (WAN / "app" / "clear_local_model_hold.py").read_text())
 
     def test_dormant_release_has_no_local_model_resources_or_container(self):
-        flux = yaml.safe_load((WAN / "ks.yaml").read_text())
-        self.assertEqual(flux["spec"]["path"], "./kubernetes/main/apps/ai/wan-video/app")
         self.assertFalse({doc["kind"] for doc in self.dormant} & {"Job", "CiliumNetworkPolicy"})
         self.assertNotIn("wan-local-model-profile", {doc["metadata"]["name"] for doc in self.dormant})
         self.assertEqual({c["name"] for c in self.dormant_pod["containers"]}, {"app", "api", "foley"})
@@ -109,6 +139,10 @@ class ManifestTests(unittest.TestCase):
 
     def test_sidecar_probes_only_check_the_listener_with_time_to_start(self):
         container, = [c for c in self.active_pod["containers"] if c["name"] == "local-model"]
+        self.assertEqual(container["image"],
+                         "ghcr.io/thaynes43/studio-local-model:"
+                         "b12679-79fa01b5ff27b2b7aeacc78b079be7d99864d252-45545041495-1"
+                         "@sha256:e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03")
         for name in ("startupProbe", "readinessProbe"):
             with self.subTest(probe=name):
                 probe = container[name]
@@ -118,13 +152,14 @@ class ManifestTests(unittest.TestCase):
                 ])
 
     def test_provisioner_can_only_write_its_weights_directory(self):
-        flux = resource(self.ai, "Kustomization", "wan-local-model-weights")["spec"]
+        flux = resource(self.provisioning_flux, "Kustomization",
+                        "wan-local-model-weights")["spec"]
         self.assertEqual(flux["dependsOn"], [{"name": "wan-local-model-download-policy"}, {"name": "wan-video"}])
         self.assertEqual(flux["healthChecks"], [{
-            "apiVersion": "batch/v1", "kind": "Job", "name": "wan-local-model-provision", "namespace": "ai",
+            "apiVersion": "batch/v1", "kind": "Job", "name": "wan-local-model-provision-r2", "namespace": "ai",
         }])
         self.assertTrue(flux["prune"])
-        job = resource(self.weights, "Job", "wan-local-model-provision")
+        job = resource(self.weights, "Job", "wan-local-model-provision-r2")
         self.assertEqual(job["spec"]["activeDeadlineSeconds"], 1800)
         self.assertEqual(job["spec"]["backoffLimit"], 0)
         self.assertEqual(job["spec"]["podReplacementPolicy"], "Failed")
@@ -146,7 +181,8 @@ class ManifestTests(unittest.TestCase):
         })
 
     def test_provisioner_dns_and_https_allow_hub_and_cdn_subdomains(self):
-        flux = resource(self.ai, "Kustomization", "wan-local-model-download-policy")
+        flux = resource(self.provisioning_flux, "Kustomization",
+                        "wan-local-model-download-policy")
         self.assertEqual(flux["spec"]["path"], f"./{(PENDING / 'download-policy').relative_to(WAN.parents[4])}")
         self.assertTrue(flux["spec"]["prune"])
         self.assertEqual({doc["kind"] for doc in self.policy}, {"CiliumNetworkPolicy"})

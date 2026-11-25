@@ -15,7 +15,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: wan-local-model-provision
+      name: wan-local-model-provision-r2
       namespace: ai
   sourceRef:
     kind: GitRepository

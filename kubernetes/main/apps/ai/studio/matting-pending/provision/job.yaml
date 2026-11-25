@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: studio-matting-provision-00
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: studio-matting-provision
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        kubernetes.io/hostname: talosw01
+      priorityClassName: dev-env-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: matting
+          image: image-replaced-by-release
+          command: [python, -B, /config/provision.py]
+          env:
+            - {name: STUDIO_MATTING_IMAGE, value: image-replaced-by-release}
+            - {name: STUDIO_MATTING_ALLOCATION, value: allocation-replaced-by-release}
+          resources:
+            # 1Gi: one 64 MiB write interval, the process and TLS buffers, with room.
+            # At 256Mi a 224 MB file written with a single final fsync sits at the limit.
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: media, mountPath: /jobs, subPath: data/studio/jobs}
+            - {name: config, mountPath: /config, readOnly: true}
+      volumes:
+        - name: media
+          nfs:
+            server: gasha01.haynesnetwork
+            path: /hdd-nfs-repl
+        - name: config
+          configMap:
+            name: studio-matting-provision

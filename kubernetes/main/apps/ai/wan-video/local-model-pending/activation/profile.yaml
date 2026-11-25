@@ -4,6 +4,7 @@ metadata:
   name: wan-local-model-profile
   namespace: ai
 data:
+  # OP442 calibration before merge: edit only the unloaded_max_mib line below.
   local-model.json: |
     {
       "model": "qwen3.5-9b-q5_k_m",
@@ -13,7 +14,7 @@ data:
       "load_timeout_seconds": 120,
       "infer_timeout_seconds": 180,
       "unload_timeout_seconds": 15,
-      "unloaded_max_mib": 512,
+      "unloaded_max_mib": 270,
       "resident_min_mib": 5120,
       "resident_max_mib": 12288
     }
