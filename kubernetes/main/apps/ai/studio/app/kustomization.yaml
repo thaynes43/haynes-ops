@@ -9,15 +9,3 @@ resources:
   - networkpolicy.yaml
 components:
   - ../../../../../shared/components/common/gatus/guarded
-configMapGenerator:
-  # The worker also mounts this register and waits for this Kustomization.
-  # Keep this name and both volume references tied to the API image digest.
-  - name: studio-model-licences-1aa9b4736da9
-    files:
-      - model-licences.json
-    options:
-      disableNameSuffixHash: true
-      immutable: true
-      annotations:
-        # Keep the old register mountable while worker registration gates its rollout.
-        kustomize.toolkit.fluxcd.io/prune: disabled

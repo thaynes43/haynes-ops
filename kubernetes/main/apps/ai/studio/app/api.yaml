@@ -42,7 +42,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: api
-          image: ghcr.io/thaynes43/haynes-studio@sha256:1aa9b4736da902031613d957d5db3ddd17831c6cc344c5e108d761b485f3501c
+          image: ghcr.io/thaynes43/haynes-studio@sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
           workingDir: /opt/studio
           command: [sh, -eu, -c]
           args:
@@ -80,7 +80,7 @@ spec:
             - name: STUDIO_STORE_ROOT
               value: /studio
             - name: STUDIO_BUILD_REVISION
-              value: git:f30445ff312bcdb04519765e9000a5fe1295c223
+              value: git:393fe1d66070ac726739b4cdb001a9e6b2c467db
             - name: STUDIO_BUILD_STAGE_ROOT
               value: /build-stage
             - name: STUDIO_PUBLIC_ORIGIN
@@ -98,6 +98,8 @@ spec:
               value: '["authentik Admins"]'
             - name: STUDIO_GO_LIVE_APPROVER_SUBJECTS
               value: '[]'
+            - name: STUDIO_ESCALATION_AUTHORIZATION
+              value: person
           ports:
             - name: http
               containerPort: 8000
@@ -129,10 +131,6 @@ spec:
             - name: media
               mountPath: /build-stage
               subPath: data/studio/build-stage-v1
-            - name: model-licences
-              mountPath: /opt/studio/docs/reference/model-licences.json
-              subPath: model-licences.json
-              readOnly: true
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -140,9 +138,6 @@ spec:
           nfs:
             server: gasha01.haynesnetwork
             path: /hdd-nfs-repl
-        - name: model-licences
-          configMap:
-            name: studio-model-licences-1aa9b4736da9
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
