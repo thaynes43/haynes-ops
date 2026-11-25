@@ -15,11 +15,95 @@ STUDIO_PATH = Path("kubernetes/main/apps/ai/studio")
 API_IMAGE = "ghcr.io/thaynes43/haynes-studio"
 MATTING_IMAGE = f"{API_IMAGE}-matting"
 SEGMENTATION_IMAGE = f"{API_IMAGE}-segmentation"
+STUDIO_REPO = "https://github.com/thaynes43/haynes-studio"
+MANIFEST_TYPES = (
+    "application/vnd.oci.image.manifest.v1+json, "
+    "application/vnd.docker.distribution.manifest.v2+json"
+)
+PIN_FILES = (
+    "ks.yaml", "app/api.yaml", "app/mcp.yaml", "app/web.yaml", "migration/job.yaml",
+    "worker/deployment.yaml", "worker-registration/job.yaml", "media-workers/image.yaml",
+    "media-workers/voice.yaml", "media-worker-registration/image-job.yaml",
+    "media-worker-registration/voice-job.yaml",
+)
 STALE_MATTING_DIGESTS = {
     "sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f",
     "sha256:5c431978f3bfe7a48deb062c6b2854ca8b086d1a5d9c600e2db4b1e26d702d72",
     "sha256:" + "0" * 64,
 }
+
+
+def studio_image_digest(image, revision):
+    """Verify a published tag, immutable manifest and image config using anonymous pull."""
+    repository = image.removeprefix("ghcr.io/")
+    base = f"https://ghcr.io/v2/{repository}"
+    with urlopen(f"https://ghcr.io/token?service=ghcr.io&scope=repository:{repository}:pull",
+                 timeout=15) as response:
+        token = json.loads(response.read(65536))["token"]
+
+    def fetch(endpoint, ref, accept="application/json"):
+        request = Request(f"{base}/{endpoint}/{ref}", headers={"Accept": accept})
+        request.add_unredirected_header("Authorization", "Bearer " + token)
+        with urlopen(request, timeout=15) as response:
+            data = response.read(1024 * 1024 + 1)
+            reported_digest = response.headers.get("Docker-Content-Digest")
+        digest = "sha256:" + sha256(data).hexdigest()
+        if len(data) > 1024 * 1024 or (reported_digest and reported_digest != digest):
+            raise ValueError(f"{image} {endpoint}/{ref} failed digest verification")
+        return data, digest
+
+    tag = f"sha-{revision}"
+    manifest, digest = fetch("manifests", tag, MANIFEST_TYPES)
+    if fetch("manifests", digest, MANIFEST_TYPES) != (manifest, digest):
+        raise ValueError(f"{image} manifest at {digest} differs from {tag}")
+    config_digest = json.loads(manifest)["config"]["digest"]
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", config_digest):
+        raise ValueError(f"{image} has an invalid config digest")
+    config, actual = fetch("blobs", config_digest)
+    if actual != config_digest:
+        raise ValueError(f"{image} config does not match {config_digest}")
+    config = json.loads(config)
+    labels = config["config"]["Labels"]
+    if ((config["os"], config["architecture"]) != ("linux", "amd64")
+            or labels.get("org.opencontainers.image.revision") != revision
+            or labels.get("org.opencontainers.image.source") != STUDIO_REPO):
+        raise ValueError(f"{image} must be a Studio linux/amd64 image built from {revision}")
+    print(f"Verified {image}:{tag} @ {digest} (linux/amd64, revision {revision})")
+    return digest
+
+
+def repin(path, revision, publish_run):
+    """Update the release record and its literal Kubernetes references together."""
+    if not re.fullmatch(r"[0-9a-f]{40}", revision) or not re.fullmatch(r"[0-9]+", publish_run):
+        raise ValueError("pinning requires the full Studio revision and numeric Studio images run ID")
+    release_path = path / "release.yaml"
+    previous = yaml.safe_load(release_path.read_text(encoding="utf-8"))
+    if not (re.fullmatch(r"[0-9a-f]{40}", previous["revision"])
+            and all(re.fullmatch(r"sha256:[0-9a-f]{64}", previous[key])
+                    for key in ("apiDigest", "webDigest"))):
+        raise ValueError("release.yaml must contain a full revision and the existing image digests")
+    api = studio_image_digest(API_IMAGE, revision)
+    web = studio_image_digest(f"{API_IMAGE}-web", revision)
+
+    # Replace complete digests before matching bare Job suffixes. A versioned
+    # retry suffix belongs to the old Job and is reset on a new digest.
+    old_suffix = previous["apiDigest"].removeprefix("sha256:")[:12]
+    new_suffix = api.removeprefix("sha256:")[:12]
+    updates = {}
+    for name in PIN_FILES:
+        file = path / name
+        content = file.read_text(encoding="utf-8")
+        updated = content.replace(previous["revision"], revision)
+        updated = updated.replace(previous["apiDigest"], api).replace(previous["webDigest"], web)
+        if old_suffix != new_suffix:
+            updated = re.sub(rf"(?<=-){old_suffix}(?:-r[1-9][0-9]*)?(?=\s|$)", new_suffix, updated)
+        updates[file] = updated
+    updates[release_path] = (
+        f'# Successful "Studio images" publish from haynes-studio main, run {publish_run}.\n'
+        f"revision: {revision}\napiDigest: {api}\nwebDigest: {web}\n"
+    )
+    for file, content in updates.items():
+        file.write_text(content, encoding="utf-8")
 
 
 def resource(documents, kind, name=None):
@@ -69,6 +153,19 @@ def check_jobs(documents, flux, prefixes, digest):
 
 def env(workload, name=None):
     return {entry["name"]: entry.get("value") for entry in container(workload, name)["env"]}
+
+
+def check_drain(deployments):
+    """Serving containers keep serving briefly while the ingress drops a terminating pod."""
+    for deployment, names in deployments:
+        pod = deployment["spec"]["template"]["spec"]
+        grace = pod.get("terminationGracePeriodSeconds", 30)
+        for name in names:
+            spec = next(item for item in pod["containers"] if item["name"] == name)
+            seconds = spec.get("lifecycle", {}).get("preStop", {}).get("sleep", {}).get("seconds")
+            if type(seconds) is not int or not 5 <= seconds <= grace - 10:
+                raise ValueError(f"{deployment['metadata']['name']}/{name} needs a preStop sleep of at least "
+                                 "5 seconds that leaves 10 seconds of the termination grace period")
 
 
 def check_packaged_register(app, deployments):
@@ -596,14 +693,21 @@ def check(path):
     api = resource(app, "Deployment", "studio-api")
     mcp = resource(app, "Deployment", "studio-mcp")
     web = resource(app, "Deployment", "studio-web")
-    worker = resource(render(path / "worker"), "Deployment", "studio-worker")
+    worker_stage = render(path / "worker")
+    worker = resource(worker_stage, "Deployment", "studio-worker")
     media = render(path / "media-workers")
     voice = resource(media, "Deployment", "studio-voice-worker")
     image = resource(media, "Deployment", "studio-image-worker")
-    for stage in (app, media, render(path / "worker")):
+    for stage in (app, media, worker_stage):
         check_policy_selectors(stage)
 
-    digest = image_digest(api, API_IMAGE, name="api")
+    digest, web_digest = release["apiDigest"], release["webDigest"]
+    if (image_digest(api, API_IMAGE, name="api") != digest
+            or image_digest(web, API_IMAGE + "-web") != web_digest):
+        raise ValueError("studio-api and studio-web must use the published release digest pair")
+    strategy = api["spec"]["strategy"]
+    if strategy["type"] != "RollingUpdate" or strategy["rollingUpdate"]["maxUnavailable"] != 0:
+        raise ValueError("studio-api must keep old pods available while the new pods become ready")
     jobs = [
         *check_jobs(render(path / "migration"), resource(flux, "Kustomization", "studio-migration"),
                     ("studio-migrate",), digest),
@@ -615,12 +719,13 @@ def check(path):
     ]
     for workload in (mcp, worker, voice, image, *jobs):
         if image_digest(workload, API_IMAGE) != digest:
-            raise ValueError(f"{workload['metadata']['name']} must use studio-api's digest {digest}")
-    web_digest = image_digest(web, API_IMAGE + "-web")
-    if digest != release["apiDigest"] or web_digest != release["webDigest"]:
-        raise ValueError("studio-api and studio-web must use the published release digest pair")
+            raise ValueError(f"{workload['metadata']['name']} must use the Studio release digest {digest}")
     if image_digest(api, API_IMAGE + "-web", name="media-worker-routes") != web_digest:
         raise ValueError("The API media-worker listener must use the same nginx image as studio-web")
+    for workload, args in ((worker, []), (voice, ["--lane", "voice"]), (image, ["--lane", "image"])):
+        spec = container(workload)
+        if spec["command"] != ["studio-worker"] or spec.get("args", []) != args:
+            raise ValueError(f"{workload['metadata']['name']} must consume its assigned queue lane")
     routes = (path / "app/media-worker-routes.conf").read_text()
     for header in ("X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host", "X-Real-IP", "Forwarded"):
         if f'proxy_set_header {header} "";' not in routes:
@@ -637,14 +742,19 @@ def check(path):
         raise ValueError("studio-worker provenance digest must match its image")
 
     check_packaged_register(app + media, ((api, "api"), (worker, None), (voice, None), (image, None)))
+    check_drain(((api, ("api", "media-worker-routes")), (mcp, ("mcp",)), (web, ("nginx",))))
     print(f"Studio release pins and Job health gates agree for {revision} ({digest})")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("studio_path", type=Path, nargs="?", default=STUDIO_PATH)
+    parser.add_argument("--pin", nargs=2, metavar=("STUDIO_REVISION", "PUBLISH_RUN"),
+                        help="verify the published image pair and update all release references")
     args = parser.parse_args()
     try:
+        if args.pin:
+            repin(args.studio_path, *args.pin)
         check(args.studio_path)
     except (KeyError, OSError, ValueError, subprocess.CalledProcessError, yaml.YAMLError) as error:
         parser.exit(1, f"Studio release check failed: {error}\n")

@@ -1345,7 +1345,8 @@ for this proof.
 For planned rotation, drain the lane in an idle maintenance window. Add a
 new digest-independent, versioned token generator and Orphan ExternalSecret.
 Use the new token reference in the lane Deployment and registration Job
-and the same worker ID. Bump that Job's digest-suffixed name and Flux
+and keep the same worker ID. Add `--replace` to the rotation Job's arguments.
+Bump that Job's digest-suffixed name and Flux
 health check to the next `-rN` (start at `-r1`). Reconcile registration
 before the workers. The existing pod's old bearer is revoked as soon as
 `--replace` commits. Expect a brief interruption until the new pod starts.
@@ -1404,3 +1405,945 @@ absent.
   printf 'PASS OP961 rollback verification\n'
 )
 ```
+
+## OP964 third release
+
+**Proven (2026-11-25, 11:14Z to 11:18Z):** this pin is installed. Evidence:
+[OP964, comment 10061](https://work.haynesnetwork.com/work_packages/964).
+**Changed:** the postflight probe at first asserted that The Winter Menu's run
+document carries no snapshot reference. It does; only the stored snapshot is
+absent. The assertion below is corrected, and the probe passed in full with it.
+The anonymous ingress block was run from inside the cluster through the
+internal ingress with the certificate verified, since the coordinator's pod has
+no LAN route.
+
+[OP964](https://work.haynesnetwork.com/work_packages/964) promotes feedback and
+iterations, the reference-photo composer, private release packages, the
+Assets page, the staging archive and worker lane grants. The coordinator
+reviews, merges and rolls out the pin. All checks below are expected until
+the coordinator records installed evidence.
+
+Use [release.yaml](../../kubernetes/main/apps/ai/studio/release.yaml) for the
+revision, digest pair and successful Studio images run ID. The Python digest
+covers the API, MCP, three workers, migration and three registration Jobs.
+The web digest covers the web pods and the API's media-worker listener.
+
+The selected pair (Studio `80975a9`) includes Studio PRs 116, 118, 120, 121,
+123, 125, 127, 128 and 131. Its Alembic head is `0012_release_constraints`.
+OP437 is outside this pin. PR 128 is the matting adapter's source (OP451):
+nothing calls it yet, and the matting sidecar is not part of this pin. The
+coordinator repinned from `b182c1d` with the command below after PRs 131 and
+128 merged. For a repin, select a successful main publish containing all nine
+PRs. Run the following from haynes-ops with the selected
+full SHA and publish run ID. It verifies both Linux/amd64 tags, immutable
+manifests and revision labels anonymously, then updates the release record,
+workload references and digest-named Job gates together. Update the recorded
+PR ancestry and migration head. [Studio images](https://github.com/thaynes43/haynes-studio/actions/workflows/studio-images.yml)
+
+```bash
+uv run --no-project --with PyYAML==6.0.3 -- python -I -B scripts/tests/studio-release/check.py \
+  --pin "$studio_revision" "$studio_publish_run"
+```
+
+**Drain on termination (added with this pin).** The API container, its
+media-worker listener, MCP and web each sleep 8 seconds in `preStop` before they
+receive the stop signal, inside the default 30-second grace period. A
+terminating pod stays in the ingress's rotation for a moment; without the drain
+the next request to it is a 502, on a pod delete and on every roll. The release
+check requires the sleep on all four containers. The first roll to this pin
+still terminates pods of the previous pin, which have no drain, so a brief 502
+is possible during this roll only. Once this pin is installed, the
+[one-app-pod recovery check](https://work.haynesnetwork.com/work_packages/437)
+can require zero failed requests.
+
+### Preflight
+
+Before merging, arrange an idle window and keep submissions stopped until
+postflight passes. Flux can pick up the merge before a manual reconcile.
+Require all three postgres16 instances Ready, ready Studio stages and
+existing projections, ready Kokoro and ComfyUI, and room for the extra API
+pod on a separate eligible node. Check [database
+readiness](studio-database.md#reconciliation-and-owner-bootstrap) and
+[OP961 installed evidence](https://work.haynesnetwork.com/work_packages/961)
+(comments 9993, 9997 and 10002). Review the current shared ComfyUI queue
+using the [image worker](#shared-engine-evidence) and submit nothing.
+
+```bash
+(
+  set -euo pipefail
+  kubectl -n ai wait --for=condition=Ready --timeout=1m \
+    kustomization/studio-database kustomization/studio-oidc kustomization/studio-migration \
+    kustomization/studio kustomization/studio-worker-registration kustomization/studio-worker \
+    kustomization/studio-media-worker-registration kustomization/studio-media-workers \
+    helmrelease/studio-render helmrelease/kokoro helmrelease/comfyui \
+    externalsecret/studio-runtime-db externalsecret/studio-migrator-db \
+    externalsecret/studio-oidc-client externalsecret/studio-worker-token \
+    externalsecret/studio-voice-worker-token externalsecret/studio-image-worker-token
+  kubectl get nodes
+  kubectl -n ai get pods -l app.kubernetes.io/name=studio-api -o wide
+)
+```
+
+#### Imported productions and queue counts
+
+Run this block in `preflight` on the old API and retain the baseline.
+All modes call the running build's publication and approval filters and
+check both imported story IDs. Run `postflight` only after
+the pod check on the new pair. Use `compare` after an image rollback with a
+fresh `preflight` baseline taken immediately before rollback. Choose a
+different path for that baseline via `STUDIO_OP964_BASELINE`. Use the same
+path for each preflight and its follow-up.
+
+Run preflight immediately before merge. The probe counts queued and running
+work in each of the run, voice and image lanes. A held run also stops the
+roll for review. With `maxUnavailable: 0`, the old API serves while the new
+API becomes Ready. Old API pods can authenticate existing worker tokens
+without enforcing the lane grants until the last old pod is gone.
+
+Every mode uses a read-only snapshot as `studio_app` over TLS. Postflight
+calls the same database and validation helpers as the new read routes.
+Both imports must have empty feedback, no active iteration, no frozen
+release target or package, and an empty staging archive. Each is unpublished
+and unapproved. Release eligibility must report `approval.legacy_run`.
+A package list represents only prepared packages, so the legacy case has
+no package row to display as held. Its eligibility refusal is the held
+reason that the release view would use. The catalog must expose One More
+Meeting's recorded-only versions by their frozen IDs. The recovered Winter
+Menu run has no frozen catalog pins. Shared catalog entries can appear
+for either production and are separate from those pins. The snapshot
+and draft results follow [OP959](#postflight). See the Studio references
+for [feedback](https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/feedback.md),
+[release](https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/release-package.md)
+and [archive](https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/staging-archive.md).
+
+```bash
+(
+  set -euo pipefail
+  phase=${STUDIO_OP964_PHASE:-preflight}
+  baseline=${STUDIO_OP964_BASELINE:-"${XDG_RUNTIME_DIR:?}/studio-op964-baseline.json"}
+  revision=$(yq -er '.revision' kubernetes/main/apps/ai/studio/release.yaml)
+  expected=
+  if [[ $phase != preflight ]]; then
+    expected=$(<"$baseline")
+    test -n "$expected"
+  fi
+  report=$(kubectl -n ai exec -i deploy/studio-api -c api -- python -I -B - \
+      "$phase" "$expected" "$revision" <<'PY'
+import json
+import os
+import sys
+from hashlib import sha256
+
+from haynes_studio.db import drafts, runs
+from haynes_studio.db.engine import connect_engine, snapshot
+
+
+films = (
+    ("One More Meeting", "prd_01M7ZGYNHFET1GKR4304FVD4PE",
+     "sty_01M7ZGYNHFET1GKR4304FVD4PF", "run_01M7ZHNZJ2PWA8XR8K7KKWP17V",
+     "dlv_01M7ZHP1QS82QGK196ZPCM7MQS", True, 1),
+    ("The Winter Menu", "prd_01M79V9FC00000000000000001",
+     "sty_01M79V9FC00000000000000001", "run_01M7C5CJA7XKBCRPM0ZRP2P5RS",
+     "dlv_01M7C5D3KFX3MFVWCXBCVJHMG7", False, 0),
+)
+
+
+def check(label, operation, *args):
+    try:
+        result = operation(*args)
+    except Exception as error:
+        print(f"FAIL {label} ({type(error).__name__})", file=sys.stderr)
+        return False
+    print(f"PASS {label}: {result}", file=sys.stderr)
+    return True
+
+
+def queue_counts(conn):
+    queued, running, held = conn.exec_driver_sql("""
+        SELECT count(*) FILTER (WHERE document->>'status' = 'queued'),
+               count(*) FILTER (WHERE document->>'status' = 'running'),
+               count(*) FILTER (WHERE document->>'status' = 'held')
+        FROM studio.runs
+    """).one()
+    media = conn.exec_driver_sql("""
+        SELECT lanes.lane,
+               count(jobs.id) FILTER (WHERE jobs.document->>'status' = 'queued'),
+               count(jobs.id) FILTER (WHERE jobs.document->>'status' = 'running')
+        FROM studio.media_job_lanes AS lanes
+        LEFT JOIN studio.media_jobs AS jobs ON jobs.lane = lanes.lane
+        GROUP BY lanes.lane ORDER BY lanes.lane
+    """).tuples().all()
+    print("run queued/running/held", queued, running, held, file=sys.stderr)
+    for lane, queued_media, running_media in media:
+        print(f"{lane} queued/running", queued_media, running_media, file=sys.stderr)
+    assert (queued, running, held) == (0, 0, 0)
+    assert media == [("image", 0, 0), ("voice", 0, 0)]
+    return "all three lanes idle"
+
+
+def unpack_import(conn, production, story, run, delivery):
+    row = runs.get(conn, run)
+    assert (row["production_id"], row["story_id"]) == (production, story)
+    assert row["document"]["delivery_id"] == delivery
+    return row
+
+
+def check_draft(conn, production, story, expected_boards):
+    draft = drafts.get_draft(conn, story)
+    assert all("created_by" not in board for board in draft.boards.values())
+    summary = draft.summary(conn)
+    assert (summary["id"], summary["production_id"]) == (story, production)
+    assert summary["derived"]["board_count"] == len(draft.boards) == expected_boards
+
+    # This calls the installed build's real publication and approval filters.
+    def listed(published, approved):
+        return {
+            item["id"] for item in drafts.list_stories(
+                conn, production, summary["media_kind"], None, 50, published=published, approved=approved,
+            )
+        }
+
+    assert story in listed(False, False)
+    assert story not in listed(True, None) and story not in listed(None, True)
+    return f"{expected_boards} boards, unpublished, unapproved"
+
+
+def check_approval(conn, row, delivery):
+    from haynes_studio.api.approval_routes import _check_approval, _delivery
+    from haynes_studio.golive import packages, records
+
+    delivered = _delivery(conn, row["id"])
+    assert delivered is not None and delivered["id"] == delivery
+    active = conn.scalar(records.active_id(row["id"]))
+    _, refusal, _ = _check_approval(
+        row["document"], delivered, delivered["master"]["sha256"], True, active,
+        lambda: packages.for_run(conn, row["id"]), preview=True,
+    )
+    assert active is None and refusal is not None and refusal.details["code"] == "approval.legacy_run"
+    return refusal.details["code"]
+
+
+def check_snapshot(conn, row, has_snapshot):
+    from haynes_studio.api.errors import APIError
+    from haynes_studio.api.run_routes import _stored_snapshot
+    from haynes_studio.store.local import LocalStore
+
+    try:
+        pin = runs.get(conn, row["id"], snapshot_pin_only=True)
+        response = _stored_snapshot(LocalStore(os.environ["STUDIO_STORE_ROOT"]), pin, None)
+    except APIError as error:
+        # A recovered run has no stored snapshot (the column is null). Its document still
+        # names the snapshot it was built from, so that reference is not null.
+        assert not has_snapshot and row["snapshot"] is None
+        assert (error.status_code, error.details["code"]) == (404, "run.snapshot_missing")
+        return "404 run.snapshot_missing (recovered run)"
+    digest = sha256(response.body).hexdigest()
+    assert has_snapshot and response.status_code == 200 and digest == row["document"]["snapshot"]["sha256"]
+    return f"200 SHA-256 {digest}"
+
+
+def check_feedback(conn, story, run):
+    from haynes_studio.feedback import records
+
+    assert records.list_candidates(conn, story, run, None, 51) == []
+    assert records.draft_iteration(conn, story) is None
+    return "zero candidates and no active iteration"
+
+
+def check_packages(conn, row):
+    from haynes_studio.api.errors import APIError
+    from haynes_studio.api.release_routes import _require_releasable, _review_evidence
+    from haynes_studio.golive import packages
+
+    assert packages.targets(row["snapshot"]) == []
+    assert packages.for_run(conn, row["id"]) == []
+    current, refusal = _review_evidence(conn, row)
+    assert current is None and refusal is not None
+    try:
+        _require_releasable(None, None, refusal)
+    except APIError as error:
+        assert (error.status_code, error.details["code"]) == (422, "approval.legacy_run")
+        return "zero targets and packages, eligibility refused (approval.legacy_run)"
+    raise AssertionError("legacy release unexpectedly allowed")
+
+
+def check_catalog(conn, production, row, has_snapshot):
+    from haynes_studio.db import catalog
+
+    frozen = {version["id"] for version in row["frozen_library"]}
+    assert bool(frozen) == has_snapshot
+    visible = catalog.find_assets(
+        conn, {production}, kind=None, labels=[], production_id=production,
+        version_ids=frozen, after=None, limit=len(frozen) + 1,
+    )
+    assert {version["id"] for version in visible} == frozen
+    assert all(version["recorded_without_media"] and version["scope"]["production_id"] == production
+               for version in visible)
+    # Exercise the unfiltered first page as the catalog does; shared results are permitted.
+    page = catalog.find_assets(
+        conn, {production}, kind=None, labels=[], production_id=production,
+        version_ids=None, after=None, limit=51,
+    )
+    assert all(version["scope"]["production_id"] in (None, production) for version in page)
+    return f"{len(visible)} recorded-only frozen versions, {min(50, len(page))} first-page entries"
+
+
+def check_archive(conn, production):
+    from haynes_studio.db import staging_archive
+
+    drafts.production(conn, production)
+    assert staging_archive.production_records(conn, production, None, 51) == []
+    return "zero staging archive records"
+
+
+def import_counts(conn, production, story, run, delivery):
+    return list(conn.exec_driver_sql("""
+        SELECT (SELECT count(*) FROM studio.productions WHERE id = %s),
+               (SELECT count(*) FROM studio.stories WHERE id = %s AND production_id = %s),
+               (SELECT count(*) FROM studio.runs WHERE id = %s AND story_id = %s),
+               (SELECT count(*) FROM studio.deliveries WHERE id = %s AND run_id = %s),
+               (SELECT count(*) FROM studio.delivery_media WHERE run_id = %s)
+    """, (production, story, production, run, story, delivery, run, run)).one())
+
+
+def fail_walk(error):
+    raise error
+
+
+def store_counts():
+    store = os.environ["STUDIO_STORE_ROOT"]
+    files = size = 0
+    for directory, subdirs, names in os.walk(store, onerror=fail_walk):
+        if directory == store and ".probe" in subdirs:
+            subdirs.remove(".probe")
+        for name in names:
+            size += os.stat(os.path.join(directory, name), follow_symlinks=False).st_size
+            files += 1
+    return [files, size]
+
+
+phase, expected, revision = sys.argv[1:]
+assert phase in {"preflight", "postflight", "compare"}
+installed = os.environ["STUDIO_BUILD_REVISION"]
+old = "git:393fe1d66070ac726739b4cdb001a9e6b2c467db"
+assert installed == (f"git:{revision}" if phase == "postflight" else old) or (
+    phase == "preflight" and installed == f"git:{revision}"
+), installed
+print(f"PASS probe build: {installed}", file=sys.stderr)
+
+engine = connect_engine(os.environ["STUDIO_DATABASE_URL"], os.getenv("STUDIO_DATABASE_SCHEMA", "studio"))
+imports = {}
+results = []
+with snapshot(engine) as conn:
+    conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+    assert conn.exec_driver_sql("SELECT current_user, current_database(), ssl "
+                               "FROM pg_stat_ssl WHERE pid = pg_backend_pid()").one() == (
+                                   "studio_app", "studio", True)
+    print("PASS runtime login and TLS", file=sys.stderr)
+
+    def db_check(operation, *args):
+        # A failed SQL read only aborts its savepoint, so other reads still report.
+        with conn.begin_nested():
+            return operation(conn, *args)
+
+    results.append(check("queue counts", db_check, queue_counts))
+    for title, production, story, run, delivery, has_snapshot, expected_boards in films:
+        counts = import_counts(conn, production, story, run, delivery)
+        imports[run] = counts
+        passed = counts[:4] == [1, 1, 1, 1] and counts[4] >= 2
+        print("PASS" if passed else "FAIL", title, "production/story/run/delivery/index", counts, file=sys.stderr)
+        results.append(passed)
+        results.append(check(f"{title} draft and filters", db_check, check_draft, production, story, expected_boards))
+        if phase == "postflight":
+            row = unpack_import(conn, production, story, run, delivery)
+            results.append(check(f"{title} approval preview", db_check, check_approval, row, delivery))
+            results.append(check(f"{title} snapshot", db_check, check_snapshot, row, has_snapshot))
+            results.append(check(f"{title} feedback", db_check, check_feedback, story, run))
+            results.append(check(f"{title} package list and hold", db_check, check_packages, row))
+            results.append(check(f"{title} catalog", db_check, check_catalog, production, row, has_snapshot))
+            results.append(check(f"{title} archive list", db_check, check_archive, production))
+
+files_and_bytes = store_counts()
+print("PASS store file/byte totals", files_and_bytes, file=sys.stderr)
+report = {"production/story/run/delivery/index counts": imports, "store files/bytes": files_and_bytes}
+if phase != "preflight":
+    passed = report == json.loads(expected)
+    print("PASS" if passed else "FAIL", "import and store baseline", file=sys.stderr)
+    results.append(passed)
+print("PASS" if all(results) else "FAIL", f"OP964 {phase}", file=sys.stderr)
+if not all(results):
+    raise SystemExit(1)
+print(json.dumps(report, sort_keys=True))
+PY
+  )
+  printf '%s\n' "$report"
+  if [[ $phase == preflight ]]; then
+    (umask 077; set -o noclobber; printf '%s\n' "$report" > "$baseline")
+  fi
+)
+```
+
+### Migration and rollout
+
+The installed starting point is Studio `393fe1d` at
+`0007_escalation_packages`. Migrate to the head shipped in the selected
+Python image. The old API reads named columns, checks database and store
+readiness, and continues serving after the schema transaction commits.
+Changes to existing tables can take locks. **The whole upgrade is one
+transaction:** the `ALTER TABLE stories` and the index on `runs` in 0008 and
+the `SHARE ROW EXCLUSIVE` lock on `stories` in 0009 are held until the single
+commit after 0012, so the old API's story reads wait for the entire run
+(seconds on this data, against its 30-second statement timeout), and a failure
+in any revision rolls the schema back to 0007 with `393fe1d` still serving.
+Sample old API availability before, during and after migration.
+[Migration source](https://github.com/thaynes43/haynes-studio/tree/main/src/haynes_studio/db/migrations/versions)
+
+| Revision | Schema change | Effect on the serving `393fe1d` build |
+| --- | --- | --- |
+| `0008_candidate_feedback` | Creates append-only candidates, notes and iterations, adds nullable `stories.feedback_iteration_id` and a partial expression index on run answers, and grants scoped runtime access. | Old story inserts omit the nullable reference and old edits update named columns. The partial index applies only to run documents with `answers`. |
+| `0009_release_packages` | Adds append-only package, publication and iteration-clear tables. Locks `stories` in SHARE ROW EXCLUSIVE mode, installs a constraint trigger on story insert/update for a non-null feedback iteration, and validates existing references against the candidate's run story. | Old inserts and existing drafts without an active iteration pass the trigger condition. The previous API's published status, list filters and story insert default still use `stories.published`. This migration preserves the Boolean column and its default. |
+| `0010_staging_archive` | Creates production-scoped archive records and immutable version chains and grants runtime SELECT and INSERT. | Old API and workers never query these tables. The production foreign key uses existing IDs. |
+| `0011_worker_lane_grants` | Creates a SELECT-only runtime grant table and seeds `studio-worker → run`, `studio-voice-worker → voice` and `studio-image-worker → image`. The new API joins the binding to the active worker identity. | Old API ignores the table. The migration changes neither token rows nor token projections. Lane enforcement starts on a per-pod basis at the API rollout. |
+| `0012_release_constraints` (OP963) | Backfills `publications.target_id` from the package, rejects duplicate run/target publications, constrains the package byte count and composite publication/package identity, and requires archive version parents and roots to be contiguous (the root FK is deferred). | These release and archive tables were introduced after the old build. At a first upgrade from 0007 they have no rows to backfill or validate. If an intermediate pin has already written records, resolve any data-integrity failure through a reviewed forward fix. |
+
+The selected publish has one Alembic head, 0012, whose parents in order are
+0011, 0010, 0009 and 0008. Read the migration
+Job output for the actual revisions and head. Expect the migrator to use
+TLS and the configured role policies to refuse the other connections.
+Record a missed active window explicitly if the Job finishes before a
+sample. Use the following during the change from a LAN-capable terminal.
+
+```bash
+(
+  set -euo pipefail
+  root=kubernetes/main/apps/ai/studio
+  job=$(yq -er 'select(.kind == "Job") | .metadata.name' "$root/migration/job.yaml")
+  date -u
+  kubectl -n ai get "job/$job" --ignore-not-found
+  kubectl -n ai get pods -l app.kubernetes.io/name=studio-api \
+    -o 'custom-columns=NAME:.metadata.name,READY:.status.containerStatuses[0].ready,IMAGE:.status.containerStatuses[0].imageID'
+  base=https://studio.haynesops.com
+  status() { curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$1"; }
+  test "$(status "$base/")" = 200
+  test "$(status "$base/v1/me")" = 401
+  printf 'PASS LAN root=200 v1/me=401\n'
+)
+```
+
+Registration follows migration. Each digest-named Job mounts the existing
+projection for its worker. In the token administration code a matching
+active token exits successfully with audit status `200` before writing
+anything. For this release the Job arguments omit `--replace` so a
+different token for an existing ID fails with a conflict. An audit `201`
+would mean a first registration and is unexpected on this installed
+cluster. Stop and look at that worker's state before resuming submissions.
+
+After merge, from the coordinator session, follow the existing Flux
+dependencies. Controllers can start dependent stages as soon as their
+gates pass. A failed migration leaves the previous app available. Use a
+forward fix and change the Job name and health check together for a retry
+at the same digest (`-rN`). Keep the existing projections, storage and
+engine configuration.
+
+```bash
+(
+  set -euo pipefail
+  root=kubernetes/main/apps/ai/studio
+  job_name() { yq -er 'select(.kind == "Job") | .metadata.name' "$root/$1"; }
+
+  flux reconcile kustomization cluster-apps -n flux-system --with-source
+  flux reconcile kustomization studio-migration -n ai
+  job=$(job_name migration/job.yaml)
+  kubectl -n ai wait --for=condition=complete --timeout=5m "job/$job"
+  kubectl -n ai logs "job/$job" -c migrate
+
+  flux reconcile kustomization studio -n ai
+  for workload in api mcp web; do
+    kubectl -n ai rollout status "deploy/studio-$workload" --timeout=5m
+  done
+  flux reconcile kustomization studio-worker-registration -n ai
+  flux reconcile kustomization studio-media-worker-registration -n ai
+  for worker in worker voice-worker image-worker; do
+    case "$worker" in
+      worker) job=$(job_name worker-registration/job.yaml) ;;
+      *) job=$(job_name "media-worker-registration/${worker%-worker}-job.yaml") ;;
+    esac
+    kubectl -n ai wait --for=condition=complete --timeout=5m "job/$job"
+    kubectl -n ai logs "job/$job" -c register | jq -ser --arg worker "studio-$worker" '
+      map(select(.worker_id == $worker and .status != null) | .status)
+      | select(. == [200]) | .[0]'
+    printf 'PASS %s existing registration\n' "$worker"
+  done
+  for stage in studio-worker studio-media-workers; do
+    flux reconcile kustomization "$stage" -n ai
+  done
+  for worker in worker voice-worker image-worker; do
+    kubectl -n ai rollout status "deploy/studio-$worker" --timeout=5m
+  done
+  kubectl -n ai get kustomization studio-migration studio studio-worker-registration \
+    studio-worker studio-media-worker-registration studio-media-workers -o json |
+    jq -er '
+      [.items[] | select(any(.status.conditions[]?; .type == "Ready" and .status == "True"))] |
+      select(length == 6) | [.[].status.lastAppliedRevision] | unique |
+      select(length == 1 and .[0] != null) | .[0]'
+)
+```
+
+### Postflight
+
+Run each block before allowing submissions. Require both API containers
+on the pair, two Ready API, MCP and web replicas on distinct nodes within
+each Deployment, and one Ready worker per lane. The run worker stays on
+`talosw01` and both media workers stay off it. Require zero restarts on
+every container. The check includes terminating pods so a terminating
+old API fails the gate for worker claim probes. Expect each worker's
+progress check and idle-claim log check from [OP961](#reconcile-and-check-health)
+to pass again.
+
+```bash
+(
+  set -uo pipefail
+  root=kubernetes/main/apps/ai/studio
+  api_digest=$(yq -er '.apiDigest' "$root/release.yaml") || exit 1
+  web_digest=$(yq -er '.webDigest' "$root/release.yaml") || exit 1
+  api="ghcr.io/thaynes43/haynes-studio@$api_digest"
+  web="ghcr.io/thaynes43/haynes-studio-web@$web_digest"
+  failed=0
+  for workload in api mcp web worker voice-worker image-worker; do
+    replicas=2
+    placement=any
+    case "$workload" in
+      api) containers=$(jq -cn --arg api "$api" --arg web "$web" \
+             '{api:$api, "media-worker-routes":$web}') ;;
+      mcp) containers=$(jq -cn --arg api "$api" '{mcp:$api}') ;;
+      web) containers=$(jq -cn --arg web "$web" '{nginx:$web}') ;;
+      *)
+        replicas=1
+        placement=off-talosw01
+        if [[ $workload == worker ]]; then placement=talosw01; fi
+        containers=$(jq -cn --arg api "$api" '{worker:$api}') ;;
+    esac
+    if kubectl -n ai get pods -l "app.kubernetes.io/name=studio-$workload" -o json |
+      jq -er --argjson containers "$containers" --argjson replicas "$replicas" \
+        --arg placement "$placement" '
+        .items | select(length == $replicas and
+          ([.[].spec.nodeName] | unique | length) == $replicas and
+          all(.[];
+            .metadata.deletionTimestamp == null and .spec.nodeName != null and
+            ($placement == "any" or
+             ($placement == "talosw01" and .spec.nodeName == "talosw01") or
+             ($placement == "off-talosw01" and .spec.nodeName != "talosw01")) and
+            any(.status.conditions[]?; .type == "Ready" and .status == "True") and
+            ([.spec.containers[] | {key:.name,value:.image}] | from_entries) == $containers and
+            (.status.containerStatuses | length) == ($containers | length) and
+            all(.status.containerStatuses[]; . as $c |
+              ($containers[$c.name] // "" | split("@") | .[1]) as $digest |
+              $digest != null and .ready and .restartCount == 0 and (.imageID | endswith($digest))))) |
+        .[] | [.metadata.name, .spec.nodeName, (.status.containerStatuses[].imageID)] | @tsv'
+    then
+      printf 'PASS studio-%s pods, pins and restarts\n' "$workload"
+    else
+      printf 'FAIL studio-%s pods, pins or restarts\n' "$workload" >&2
+      failed=1
+    fi
+  done
+  if (( failed )); then
+    printf 'FAIL OP964 pod verification\n' >&2
+    exit 1
+  fi
+  printf 'PASS OP964 pod verification\n'
+)
+```
+
+Run the [import and queue probe](#imported-productions-and-queue-counts)
+with `STUDIO_OP964_PHASE=postflight` and the original baseline. Run the
+[OP961 engine block](#reconcile-and-check-health) from the voice and image
+pods. It opens a Kokoro connection and reads `GET /queue` from shared
+ComfyUI. From the run pod, open and close one TCP connection to its
+configured Wan service. This establishes reachability for all three
+workers without requesting engine work.
+
+```bash
+(
+  set -euo pipefail
+  kubectl -n ai exec -i deploy/studio-worker -c worker -- python -I -B - <<'PY'
+import os
+import socket
+from urllib.parse import urlsplit
+
+service = urlsplit(os.environ["STUDIO_WAN_URL"])
+try:
+    socket.create_connection((service.hostname, service.port), timeout=5).close()
+except OSError as error:
+    raise SystemExit(f"FAIL run worker reaches its engine ({type(error).__name__})") from None
+print("PASS run worker reaches its engine")
+PY
+)
+```
+
+Check `internal/studio` in Gatus using the [existing Gatus
+procedure](#gatus-and-backup-coverage). Record a passing timestamp after
+reconcile and within two one-minute probe intervals. Confirm the anonymous
+`/v1/me` response on the LAN is 401. A passing health result alone does
+not verify any signed-in feature.
+
+#### Worker lane grants
+
+Run this block only after the pin, registration and queue checks pass.
+It repeats the API pin and endpoint gates before sending a well-formed
+claim for another lane. The grants query checks the three seeded IDs, and the worker
+Deployment checks bind each probe to the same existing projection used by
+its successful registration Job. The probes use the workers' own API
+addresses and read the token within each worker process. They never send a
+well-formed claim for the caller's lane. Authenticated invalid JSON gets
+422 and cannot reach the claim handler. Each well-formed cross-lane request
+must return 403 `work.lane_forbidden` before the claim transaction starts.
+
+```bash
+(
+  set -euo pipefail
+  root=kubernetes/main/apps/ai/studio
+  revision=$(yq -er '.revision' "$root/release.yaml")
+  digest=$(yq -er '.apiDigest' "$root/release.yaml")
+  pods=$(kubectl -n ai get pods -l app.kubernetes.io/name=studio-api -o json)
+  endpoints=$(kubectl -n ai get endpointslices -l kubernetes.io/service-name=studio-api -o json)
+  if jq -e --arg digest "$digest" --argjson endpoints "$endpoints" '
+    .items as $pods |
+    ($pods | length) == 2 and
+    all($pods[];
+      .metadata.deletionTimestamp == null and
+      any(.status.containerStatuses[]?; .name == "api" and .ready and (.imageID | endswith($digest)))) and
+    ([$endpoints.items[].endpoints[] | select(.conditions.ready == true) | .targetRef.uid] | unique)
+    == ([$pods[].metadata.uid] | unique)
+  ' <<< "$pods" >/dev/null; then
+    printf 'PASS both API endpoints use the selected pin\n'
+  else
+    printf 'FAIL API pin or endpoints, skip all cross-lane claims\n' >&2
+    exit 1
+  fi
+
+  kubectl -n ai exec -i deploy/studio-api -c api -- python -I -B - "$revision" <<'PY'
+import os
+import sys
+
+import psycopg
+
+# The previous build lacks this function.
+from haynes_studio.api.auth import require_worker_lane
+
+assert callable(require_worker_lane) and os.environ["STUDIO_BUILD_REVISION"] == f"git:{sys.argv[1]}"
+expected = [("studio-image-worker", "image"), ("studio-voice-worker", "voice"), ("studio-worker", "run")]
+with psycopg.connect(os.environ["STUDIO_DATABASE_URL"]) as conn:
+    conn.read_only = True
+    grants = conn.execute("""
+        SELECT worker_id, lane FROM studio.worker_lane_grants
+        WHERE worker_id IN ('studio-image-worker', 'studio-voice-worker', 'studio-worker')
+        ORDER BY worker_id
+    """).fetchall()
+    permissions = conn.execute("""
+        SELECT has_table_privilege('studio.worker_lane_grants', 'SELECT'),
+               has_any_column_privilege('studio.worker_lane_grants', 'INSERT'),
+               has_any_column_privilege('studio.worker_lane_grants', 'UPDATE'),
+               has_table_privilege('studio.worker_lane_grants', 'DELETE'),
+               has_table_privilege('studio.worker_lane_grants', 'TRUNCATE')
+    """).fetchone()
+for worker, lane in grants:
+    print("PASS" if (worker, lane) in expected else "FAIL", worker, lane)
+if grants != expected:
+    raise SystemExit("FAIL installed worker lane grants, skip all cross-lane claims")
+print("PASS installed worker lane grants")
+if permissions != (True, False, False, False, False):
+    raise SystemExit("FAIL worker lane grant access, skip all cross-lane claims")
+print("PASS runtime worker lane grants are read-only")
+PY
+
+  for worker in worker voice-worker image-worker; do
+    if kubectl -n ai get deploy "studio-$worker" -o json |
+      jq -e --arg secret "studio-$worker-token" '
+        [.spec.template.spec.containers[] | select(.name == "worker") | .env[] |
+         select(.name == "STUDIO_WORKER_TOKEN") |
+         .valueFrom.secretKeyRef] == [{name:$secret, key:"STUDIO_WORKER_TOKEN"}]
+      ' >/dev/null; then
+      printf 'PASS studio-%s token projection reference\n' "$worker"
+    else
+      printf 'FAIL studio-%s token projection, skip all cross-lane claims\n' "$worker" >&2
+      exit 1
+    fi
+  done
+
+  failed=0
+  for entry in worker:run voice-worker:voice image-worker:image; do
+    worker=studio-${entry%:*}
+    own_lane=${entry#*:}
+    other_lane=run
+    if [[ $own_lane == run ]]; then other_lane=voice; fi
+    if kubectl -n ai exec -i "deploy/$worker" -c worker -- python -I -B - "$own_lane" "$other_lane" <<'PY'
+import os
+import sys
+
+import httpx
+from haynes_studio.queue.worker_tokens import worker_bearer
+
+own_lane, other_lane = sys.argv[1:]
+assert (own_lane, other_lane) in {("run", "voice"), ("voice", "run"), ("image", "run")}
+headers = {"Content-Type": "application/json"}
+auth = {**headers, "Authorization": "Bearer " + worker_bearer(os.environ["STUDIO_WORKER_TOKEN"])}
+
+
+def check(label, request, expected, code=None):
+    try:
+        response = request()
+        status = response.status_code
+        match = code is None or (
+            status == expected and response.json().get("error", {}).get("code") == code
+        )
+    except (httpx.HTTPError, ValueError, AttributeError) as error:
+        print("FAIL", label, type(error).__name__)
+        return False
+    passed = status == expected and match
+    print("PASS" if passed else "FAIL", label, status, code if match and code else "")
+    return passed
+
+
+results = []
+with httpx.Client(base_url=os.environ["STUDIO_API_URL"], trust_env=False, timeout=5) as client:
+    for operation in ("claim", "heartbeat", "publish", "complete", "fail"):
+        path = "/internal/v1/work/" + operation
+        results.append(check(f"{own_lane} {operation} anonymous",
+                             lambda: client.post(path, headers=headers, content=b"{"), 401))
+        results.append(check(f"{own_lane} {operation} authenticated malformed",
+                             lambda: client.post(path, headers=auth, content=b"{"), 422))
+    # A failed authentication or projection check prevents the well-formed request.
+    if all(results):
+        results.append(check(f"{own_lane} token claiming {other_lane}",
+                             lambda: client.post("/internal/v1/work/claim", headers=auth,
+                                                 json={"lane": other_lane}),
+                             403, "work.lane_forbidden"))
+    else:
+        print("FAIL", own_lane, "cross-lane claim skipped after failed authentication probe")
+raise SystemExit(0 if all(results) else 1)
+PY
+    then
+      printf 'PASS %s authentication and lane refusal\n' "$worker"
+    else
+      printf 'FAIL %s authentication or lane refusal\n' "$worker" >&2
+      failed=1
+    fi
+  done
+  if (( failed )); then
+    printf 'FAIL OP964 worker lane verification\n' >&2
+    exit 1
+  fi
+  printf 'PASS OP964 worker lane verification\n'
+)
+```
+
+#### Anonymous ingress and MCP
+
+Verify the internal ingress uses the API's public HTTP port and serves
+the web root. Requests use the existing certificate validation. All
+listed API reads and writes must return 401 without an identity. Worker
+and MCP paths must return 404 at the ingress. Also repeat the
+[existing route and playback checks](#route-and-playback-checks) for the
+older routes and both delivery proxies.
+
+```bash
+(
+  set -uo pipefail
+  base=https://studio.haynesops.com
+  production=prd_01M7ZGYNHFET1GKR4304FVD4PE
+  story=sty_01M7ZGYNHFET1GKR4304FVD4PF
+  run=run_01M7ZHNZJ2PWA8XR8K7KKWP17V
+  printf -v absent_digest '%064d' 0
+  failed=0
+  check() {
+    local expected=$1 method=$2 path=$3 status=transport-error
+    local -a body=()
+    if [[ $method == POST || $method == DELETE ]]; then
+      body=(-H 'Content-Type: application/json' --data-binary '{')
+    fi
+    if status=$(curl -q -sS --max-time 15 -o /dev/null -w '%{http_code}' \
+        -X "$method" "${body[@]}" "$base$path") && [[ $status == "$expected" ]]; then
+      printf 'PASS %s %s %s\n' "$method" "$path" "$status"
+    else
+      printf 'FAIL %s %s got %s expected %s\n' "$method" "$path" "$status" "$expected" >&2
+      failed=1
+    fi
+  }
+
+  check 200 GET /
+  for path in /v1/me "/v1/stories/$story/candidates?run_id=$run" \
+    "/v1/runs/$run/release-packages" "/v1/runs/$run/release-packages/$absent_digest/download" \
+    "/v1/assets?production=$production" \
+    "/v1/productions/$production/archive-records" \
+    /v1/archive-records/arc_00000000000000000000000001 \
+    /v1/archive-versions/arv_00000000000000000000000001; do
+    check 401 GET "$path"
+  done
+  for path in "/v1/runs/$run/candidates" "/v1/runs/$run/release-packages" \
+    "/v1/runs/$run/go-live-approvals" \
+    "/v1/runs/$run/publications" "/v1/productions/$production/archive-records" \
+    /v1/archive-records/arc_00000000000000000000000001/versions \
+    /v1/archive-versions/arv_00000000000000000000000001/apply \
+    /v1/candidates/cnd_00000000000000000000000001/feedback \
+    /v1/candidates/cnd_00000000000000000000000001/iterations \
+    /v1/asset-jobs; do
+    check 401 POST "$path"
+  done
+  check 401 DELETE "/v1/stories/$story/feedback-iteration"
+  for path in /healthz /readyz /mcp /mcp/upload /internal/v1/work/claim; do
+    check 404 GET "$path"
+  done
+  if (( failed )); then
+    printf 'FAIL OP964 anonymous ingress\n' >&2
+    exit 1
+  fi
+  printf 'PASS OP964 anonymous ingress\n'
+)
+```
+
+Cluster MCP checks the bearer before reading the request body or applying
+tool-specific byte limits. A small ordinary call and a bounded request just
+over 256 KiB must both return 401. The latter demonstrates auth ordering.
+Verifying the exceptions requires authenticated tool dispatch. The Studio
+source fixture `test_only_archive_text_writers_get_larger_mcp_envelopes`
+covers the 256 KiB default, the 2 MiB wire ceiling for
+`studio_create_archive_record` and `studio_add_archive_version`, and refusals
+for other tool names and non-call messages. `/mcp/upload` has its separate
+existing limit. Record the live 401s and cite the fixture for cap evidence.
+[MCP reference](https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/studio-mcp.md)
+and [fixture](https://github.com/thaynes43/haynes-studio/blob/main/tests/mcp/test_server.py).
+
+```bash
+(
+  set -euo pipefail
+  kubectl -n ai exec -i deploy/studio-api -c api -- python -I -B - <<'PY'
+import httpx
+
+base = "http://studio-mcp.ai.svc.cluster.local:8001"
+initialize = {
+    "jsonrpc": "2.0", "id": 1, "method": "initialize",
+    "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+               "clientInfo": {"name": "deploy-probe", "version": "1"}},
+}
+probe_call = {
+    "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+    "params": {"name": "studio_get_board", "arguments": {"board_id": "x" * (256 * 1024)}},
+}
+results = []
+with httpx.Client(base_url=base, trust_env=False, timeout=5,
+                  headers={"Accept": "application/json, text/event-stream"}) as client:
+    for label, path, body in (("MCP initialize", "/mcp", initialize),
+                              ("MCP upload initialize", "/mcp/upload", initialize),
+                              ("MCP over 256 KiB", "/mcp", probe_call)):
+        try:
+            response = client.post(path, json=body)
+            status = response.status_code
+            passed = status == 401 and response.json().get("error", {}).get("code") == "auth.required"
+        except (httpx.HTTPError, ValueError, AttributeError) as error:
+            status, passed = type(error).__name__, False
+        results.append(passed)
+        print("PASS" if passed else "FAIL", label, status)
+print("PASS" if all(results) else "FAIL", "OP964 anonymous MCP")
+raise SystemExit(0 if all(results) else 1)
+PY
+)
+```
+
+Signed-in feature use and phone playback have separate evidence. The
+existing imports can be reviewed privately but are permanently ineligible
+for go-live. A new Studio-built run and a signed-in person are required
+for the first real release package. See
+[OP944](https://work.haynesnetwork.com/work_packages/944) for phone playback.
+
+### Roll back while keeping the third schema
+
+Use a corrective GitOps PR that restores all six workload pins to the
+`393fe1d` Python and web pair, including the API's listener, and restores
+the old API/worker build revision and worker image provenance. Recover the
+workload pins from [the OP961/Cilium-fixed tree](https://github.com/thaynes43/haynes-ops/tree/7690f436b/kubernetes/main/apps/ai/studio).
+Keep the new migration and registration Jobs and their health checks
+Complete. The old migration image cannot resolve the newer Alembic head.
+Review the corrective PR's release check so it verifies the restored
+workload pair separately from the retained Job digest. Keep the store,
+database, projections and existing worker IDs. Reconcile in dependency
+order and use the read-only `compare` phase against a new baseline.
+Repeat the restored pod, old LAN, Gatus and imported playback checks.
+
+Before rollback, stop submissions, drain all three lanes and review any
+held run. Check for newer writes before restoring writer access. The old
+build may serve the original imports and their media at the new schema.
+Prefer a forward fix as soon as people have used the new features.
+
+| Revision | Rollback with the upgraded schema retained |
+| --- | --- |
+| 0008 | Unused feedback tables and a null story reference are safe. Existing notes and iteration records stay stored but disappear from the old UI. An active feedback iteration won't be frozen into a run enqueued by the old app. Answering runs can carry `answers`, which the old run schema rejects. Keep affected drafts and runs out of the old editing and build flow. A full return to that flow requires no new feedback-linked work. |
+| 0009 | The old app can still read `stories.published`. It ignores release packages, iteration-clear events and publications. New publication rows won't appear in the old column's status or filters, and the old approval path lacks the package checks. Restore old publishing and edit semantics only before new release or feedback state has been written. Preserve all package copies and records. |
+| 0010 | Staged text and versions stay in the database but are unavailable in the old app. Once a storyboard is applied, its `draft_application.archive_version_id` stamp is outside the old board schema. Keep affected drafts out of old editing and enqueue. A full writer rollback requires no archive applies or new archive work to continue. |
+| 0011 | The seeded grants and token rows survive rollback. The old API ignores lane bindings even after the new schema is in place. Keep all submissions stopped until the lane-aware app is restored. The old pin can cover private import reads in the meantime. |
+| 0012 | Package, publication and archive integrity constraints remain in place. The old build uses none of those tables. Their records retain the 0009/0010 visibility and writer restrictions above. |
+| No revision (Studio PR 128) | The new build's format recipe schema accepts `matte_slots`. A format version saved with it by the new build is outside the old build's recipe schema, so the old build would likely refuse any story or run pinned to that version. Count such versions below before an image rollback; if any exist, fix forward. |
+
+Keep any data written by the new build. An image rollback never calls
+`alembic downgrade` and never rewrites a legacy published flag to imitate a
+new publication record.
+
+**Count what the new build has written before deciding on an image rollback.**
+`compare` covers only the import counts and the store totals. This read-only
+block counts every kind of row and field that only the new build writes. All
+zero means an image rollback strands nothing; anything else is listed by name,
+and the table above says what the old build does with it.
+
+```bash
+(
+  set -uo pipefail
+  kubectl -n ai exec -i deploy/studio-api -c api -- python -I -B - <<'PY'
+import os
+import sys
+
+import psycopg
+
+QUERIES = {
+    "run candidates": "SELECT count(*) FROM studio.run_candidates",
+    "feedback notes": "SELECT count(*) FROM studio.candidate_feedback",
+    "feedback iterations": "SELECT count(*) FROM studio.feedback_iterations",
+    "iteration clears": "SELECT count(*) FROM studio.feedback_iteration_clears",
+    "stories with an active iteration": "SELECT count(*) FROM studio.stories WHERE feedback_iteration_id IS NOT NULL",
+    "release packages": "SELECT count(*) FROM studio.release_packages",
+    "publications": "SELECT count(*) FROM studio.publications",
+    "archive records": "SELECT count(*) FROM studio.archive_records",
+    "archive versions": "SELECT count(*) FROM studio.archive_versions",
+    "runs with feedback answers": "SELECT count(*) FROM studio.runs WHERE document ? 'answers'",
+    "boards stamped from the archive":
+        "SELECT count(*) FROM studio.boards WHERE document::text LIKE '%\"archive_version_id\"%'",
+    "format versions with matte slots":
+        "SELECT count(*) FROM studio.format_versions WHERE recipe::text LIKE '%\"matte_slots\"%'",
+}
+written = 0
+with psycopg.connect(os.environ["STUDIO_DATABASE_URL"]) as conn:
+    conn.read_only = True
+    for label, query in QUERIES.items():
+        try:
+            count = conn.execute(query).fetchone()[0]
+        except psycopg.Error as error:
+            print(f"FAIL {label}: {type(error).__name__}")
+            conn.rollback()
+            written = -1
+            continue
+        print(f"{'PASS' if count == 0 else 'NOTE'} {label}: {count}")
+        if count and written >= 0:
+            written += count
+if written < 0:
+    print("FAIL some counts could not be read; do not conclude anything from this block")
+    sys.exit(2)
+print("PASS nothing written by the new build" if written == 0
+      else "NOTE the new build has written data: see the rollback table before an image rollback")
+sys.exit(0 if written == 0 else 1)
+PY
+)
+```
+
+The block exits 0 only when every count is zero, 1 when the new build has
+written something (a result, not an error), and 2 when a count could not be
+read. Column and table names are those of the schema at the pinned build; if a
+count fails after a later pin, correct the query before trusting the block.
