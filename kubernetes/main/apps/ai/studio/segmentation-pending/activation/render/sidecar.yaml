@@ -6,10 +6,14 @@ spec:
   values:
     controllers:
       studio-render:
+        pod:
+          # Allow a 60s request, bounded worker recovery, and cleanup on SIGTERM.
+          terminationGracePeriodSeconds: 150
         containers:
           app:
             resources:
-              limits: {cpu: "18", memory: unmeasured}
+              # Allow two CPUs each for segmentation here and matting on studio-worker.
+              limits: {cpu: "16", memory: replaced-by-release}
           segmentation:
             image:
               repository: ghcr.io/thaynes43/haynes-studio-segmentation
@@ -25,8 +29,8 @@ spec:
               readOnlyRootFilesystem: true
               capabilities: {drop: [ALL]}
             resources:
-              requests: {cpu: 250m, memory: unmeasured}
-              limits: {cpu: "2", memory: unmeasured}
+              requests: {cpu: 250m, memory: replaced-by-release}
+              limits: {cpu: "2", memory: replaced-by-release}
             probes:
               startup:
                 enabled: true

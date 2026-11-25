@@ -27,12 +27,11 @@ spec:
       containers:
         - name: segmentation
           image: image-replaced-by-release
-          command: [studio-segmentation, smoke, --load-strategy, mmap, --compare-load-strategy, buffered]
+          command: [studio-segmentation, smoke]
           env:
             - {name: STUDIO_SEGMENTATION_IMAGE, value: image-replaced-by-release}
           resources:
-            # Measuring allowance only. Serving resources come from both smoke runs.
-            requests: {cpu: 250m, memory: replaced-by-release}
+            requests: {cpu: "2", memory: replaced-by-release}
             limits: {cpu: "2", memory: replaced-by-release}
           securityContext:
             allowPrivilegeEscalation: false

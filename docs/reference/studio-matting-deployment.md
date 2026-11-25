@@ -464,7 +464,9 @@ offline worker's Flux path to `studio-render/matting-pending` and verify its
 `--workers 16`. Then stage the queue consumer with
 `studio/matting-pending/activation`. The worker has 4 CPUs, 2 GiB
 requested and an 8 GiB limit. The matting sidecar has 2 CPUs,
-8 GiB requested and a 10 GiB limit. The two pods total 24 CPUs. The
+8 GiB requested and a 10 GiB limit. The two pods total 24 CPUs and 50 GiB.
+The [segmentation activation overlay](studio-segmentation-deployment.md#activate-in-a-follow-up)
+builds on this render split and comes after matting. The
 serving command uses the same arena-off profile as the plain smoke. The
 sidecar uses a shared, group-writable `/matting` emptyDir and the read-only
 `/weights` mount. Only the worker keeps its API credential and media mounts. Stage
