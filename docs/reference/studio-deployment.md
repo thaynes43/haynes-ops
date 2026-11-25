@@ -52,24 +52,32 @@ Both processes mount `data/studio/build-stage-v1` from the same export at
 `/build-stage`, read-write, as `STUDIO_BUILD_STAGE_ROOT`. The worker builds
 there and the API validates and publishes the resulting delivery. Both use the
 same `STUDIO_BUILD_REVISION=git:<commit>`. The worker records the API image
-digest as `STUDIO_BUILD_IMAGE_DIGEST`. The API and worker load the model licence register from their image's
-installed Python package. The previous digest-named ConfigMap
-`studio-model-licences-1aa9b4736da9` is immutable and exempt from Flux pruning.
-Keep it and any older retained registers through the rollback window. Once
-their images are retired as rollback candidates and no old pod mounts them,
-the coordinator can remove them in a separate cleanup. The old ConfigMap's
-source is available in [OP957's merged tree](https://github.com/thaynes43/haynes-ops/tree/c20a53a4925d6322895943bb2994c294357296b9/kubernetes/main/apps/ai/studio/app).
+digest as `STUDIO_BUILD_IMAGE_DIGEST`. The API and worker load the model
+licence register from their image's installed Python package. The API
+inherits `/opt/studio` from the image's `WORKDIR`.
+
+The immutable `studio-model-licences-1aa9b4736da9` ConfigMap is exempt from
+pruning and falls out of every Flux inventory at OP959. Keep it through the
+rollback window. Once `f30445f` is retired as a rollback candidate and no
+pod or workload mounts the ConfigMap, remove it in a follow-up GitOps cleanup.
+Render the identical immutable ConfigMap without its prune exemption in
+a cleanup Kustomization with pruning enabled. Confirm Flux owns the exact
+ConfigMap again, its live prune exemption is gone and the inventory contains
+only that ConfigMap. Then retire the cleanup Kustomization and verify the
+ConfigMap is gone. Recover the original contents from
+[OP957's merged tree](https://github.com/thaynes43/haynes-ops/tree/c20a53a4925d6322895943bb2994c294357296b9/kubernetes/main/apps/ai/studio/app).
 
 The worker records main-thread progress under `/run/studio` on a pod-local
 `emptyDir`. Startup waits for the marker. Liveness checks its age every 30
 seconds and restarts the container after three consecutive failures. The
 1,500-second age budget gives a 20-minute Wan clip five minutes of margin.
 Wan polling refreshes the marker, as do claim polls and build
-steps. The probe works without network calls. On a restart, the 90-second
-claim expires, and a replacement reclaims the FIFO head with a new fence or
-keeps it held pending reconciliation. It reads the durable Wan ID first. An
-ambiguous submission can replay the same ID and body, which Wan deduplicates.
-A liveness restart sends no second engine submission for a pending attempt.
+steps. The probe works without network calls. After a liveness kill, the
+90-second claim expires. The replacement reclaims the FIFO head with a new
+fence or keeps it held pending reconciliation. It reconciles by the recorded
+Wan job ID and may re-send the same ID and body at most once per claim if
+Wan reports the ID absent after an ambiguous submission. Wan deduplicates
+that request, so the pending attempt causes no second engine submission.
 [Progress probe](https://github.com/thaynes43/haynes-studio/blob/393fe1d66070ac726739b4cdb001a9e6b2c467db/docs/reference/media-jobs.md#worker-progress-probe)
 [Claim recovery](https://github.com/thaynes43/haynes-studio/blob/393fe1d66070ac726739b4cdb001a9e6b2c467db/docs/reference/run-queue.md#claims-and-reconciliation)
 
@@ -147,16 +155,30 @@ The measurements are process RSS from the local test. The `ai` namespace had no 
 
 CR-22 divides D18's 24 vCPU limit into 20 for `studio-render` and 4 for
 `studio-worker`. Both use the same low priority. The worker runs one build
-at a time with two media threads. OP959 installs the API's media job and lane
-routes. Voice and image consumers are separate processes with their own worker
-IDs, tokens, writable store mounts and Kokoro or ComfyUI settings. The
-Deployment here serves the run lane. Its CPU request matches the render pod's
-250m scheduling share. At preflight the idle render pod used 3m CPU and
-16 MiB. The existing serial mix reported 195 MB peak memory. The worker
-request and limit are provisional allowances for the Python process,
+at a time with two media threads. The Deployment serves the run lane. Its CPU
+request matches the render pod's 250m scheduling share. At preflight the idle
+render pod used 3m CPU and 16 MiB. The existing serial mix reported 195 MB
+peak memory. The worker request and limit are provisional allowances for the Python process,
 decoded frame buffers and media subprocesses. Sample worker CPU, memory
 and restarts during the first authorized build.
 [Studio mix measurements](https://github.com/thaynes43/haynes-studio/blob/c75086b85a3278ead1d42b7a26da3b70da8b5793/docs/reference/studio-mix.md)
+
+### Voice and image queues before consumers are installed
+
+OP959 opens the media-job and lane routes. A signed-in person who presses
+**Generate voice** sees **Queued in voice lane** (or **Queued · voice lane
+paused**). Voice and image jobs stay `queued` indefinitely at this pin. The
+run worker posts an empty claim body and can claim only the run lane. There
+is no media-job cancel route, purge or automatic retry. Tom can pause the
+voice and image lanes from his signed-in session to hold future claims.
+Only a person can change lane pauses. Paused lanes still accept new jobs.
+
+[OP961](https://work.haynesnetwork.com/work_packages/961) adds separate
+consumers with their own worker IDs, tokens, writable store mounts and Kokoro
+or ComfyUI settings. The first consumer for each lane would take any stale
+jobs in queue order and submit them to the shared image engine or voice
+service. Repeat the [media queue count](#queued-media-jobs) before enabling
+either consumer. If either count is nonzero, stop for backlog review.
 
 ## OP959 release
 
@@ -215,52 +237,124 @@ Confirm OP957's successful proof and key revocations before retiring the stages.
 )
 ```
 
-Take the following snapshot **before and after**. Compare each film's
-production, story, run, delivery and playback index counts, and the
-authoritative store's file count and total bytes. Store startup probes are
-transient and under `.probe`, outside the durable file count. The worker
-should poll the empty queue without claiming a run. The DB transaction is
-read-only and uses the runtime role's existing projection.
+Run this block with `phase=preflight` and keep the baseline file on the
+coordinator's machine. After verifying the new pod pins, run it again with
+`phase=postflight` and the same file. It requires an exact match for each
+film's production, story, run, delivery and playback index counts and the
+durable store's file count and total bytes. The store count excludes `.probe`.
+Use `phase=compare` for the counts alone on a rollback, against a fresh
+`preflight` baseline taken immediately before rollback at a separate path.
+
+Every mode uses the API's runtime database connection in a read-only
+transaction. Postflight also calls the pinned application's `_check_approval`
+in preview mode, `_stored_snapshot`, and `drafts.get_draft` followed by
+`Draft.summary`, which loads the canonical model with `Story.from_document`.
+The probe needs no browser session or agent key and outputs only IDs, codes,
+counts and hashes.
+It exits unsuccessfully on any difference.
 
 ```bash
 (
   set -euo pipefail
-  kubectl -n ai exec -i deploy/studio-api -c api -- python - <<'PY'
+  phase=preflight
+  baseline="${XDG_RUNTIME_DIR:?}/studio-op959-baseline.json"
+  expected=
+  if [[ $phase != preflight ]]; then
+    expected=$(<"$baseline")
+    test -n "$expected"
+  fi
+  report=$(kubectl -n ai exec -i deploy/studio-api -c api -- python -I -B - "$phase" "$expected" <<'PY'
+import json
 import os
+import sys
+from hashlib import sha256
 
-import psycopg
+from haynes_studio.db.engine import connect_engine, snapshot
 
 films = (
-    ("one-more-meeting", "prd_01M7ZGYNHFET1GKR4304FVD4PE",
+    ("prd_01M7ZGYNHFET1GKR4304FVD4PE",
      "sty_01M7ZGYNHFET1GKR4304FVD4PF", "run_01M7ZHNZJ2PWA8XR8K7KKWP17V",
-     "dlv_01M7ZHP1QS82QGK196ZPCM7MQS"),
-    ("the-winter-menu", "prd_01M79V9FC00000000000000001",
+     "dlv_01M7ZHP1QS82QGK196ZPCM7MQS", True, 1),
+    ("prd_01M79V9FC00000000000000001",
      "sty_01M79V9FC00000000000000001", "run_01M7C5CJA7XKBCRPM0ZRP2P5RS",
-     "dlv_01M7C5D3KFX3MFVWCXBCVJHMG7"),
+     "dlv_01M7C5D3KFX3MFVWCXBCVJHMG7", False, 0),
 )
-with psycopg.connect(os.environ["STUDIO_DATABASE_URL"]) as conn:
-    conn.read_only = True
-    assert conn.execute("SELECT current_user, current_database(), ssl "
-                        "FROM pg_stat_ssl WHERE pid = pg_backend_pid()").fetchone() == (
-                            "studio_app", "studio", True)
-    statuses = conn.execute(
+
+
+def check_import(conn, production, story, run, delivery, has_snapshot, expected_boards):
+    from haynes_studio.api.approval_routes import _check_approval, _delivery
+    from haynes_studio.api.errors import APIError
+    from haynes_studio.api.run_routes import _stored_snapshot
+    from haynes_studio.db import drafts, runs
+    from haynes_studio.golive import records
+    from haynes_studio.store.local import LocalStore
+
+    row = runs.get(conn, run)
+    assert (row["production_id"], row["story_id"]) == (production, story), run
+    delivered = _delivery(conn, run)
+    assert delivered is not None and delivered["id"] == delivery, (run, delivery)
+    active = conn.scalar(records.active_id(run))
+    _, refusal = _check_approval(row["document"], delivered, delivered["master"]["sha256"],
+                                 True, active, preview=True)
+    code = refusal.details["code"] if refusal is not None else None
+    assert code == "approval.legacy_run", (run, code)
+    print(run, code)
+
+    try:
+        response = _stored_snapshot(LocalStore(os.environ["STUDIO_STORE_ROOT"]), row)
+    except APIError as error:
+        code = error.details["code"]
+        assert not has_snapshot and (error.status_code, code) == (404, "run.snapshot_missing"), (
+            run, error.status_code, code)
+        print(run, error.status_code, code)
+    else:
+        assert has_snapshot and response.status_code == 200, (run, response.status_code)
+        digest = sha256(response.body).hexdigest()
+        recorded = row["document"]["snapshot"]["sha256"]
+        assert digest == recorded, (run, digest, recorded)
+        print(run, response.status_code, digest)
+
+    draft = drafts.get_draft(conn, story)
+    assert all("created_by" not in board for board in draft.boards.values()), story
+    summary = draft.summary(conn)
+    assert (summary["id"], summary["production_id"]) == (story, production), story
+    board_count = summary["derived"]["board_count"]
+    assert board_count == len(draft.boards) == expected_boards, (story, board_count, len(draft.boards))
+    print(story, "boards", board_count)
+
+
+phase, expected = sys.argv[1:]
+assert phase in {"preflight", "postflight", "compare"}, phase
+if phase == "postflight":
+    assert os.environ["STUDIO_BUILD_REVISION"] == "git:393fe1d66070ac726739b4cdb001a9e6b2c467db"
+engine = connect_engine(os.environ["STUDIO_DATABASE_URL"], os.getenv("STUDIO_DATABASE_SCHEMA", "studio"))
+imports = {}
+with snapshot(engine) as conn:
+    conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+    assert conn.exec_driver_sql("SELECT current_user, current_database(), ssl "
+                               "FROM pg_stat_ssl WHERE pid = pg_backend_pid()").one() == (
+                                   "studio_app", "studio", True)
+    statuses = dict(conn.exec_driver_sql(
         "SELECT document->>'status', count(*) FROM studio.runs GROUP BY 1 ORDER BY 1"
-    ).fetchall()
-    print("runs by status", statuses)
-    assert all(status not in {"queued", "running", "held"} for status, _ in statuses)
-    for film, production, story, run, delivery in films:
-        counts = conn.execute("""
+    ).tuples().all())
+    assert not {"queued", "running", "held"}.intersection(statuses), statuses
+    for production, story, run, delivery, has_snapshot, expected_boards in films:
+        counts = list(conn.exec_driver_sql("""
             SELECT (SELECT count(*) FROM studio.productions WHERE id = %s),
                    (SELECT count(*) FROM studio.stories WHERE id = %s),
                    (SELECT count(*) FROM studio.runs WHERE id = %s),
                    (SELECT count(*) FROM studio.deliveries WHERE id = %s AND run_id = %s),
                    (SELECT count(*) FROM studio.delivery_media WHERE run_id = %s)
-        """, (production, story, run, delivery, run, run)).fetchone()
-        assert counts[:4] == (1, 1, 1, 1) and counts[4] >= 2, (film, counts)
-        print(film, "production/story/run/delivery/index counts", *counts)
+        """, (production, story, run, delivery, run, run)).one())
+        assert counts[:4] == [1, 1, 1, 1] and counts[4] >= 2, (run, counts)
+        imports[run] = counts
+        if phase == "postflight":
+            check_import(conn, production, story, run, delivery, has_snapshot, expected_boards)
+
 
 def fail_walk(error):
     raise error
+
 
 store = os.environ["STUDIO_STORE_ROOT"]
 files = size = 0
@@ -270,8 +364,18 @@ for directory, subdirs, names in os.walk(store, onerror=fail_walk):
     for name in names:
         size += os.stat(os.path.join(directory, name), follow_symlinks=False).st_size
         files += 1
-print("store files/bytes", files, size)
+report = {"production/story/run/delivery/index counts": imports, "store files/bytes": [files, size]}
+if phase != "preflight":
+    baseline = json.loads(expected)
+    assert report == baseline, {"expected": baseline, "actual": report}
+    print("runs by status", statuses)
+print(json.dumps(report, sort_keys=True))
 PY
+  )
+  printf '%s\n' "$report"
+  if [[ $phase == preflight ]]; then
+    (umask 077; set -o noclobber; printf '%s\n' "$report" > "$baseline")
+  fi
 )
 ```
 
@@ -360,6 +464,12 @@ Verify pod readiness and pins against the release record. Expect two pods
 of each app on distinct nodes and one worker on `talosw01`. The status
 `imageID` may be qualified by the runtime. Verify its digest and the
 configured image for each pod. Repeat the [baseline snapshot](#before-reconciliation).
+Use `phase=postflight` to check the pinned read paths on both imports. Both
+must return `approval.legacy_run` in the approval preview. The Winter
+Menu's recovered run must return 404 `run.snapshot_missing`. One More Meeting
+must return snapshot bytes that hash to its recorded SHA-256. Both draft
+summaries must load. One More Meeting has one board without `created_by`.
+The Winter Menu's recovered draft has zero boards.
 
 ```bash
 (
@@ -393,6 +503,20 @@ configured image for each pod. Repeat the [baseline snapshot](#before-reconcilia
   kubectl -n ai get pdb studio-api studio-mcp studio-web
   kubectl -n ai exec deploy/studio-worker -c worker -- studio-worker --check-progress 1500
   kubectl -n ai logs deploy/studio-worker -c worker --since=2m | grep -c 'work/claim "HTTP/1.1 204'
+)
+```
+
+No Studio-built run on this installation has exercised the 1,500-second
+liveness budget. Watch the worker's restart count throughout the first
+authorized build. If the count increases, check the pod events for a
+liveness kill and follow the [recorded Wan job ID](https://github.com/thaynes43/haynes-studio/blob/393fe1d66070ac726739b4cdb001a9e6b2c467db/docs/reference/run-queue.md#claims-and-reconciliation)
+through recovery.
+
+```bash
+(
+  set -euo pipefail
+  kubectl -n ai get pods -l app.kubernetes.io/name=studio-worker --watch \
+    -o 'custom-columns=POD:.metadata.name,RESTARTS:.status.containerStatuses[0].restartCount'
 )
 ```
 
@@ -442,6 +566,40 @@ with psycopg.connect(os.environ["STUDIO_DATABASE_URL"]) as conn:
 PY
 )
 ```
+
+#### Queued media jobs
+
+Expect zero queued jobs in both lanes at OP959 rollout. No person has
+enqueued a job, and this installation provisions no agent key that can
+enqueue one. Run the same check before enabling the OP961 consumers. Stop
+for backlog review if either count is nonzero.
+
+```bash
+(
+  set -euo pipefail
+  kubectl -n ai exec -i deploy/studio-api -c api -- python -I -B - <<'PY'
+import os
+
+import psycopg
+
+with psycopg.connect(os.environ["STUDIO_DATABASE_URL"]) as conn:
+    conn.read_only = True
+    counts = conn.execute("""
+        SELECT lanes.lane, count(jobs.id)
+        FROM studio.media_job_lanes AS lanes
+        LEFT JOIN studio.media_jobs AS jobs
+          ON jobs.lane = lanes.lane AND jobs.document->>'status' = 'queued'
+        GROUP BY lanes.lane
+        ORDER BY lanes.lane
+    """).fetchall()
+    for lane, count in counts:
+        print(lane, count)
+    assert counts == [("image", 0), ("voice", 0)], counts
+PY
+)
+```
+
+#### Route and playback checks
 
 From the LAN, verify the new and existing anonymous API boundaries, including
 both imported delivery proxies. These HTTP probes use no credentials, even
@@ -536,7 +694,10 @@ Use an existing signed-in browser on the LAN to confirm the queue lanes
 read, the go-live review read and both imported proxy players. A signed-in
 person should see the queue's three lanes and a 200 review response with
 `approve.allowed=false` and `approve.code=approval.approver_not_configured`.
-A legacy run also remains ineligible for approval.
+With the empty approver list, the review read gives that code for every
+signed-in person, including on imported runs. The approver refusal takes
+precedence over the run-level refusal. The in-pod preview establishes
+`approval.legacy_run` for the imports.
 Keep playback, phone playback and Tom's acceptance separate from the
 anonymous response and integrity evidence.
 [Go-live contract](https://github.com/thaynes43/haynes-studio/blob/393fe1d66070ac726739b4cdb001a9e6b2c467db/docs/reference/go-live.md)
@@ -605,8 +766,19 @@ credential remains usable without reading any Secret value.
 
 ### Roll back while keeping the new schema
 
-Quiesce all lanes and let existing runs settle before changing the build
-revision. A corrective GitOps PR can restore the API, MCP, worker and web
+Stop new submissions and let existing runs settle before changing the build
+revision. Require empty queues across all three lanes. Use the baseline's
+run-status guard and the media queue count before rollback. The old build
+lacks the lane-pause table and ignores pauses. If a queued OP959 run slips
+through, the old worker claims it and fails prebuild with
+`work.revision_mismatch`, before any engine submission. Voice and image jobs
+have no consumer at this pin. A nonempty media queue requires a backlog
+review before proceeding.
+
+Revoke any provisioned escalation responder key before rollback. None is
+provisioned here. The older API lacks the route confinement for that key.
+
+A corrective GitOps PR can restore the API, MCP, worker and web
 images from `f30445f`, along with their environment, build revision,
 worker provenance digest, old register generator and mounts. Recover those
 from [OP957's merged tree](https://github.com/thaynes43/haynes-ops/tree/c20a53a4925d6322895943bb2994c294357296b9/kubernetes/main/apps/ai/studio).
@@ -620,8 +792,10 @@ older migration Job, whose Alembic cannot resolve the new head.
 
 The same additive schema reasoning allows `f30445f` to serve pre-upgrade
 data and imported playback at `0007_escalation_packages`. Prefer fixing
-forward after the new app begins writing. The older API validates draft
-writes against a board schema that rejects the new `created_by` stamp.
+forward after the new app begins writing. The older API validates the
+whole story on each write and at enqueue. A single board stamped
+`created_by` by the new build blocks every old-build write and enqueue on
+that story.
 An old edit of a story's JSON format pin cannot update the new relational
 column and can fail its consistency check. Keep affected drafts and
 recipe changes paused during a rollback. Leave the database at the new

@@ -43,7 +43,6 @@ spec:
       containers:
         - name: api
           image: ghcr.io/thaynes43/haynes-studio@sha256:4787d14f98a467f52cc74e1800f139869dd6a15f4a419b5c640818d5d79ff4dd
-          workingDir: /opt/studio
           command: [sh, -eu, -c]
           args:
             - |
