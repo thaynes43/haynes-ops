@@ -83,6 +83,24 @@ class ProvisionTest(unittest.TestCase):
             PROVISION(self.root, ALLOCATION, self.opener, b"{}", NOTICE)
         self.assertFalse((self.root / ALLOCATION).exists())
 
+    def test_unreported_free_file_count_is_accepted_and_a_reported_one_enforced(self):
+        capacity = PROVISION.__globals__["capacity"]
+        need = PROVISION.__globals__["INODE_BUDGET_AND_RESERVE"]
+        # The Studio share: a file total, and the free count as all ones (-1 in Python).
+        for files, free in ((1794936, -1), (1794936, 2**64 - 1), (0, 0)):
+            self.free.f_files, self.free.f_favail = files, free
+            capacity(self.root, 0, check_inodes=True)
+        self.free.f_files, self.free.f_favail = 1794936, need
+        capacity(self.root, 0, check_inodes=True)
+        self.free.f_favail = need - 1
+        with self.assertRaisesRegex(SCRIPT["ProvisionError"], "free_inode_reserve_too_small"):
+            capacity(self.root, 0, check_inodes=True)
+
+    def test_the_studio_shares_counts_do_not_stop_provisioning(self):
+        self.free.f_files, self.free.f_favail = 1794936, -1
+        PROVISION(self.root, ALLOCATION, self.opener, b"{}", NOTICE)
+        self.assertTrue((self.root / ALLOCATION).is_dir())
+
 
 class OutputReservationTest(unittest.TestCase):
     def test_reserves_only_a_new_group_writable_directory(self):

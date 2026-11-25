@@ -44,9 +44,12 @@ def capacity(path: Path, written: int, *, check_inodes=False) -> None:
     if written > BUDGET:
         raise ProvisionError("byte_budget_exceeded")
     space = os.statvfs(path)
-    if check_inodes and space.f_files and space.f_favail != (1 << 64) - 1:
-        if space.f_favail < INODE_BUDGET_AND_RESERVE:
-            raise ProvisionError("free_inode_reserve_too_small")
+    # An export can omit its free-file count two ways: no file total at all, or a
+    # total with the free count as all ones (which Python shows as -1). The Studio
+    # share does the second; an unreported count is accepted, a reported one enforced.
+    reported = space.f_files > 0 and 0 <= space.f_favail < 2**63
+    if check_inodes and reported and space.f_favail < INODE_BUDGET_AND_RESERVE:
+        raise ProvisionError("free_inode_reserve_too_small")
     if space.f_bavail * space.f_frsize < RESERVE + BUDGET - written:
         raise ProvisionError("free_reserve_too_small")
 
