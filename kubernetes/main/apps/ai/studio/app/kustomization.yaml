@@ -7,5 +7,9 @@ resources:
   - mcp.yaml
   - ingressroute.yaml
   - networkpolicy.yaml
+configMapGenerator:
+  - name: studio-media-worker-routes
+    files:
+      - nginx.conf=media-worker-routes.conf
 components:
   - ../../../../../shared/components/common/gatus/guarded

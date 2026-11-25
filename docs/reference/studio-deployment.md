@@ -8,6 +8,8 @@ The Winter Menu. Its scoped playback proof and key revocation are **Proven**
 in OP957 comment 9914 and OP944 comment 9915. [OP959](https://work.haynesnetwork.com/work_packages/959)
 pins the next app images and retires those one-shot stages. The OP959 rollout
 and checks below are **Expected** until the coordinator records the results.
+[OP961](https://work.haynesnetwork.com/work_packages/961) adds the [voice and
+image workers](#op961-voice-and-image-workers) at the same release pin.
 
 `https://studio.haynesops.com` uses the internal Traefik tier, the
 `internal.haynesops` DNS target and the namespace's wildcard certificate.
@@ -628,3 +630,383 @@ Repeat the baseline counts, ready pod and digest checks for the restored
 images, the pre-existing LAN routes, and signed-in imported playback. Use
 the retained migration Job's head evidence and rerun the runtime privilege
 check. The new routes and liveness check apply only while OP959 is installed.
+
+## OP961 voice and image workers
+
+**Expected.** Roll out OP959 before these workers. OP961 uses its image
+digests and Alembic head. Each media Deployment has one replica with
+`Recreate`, the existing low priority class and a 1-vCPU limit. Both are
+eligible off `talosw01` (CR-37). The engines are remote, and layered
+compositing is one local still. The 20+4 vCPU budget on `talosw01` is
+unchanged. Voice's provisional memory request/limit is 128/384 MiB. Image's
+is 192 MiB/1 GiB. Record memory and restarts during the authorized jobs.
+
+Both lanes run as the NFS writer UID/GID. They need the writable canonical
+`/studio` store to read source blobs and publish results create-only. The
+voice lane reads reusable takes and writes WAV takes and the assembled
+track. The image lane reads reference and layer inputs and writes the PNG.
+Neither uses build staging or a separate scratch directory. The only
+other mount holds the main-thread progress marker. The 120-second voice
+budget covers a 45-second Wyoming exchange plus local assembly, store
+I/O and 15-second API calls. The 300-second image budget covers the
+60-second ComfyUI HTTP inactivity timeout and gives reference preparation,
+single-still compositing and store I/O room. The worker touches progress
+before each queue and history request during long engine waits.
+[Media worker source and progress contract](https://github.com/thaynes43/haynes-studio/blob/393fe1d66070ac726739b4cdb001a9e6b2c467db/docs/reference/media-jobs.md)
+
+The API rolls both replicas with an nginx sidecar from the already pinned
+web image. A ConfigMap supplies its configuration. Media NetworkPolicies
+allow DNS, API port 8002 and each lane's engine: Kokoro Wyoming 10210 or
+ComfyUI TCP 8188 on `comfyui-0`. There is no engine ingress policy to
+extend. API port 8002 accepts traffic from the two media Deployments. The
+listener forwards only the five media-work POSTs to the API over loopback,
+with no request retry or access logging. The API authenticates them.
+Traefik, MCP and the run worker keep using 8000. The new workers have no
+port 8000 grant. The dedicated listener enforces the HTTP path boundary
+without putting worker bearer headers into Cilium HTTP flow logging.
+[Cilium HTTP policy](https://docs.cilium.io/en/stable/security/policy/layer7/#http)
+[Cilium header redaction settings](https://docs.cilium.io/en/stable/helm-values/#hubble-redact)
+
+Each media lane has its own worker ID and ESO-generated token. Its
+registration Job uses the migration projection and `--replace`. The
+generator and ExternalSecret are prune-exempt. `CreatedOnce` plus
+`creationPolicy: Orphan` keep the same value across reconciles and
+ExternalSecret removal. A lost or revoked token cannot be fixed by
+re-registering the old value. The API associates the bearer with a worker
+ID and uses that ID in claim fences. It does not bind the ID to a lane.
+A registered worker token can claim any lane on the shared claim route.
+A source follow-up should bind explicit lane grants to worker identities,
+migrate the run identity, and reject out-of-lane claims before queue access.
+[Worker administration](https://github.com/thaynes43/haynes-studio/blob/393fe1d66070ac726739b4cdb001a9e6b2c467db/docs/reference/studio-api.md#worker-token-administration)
+
+### Reconcile and check health
+
+The coordinator runs this after OP959 is installed and the OP961 GitOps PR
+has merged. The parent can start downstream stages automatically. The media
+registration stage depends on migration. The worker stage depends on both
+registrations succeeding and the API sidecar being ready in the app stage.
+The existing run registration and worker stages have their own gates.
+
+```bash
+(
+  set -euo pipefail
+  root=kubernetes/main/apps/ai/studio
+  digest=$(yq -er '.apiDigest' "$root/release.yaml")
+  expected="ghcr.io/thaynes43/haynes-studio@$digest"
+  listener="ghcr.io/thaynes43/haynes-studio-web@$(yq -er '.webDigest' "$root/release.yaml")"
+  api_before=$(kubectl -n ai get deploy studio-api -o jsonpath='{.spec.template.spec.containers[?(@.name=="api")].image}')
+  run_before=$(kubectl -n ai get deploy studio-worker -o jsonpath='{.spec.template.spec.containers[?(@.name=="worker")].image}')
+  test "$api_before" = "$expected"
+  test "$run_before" = "$expected"
+  kubectl -n ai wait --for=condition=Ready --timeout=1m \
+    helmrelease/kokoro helmrelease/comfyui kustomization/studio-migration
+  flux reconcile kustomization cluster-apps -n flux-system --with-source
+  flux reconcile kustomization studio-migration -n ai
+  flux reconcile kustomization studio -n ai
+  kubectl -n ai rollout status deployment/studio-api --timeout=5m
+  kubectl -n ai get pods -l app.kubernetes.io/name=studio-api -o json |
+    jq -e --arg listener "$listener" '
+      [.items[] | select(.metadata.deletionTimestamp == null)] |
+      length == 2 and all(.[]; any(.status.containerStatuses[];
+        .name == "media-worker-routes" and .ready and
+        (.imageID | endswith($listener | split("@")[1]))))'
+  flux reconcile kustomization studio-media-worker-registration -n ai
+  for lane in voice image; do
+    kubectl -n ai wait --for=condition=Ready --timeout=2m "externalsecret/studio-$lane-worker-token"
+    job=$(yq -er 'select(.kind == "Job") | .metadata.name' "$root/media-worker-registration/$lane-job.yaml")
+    kubectl -n ai wait --for=condition=complete --timeout=5m "job/$job"
+    kubectl -n ai logs "job/$job" -c register
+  done
+  flux reconcile kustomization studio-media-workers -n ai
+  kubectl -n ai wait --for=condition=Ready --timeout=5m \
+    kustomization/studio kustomization/studio-media-worker-registration kustomization/studio-media-workers
+  kubectl -n ai get kustomization studio-migration studio studio-media-worker-registration studio-media-workers \
+    -o json | jq -e '[.items[].status.lastAppliedRevision] | unique | select(length == 1 and .[0] != null)'
+  for lane in voice image; do
+    worker="studio-$lane-worker"
+    kubectl -n ai rollout status "deploy/$worker" --timeout=5m
+    kubectl -n ai get pod -l "app.kubernetes.io/name=$worker" -o json |
+      jq -er --arg image "$expected" --arg digest "$digest" --arg lane "$lane" '
+        [.items[] | select(.metadata.deletionTimestamp == null)] | select(length == 1) | .[0] |
+        select(.spec.nodeName != "talosw01" and
+          .spec.containers[0].args == ["--lane", $lane] and
+          .spec.containers[0].image == $image and
+          .status.containerStatuses[0].ready and
+          (.status.containerStatuses[0].imageID | endswith($digest))) |
+        [.metadata.name, .spec.nodeName, .status.containerStatuses[0].imageID,
+          .status.containerStatuses[0].restartCount] | @tsv'
+  done
+)
+```
+
+In a quiet window expect at least one idle 204 from each consumer. Allow
+two 5-second poll intervals after rollout on an empty queue. Record
+progress and log counts together with the live launch arguments. For the
+run worker the command has no lane argument, so the pinned client sends
+the empty run claim. The two media clients send their configured lane
+in the claim body. Logs record status and path only. They do not
+record the body, so retain the launch argument check and the targeted
+200s during the two real jobs as lane evidence.
+
+```bash
+(
+  set -euo pipefail
+  kubectl -n ai get deploy studio-worker -o json | jq -e '
+    .spec.template.spec.containers[0] |
+    .command == ["studio-worker"] and ((.args // []) == [])'
+  for spec in worker:1500 voice-worker:120 image-worker:300; do
+    worker="studio-${spec%:*}"
+    kubectl -n ai exec "deploy/$worker" -c worker -- studio-worker --check-progress "${spec#*:}"
+    printf '%s idle claims ' "$worker"
+    kubectl -n ai logs "deploy/$worker" -c worker --since=2m | grep -c '/work/claim "HTTP/1.1 204'
+  done
+)
+```
+
+Verify each token in its own pod. Invalid JSON proves the credential passed
+the internal auth check (422 after auth versus 401 without it) without
+claiming or changing any work. `/v1/me` on the worker listener is refused
+with 403. The bearer remains in the pod process and only statuses are printed.
+
+```bash
+(
+  set -euo pipefail
+  for lane in voice image; do
+    kubectl -n ai exec -i "deploy/studio-$lane-worker" -c worker -- python - <<'PY'
+import os
+
+import httpx
+
+from haynes_studio.queue.worker_tokens import worker_bearer
+
+auth = {"Authorization": "Bearer " + worker_bearer(os.environ["STUDIO_WORKER_TOKEN"])}
+with httpx.Client(base_url=os.environ["STUDIO_API_URL"], trust_env=False, timeout=5) as client:
+    for operation in ("claim", "heartbeat", "publish", "complete", "fail"):
+        path = "/internal/v1/work/" + operation
+        headers = {"Content-Type": "application/json"}
+        anonymous = client.post(path, content=b"{", headers=headers)
+        registered = client.post(path, content=b"{", headers={**headers, **auth})
+        assert (anonymous.status_code, registered.status_code) == (401, 422)
+        print(path, 401, 422)
+    public = client.get("/v1/me", headers=auth)
+    assert public.status_code == 403
+    print("/v1/me", public.status_code)
+PY
+  done
+)
+```
+
+### Two real jobs and people-only pause proof
+
+**Expected, with Tom.** Pause and resume require his signed-in browser and
+`X-Studio-CSRF`. The coordinator can capture pod evidence while Tom makes
+these requests. The coordinator has no people's session or agent key, and
+the pinned `studio-api-admin` can administer credentials and import verified
+finished archives. It cannot create a draft production or request a job.
+The migration role is for those operator commands only. A future approved
+key could use `read`, `draft:write` and `assets:generate` on the single
+eligible production with 60-minute expiry and revocation after the check.
+Even that key could not pause the lane, create a production, or open an
+unselected result's people-only media routes. Use Tom's session for this
+proof.
+
+Both imported stories are protected and their recorded asset versions lack
+media. Keep their boards and selections intact. Use a fresh Short draft in
+the existing production that owns the stock Kokoro voice. A read-only
+catalog check before OP961 found one promoted `Kokoro-82M v1.0` voice
+definition (`af_heart`) scoped to a production, with no story or board
+scope. A stock definition supplies an engine voice ID and needs no
+recorded audio. Confirm the definition still appears through the API.
+Use no pinned photos, cast or set stills.
+
+Tom can issue the API requests below in his signed-in Studio browser. This
+helper is for a same-origin console at `https://studio.haynesops.com`.
+Run one step at a time. Keep the session cookie in the browser and record
+only statuses, IDs, timings and hashes.
+
+```js
+const studio = await (async () => {
+  if (location.origin !== "https://studio.haynesops.com") throw Error("Open Studio first");
+  const me = await fetch("/v1/me").then((response) => response.json());
+  if (me.principal?.kind !== "human" || !me.csrf_token) throw Error("Sign in to Studio");
+  return async (method, path, body, extra = {}, expected = 200) => {
+    const headers = new Headers(extra);
+    if (method !== "GET") headers.set("X-Studio-CSRF", me.csrf_token);
+    if (body !== undefined) headers.set("Content-Type", "application/json");
+    const response = await fetch(path, {method, headers, body: JSON.stringify(body)});
+    const result = await response.json();
+    if (response.status !== expected) throw Error(`${response.status} ${result.error?.code ?? ""}`);
+    return result;
+  };
+})();
+```
+
+1. Read `GET /v1/assets?kind=voice` and choose the promoted Kokoro definition
+   with `scope.production_id` set and both `scope.story_id` and
+   `scope.board_id` empty. Use its production and version IDs. The production
+   already has Short enabled. Create a new story and board through the browser:
+
+   ```js
+   const voices = await studio("GET", "/v1/assets?kind=voice");
+   const stock = voices.items.find((v) => v.state === "promoted" &&
+     v.scope.production_id && !v.scope.story_id && !v.scope.board_id &&
+     v.attributes.voice_id === "af_heart" && v.provenance.generator?.model === "Kokoro-82M v1.0");
+   if (!stock) throw Error("No eligible stock voice");
+   const story = await studio("POST", `/v1/productions/${stock.scope.production_id}/media-types/short/stories`,
+     {title: "OP961 media proof", narrator_voice_version_id: stock.id}, {}, 201);
+   const board = await studio("POST", `/v1/stories/${story.id}/boards`, {
+     lines: [{speaker: "narrator", text: "The tiny kettle is ready.", gap_before_ms: null}],
+     method: {layer: "whole_frame", motion: "i2v"},
+     photo: {current_version_id: null, prompt: "A tiny yellow kettle on a blue table",
+       input_asset_version_ids: []},
+   }, {"If-Match": String(story.revision)}, 201);
+   ```
+
+2. Voice first. `GET /v1/queue/lanes` must show the voice lane open before
+   starting. Send `PUT /v1/queue/lanes/voice` with `{"paused":true}`. With the
+   lane paused, send `POST /v1/boards/<board.id>/voice-jobs` with `{}` and a
+   unique `Idempotency-Key`. Expect 202. Observe its job still `queued` after
+   at least two idle poll intervals through `GET /v1/jobs/<id>` and worker
+   204s. Send `PUT /v1/queue/lanes/voice` with `{"paused":false}`. Poll
+   the same job to `succeeded` and check `result_is_current: true`. This
+   board has one uncached line, so it requires one Kokoro take.
+
+3. Image next. Begin with the image lane open and verify no other Studio
+   image job is active. The coordinator observes ComfyUI with the GET-only
+   probe below. If household work is present, let it finish and observe
+   the worker's backoff if the two overlap. Do not create household load to
+   force that condition. Tom pauses image with `PUT /v1/queue/lanes/image`
+   and `{"paused":true}`. Send `POST /v1/boards/<board.id>/photo-jobs` with
+   `{"seed":0}` and its own unique `Idempotency-Key`. Expect 202 while
+   paused and confirm that job remains queued through two poll intervals.
+   It is a whole-frame text-to-image request with no reference images.
+   Read `GET /v1/boards/<board.id>` and use its revision as `If-Match`
+   for `PATCH /v1/boards/<board.id>`. Send only `photo`, preserving its
+   fields and changing `prompt` to `"A tiny yellow kettle on a green table"`.
+   Resume image with `PUT /v1/queue/lanes/image` and `{"paused":false}`.
+   Expect the single original job to succeed with `result_is_current: false`.
+   Confirm the board's `photo.current_version_id` is still null. Keep the
+   draft and both results as private evidence. Restore any lane paused
+   by the procedure before ending the window, including on a failed check.
+
+4. For each successful job, use `GET /v1/jobs/<id>/result`. Take the WAV
+   hash from `voice.track.sha256` and the PNG hash from `content.sha256`.
+   Fetch the corresponding `/v1/jobs/<id>/media/<sha256>` through
+   Tom's browser. Check 200, `audio/wav` or `image/png`, and SHA-256 of
+   the returned bytes. The same version is readable through
+   `/v1/asset-versions/<version-id>/media/<sha256>` for a signed-in person.
+   The generic media route is not the proof path for the unselected PNG.
+   Keep file bytes, request bodies, cookie and CSRF out of evidence.
+   Record Tom's Inspector/Composer review and acceptance separately.
+   The pinned web client does not expose a photo-job button, so this
+   procedure uses the authenticated API for the photo.
+
+Use a fresh key for each of the two job requests. In a transport ambiguity
+reuse that request's exact body and key to find the same job. Do not
+submit an additional job to compensate for a failed inference.
+[API requests, results and queue controls](https://github.com/thaynes43/haynes-studio/blob/393fe1d66070ac726739b4cdb001a9e6b2c467db/docs/reference/studio-api.md#media-operations)
+
+### Shared engine evidence
+
+The image worker checks both queue lists before starting and checks again
+immediately before marking dispatch and submitting the prompt. A busy
+engine causes a ten-second backoff, up to 30 minutes. An unreadable
+queue stops that job. The last idle check and POST are separate requests,
+so household work can arrive in between. Studio submits one prompt and
+polls its specific history before it can move to another job. With an
+uncertain dispatch it does not retry the prompt, interrupt, or clear any
+queue entry. Image edits can upload an input before the second idle check.
+Layered stills compose locally. For this proof the photo has no input upload.
+[Queue ordering and busy/unknown fixtures](https://github.com/thaynes43/haynes-studio/blob/393fe1d66070ac726739b4cdb001a9e6b2c467db/tests/queue/test_media_services.py)
+
+Before the image lane resumes, take this read-only sample through the image
+pod's permitted engine connection. Repeat it during the wait only if
+needed to observe existing household work.
+
+```bash
+(
+  set -euo pipefail
+  kubectl -n ai exec -i deploy/studio-image-worker -c worker -- python - <<'PY'
+import os
+from datetime import UTC, datetime
+
+import httpx
+
+with httpx.Client(base_url=os.environ["STUDIO_COMFYUI_URL"], trust_env=False, timeout=5) as client:
+    response = client.get("/queue")
+    response.raise_for_status()
+    queue = response.json()
+    assert isinstance(queue["queue_running"], list) and isinstance(queue["queue_pending"], list)
+    print(datetime.now(UTC).isoformat(), "running", len(queue["queue_running"]),
+          "pending", len(queue["queue_pending"]))
+PY
+)
+```
+
+Capture a UTC timestamp just before the first job is enqueued. After both
+finish, substitute that timestamp below. For the two isolated jobs the
+expected successful claim counts are zero run, one voice, one image.
+For image, read the final `GET /queue`, the successful API `POST /publish`,
+the single `POST /prompt` and the resulting history fetch in order. Compare
+any household busy interval with the completed job's `waited_s` and the
+image engine job ID in its result provenance. If the household queue was
+idle throughout, mark live busy backoff unobserved and link the source
+fixture instead. Preserve only aggregate counts, statuses and the IDs
+for this proof.
+
+```bash
+(
+  set -euo pipefail
+  since='<UTC RFC3339 start time>'
+  for entry in worker:0 voice-worker:1 image-worker:1; do
+    worker="studio-${entry%:*}"
+    logs=$(kubectl -n ai logs "deploy/$worker" -c worker --since-time="$since" --timestamps)
+    count=$(awk '/\/work\/claim "HTTP\/1.1 200/ {n++} END {print n+0}' <<< "$logs")
+    printf '%s successful claims %s\n' "$worker" "$count"
+    test "$count" -eq "${entry#*:}"
+    if [[ $worker == studio-image-worker ]]; then
+      awk '/(GET .*\/(queue|history\/)|POST .*\/(work\/publish|prompt)) /' <<< "$logs"
+      test "$(awk '/POST .*\/prompt "HTTP\/1.1/ {n++} END {print n+0}' <<< "$logs")" -eq 1
+    fi
+  done
+)
+```
+
+### Rotation and rollback
+
+For planned rotation, drain the lane in an idle maintenance window. Add a
+new digest-independent, versioned token generator and Orphan ExternalSecret.
+Use the new token reference in the lane Deployment and registration Job
+and the same worker ID. Bump that Job's digest-suffixed name and Flux
+health check to the next `-rN` (start at `-r1`). Reconcile registration
+before the workers. The existing pod's old bearer is revoked as soon as
+`--replace` commits. Expect a brief interruption until the new pod starts.
+Verify internal 422 and idle 204 with the replacement before resuming. For
+a retry with the same secret, use a fresh Job suffix and leave the
+credential references alone. An already revoked digest needs a fresh token.
+
+For rollback, drain both lanes where possible. Revert just the OP961 source
+through GitOps and keep OP959's app pin. Flux prunes the media worker
+Deployments, their policies and Jobs. The API rolls back to its 8000-only
+pod template. Keep both tokens registered and their prune-exempt
+projections so reinstalling adopts the same tokens. If a token is ever
+compromised, revoke that ID with the migration role and rotate before
+reinstalling. Completed or queued jobs, catalog entries and result blobs
+remain in place. A paused lane can be left paused while the workers are
+absent.
+
+```bash
+(
+  set -euo pipefail
+  flux reconcile kustomization cluster-apps -n flux-system --with-source
+  flux reconcile kustomization studio -n ai
+  kubectl -n ai rollout status deploy/studio-api --timeout=5m
+  kubectl -n ai rollout status deploy/studio-worker --timeout=5m
+  for lane in voice image; do
+    found=$(kubectl -n ai get "deployment/studio-$lane-worker" --ignore-not-found -o name)
+    test -z "$found"
+    kubectl -n ai wait --for=condition=Ready --timeout=1m "externalsecret/studio-$lane-worker-token"
+  done
+  kubectl -n ai get svc studio-api -o json | jq -e '[.spec.ports[].port] == [8000]'
+)
+```

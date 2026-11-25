@@ -28,31 +28,37 @@ def render(path):
     return list(yaml.safe_load_all(output))
 
 
-def container(workload):
-    (container,) = workload["spec"]["template"]["spec"]["containers"]
-    return container
+def container(workload, name=None):
+    containers = workload["spec"]["template"]["spec"]["containers"]
+    (selected,) = [item for item in containers if name is None or item["name"] == name]
+    return selected
 
 
-def image_digest(workload, repository):
-    image = container(workload)["image"]
+def image_digest(workload, repository, *, name=None):
+    image = container(workload, name)["image"]
     match = re.fullmatch(rf"{re.escape(repository)}@(sha256:[0-9a-f]{{64}})", image)
     if not match:
         raise ValueError(f"{workload['metadata']['name']} must pin a {repository} digest")
     return match[1]
 
 
-def check_job(job, flux, prefix, digest):
-    name = job["metadata"]["name"]
-    stem = f"{prefix}-{digest.removeprefix('sha256:')[:12]}"
-    if not re.fullmatch(rf"{stem}(?:-r[1-9][0-9]*)?", name):
-        raise ValueError(f"{name} must be named for the release digest ({stem})")
-    checks = [check for check in flux["spec"]["healthChecks"] if check["kind"] == "Job"]
-    if checks != [{"apiVersion": "batch/v1", "kind": "Job", "name": name, "namespace": "ai"}]:
-        raise ValueError(f"{flux['metadata']['name']} must check Job ai/{name}")
+def check_jobs(documents, flux, prefixes, digest):
+    names = sorted(document["metadata"]["name"] for document in documents
+                   if document and document["kind"] == "Job")
+    stems = sorted(f"{prefix}-{digest.removeprefix('sha256:')[:12]}" for prefix in prefixes)
+    if len(names) != len(stems) or any(
+        not re.fullmatch(rf"{stem}(?:-r[1-9][0-9]*)?", name) for name, stem in zip(names, stems)
+    ):
+        raise ValueError(f"{flux['metadata']['name']} Job names {names} must match release stems {stems}")
+    checks = sorted((check["apiVersion"], check["namespace"], check["name"])
+                    for check in flux["spec"]["healthChecks"] if check["kind"] == "Job")
+    if checks != [("batch/v1", "ai", name) for name in names]:
+        raise ValueError(f"{flux['metadata']['name']} must health-check exactly these Jobs in ai: {names}")
+    return [resource(documents, "Job", name) for name in names]
 
 
-def env(workload):
-    return {entry["name"]: entry.get("value") for entry in container(workload)["env"]}
+def env(workload, name=None):
+    return {entry["name"]: entry.get("value") for entry in container(workload, name)["env"]}
 
 
 def check_packaged_register(app, deployments):
@@ -61,9 +67,9 @@ def check_packaged_register(app, deployments):
             "studio-model-licences-"
         ):
             raise ValueError("Studio ships the licence register in the image")
-    for deployment in deployments:
+    for deployment, container_name in deployments:
         volumes = deployment["spec"]["template"]["spec"]["volumes"]
-        if "STUDIO_MODEL_REGISTER" in env(deployment) or any(
+        if "STUDIO_MODEL_REGISTER" in env(deployment, container_name) or any(
             volume.get("configMap", {}).get("name", "").startswith("studio-model-licences-")
             for volume in volumes
         ):
@@ -78,17 +84,30 @@ def check(path):
     mcp = resource(app, "Deployment", "studio-mcp")
     web = resource(app, "Deployment", "studio-web")
     worker = resource(render(path / "worker"), "Deployment", "studio-worker")
-    migration = resource(render(path / "migration"), "Job")
-    registration = resource(render(path / "worker-registration"), "Job")
+    media = render(path / "media-workers")
+    voice = resource(media, "Deployment", "studio-voice-worker")
+    image = resource(media, "Deployment", "studio-image-worker")
 
-    digest = image_digest(api, API_IMAGE)
-    for workload in (mcp, worker, migration, registration):
+    digest = image_digest(api, API_IMAGE, name="api")
+    jobs = [
+        *check_jobs(render(path / "migration"), resource(flux, "Kustomization", "studio-migration"),
+                    ("studio-migrate",), digest),
+        *check_jobs(render(path / "worker-registration"), resource(flux, "Kustomization", "studio-worker-registration"),
+                    ("studio-register-worker",), digest),
+        *check_jobs(render(path / "media-worker-registration"),
+                    resource(flux, "Kustomization", "studio-media-worker-registration"),
+                    ("studio-register-voice-worker", "studio-register-image-worker"), digest),
+    ]
+    for workload in (mcp, worker, voice, image, *jobs):
         if image_digest(workload, API_IMAGE) != digest:
             raise ValueError(f"{workload['metadata']['name']} must use studio-api's digest {digest}")
-    if digest != release["apiDigest"] or image_digest(web, API_IMAGE + "-web") != release["webDigest"]:
+    web_digest = image_digest(web, API_IMAGE + "-web")
+    if digest != release["apiDigest"] or web_digest != release["webDigest"]:
         raise ValueError("studio-api and studio-web must use the published release digest pair")
+    if image_digest(api, API_IMAGE + "-web", name="media-worker-routes") != web_digest:
+        raise ValueError("The API media-worker listener must use the same nginx image as studio-web")
 
-    api_env = env(api)
+    api_env = env(api, "api")
     worker_env = env(worker)
     revision = f"git:{release['revision']}"
     if not re.fullmatch(r"git:[0-9a-f]{40}", revision) or any(
@@ -98,10 +117,7 @@ def check(path):
     if worker_env.get("STUDIO_BUILD_IMAGE_DIGEST") != digest:
         raise ValueError("studio-worker provenance digest must match its image")
 
-    check_job(migration, resource(flux, "Kustomization", "studio-migration"), "studio-migrate", digest)
-    check_job(registration, resource(flux, "Kustomization", "studio-worker-registration"),
-              "studio-register-worker", digest)
-    check_packaged_register(app, (api, worker))
+    check_packaged_register(app, ((api, "api"), (worker, None), (voice, None), (image, None)))
     print(f"Studio release pins and Job health gates agree for {revision} ({digest})")
 
 

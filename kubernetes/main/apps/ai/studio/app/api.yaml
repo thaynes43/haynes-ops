@@ -133,6 +133,34 @@ spec:
               subPath: data/studio/build-stage-v1
             - name: tmp
               mountPath: /tmp
+        - name: media-worker-routes
+          image: ghcr.io/thaynes43/haynes-studio-web@sha256:e9ec3f2ed405afc3194f110dd086b15737aad3f183b07210df36b0e8e2607913
+          command: [/usr/sbin/nginx]
+          args: [-c, /etc/studio-worker-routes/nginx.conf, -g, "daemon off;"]
+          ports:
+            - name: worker-http
+              containerPort: 8002
+          readinessProbe:
+            tcpSocket: {port: worker-http}
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: {port: worker-http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 25m, memory: 16Mi}
+            limits: {memory: 32Mi}
+          securityContext:
+            runAsUser: 101
+            runAsGroup: 101
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - name: media-worker-routes
+              mountPath: /etc/studio-worker-routes
+              readOnly: true
+            - name: media-worker-routes-tmp
+              mountPath: /tmp
       volumes:
         - name: media
           nfs:
@@ -141,6 +169,12 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+        - name: media-worker-routes
+          configMap:
+            name: studio-media-worker-routes
+        - name: media-worker-routes-tmp
+          emptyDir:
+            sizeLimit: 16Mi
 ---
 apiVersion: v1
 kind: Service
@@ -154,6 +188,9 @@ spec:
     - name: http
       port: 8000
       targetPort: http
+    - name: worker-http
+      port: 8002
+      targetPort: worker-http
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
