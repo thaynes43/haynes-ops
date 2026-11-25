@@ -257,6 +257,10 @@ def check(path):
         raise ValueError("studio-api and studio-web must use the published release digest pair")
     if image_digest(api, API_IMAGE + "-web", name="media-worker-routes") != web_digest:
         raise ValueError("The API media-worker listener must use the same nginx image as studio-web")
+    routes = (path / "app/media-worker-routes.conf").read_text()
+    for header in ("X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host", "X-Real-IP", "Forwarded"):
+        if f'proxy_set_header {header} "";' not in routes:
+            raise ValueError(f"The API media-worker listener must clear {header} before the loopback API")
 
     api_env = env(api, "api")
     worker_env = env(worker)
