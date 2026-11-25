@@ -107,6 +107,22 @@ class ProvisionTests(unittest.TestCase):
             with self.assertRaisesRegex(provision.ProvisionError, "free_reserve_too_small"):
                 provision.capacity(Path("/jobs"), 0, 0)
 
+    def test_capacity_accepts_an_unreported_free_file_count_and_enforces_a_reported_one(self):
+        room = {"f_bavail": 40 * 1024**2, "f_frsize": 1024}
+        need = provision.ENTRY_RESERVE + provision.ENTRY_BUDGET
+        # The Studio share: a file total, and the free count as all ones (-1 in Python).
+        for unreported in ({"f_files": 1794936, "f_favail": -1}, {"f_files": 1794936, "f_favail": 2**64 - 1},
+                           {"f_files": 0, "f_favail": 0}):
+            with patch.object(provision.os, "statvfs", return_value=SimpleNamespace(**room, **unreported)):
+                provision.capacity(Path("/jobs"), 0, 0)
+        with patch.object(provision.os, "statvfs",
+                          return_value=SimpleNamespace(**room, f_files=1794936, f_favail=need)):
+            provision.capacity(Path("/jobs"), 0, 0)
+        with patch.object(provision.os, "statvfs",
+                          return_value=SimpleNamespace(**room, f_files=1794936, f_favail=need - 1)):
+            with self.assertRaisesRegex(provision.ProvisionError, "free_file_reserve_too_small"):
+                provision.capacity(Path("/jobs"), 0, 0)
+
     def test_second_model_failure_retains_quarantine(self):
         class WrongSam(FakeHub):
             contents = {**FakeHub.contents, "sam": b"else-weights"}

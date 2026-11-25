@@ -52,8 +52,12 @@ def capacity(path: Path, written: int, entries: int) -> None:
     space = os.statvfs(path)
     if space.f_bavail * space.f_frsize < RESERVE + BUDGET - written:
         raise ProvisionError("free_reserve_too_small")
-    # CR-34 accepts the 64-entry budget when NFS omits its free-file count.
-    if space.f_files > 0 and space.f_favail < ENTRY_RESERVE + ENTRY_BUDGET - entries:
+    # CR-34 accepts the 64-entry budget when NFS omits its free-file count. An
+    # export can omit it two ways: no file total at all, or a total with the
+    # free count as all ones (which Python shows as -1). The Studio share does
+    # the second.
+    reported = space.f_files > 0 and 0 <= space.f_favail < 2**63
+    if reported and space.f_favail < ENTRY_RESERVE + ENTRY_BUDGET - entries:
         raise ProvisionError("free_file_reserve_too_small")
 
 
