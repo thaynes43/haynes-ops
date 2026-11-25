@@ -48,6 +48,11 @@ spec:
           ports:
             - name: http
               containerPort: 8001
+          lifecycle:
+            # The ingress keeps a terminating pod in rotation for a moment. Keep
+            # serving while it is removed, then stop: no 502 on a delete or a roll.
+            preStop:
+              sleep: {seconds: 8}
           readinessProbe:
             tcpSocket: {port: http}
             periodSeconds: 5

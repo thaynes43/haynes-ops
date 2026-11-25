@@ -154,6 +154,19 @@ def env(workload, name=None):
     return {entry["name"]: entry.get("value") for entry in container(workload, name)["env"]}
 
 
+def check_drain(deployments):
+    """Serving containers keep serving briefly while the ingress drops a terminating pod."""
+    for deployment, names in deployments:
+        pod = deployment["spec"]["template"]["spec"]
+        grace = pod.get("terminationGracePeriodSeconds", 30)
+        for name in names:
+            spec = next(item for item in pod["containers"] if item["name"] == name)
+            seconds = spec.get("lifecycle", {}).get("preStop", {}).get("sleep", {}).get("seconds")
+            if type(seconds) is not int or not 5 <= seconds <= grace - 10:
+                raise ValueError(f"{deployment['metadata']['name']}/{name} needs a preStop sleep of at least "
+                                 "5 seconds that leaves 10 seconds of the termination grace period")
+
+
 def check_packaged_register(app, deployments):
     for document in app:
         if document and document["kind"] == "ConfigMap" and document["metadata"]["name"].startswith(
@@ -514,6 +527,7 @@ def check(path):
         raise ValueError("studio-worker provenance digest must match its image")
 
     check_packaged_register(app + media, ((api, "api"), (worker, None), (voice, None), (image, None)))
+    check_drain(((api, ("api", "media-worker-routes")), (mcp, ("mcp",)), (web, ("nginx",))))
     print(f"Studio release pins and Job health gates agree for {revision} ({digest})")
 
 

@@ -102,6 +102,11 @@ spec:
           ports:
             - name: http
               containerPort: 8000
+          lifecycle:
+            # The ingress keeps a terminating pod in rotation for a moment. Keep
+            # serving while it is removed, then stop: no 502 on a delete or a roll.
+            preStop:
+              sleep: {seconds: 8}
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 5
@@ -139,6 +144,11 @@ spec:
           ports:
             - name: worker-http
               containerPort: 8002
+          lifecycle:
+            # The ingress keeps a terminating pod in rotation for a moment. Keep
+            # serving while it is removed, then stop: no 502 on a delete or a roll.
+            preStop:
+              sleep: {seconds: 8}
           readinessProbe:
             tcpSocket: {port: worker-http}
             periodSeconds: 5
