@@ -40,6 +40,16 @@ replacements:
   - source:
       kind: ConfigMap
       name: studio-upscaling-release
+      fieldPath: data.storeSubPath
+    targets:
+      - select:
+          kind: Job
+          name: studio-upscaling-compare-00
+        fieldPaths:
+          - metadata.annotations.[studio.haynesops.com/store-sub-path]
+  - source:
+      kind: ConfigMap
+      name: studio-upscaling-release
       fieldPath: data.memoryRequest
     targets:
       - select:

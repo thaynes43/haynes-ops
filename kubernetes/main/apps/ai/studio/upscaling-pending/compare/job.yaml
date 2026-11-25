@@ -3,6 +3,8 @@ kind: Job
 metadata:
   # The runbook assigns a fresh name and supplies the authorized input and digest.
   name: studio-upscaling-compare-00
+  annotations:
+    studio.haynesops.com/store-sub-path: replaced-by-release
 spec:
   activeDeadlineSeconds: 300
   backoffLimit: 0

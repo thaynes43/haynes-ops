@@ -63,16 +63,16 @@ never reused.
 (
   set -euo pipefail
   stage=kubernetes/main/apps/ai/studio/matting-pending
-  provision=$(kustomize build "$stage/provision")
-  job=$(yq 'select(.kind == "Job") | .metadata.name' <<< "$provision")
-  config=$(yq 'select(.kind == "Job") | .spec.template.spec.volumes[] |
-    select(.name == "config") | .configMap.name' <<< "$provision")
-  kubectl -n ai get "configmap/$config" -o name
+  provision=$(kustomize build "$stage/provision" | yq -e 'select(.kind == "Job")') || exit 1
+  job=$(yq -e '.metadata.name' <<< "$provision") || exit 1
+  config=$(yq -e '.spec.template.spec.volumes[] |
+    select(.name == "config") | .configMap.name' <<< "$provision") || exit 1
+  kubectl -n ai get "configmap/$config" -o name || exit 1
   kubectl -n ai exec deploy/studio-render -c app -- sh -ec '
     test -d /studio/jobs
     df -Pk /studio/jobs | awk "NR == 2 { print; if (\$4 >= 34603008) good = 1 } END { exit !good }"
-  '
-  yq 'select(.kind == "Job")' <<< "$provision" | kubectl -n ai create -f -
+  ' || exit 1
+  kubectl -n ai create -f - <<< "$provision" || exit 1
   if ! kubectl -n ai wait --for=condition=complete "job/$job" --timeout=6m; then
     kubectl -n ai get "job/$job" -o wide
     kubectl -n ai logs "job/$job"
@@ -155,20 +155,20 @@ with urlopen(sys.argv[1], timeout=5) as response:
         has("active_foley_job") and .active_foley_job == null'
   }
   stage=kubernetes/main/apps/ai/studio/matting-pending
-  allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
+  allocation=$(yq -e '.data.allocation' "$stage/release/release.yaml") || exit 1
   provision="studio-matting-provision-${allocation##*-}"
-  kubectl -n ai wait --for=condition=complete "job/$provision" --timeout=5s
+  kubectl -n ai wait --for=condition=complete "job/$provision" --timeout=5s || exit 1
   profile=$(kubectl -n ai logs "job/$provision" | tail -n 1 |
-    jq -ers 'select(length == 1) | .[0].profile_sha256 | select(test("^[0-9a-f]{64}$"))')
-  pin=$(yq '.data.image' "$stage/release/release.yaml")
-  kubectl top node talosw01
-  kubectl -n ai top pod --containers -l app.kubernetes.io/name=studio-render
-  wan_idle
+    jq -ers 'select(length == 1) | .[0].profile_sha256 | select(test("^[0-9a-f]{64}$"))') || exit 1
+  pin=$(yq -e '.data.image' "$stage/release/release.yaml") || exit 1
+  kubectl top node talosw01 || exit 1
+  kubectl -n ai top pod --containers -l app.kubernetes.io/name=studio-render || exit 1
+  wan_idle || exit 1
   read_endpoint comfyui-0 app http://127.0.0.1:8188/queue |
-    check_json 'Image engine queue empty' '.queue_running == [] and .queue_pending == []'
-  smoke=$(kustomize build "$stage/smoke")
-  job=$(yq '.metadata.name' <<< "$smoke")
-  kubectl -n ai create -f - <<< "$smoke"
+    check_json 'Image engine queue empty' '.queue_running == [] and .queue_pending == []' || exit 1
+  smoke=$(kustomize build "$stage/smoke") || exit 1
+  job=$(yq -e '.metadata.name' <<< "$smoke") || exit 1
+  kubectl -n ai create -f - <<< "$smoke" || exit 1
   if ! kubectl -n ai wait --for=condition=complete "job/$job" --timeout=6m; then
     kubectl -n ai get "job/$job" -o wide
     kubectl -n ai logs "job/$job"
@@ -352,21 +352,16 @@ with urlopen(sys.argv[1], timeout=5) as response:
       assert_json 'length == 1 and (.[0] | .queue_running == [] and .queue_pending == [])'
   }
   stage=kubernetes/main/apps/ai/studio/matting-pending
-  allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
-  pin=$(yq '.data.image' "$stage/release/release.yaml")
-  gate=0
-  check 'Content-addressed regular single-link input matches its SHA-256' input_matches_store_hash || gate=1
-  check 'Installed profile hash present' read_profile || gate=1
-  check 'Share byte and inode budget' room_on_share || gate=1
-  check 'Deny-all network policy' deny_all || gate=1
-  check 'talosw01 CPU at most 10% and memory at most 25%' node_idle || gate=1
-  check 'Render app CPU at most 250m' render_idle || gate=1
-  check 'Wan idle' wan_idle || gate=1
-  check 'Shared image queue empty' images_idle || gate=1
-  if (( gate != 0 )); then
-    printf 'FAIL quality trial admission\n' >&2
-    exit 1
-  fi
+  allocation=$(yq -e '.data.allocation' "$stage/release/release.yaml") || exit 1
+  pin=$(yq -e '.data.image' "$stage/release/release.yaml") || exit 1
+  check 'Content-addressed regular single-link input matches its SHA-256' input_matches_store_hash || exit 1
+  check 'Installed profile hash present' read_profile || exit 1
+  check 'Share byte and inode budget' room_on_share || exit 1
+  check 'Deny-all network policy' deny_all || exit 1
+  check 'talosw01 CPU at most 10% and memory at most 25%' node_idle || exit 1
+  check 'Render app CPU at most 250m' render_idle || exit 1
+  check 'Wan idle' wan_idle || exit 1
+  check 'Shared image queue empty' images_idle || exit 1
   printf 'PASS quality trial admission\n'
 
   private_path=${STUDIO_TRIAL_INPUT#/studio/}
@@ -374,8 +369,9 @@ with urlopen(sys.argv[1], timeout=5) as response:
   export TRIAL_PROFILE="$profile"
   export STUDIO_TRIAL_SOURCE_SHA256 STUDIO_TRIAL_ASSET_VERSION STUDIO_TRIAL_PRODUCTION
   export STUDIO_TRIAL_JOB_ID STUDIO_TRIAL_TARGET_HEIGHT
-  export TRIAL_OUTPUT="studio-matting-quality-$(openssl rand -hex 6)"
-  manifest=$(kustomize build "$stage/quality" | yq '
+  suffix=$(openssl rand -hex 6) || exit 1
+  export TRIAL_OUTPUT="studio-matting-quality-$suffix"
+  manifest=$(kustomize build "$stage/quality" | yq -e '
     .metadata.name = strenv(TRIAL_OUTPUT) |
     .spec.template.spec.initContainers[0].args += [strenv(TRIAL_OUTPUT)] |
     (.spec.template.spec.containers[0].volumeMounts[] | select(.name == "input").subPath) =
@@ -386,8 +382,8 @@ with urlopen(sys.argv[1], timeout=5) as response:
       strenv(TRIAL_INPUT_NAME), strenv(STUDIO_TRIAL_SOURCE_SHA256),
       strenv(STUDIO_TRIAL_ASSET_VERSION), strenv(STUDIO_TRIAL_PRODUCTION), strenv(STUDIO_TRIAL_JOB_ID),
       strenv(STUDIO_TRIAL_TARGET_HEIGHT), strenv(TRIAL_PROFILE)
-    ]')
-  kubectl -n ai create -f - <<< "$manifest"
+    ]') || exit 1
+  kubectl -n ai create -f - <<< "$manifest" || exit 1
 
   wait_terminal() {
     local condition deadline=$((SECONDS + 330))

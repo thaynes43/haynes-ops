@@ -825,7 +825,7 @@ def check_upscaling_mounts(spec, pod, mounts, nfs_modes):
         raise ValueError("upscaling scratch needs a 256Mi emptyDir")
 
 
-def check_upscaling_jobs(stage, image, allocation, measuring, policies):
+def check_upscaling_jobs(stage, image, allocation, measuring, policies, store_sub_path):
     suffix = allocation.rsplit("-", 1)[1]
     weights_path = f"data/studio/jobs/{allocation}/weights"
     weights = {"name": "weights", "mountPath": "/weights", "subPath": weights_path, "readOnly": True}
@@ -874,6 +874,8 @@ def check_upscaling_jobs(stage, image, allocation, measuring, policies):
         check_upscaling_container(c, image, command)
         check_upscaling_mounts(c, pod, mounts, nfs)
         if comparing:
+            if job["metadata"].get("annotations", {}).get("studio.haynesops.com/store-sub-path") != store_sub_path:
+                raise ValueError("comparison Job store sub-path must match the upscaling release")
             sandbox = {"allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True,
                        "capabilities": {"drop": ["ALL"]}}
             if (security != {"runAsNonRoot": True, "runAsUser": 10001, "runAsGroup": 10001,
@@ -909,14 +911,22 @@ def check_upscaling_jobs(stage, image, allocation, measuring, policies):
             raise ValueError("upscaling Jobs must match the measuring memory and two-CPU ceiling")
 
 
-def check_upscaling(path, flux):
+def check_upscaling(path, flux, api):
     stage = path / "upscaling-pending"
     if not stage.exists():
         return
     pin = yaml.safe_load((stage / "release/release.yaml").read_text())["data"]
     image, allocation = pin["image"], pin["allocation"]
+    store_sub_path = pin["storeSubPath"]
     if not re.fullmatch(r"upscaling-op461-fsrcnn-x2-v1-(?:0[2-9]|[1-9][0-9])", allocation):
         raise ValueError("invalid create-only upscaling weights allocation")
+    store_root = env(api, "api").get("STUDIO_STORE_ROOT")
+    store_mounts = [mount for mount in container(api, "api")["volumeMounts"] if mount["mountPath"] == store_root]
+    if len(store_mounts) != 1 or store_mounts[0].get("subPath") != store_sub_path:
+        raise ValueError("upscaling store sub-path must match the studio-api Deployment store mount")
+    api_nfs = resource_volume(api["spec"]["template"]["spec"], store_mounts[0]["name"]).get("nfs", {})
+    if (api_nfs.get("server"), api_nfs.get("path")) != ("gasha01.haynesnetwork", "/hdd-nfs-repl"):
+        raise ValueError("upscaling and the studio-api store must use the same Studio NFS export")
     policy_stage = resource(flux, "Kustomization", "studio-upscaling-policy")
     if (policy_stage["spec"]["path"] != f"./{STUDIO_PATH}/upscaling-pending/policy"
             or not policy_stage["spec"]["prune"] or any(
@@ -947,7 +957,7 @@ def check_upscaling(path, flux):
             raise ValueError(f"unexpected traffic or identity labels for {name}")
 
     measuring = pin["memoryRequest"], pin["memoryLimit"]
-    check_upscaling_jobs(stage, image, allocation, measuring, policies)
+    check_upscaling_jobs(stage, image, allocation, measuring, policies, store_sub_path)
 
     match = re.fullmatch(rf"{re.escape(UPSCALING_IMAGE)}@(sha256:[0-9a-f]{{64}})", image)
     if not match or match[1] == "sha256:" + "0" * 64:
@@ -1036,7 +1046,7 @@ def check(path):
     check_packaged_register(app + media, ((api, "api"), (worker, None), (voice, None), (image, None)))
     check_drain(((api, ("api", "media-worker-routes")), (mcp, ("mcp",)), (web, ("nginx",))))
     check_segmentation(path, flux)
-    check_upscaling(path, flux)
+    check_upscaling(path, flux, api)
     print(f"Studio release pins and Job health gates agree for {revision} ({digest})")
 
 

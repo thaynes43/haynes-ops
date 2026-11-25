@@ -11,10 +11,14 @@ LOCATOR = re.compile(
     r"/sha256/(?P<shard>[a-f0-9]{2})/(?P<digest>(?P=shard)[a-f0-9]{62})\.(?P<ext>jpg|png|mp4)"
 )
 DELIVERY_ID = re.compile(r"dlv_[0-7][0-9A-HJKMNP-TV-Z]{25}")
+STORE_SUB_PATH_ANNOTATION = "studio.haynesops.com/store-sub-path"
 
 
 def comparison_job(template, *, source, run, index=None, timestamp=None, master=None,
                    delivery_id=None, orientation="portrait", plate=False, rois=None, probe=False):
+    store_sub_path = template["metadata"].get("annotations", {}).get(STORE_SUB_PATH_ANNOTATION, "")
+    if not re.fullmatch(r"data/studio/(?:[a-z0-9][a-z0-9-]*/)*[a-z0-9][a-z0-9-]*", store_sub_path):
+        raise ValueError("invalid canonical store sub-path")
     locator = LOCATOR.fullmatch(source)
     reference = LOCATOR.fullmatch(master) if master is not None else None
     if locator is None or not re.fullmatch(r"[a-f0-9]{12}", run):
@@ -57,13 +61,13 @@ def comparison_job(template, *, source, run, index=None, timestamp=None, master=
     container["args"] = args
     mounts = {item["name"]: item for item in container["volumeMounts"]}
     shard = source.rsplit("/", 1)[0]
-    mounts["source"].update(subPath=f"data/studio/{shard}", mountPath=f"/store/{shard}" if is_video else "/input")
+    mounts["source"].update(subPath=f"{store_sub_path}/{shard}", mountPath=f"/store/{shard}" if is_video else "/input")
     master_shard = master.rsplit("/", 1)[0] if reference is not None else None
     if master_shard is None or master_shard == shard:
         container["volumeMounts"].remove(mounts["master"])
         pod["volumes"] = [volume for volume in pod["volumes"] if volume["name"] != "master"]
     else:
-        mounts["master"].update(subPath=f"data/studio/{master_shard}", mountPath=f"/store/{master_shard}")
+        mounts["master"].update(subPath=f"{store_sub_path}/{master_shard}", mountPath=f"/store/{master_shard}")
     if probe:
         job["spec"]["activeDeadlineSeconds"] = 90
         del pod["initContainers"]

@@ -92,20 +92,19 @@ ready with both video and Foley job fields present and null.
     if "$@"; then printf 'PASS %s\n' "$name"; else printf 'FAIL %s\n' "$name" >&2; return 1; fi
   }
   stage=kubernetes/main/apps/ai/studio/segmentation-pending
-  provision=$(kustomize build "$stage/provision" | yq 'select(.kind == "Job")')
-  job=$(yq '.metadata.name' <<< "$provision")
-  config=$(yq '.spec.template.spec.volumes[] | select(.name == "config") | .configMap.name' <<< "$provision")
-  allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
-  image=$(yq '.data.image' "$stage/release/release.yaml")
-  status=0
-  check 'Flux provision script present' kubectl -n ai get "configmap/$config" -o name || status=1
+  provision=$(kustomize build "$stage/provision" | yq -e 'select(.kind == "Job")') || exit 1
+  job=$(yq -e '.metadata.name' <<< "$provision") || exit 1
+  config=$(yq -e '.spec.template.spec.volumes[] | select(.name == "config") | .configMap.name' <<< "$provision") || exit 1
+  allocation=$(yq -e '.data.allocation' "$stage/release/release.yaml") || exit 1
+  image=$(yq -e '.data.image' "$stage/release/release.yaml") || exit 1
+  check 'Flux provision script present' kubectl -n ai get "configmap/$config" -o name || exit 1
   check 'Studio byte and reported inode reserve' kubectl -n ai exec deploy/studio-render -c app -- sh -ec '
     df -Pk /studio/jobs | awk "NR == 2 { print; ok = (\$4 >= 35651584) } END { exit !ok }"
     df -Pi /studio/jobs | awk "NR == 2 { print; ok = (\$4 == \"-\" || \$4 >= 1088) } END { exit !ok }"
-  ' || status=1
-  check 'Wan ready and video and Foley idle' bash scripts/studio-segmentation/check-wan-idle.sh || status=1
-  if (( status )); then exit "$status"; fi
-  check 'Provision Job created' kubectl -n ai create -f - <<< "$provision"
+  ' || exit 1
+  check 'Wan ready and video and Foley idle' bash scripts/studio-segmentation/check-wan-idle.sh || exit 1
+  check 'Provision Job created' kubectl -n ai create -f - <<< "$provision" || exit 1
+  status=0
   check 'Provision Job completed' bash scripts/studio-segmentation/wait-job.sh "$job" 660 || status=1
   report=$(kubectl -n ai --request-timeout=10s logs "job/$job" -c segmentation | grep '^{' | tail -n 1) || report=
   printf '%s\n' "$report"
@@ -222,40 +221,39 @@ with urlopen(sys.argv[1], timeout=5) as response:
 ' "$3"
   }
   stage=kubernetes/main/apps/ai/studio/segmentation-pending
-  allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
-  image=$(yq '.data.image' "$stage/release/release.yaml")
+  allocation=$(yq -e '.data.allocation' "$stage/release/release.yaml") || exit 1
+  image=$(yq -e '.data.image' "$stage/release/release.yaml") || exit 1
   limit_bytes=5368709120
   provision="studio-segmentation-provision-${allocation##*-}"
-  status=0
-  check 'Provision Job complete' bash scripts/studio-segmentation/wait-job.sh "$provision" 15 || status=1
+  check 'Provision Job complete' bash scripts/studio-segmentation/wait-job.sh "$provision" 15 || exit 1
   provision_report=$(kubectl -n ai --request-timeout=10s logs "job/$provision" -c segmentation |
-    grep '^{' | tail -n 1) || provision_report=
-  profile=$(jq -r '.profile_sha256 // ""' <<< "$provision_report") || profile=
+    grep '^{' | tail -n 1) || exit 1
   check 'Provision profile digest matches this allocation and image' jq -e --arg allocation "$allocation" \
     --arg image "${image##*@}" '
     .allocation == $allocation and .image_digest == $image and
     (.profile_sha256 | test("^[a-f0-9]{64}$"))
-  ' <<< "$provision_report" || status=1
-  node=$(kubectl top node talosw01 --no-headers) || node=
-  render=$(kubectl -n ai top pod --containers -l app.kubernetes.io/name=studio-render --no-headers) || render=
-  printf '%s\n%s\n' "$node" "$render"
+  ' <<< "$provision_report" || exit 1
+  profile=$(jq -er '.profile_sha256' <<< "$provision_report") || exit 1
+  node=$(kubectl top node talosw01 --no-headers) || exit 1
+  printf '%s\n' "$node"
   check 'Node load within smoke window' awk '
     $1 == "talosw01" && $3 ~ /^[0-9]+%$/ && $5 ~ /^[0-9]+%$/ && $3+0 <= 10 && $5+0 <= 25 { ok = 1 }
     END { exit !ok }
-  ' <<< "$node" || status=1
+  ' <<< "$node" || exit 1
+  render=$(kubectl -n ai top pod --containers -l app.kubernetes.io/name=studio-render --no-headers) || exit 1
+  printf '%s\n' "$render"
   check 'Offline render app idle' awk '
     $2 == "app" { count++; ok = ($3 ~ /^[0-9]+m$/ && $3+0 <= 250) }
     END { exit !(count == 1 && ok) }
-  ' <<< "$render" || status=1
-  check 'Wan ready and video and Foley idle' bash scripts/studio-segmentation/check-wan-idle.sh || status=1
-  queue=$(endpoint comfyui-0 app http://127.0.0.1:8188/queue) || queue=
-  check 'Shared ComfyUI queue empty' jq -es '
+  ' <<< "$render" || exit 1
+  check 'Wan ready and video and Foley idle' bash scripts/studio-segmentation/check-wan-idle.sh || exit 1
+  endpoint comfyui-0 app http://127.0.0.1:8188/queue | check 'Shared ComfyUI queue empty' jq -es '
     length == 1 and (.[0] | .queue_running == [] and .queue_pending == [])
-  ' <<< "$queue" || status=1
-  if (( status )); then exit "$status"; fi
-  smoke=$(kustomize build "$stage/smoke")
-  job=$(yq '.metadata.name' <<< "$smoke")
-  check 'Smoke Job created' kubectl -n ai create -f - <<< "$smoke"
+  ' || exit 1
+  smoke=$(kustomize build "$stage/smoke") || exit 1
+  job=$(yq -e '.metadata.name' <<< "$smoke") || exit 1
+  check 'Smoke Job created' kubectl -n ai create -f - <<< "$smoke" || exit 1
+  status=0
   check 'Smoke Job completed' bash scripts/studio-segmentation/wait-job.sh "$job" 960 || status=1
   report=$(kubectl -n ai --request-timeout=10s logs "job/$job" -c segmentation | grep '^{' | tail -n 1) || report=null
   printf '%s\n' "$report"
