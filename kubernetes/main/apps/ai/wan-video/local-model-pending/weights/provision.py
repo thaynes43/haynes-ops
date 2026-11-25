@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import sys
 import tempfile
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 HUB = "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF"
@@ -53,11 +53,26 @@ def publish(staged, target):
 
 
 class PinnedRedirect(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        dest = urlsplit(newurl)
-        if dest.scheme != "https" or not CDN.fullmatch(dest.netloc):
+    def http_error_302(self, req, fp, code, msg, headers):
+        # Record the destination before urllib follows it. Never log signed paths,
+        # query strings, ports, or userinfo.
+        location = headers.get("Location") or headers.get("URI")
+        hostname = None
+        allowed = False
+        if location:
+            try:
+                dest = urlsplit(urljoin(req.full_url, location))
+                hostname = dest.hostname
+                allowed = dest.scheme == "https" and CDN.fullmatch(dest.netloc) is not None
+            except ValueError:
+                pass
+        safe_hostname = hostname if hostname and re.fullmatch(rf"{DNS_LABEL}(?:\.{DNS_LABEL})*", hostname) else "invalid"
+        print(f"Download redirect host={safe_hostname} allowed={str(allowed).lower()}", flush=True)
+        if not allowed:
             raise ProvisionError("unexpected_download_redirect")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        return super().http_error_302(req, fp, code, msg, headers)
+
+    http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
 
 
 def download(opener, url, target, item, cap):

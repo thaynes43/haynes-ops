@@ -1,4 +1,8 @@
 """Check the dormant and staged manifests without contacting the cluster."""
+from contextlib import redirect_stdout
+from email.message import Message
+from importlib.util import module_from_spec, spec_from_file_location
+import io
 import json
 import os
 from pathlib import Path
@@ -6,6 +10,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+from urllib.request import Request
 
 import yaml
 
@@ -118,9 +124,27 @@ class ManifestTests(unittest.TestCase):
                 ])
 
     def test_provisioner_can_only_write_its_weights_directory(self):
+        flux = resource(self.ai, "Kustomization", "wan-local-model-weights")["spec"]
+        self.assertEqual(flux["dependsOn"], [{"name": "wan-local-model-download-policy"}, {"name": "wan-video"}])
+        self.assertEqual(flux["healthChecks"], [{
+            "apiVersion": "batch/v1", "kind": "Job", "name": "wan-local-model-provision", "namespace": "ai",
+        }])
+        self.assertTrue(flux["prune"])
         job = resource(self.weights, "Job", "wan-local-model-provision")
+        self.assertEqual(job["spec"]["activeDeadlineSeconds"], 1800)
+        self.assertEqual(job["spec"]["backoffLimit"], 0)
         spec = job["spec"]["template"]["spec"]
+        self.assertEqual(spec["restartPolicy"], "Never")
         provision, = spec["containers"]
+        self.assertEqual(provision["image"], "docker.io/library/python:3.12.16-slim-bookworm@"
+                                             "sha256:1475c4f5b6bcb7d35e57661d6f5d7429ec4041275633c15f2b49350ac898276d")
+        self.assertIn({"name": "config", "mountPath": "/config", "readOnly": True},
+                      provision["volumeMounts"])
+        config, = [doc for doc in self.weights if doc["kind"] == "ConfigMap"]
+        self.assertIn({"name": "config", "configMap": {"name": config["metadata"]["name"]}}, spec["volumes"])
+        pins = json.loads(config["data"]["weights.json"])
+        self.assertEqual(pins["byte_cap"], 7499546400)
+        self.assertEqual(sum(file["bytes"] for file in pins["files"]), pins["byte_cap"])
         self.assertFalse(spec.get("initContainers"))
         self.assertEqual(workspace_mounts(provision), {
             ("/workspace/local-model-weights", "local-model-weights", False),
@@ -140,6 +164,41 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(dns["toPorts"][0]["rules"]["dns"], allowed)
         self.assertEqual(https["toFQDNs"], allowed)
         self.assertEqual(https["toPorts"][0]["ports"], [{"port": "443", "protocol": "TCP"}])
+
+
+class RedirectTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = spec_from_file_location("provision", PENDING / "weights" / "provision.py")
+        cls.module = module_from_spec(spec)
+        spec.loader.exec_module(cls.module)
+
+    def test_only_https_cdn_redirects_are_followed_and_hosts_are_logged(self):
+        request = Request("https://huggingface.co/resolve/file")
+        handler = self.module.PinnedRedirect()
+        for location, host, allowed in (
+            ("https://us.aws.cdn.hf.co/path?signature=secret", "us.aws.cdn.hf.co", True),
+            ("https://us.gcp.cdn.hf.co/path?signature=secret", "us.gcp.cdn.hf.co", True),
+            ("https://us.aws.cdn.hf.co.example.org/path?signature=secret", "us.aws.cdn.hf.co.example.org", False),
+            ("http://us.aws.cdn.hf.co/path?signature=secret", "us.aws.cdn.hf.co", False),
+            ("https://user:password@us.aws.cdn.hf.co/path", "us.aws.cdn.hf.co", False),
+            ("https://us.aws.cdn.hf.co:443/path", "us.aws.cdn.hf.co", False),
+            ("/path?signature=secret", "huggingface.co", False),
+            ("https://[invalid", "invalid", False),
+        ):
+            with self.subTest(location=location):
+                headers = Message()
+                headers["Location"] = location
+                output = io.StringIO()
+                with patch.object(self.module.HTTPRedirectHandler, "http_error_302") as follow, redirect_stdout(output):
+                    if allowed:
+                        handler.http_error_307(request, None, 307, "", headers)
+                        follow.assert_called_once()
+                    else:
+                        with self.assertRaisesRegex(self.module.ProvisionError, "unexpected_download_redirect"):
+                            handler.http_error_307(request, None, 307, "", headers)
+                        follow.assert_not_called()
+                self.assertEqual(output.getvalue(), f"Download redirect host={host} allowed={str(allowed).lower()}\n")
 
 
 if __name__ == "__main__":
