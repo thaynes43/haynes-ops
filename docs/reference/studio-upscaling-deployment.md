@@ -1,7 +1,8 @@
 # Stage the Studio upscaling comparison
 
 CR-35 keeps Pillow Lanczos in delivery and permits a private CPU comparison
-with FSRCNN ×2 followed by Lanczos. The Ops stage and both Jobs that run the
+with FSRCNN ×2 followed by Lanczos. Provisional CR-49 adds stored proxy frames
+and an optional master reference. The Ops stage and both Jobs that run the
 graph are **Expected**. Model measurement, installed health, comparison and
 Tom's verdict are pending.
 [Story 461](https://work.haynesnetwork.com/work_packages/461) ·
@@ -13,7 +14,9 @@ Tom's verdict are pending.
    the successful **Publish tested Studio images** summary on Studio `main`.
 2. Set only `data.image` in the Ops [release file](../../kubernetes/main/apps/ai/studio/upscaling-pending/release/release.yaml).
    The release guard fetches the immutable OCI manifest and config, checks
-   their digests and verifies the resource label. The first smoke requests
+   their digests and verifies the resource label and `stored-proxy-frame-v1`
+   comparison capability. Provision the new profile under the fresh `-02`
+   allocation. The first smoke requests
    2 GiB and caps at 8 GiB for measurement on talosw01. The 2 GiB quality
    budget from CR-35 is checked against the observed peak. Serving memory
    stays unset until measured, and the sidecar and offline CPU split stay
@@ -217,63 +220,78 @@ reads the running container’s cgroup limit from `/sys/fs/cgroup/memory.max`.
 )
 ```
 
-## Run the private still comparison
+## Run the private comparison
 
-After the synthetic smoke passes, choose one authorized opaque PNG or JPEG
-from the Studio store. Set `OP461_INPUT` to its path relative to `/studio`.
-Use `library/sha256/<first-two-hex>/<sha256>.<jpg|png>` for global scope or
-`productions/<prd_id>/sha256/<first-two-hex>/<sha256>.<jpg|png>` for a production.
-Set `OP461_INPUT_SHA256` to the bare digest and `OP461_RUN` to a fresh 12-hex
-suffix. The input must be a regular single-link file of at most 4 MiB with
-a 1280 px long edge and 921,600 pixels. Use an exact-aspect frame or pass
-`--plate` for delivery's centered cover fit. Portrait is the default.
-The optional `--lettering-roi`, `--face-roi` and `--hair-roi` take output
-pixel bounds `X0 Y0 X1 Y1`, with the lower-right bounds exclusive.
+After the synthetic smoke passes, set `OP461_INPUT` to an authorized delivery
+proxy's canonical locator from the Studio delivery record. For ground truth,
+set `OP461_MASTER` to the master locator from that same record. Set
+`OP461_FRAME_INDEX` to a zero-based index or `OP461_TIMESTAMP` to decimal
+seconds from the first frame, with up to nine decimal places. Choose one
+selector. The timestamp selects the active frame on the 24 fps delivery
+clock. The Job verifies both MP4s in place and decodes the selected frame
+with the bundled OpenCV FFmpeg backend. Each file is limited to 256 MiB.
+
+For a still, set `OP461_INPUT` to the authorized opaque PNG or JPEG locator.
+Stills are limited to 4 MiB. Use an exact-aspect frame or set
+`OP461_PLATE=yes` for delivery's centered cover fit. Both still and proxy
+inputs have a 1280 px long-edge limit and a 921,600 pixel limit. Set
+`OP461_ORIENTATION=landscape` for a 1920 × 1080 target. The default is
+1080 × 1920. A master frame must match the target dimensions exactly.
+
+A locator is `library/sha256/<first-two-hex>/<sha256>.<ext>` or
+`productions/<prd_id>/sha256/<first-two-hex>/<sha256>.<ext>`, relative to
+`/studio`. The hash comes from the filename. If set, `OP461_INPUT_SHA256`
+must match it. Set `OP461_RUN` to a fresh 12-hex suffix. For optional ROIs,
+add `--lettering-roi`, `--face-roi` or `--hair-roi` and output coordinates
+`X0 Y0 X1 Y1` to `options` before rendering. The lower-right bounds are exclusive.
 
 The gate checks the store shape and verifies the bytes before the idle
 window. The Job has a dedicated deny-all network policy. Its UID/GID 1000
 init container reserves one new group-writable job directory exclusively.
 The comparison runs as UID/GID 10001 with supplemental group 1000. It
-mounts the pinned weights and the input directory read-only. Its only
-writable share mount is the new output directory. The Job spec contains
-the hash-based locator. Keep the locator and rendered Job private.
+mounts the pinned weights and the selected hash shards read-only. Its only
+writable share mount is the new output directory. One local `emptyDir`
+provides bounded worker scratch. Keep the rendered Job private.
 
 ```bash
 (
   set -euo pipefail
   : "${OP461_INPUT:?set the approved Studio-relative store path}"
-  : "${OP461_INPUT_SHA256:?set its verified bare SHA-256}"
   : "${OP461_RUN:?set a fresh 12-hex suffix}"
 
   input_matches_store_hash() {
-    local hash=$OP461_INPUT_SHA256 root stem
-    [[ $hash =~ ^[a-f0-9]{64}$ ]] || return 1
-    if [[ $OP461_INPUT == library/* ]]; then
-      root=library
-    elif [[ $OP461_INPUT =~ ^(productions/prd_[0-7][0-9a-hjkmnp-tv-z]{25})/ ]]; then
-      root=${BASH_REMATCH[1]}
-    else
-      return 1
-    fi
-    stem="$root/sha256/${hash:0:2}/$hash"
-    [[ $OP461_INPUT == "$stem.jpg" || $OP461_INPUT == "$stem.png" ]] || return 1
+    local locator=$1 name=${1##*/} limit=4194304
+    [[ $name != *.mp4 ]] || limit=268435456
     kubectl -n ai exec deploy/studio-render -c app -- sh -ec '
       path=$1
       test "$(realpath -e -- "$path")" = "$path"
       test -f "$path"
       test "$(stat -c %h -- "$path")" = 1
-      test "$(stat -c %s -- "$path")" -le 4194304
+      bytes=$(stat -c %s -- "$path")
+      test "$bytes" -gt 0 && test "$bytes" -le "$3" || exit 1
       sum=$(sha256sum -- "$path")
       test "${sum%% *}" = "$2"
-    ' sh "/studio/$OP461_INPUT" "$hash" >/dev/null 2>&1
+    ' sh "/studio/$locator" "${name%.*}" "$limit" >/dev/null 2>&1
   }
 
-  check 'fresh comparison suffix has 12 hex characters' bash -ec '[[ $1 =~ ^[a-f0-9]{12}$ ]]' -- "$OP461_RUN"
-  check 'content-addressed regular single-link input matches SHA-256' input_matches_store_hash
-  export OP461_INPUT_SHA256
-  export OP461_INPUT_DIR="data/studio/${OP461_INPUT%/*}" OP461_INPUT_NAME="${OP461_INPUT##*/}"
-  export OP461_JOB="studio-upscaling-compare-$OP461_RUN"
-  export OP461_ALLOCATION="upscaling-op461-compare-$OP461_RUN"
+  options=(--input "$OP461_INPUT" --run "$OP461_RUN" --orientation "${OP461_ORIENTATION:-portrait}")
+  [[ -z ${OP461_FRAME_INDEX:-} ]] || options+=(--frame-index "$OP461_FRAME_INDEX")
+  [[ -z ${OP461_TIMESTAMP:-} ]] || options+=(--timestamp "$OP461_TIMESTAMP")
+  [[ -z ${OP461_MASTER:-} ]] || options+=(--master "$OP461_MASTER")
+  [[ ${OP461_PLATE:-} != yes ]] || options+=(--plate)
+  job_spec=$(kustomize build "$stage/compare" | yq -o=json 'select(.kind == "Job")' |
+    python3 -B "$stage/compare/render.py" "${options[@]}")
+  job=$(jq -er '.metadata.name' <<< "$job_spec")
+  source_name=${OP461_INPUT##*/}
+  source_hash=${source_name%.*}
+  check 'supplied input digest agrees with the locator' test "${OP461_INPUT_SHA256:-$source_hash}" = "$source_hash"
+  check 'content-addressed regular single-link input matches SHA-256' input_matches_store_hash "$OP461_INPUT"
+  master_hash=
+  if [[ -n ${OP461_MASTER:-} ]]; then
+    check 'content-addressed regular single-link master matches SHA-256' input_matches_store_hash "$OP461_MASTER"
+    master_name=${OP461_MASTER##*/}
+    master_hash=${master_name%.*}
+  fi
   allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
   final_report "studio-upscaling-smoke-${allocation##*-}" |
     check_json 'synthetic install smoke passed' '.passed == true'
@@ -282,20 +300,12 @@ the hash-based locator. Keep the locator and rendered Job private.
       "endpointSelector":{"matchLabels":{"app.kubernetes.io/name":"studio-upscaling-compare"}},
       "ingressDeny":[{"fromEntities":["all"]}], "egressDeny":[{"toEntities":["all"]}]}'
   idle_gate
-  kustomize build "$stage/compare" | yq '
-    .metadata.name = strenv(OP461_JOB) |
-    .spec.template.spec.initContainers[0].args += [strenv(OP461_ALLOCATION)] |
-    (.spec.template.spec.containers[0].volumeMounts[] | select(.name == "source").subPath) = strenv(OP461_INPUT_DIR) |
-    (.spec.template.spec.containers[0].volumeMounts[] | select(.name == "jobs").subPath) =
-      ("data/studio/jobs/" + strenv(OP461_ALLOCATION)) |
-    .spec.template.spec.containers[0].args[1] = strenv(OP461_INPUT_NAME) |
-    .spec.template.spec.containers[0].args[3] = strenv(OP461_INPUT_SHA256)
-  ' | kubectl -n ai create -f -
+  kubectl -n ai create -f - <<< "$job_spec"
   status=0
-  check 'comparison Job complete' wait_for_job "$OP461_JOB" || status=1
-  report=$(final_report "$OP461_JOB" 2>/dev/null) || report=
+  check 'comparison Job complete' wait_for_job "$job" || status=1
+  report=$(final_report "$job" 2>/dev/null) || report=
   if [[ -z $report ]]; then
-    report=$(final_report "$OP461_JOB" reserve-output 2>/dev/null) || report=
+    report=$(final_report "$job" reserve-output 2>/dev/null) || report=
   fi
   check 'comparison final log line present' test -n "$report" || status=1
   printf '%s\n' "$report"
@@ -303,22 +313,30 @@ the hash-based locator. Keep the locator and rendered Job private.
     .source.sha256 == $input and
     ([.outputs[].sha256 | test("^[0-9a-f]{64}$")] == [true, true]) and
     (.memory_by_phase | length) >= 4 and (.objective_measures | length) == 3
-  ' --arg input "$OP461_INPUT_SHA256" <<< "$report" || status=1
+  ' --arg input "$source_hash" <<< "$report" || status=1
+  if [[ -n $master_hash ]]; then
+    check_json 'matching master frame and reference measurements recorded' '
+      .reference.sha256 == $master and .reference.frame_index == .source.frame_index and
+      (.normalized_reference.sha256 | test("^[0-9a-f]{64}$")) and
+      ([.objective_measures.lanczos.ground_truth, .objective_measures.fsrcnn.ground_truth] |
+        all(has("luma_psnr_db") and has("luma_ssim") and has("luma_mae")))
+    ' --arg master "$master_hash" <<< "$report" || status=1
+  fi
   exit "$status"
 )
 ```
 
-To choose a landscape, plate or ROI in this command, append the relevant
-arguments to the rendered container's `args` array in the same `yq` expression
-before the pipe to `kubectl create`. After success, read the two PNGs and
-`report.json` from the new private jobs allocation. Use the report hashes to
-verify both files before judging them. Report visible lettering, hair and
-face fidelity, ringing and changed geometry at matching 1:1 crops. The Job
-reports source-scale luma error, edge energy and pairwise luma differences,
-including selected ROIs. A still has no ground-truth high-resolution image or
-motion sequence. Use the synthetic smoke for its objective edge-spread, text,
-flatness and cadence gates. The fuller authorized excerpt and Tom's
-delivery review are tracked by [story 453](https://work.haynesnetwork.com/work_packages/453).
+After success, read the two result PNGs and `report.json` from the new
+private jobs allocation. A video comparison also saves `proxy.png` and,
+with a master, `master.png`. Verify each PNG against its report hash. Tom
+judges lettering, hair and face fidelity, ringing and changed geometry at
+matching 1:1 crops. The Job reports source-scale luma error, edge energy
+and pairwise luma differences, including selected ROIs. With a master, it
+adds luma MAE, PSNR and SSIM for both arms. The proxy is an encoded downscale
+of its master, so these measures reward undoing that specific encode. The
+synthetic smoke covers edge-spread, text, flatness and cadence gates. The
+fuller authorized excerpt and Tom's delivery review are tracked by
+[story 453](https://work.haynesnetwork.com/work_packages/453).
 
 ## Handoff, retries and rollback
 

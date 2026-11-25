@@ -45,7 +45,7 @@ spec:
         - name: upscaling
           image: image-replaced-by-release
           command: [studio-upscaling, compare]
-          args: [--input, input-required, --input-sha256, sha256-required]
+          args: [--proxy, proxy-locator-required, --frame-index, frame-index-required]
           env:
             - {name: STUDIO_UPSCALING_IMAGE, value: image-replaced-by-release}
           resources:
@@ -59,8 +59,12 @@ spec:
           volumeMounts:
             - {name: scratch, mountPath: /upscaling}
             - name: source
-              mountPath: /input
+              mountPath: /store/source-shard
               subPath: private-input-directory-replaced-by-runbook
+              readOnly: true
+            - name: master
+              mountPath: /store/master-shard
+              subPath: private-master-directory-replaced-by-runbook
               readOnly: true
             - name: jobs
               mountPath: /output
@@ -78,6 +82,11 @@ spec:
             path: /hdd-nfs-repl
             readOnly: true
         - name: source
+          nfs:
+            server: gasha01.haynesnetwork
+            path: /hdd-nfs-repl
+            readOnly: true
+        - name: master
           nfs:
             server: gasha01.haynesnetwork
             path: /hdd-nfs-repl

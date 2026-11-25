@@ -15,6 +15,7 @@ STUDIO_PATH = Path("kubernetes/main/apps/ai/studio")
 API_IMAGE = "ghcr.io/thaynes43/haynes-studio"
 MATTING_IMAGE = f"{API_IMAGE}-matting"
 UPSCALING_IMAGE = f"{API_IMAGE}-upscaling"
+UPSCALING_COMPARISON_LABEL = "io.haynes-studio.upscaling.comparison"
 STALE_MATTING_DIGESTS = {
     "sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f",
     "sha256:5c431978f3bfe7a48deb062c6b2854ca8b086d1a5d9c600e2db4b1e26d702d72",
@@ -427,13 +428,15 @@ def check_upscaling_jobs(stage, image, allocation, measuring, policies):
         ("smoke", 10001, ["studio-upscaling", "smoke"], ["--allocator", "compare"],
          {"scratch": scratch, "weights": weights}, {"weights": True}),
         ("compare", 10001, ["studio-upscaling", "compare"],
-         ["--input", "input-required", "--input-sha256", "sha256-required"],
+         ["--proxy", "proxy-locator-required", "--frame-index", "frame-index-required"],
          {"scratch": scratch, "weights": weights,
           "jobs": {"name": "jobs", "mountPath": "/output",
                    "subPath": "data/studio/jobs/output-directory-replaced-by-runbook"},
-          "source": {"name": "source", "mountPath": "/input",
-                     "subPath": "private-input-directory-replaced-by-runbook", "readOnly": True}},
-         {"weights": True, "jobs": False, "source": True}),
+          "source": {"name": "source", "mountPath": "/store/source-shard",
+                     "subPath": "private-input-directory-replaced-by-runbook", "readOnly": True},
+          "master": {"name": "master", "mountPath": "/store/master-shard",
+                     "subPath": "private-master-directory-replaced-by-runbook", "readOnly": True}},
+         {"weights": True, "jobs": False, "source": True, "master": True}),
     ):
         name = f"studio-upscaling-{role}"
         comparing = role == "compare"
@@ -502,7 +505,7 @@ def check_upscaling(path, flux):
         return
     pin = yaml.safe_load((stage / "release/release.yaml").read_text())["data"]
     image, allocation = pin["image"], pin["allocation"]
-    if not re.fullmatch(r"upscaling-op461-fsrcnn-x2-v1-[0-9]{2}", allocation):
+    if not re.fullmatch(r"upscaling-op461-fsrcnn-x2-v1-(?:0[2-9]|[1-9][0-9])", allocation):
         raise ValueError("invalid create-only upscaling weights allocation")
     policy_stage = resource(flux, "Kustomization", "studio-upscaling-policy")
     if (policy_stage["spec"]["path"] != f"./{STUDIO_PATH}/upscaling-pending/policy"
@@ -567,6 +570,11 @@ def check_upscaling(path, flux):
         raise ValueError("set upscaling-pending/release/release.yaml data.image to the published Studio main digest")
     try:
         published = published_labels(UPSCALING_IMAGE, match[1])
+    except (KeyError, OSError, TypeError, ValueError) as error:
+        raise ValueError(f"published upscaling image failed verification: {error}") from error
+    if published.get(UPSCALING_COMPARISON_LABEL) != "stored-proxy-frame-v1":
+        raise ValueError("published upscaling image must support the stored-proxy frame comparison")
+    try:
         memory = json.loads(published["io.haynes-studio.upscaling.resources"])
         if (memory["schema"] != "studio.upscaling-resources/v1"
                 or type(memory["quality_peak_gib"]) is not int or memory["quality_peak_gib"] <= 0

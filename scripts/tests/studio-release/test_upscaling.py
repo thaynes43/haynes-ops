@@ -19,9 +19,12 @@ SCRIPT = runpy.run_path(str(STAGE / "policy/provision.py"))
 PROVISION = SCRIPT["provision"]
 DIGEST = "sha256:" + "a" * 64
 GRAPH = b"a small synthetic graph"
-ALLOCATION = "upscaling-op461-fsrcnn-x2-v1-01"
+ALLOCATION = "upscaling-op461-fsrcnn-x2-v1-02"
 NOTICE = b"Synthetic model licence notice"
 COMPARE_ALLOCATION = "upscaling-op461-compare-000000000001"
+PROXY = "library/sha256/aa/" + "a" * 64 + ".mp4"
+MASTER = "library/sha256/bb/" + "b" * 64 + ".mp4"
+COMPARE_JOB = runpy.run_path(str(STAGE / "compare/render.py"))["comparison_job"]
 
 
 class Response(BytesIO):
@@ -188,11 +191,16 @@ class ReleaseGuardTest(unittest.TestCase):
             ("init UID", (*init, "securityContext", "runAsUser"), 10001, "UID/GID 1000 init"),
             ("init GID", (*init, "securityContext", "runAsGroup"), 10001, "UID/GID 1000 init"),
             ("init command", (*init, "command"), ["studio-upscaling", "compare"], "UID/GID 1000 init"),
-            ("writable weights mount", (*main, "volumeMounts", 3, "readOnly"), False, "mount paths"),
+            ("missing selector", (*main, "args"), ["--proxy", "proxy-locator-required"], "arguments"),
+            ("misnamed selector", (*main, "args", 2), "--frame", "arguments"),
+            ("wrong input kind", (*main, "args", 0), "--input", "arguments"),
+            ("writable weights mount", (*main, "volumeMounts", 4, "readOnly"), False, "mount paths"),
             ("writable input mount", (*main, "volumeMounts", 1, "readOnly"), False, "mount paths"),
+            ("writable master mount", (*main, "volumeMounts", 2, "readOnly"), False, "mount paths"),
             ("writable weights NFS", (*pod, "volumes", 1, "nfs", "readOnly"), False, "NFS export"),
             ("writable input NFS", (*pod, "volumes", 2, "nfs", "readOnly"), False, "NFS export"),
-            ("whole jobs tree", (*main, "volumeMounts", 2, "subPath"), "data/studio/jobs", "mount paths"),
+            ("writable master NFS", (*pod, "volumes", 3, "nfs", "readOnly"), False, "NFS export"),
+            ("whole jobs tree", (*main, "volumeMounts", 3, "subPath"), "data/studio/jobs", "mount paths"),
         )
         for name, keys, value, error in mutations:
             with self.subTest(name=name), patch.object(
@@ -201,10 +209,56 @@ class ReleaseGuardTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, error):
                     verify()
 
+    def test_comparison_renders_each_input_form_and_mounts_only_used_shards(self):
+        template = self.guard.resource(self.guard.render(STAGE / "compare"), "Job")
+        source_shard = PROXY.rsplit("/", 1)[0]
+        master_shard = MASTER.rsplit("/", 1)[0]
+        still = PROXY.removesuffix(".mp4") + ".jpg"
+        same_shard = f"{source_shard}/aa" + "b" * 62 + ".mp4"
+        for source, options, expected, other_shard in (
+            (still, {"plate": True}, ["--input", "a" * 64 + ".jpg", "--input-sha256", "a" * 64, "--plate"], None),
+            (PROXY, {"index": "1"}, ["--proxy", PROXY, "--frame-index", "1"], None),
+            (PROXY, {"timestamp": "0.125", "master": MASTER},
+             ["--proxy", PROXY, "--timestamp", "0.125", "--master", MASTER], master_shard),
+            (PROXY, {"index": "1", "master": same_shard},
+             ["--proxy", PROXY, "--frame-index", "1", "--master", same_shard], None),
+        ):
+            with self.subTest(expected=expected):
+                job = COMPARE_JOB(template, source=source, run="000000000001", **options)
+                self.assertEqual(job["metadata"]["name"], "studio-upscaling-compare-000000000001")
+                self.assertEqual(job["spec"]["ttlSecondsAfterFinished"], 3600)
+                pod = job["spec"]["template"]["spec"]
+                self.assertEqual(pod["initContainers"][0]["args"][-1], COMPARE_ALLOCATION)
+                self.assertEqual(self.guard.container(job)["args"], [*expected, "--orientation", "portrait"])
+                mounts = {mount["name"]: mount for mount in self.guard.container(job)["volumeMounts"]}
+                self.assertEqual(mounts["jobs"]["subPath"], f"data/studio/jobs/{COMPARE_ALLOCATION}")
+                self.assertEqual(mounts["source"]["mountPath"], "/input" if source == still else f"/store/{source_shard}")
+                self.assertEqual(mounts["source"]["subPath"], f"data/studio/{source_shard}")
+                self.assertTrue(mounts["source"]["readOnly"])
+                self.assertEqual({v["name"] for v in pod["volumes"]}, set(mounts))
+                if other_shard:
+                    self.assertEqual(mounts["master"], {"name": "master", "mountPath": f"/store/{other_shard}",
+                                                        "subPath": f"data/studio/{other_shard}", "readOnly": True})
+                else:
+                    self.assertNotIn("master", mounts)
+
+    def test_comparison_renderer_refuses_bad_arguments(self):
+        for options in (
+            {}, {"index": "-1"}, {"timestamp": "NaN"}, {"timestamp": "0", "index": "0"},
+            {"index": "0", "plate": True}, {"index": "0", "master": "../private.mp4"},
+            {"index": "0", "master": MASTER.replace(".mp4", ".jpg")},
+            {"index": "0", "source": PROXY.replace("/aa/", "/bb/")},
+            {"index": "0", "source": PROXY.replace(".mp4", ".jpg")},
+        ):
+            args = {"source": PROXY, "run": "000000000001", **options}
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                COMPARE_JOB({}, **args)
+
     def test_measured_contract_and_cilium_labels(self):
         self.configured_image(f"{self.guard.UPSCALING_IMAGE}@{DIGEST}")
         published = {
             "org.opencontainers.image.revision": "1" * 40,
+            self.guard.UPSCALING_COMPARISON_LABEL: "stored-proxy-frame-v1",
             "io.haynes-studio.upscaling.resources": json.dumps({
                 "schema": "studio.upscaling-resources/v1",
                 "measuring": {"request_gib": 2, "limit_gib": 8},
@@ -215,6 +269,10 @@ class ReleaseGuardTest(unittest.TestCase):
         with patch.object(self.guard, "published_labels", return_value=published) as fetch:
             self.guard.check_upscaling(self.studio, self.flux)
             fetch.assert_called_once_with(self.guard.UPSCALING_IMAGE, DIGEST)
+            del published[self.guard.UPSCALING_COMPARISON_LABEL]
+            with self.assertRaisesRegex(ValueError, "support the stored-proxy frame comparison"):
+                self.guard.check_upscaling(self.studio, self.flux)
+            published[self.guard.UPSCALING_COMPARISON_LABEL] = "stored-proxy-frame-v1"
             published["io.haynes-studio.upscaling.resources"] = "{}"
             with self.assertRaisesRegex(ValueError, "resource contract failed"):
                 self.guard.check_upscaling(self.studio, self.flux)
