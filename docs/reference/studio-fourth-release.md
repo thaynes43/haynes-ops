@@ -272,8 +272,9 @@ containers. The release guard unions matching policies from the
 recursively rendered Flux root, including siblings of `cluster-apps`,
 and checks clusterwide policy definitions in the repository. An omitted
 or empty Kubernetes `policyTypes` list defaults to ingress and also egress
-when egress rules exist. CI runs the guard for changes anywhere under
-`kubernetes/`, including the Flux roots, app paths and shared bases. It requires pod egress limited to DNS and the API's port-8002
+when egress rules exist. The policy-only CI job runs for changes anywhere
+under `kubernetes/`, including the Flux roots, app paths and shared bases.
+The full release suite and registry checks run on Studio changes. It requires pod egress limited to DNS and the API's port-8002
 listener, no allowed pod ingress, and the reviewed API ingress. It refuses
 matching Cilium allow or deny rules on the checked directions. The worker
 token is mounted read-only in the worker container only. The worker's
@@ -307,7 +308,10 @@ API endpoints, four grants, idle queues and unchanged archived data.
 Installed policy selection uses the actual pod labels and each pod's
 UID-bound Cilium endpoint identity. After these gates pass, the script
 runs the listener and lane probes with deliberately invalid requests.
-The idle matte claim runs last after all four route groups pass.
+Keep submissions closed through the idle matte claim, or close them
+again before resuming postflight. After all four route groups pass, the
+script checks matte queue idleness again immediately before the claim.
+With submissions closed and the queue idle, the claim returns 204.
 
 ```bash
 if ! bash scripts/studio-release/op967.sh postflight; then

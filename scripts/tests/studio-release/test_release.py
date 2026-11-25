@@ -102,7 +102,7 @@ class ReleaseFixture:
             docs = [{"kind": "Namespace", "metadata": {"name": "ai"}}]
             for stage in (STUDIO / "app", STUDIO / "worker", STUDIO / "media-workers", MATTE):
                 for doc in guard.render(stage):
-                    if doc["kind"] in guard.NAMESPACE_POLICY_KINDS:
+                    if doc["kind"] in guard.NAMESPACE_POLICY_KINDS | {"Deployment"}:
                         docs.append({**doc, "metadata": {"namespace": "ai", **doc["metadata"]}})
             return docs
 
@@ -454,9 +454,9 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
                                   fixture_inventory(root) + render_cluster_inventory(repo)):
                     if should_refuse:
                         with self.assertRaisesRegex(ValueError, "matte worker effective egress"):
-                            guard.check(STUDIO)
+                            guard.check_effective_policies(STUDIO)
                     else:
-                        guard.check(STUDIO)
+                        guard.check_effective_policies(STUDIO)
 
     def test_effective_egress_applies_empty_kubernetes_policy_types_default(self):
         def unrestricted(documents):

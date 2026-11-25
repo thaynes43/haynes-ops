@@ -325,6 +325,8 @@ elif cmd == "kubectl":
                             or (version == "18.1.1" and options[-1] != "retry")):
                         sys.exit(1)
                     print(f"Idle render venv complete (PyAV {version})")
+            elif any("Matte queue is no longer idle" in arg for arg in options):
+                sys.exit(bool(data.get("matte_queue_refilled")))
             elif any("av.library_versions" in arg for arg in options):
                 emit({"pyav": "18.1.1", "libraries": {f"libav{name}": [1, 2, 3] for name in (
                     "codec", "format", "filter", "util", "device", "video", "audio"
@@ -642,6 +644,17 @@ class PhaseTest(unittest.TestCase):
                     self.assertTrue(any("postflight" in call for call in calls))
                     self.assertEqual(self.route_calls(calls), [])
                     self.assertFalse(any("idle-claim" in call for call in calls))
+
+    def test_postflight_rechecks_matte_queue_after_route_probes(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        self.admit()
+        result, calls = self.run_phase("postflight", expected=1, workloads="new",
+                                       now=NOW + 7200, matte_queue_refilled=True)
+        self.assertIn("FAIL matte queue still idle before the claim", result.stderr)
+        recheck = next(index for index, call in enumerate(calls)
+                       if any("Matte queue is no longer idle" in arg for arg in call))
+        self.assertEqual(len(self.route_calls(calls[:recheck])), 4)
+        self.assertFalse(any("idle-claim" in call for call in calls))
 
     def test_rollback_accepts_either_ready_verified_build_and_requires_committed_schema(self):
         self.baseline.write_text(json.dumps(SNAPSHOT))

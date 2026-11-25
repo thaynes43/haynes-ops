@@ -42,9 +42,9 @@ jobs:
         id: studio-files
         uses: bjw-s-labs/action-changed-files@147be9638332cf68fd60714a610509d7a9360d60 # v0.7.0
         with:
-          # Any active Flux source or shared base can add a selecting policy.
           patterns: |
-            kubernetes/**/*
+            kubernetes/main/apps/ai/studio/**
+            kubernetes/main/apps/ai/studio-render/**
             scripts/tests/studio-release/**
             scripts/studio-release/op967*
             docs/reference/studio-fourth-release.md
@@ -208,6 +208,25 @@ jobs:
             --schema "$RUNNER_TEMP/authentik-schema.json" \
             --rendered "$RUNNER_TEMP/authentik-rendered.yaml"
 
+  studio-effective-policy:
+    # Any active Flux source or shared base can add a selecting policy.
+    if: ${{ needs.filter.outputs.changed-files != '[]' || needs.filter.outputs.studio-files != '[]' }}
+    needs: filter
+    name: Flux Local - Studio effective policy guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Flux for offline policy inventory rendering
+        run: bash scripts/tests/studio-release/install-flux.sh
+      - name: Verify the rendered effective Studio policy
+        run: |
+          python3 -m venv "$RUNNER_TEMP/studio-policy-venv"
+          "$RUNNER_TEMP/studio-policy-venv/bin/python" -I -m pip install \
+            --only-binary=:all: --no-deps --disable-pip-version-check PyYAML==6.0.3
+          "$RUNNER_TEMP/studio-policy-venv/bin/python" -I -B scripts/tests/studio-release/check.py --effective-policies
+
   studio-release-guard:
     if: ${{ needs.filter.outputs.studio-files != '[]' }}
     needs: filter
@@ -231,15 +250,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Flux for offline policy inventory rendering
-        run: |
-          mkdir "$RUNNER_TEMP/studio-flux"
-          cd "$RUNNER_TEMP/studio-flux"
-          curl --fail --silent --show-error --location \
-            https://github.com/fluxcd/flux2/releases/download/v2.10.0/flux_2.10.0_linux_amd64.tar.gz \
-            --output flux.tar.gz
-          printf '%s\n' '208dd7012c04fedeed5b2d0b6e63df3b15b1c34a381527811685c098bc9f8659  flux.tar.gz' | sha256sum --check
-          tar -xzf flux.tar.gz flux
-          printf '%s\n' "$PWD" >> "$GITHUB_PATH"
+        run: bash scripts/tests/studio-release/install-flux.sh
       - name: Test Studio Flux Job gates
         run: |
           python3 -m venv "$RUNNER_TEMP/studio-release-venv"
@@ -318,6 +329,7 @@ jobs:
       - diff
       - annotation-guard
       - portal-identity-guard
+      - studio-effective-policy
       - studio-release-guard
     name: Flux Local - Success
     runs-on: ubuntu-latest

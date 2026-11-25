@@ -810,6 +810,20 @@ def check_matte_network(documents, api, matte, voice, image, run, mcp, cluster_n
                          cilium_labels(api_pod, labels, cluster_name), cilium_labels(matte_pod, labels, cluster_name))
 
 
+def check_effective_policies(path):
+    repo = path.resolve().parents[len(STUDIO_PATH.parts) - 1]
+    documents = render_cluster_inventory(repo) + list(repository_cluster_policies(repo))
+    deployments = [
+        doc for doc in documents
+        if doc["kind"] == "Deployment" and doc["metadata"].get("namespace") == "ai"
+    ]
+    names = ("studio-api", MATTE_WORKER, "studio-voice-worker", "studio-image-worker",
+             "studio-worker", "studio-mcp")
+    workloads = [resource(deployments, "Deployment", name) for name in names]
+    cilium = yaml.safe_load((repo / "kubernetes/main/apps/kube-system/cilium/app/helm-values.yaml").read_text())
+    check_matte_network(documents, *workloads, cilium["cluster"]["name"])
+
+
 def check_installed_policies(data):
     namespaced, clusterwide, endpoints, api, matte = data
     if len(api["items"]) != 2 or len(matte["items"]) != 1:
@@ -1444,10 +1458,7 @@ def check(path):
     image = resource(media, "Deployment", "studio-image-worker")
     matte_stage = render(path / MATTE_ACTIVATION)
     matte = check_matte_worker(matte_stage, api, worker, matting_pin, matting_memory)
-    repo = path.resolve().parents[len(STUDIO_PATH.parts) - 1]
-    policies = render_cluster_inventory(repo) + list(repository_cluster_policies(repo))
-    cilium = yaml.safe_load((repo / "kubernetes/main/apps/kube-system/cilium/app/helm-values.yaml").read_text())
-    check_matte_network(policies, api, matte, voice, image, worker, mcp, cilium["cluster"]["name"])
+    check_effective_policies(path)
     digest, web_digest = release["apiDigest"], release["webDigest"]
     if (image_digest(api, API_IMAGE, name="api") != digest
             or image_digest(web, API_IMAGE + "-web") != web_digest):
@@ -1565,10 +1576,16 @@ def main():
     parser.add_argument("studio_path", type=Path, nargs="?", default=STUDIO_PATH)
     parser.add_argument("--pin", nargs=2, metavar=("STUDIO_REVISION", "PUBLISH_RUN"),
                         help="verify the published image pair and update all release references")
+    parser.add_argument("--effective-policies", action="store_true",
+                        help="verify Studio policy from the complete active Flux inventory")
     parser.add_argument("--installed-policies", action="store_true",
                         help="verify namespace and clusterwide policy JSON and installed pod labels on stdin")
     args = parser.parse_args()
     try:
+        if args.effective_policies:
+            check_effective_policies(args.studio_path)
+            print("Studio effective network policies match the reviewed rules")
+            return
         if args.installed_policies:
             check_installed_policies(json.load(sys.stdin))
             return

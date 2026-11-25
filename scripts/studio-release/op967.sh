@@ -751,6 +751,28 @@ else:
 ' "$service"
 }
 
+matte_queue_idle() {
+  local pod
+  pod=$(ready_api_pod "$api") || return 1
+  kubectl -n ai exec "$pod" -c api -- python -I -B -c '
+import os
+import psycopg
+
+with psycopg.connect(os.environ["STUDIO_DATABASE_URL"], connect_timeout=5,
+                     options="-c statement_timeout=5000") as conn:
+    conn.read_only = True
+    idle, = conn.execute("""
+        SELECT NOT EXISTS (
+            SELECT FROM studio.media_jobs
+            WHERE lane = %s AND document->>%s = ANY(%s)
+        )
+    """, ("matte", "status", ["queued", "running", "held"])).fetchone()
+    if not idle:
+        print("Matte queue is no longer idle")
+        raise SystemExit(1)
+'
+}
+
 worker_routes() {
   local detail
   for detail in voice-worker:voice image-worker:image worker:run matte-worker:matte; do
@@ -900,6 +922,9 @@ case $phase in
     if [[ $phase == postflight ]]; then
       if (( ! failed )); then
         check 'passing preflight receipt before the idle claim' release_admitted
+      fi
+      if (( ! failed )); then
+        check 'matte queue still idle before the claim' matte_queue_idle
       fi
       if (( ! failed )); then
         check 'matte idle claim over port 8002' kubectl -n ai exec -i deploy/studio-matte-worker \
