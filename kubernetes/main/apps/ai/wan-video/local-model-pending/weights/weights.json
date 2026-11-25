@@ -1,0 +1,17 @@
+{
+  "model": "qwen3.5-9b-q5_k_m",
+  "revision": "3885219b6810b007914f3a7950a8d1b469d598a5",
+  "byte_cap": 7499546400,
+  "files": [
+    {
+      "name": "Qwen3.5-9B-Q5_K_M.gguf",
+      "bytes": 6577841376,
+      "sha256": "dc2a39aef291f91a9116ad214058da0d86eb648743a124bd8c333787c4b9c91c"
+    },
+    {
+      "name": "mmproj-BF16.gguf",
+      "bytes": 921705024,
+      "sha256": "853698ce7aa6c7ba732478bad280240969ddf7b0fcbf93900046f63903a83383"
+    }
+  ]
+}

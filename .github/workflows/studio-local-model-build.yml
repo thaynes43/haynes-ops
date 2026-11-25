@@ -1,0 +1,94 @@
+name: Build Studio Local Model Image
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/studio-local-model/**'
+      - 'kubernetes/main/apps/ai/wan-video/app/**'
+      - 'kubernetes/main/apps/ai/wan-video/local-model-pending/weights/weights.json'
+      - '.github/workflows/studio-local-model-build.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/studio-local-model/**'
+      - 'kubernetes/main/apps/ai/wan-video/app/**'
+      - 'kubernetes/main/apps/ai/wan-video/local-model-pending/weights/weights.json'
+      - '.github/workflows/studio-local-model-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  BUILDKIT: docker.io/moby/buildkit:v0.24.0@sha256:6eceb8971ce4fceb3daca562832642706238b7eea72941fcf9896c93c3c4a53e
+  IMAGE: ghcr.io/${{ github.repository_owner }}/studio-local-model
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and smoke the runtime
+        run: |
+          docker buildx create --name studio-local --driver docker-container --driver-opt "image=${BUILDKIT}" --use
+          docker buildx build --platform linux/amd64 --load --tag studio-local-model:test \
+            --file scripts/studio-local-model/Dockerfile .
+          docker run --rm --read-only --network none --cpus 2 --memory 1g --user 1000:1000 \
+            --env NVIDIA_VISIBLE_DEVICES=void --env CUDA_VISIBLE_DEVICES= studio-local-model:test self-check
+
+  publish:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and smoke the runtime
+        run: |
+          docker buildx create --name studio-local --driver docker-container --driver-opt "image=${BUILDKIT}" --use
+          docker buildx build --platform linux/amd64 --load --tag studio-local-model:test \
+            --file scripts/studio-local-model/Dockerfile .
+          docker run --rm --read-only --network none --cpus 2 --memory 1g --user 1000:1000 \
+            --env NVIDIA_VISIBLE_DEVICES=void --env CUDA_VISIBLE_DEVICES= studio-local-model:test self-check
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish runtime with BuildKit provenance
+        id: publish
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          builder: studio-local
+          context: .
+          file: scripts/studio-local-model/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: mode=max
+          tags: ${{ env.IMAGE }}:b12679-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Install cosign
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: v3.1.4
+      - name: Sign and record published digest
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          cosign sign --yes --new-bundle-format=false --use-signing-config=false \
+            --registry-referrers-mode=legacy "${IMAGE}@${DIGEST}"
+          printf '%s\n' "${IMAGE}@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,62 @@
+- op: add
+  path: /spec/values/controllers/wan-video/containers/local-model
+  value:
+    image:
+      repository: ghcr.io/thaynes43/studio-local-model
+      # Part 2b replaces this with the published sha tag and digest.
+      tag: pending-op442-part-2b
+    command: [python3, -m, studio_local_backend, serve]
+    env:
+      NVIDIA_VISIBLE_DEVICES: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      CUDA_VISIBLE_DEVICES: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "1"
+      CUDA_CACHE_DISABLE: "1"
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 1000
+      runAsNonRoot: true
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities: {drop: [ALL]}
+    resources:
+      requests: {cpu: "1", memory: 8Gi}
+      limits: {cpu: "2", memory: 16Gi}
+    probes:
+      startup:
+        enabled: true
+        custom: true
+        spec:
+          exec:
+            command: [python3, -m, studio_local_backend, ready, --workspace, /workspace]
+          periodSeconds: 5
+          timeoutSeconds: 1
+          failureThreshold: 12
+      readiness:
+        enabled: true
+        custom: true
+        spec:
+          exec:
+            command: [python3, -m, studio_local_backend, ready, --workspace, /workspace]
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 3
+- op: add
+  path: /spec/values/controllers/wan-video/annotations/configmap.reloader.stakater.com~1reload
+  value: wan-video-config,wan-local-model-profile
+- op: replace
+  path: /spec/values/persistence/config
+  value:
+    type: projected
+    sources:
+      - configMap: {name: wan-video-config}
+      - configMap: {name: wan-local-model-profile}
+    globalMounts:
+      - {path: /config/video, readOnly: true}
+- op: add
+  path: /spec/values/persistence/workspace/advancedMounts
+  value:
+    wan-video:
+      local-model:
+        - {path: /workspace/local-model-weights, subPath: local-model-weights, readOnly: true}
