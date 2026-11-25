@@ -1,0 +1,42 @@
+{
+        "asset-versions.json": {
+          "bytes": 21067,
+          "sha256": "23489905b4429601a0c7ad987a779a68d39d05812d2d25d7691f14801dda8db3"
+        },
+        "delivery-stage.json": {
+          "bytes": 947,
+          "sha256": "42c31a3ee84d1044bc1408024abedf9fca36c783b3349701f7d64af2bf7ca779"
+        },
+        "delivery.json": {
+          "bytes": 1057,
+          "sha256": "94983d45b712c0222ad14e5691078fcf4c8a66ec6b4a151762fc302306bd69fb"
+        },
+        "final.mp4": {
+          "bytes": 8242309,
+          "sha256": "557a45be75bf29aa384c74405faeaadf53080f619fca8c77f7f5e907227f74d6"
+        },
+        "proxy.mp4": {
+          "bytes": 1789344,
+          "sha256": "63dbb1e26287360ed6c4a0422dbdbfa250ad981c74e9719133d4dfe72d809d1b"
+        },
+        "run.json": {
+          "bytes": 24333,
+          "sha256": "f414b7e14ebbe0c04fb0dfb0ffa6b419b669841cfac454bd8d535a18afee68ea"
+        },
+        "snapshot.json": {
+          "bytes": 3734,
+          "sha256": "d26331b8d7942991683c2dc8620b4a8ac1071c25a5d527bfb449ae42abf8fe45"
+        },
+        "transcript-run.json": {
+          "bytes": 7652,
+          "sha256": "d182b85b95973b479e4d66e0969ac5f2d481c3e48e860e8252218753862f0f44"
+        },
+        "wan-clip.json": {
+          "bytes": 6080,
+          "sha256": "d235e9802ea6ab3d8943d8bf9036d2de6f6d966fdce46bd9e75cd7e34516a72e"
+        },
+        "wan-service-run.json": {
+          "bytes": 5959,
+          "sha256": "9db9500cb2787440a16a2a5206c942fa87c0929e8eff7ef899b78875de949280"
+        }
+      }

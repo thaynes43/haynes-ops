@@ -9,3 +9,11 @@ resources:
   - networkpolicy.yaml
 components:
   - ../../../../../shared/components/common/gatus/guarded
+configMapGenerator:
+  # The worker also mounts this register and waits for this Kustomization.
+  # Both Deployments roll when the source release and its register change.
+  - name: studio-model-licences
+    files:
+      - model-licences.json
+    options:
+      disableNameSuffixHash: true

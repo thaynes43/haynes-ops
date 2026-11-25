@@ -34,7 +34,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: worker
-          image: ghcr.io/thaynes43/haynes-studio@sha256:b8460c3da82287ceae6162da8e58b818c478da1ece86ed493b97d12d2a6a38bb
+          image: ghcr.io/thaynes43/haynes-studio@sha256:1aa9b4736da902031613d957d5db3ddd17831c6cc344c5e108d761b485f3501c
           command: [studio-worker]
           env:
             - name: STUDIO_API_URL
@@ -57,9 +57,9 @@ spec:
             - name: STUDIO_BUILD_STAGE_ROOT
               value: /build-stage
             - name: STUDIO_BUILD_REVISION
-              value: git:c75086b85a3278ead1d42b7a26da3b70da8b5793
+              value: git:f30445ff312bcdb04519765e9000a5fe1295c223
             - name: STUDIO_BUILD_IMAGE_DIGEST
-              value: sha256:b8460c3da82287ceae6162da8e58b818c478da1ece86ed493b97d12d2a6a38bb
+              value: sha256:1aa9b4736da902031613d957d5db3ddd17831c6cc344c5e108d761b485f3501c
             - name: STUDIO_MODEL_REGISTER
               value: /etc/studio/model-licences.json
             - name: STUDIO_THREADS
@@ -92,7 +92,7 @@ spec:
         - name: model-licences
           configMap:
             # Refresh model-licences.json from the pinned Studio source on promotion.
-            name: studio-worker-model-licences
+            name: studio-model-licences
         - name: tmp
           emptyDir:
             sizeLimit: 8Gi

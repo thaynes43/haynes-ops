@@ -1,0 +1,87 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: studio-import-one-more-meeting-1aa9b4736da9
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: studio-archive-import
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: import
+          image: ghcr.io/thaynes43/haynes-studio@sha256:1aa9b4736da902031613d957d5db3ddd17831c6cc344c5e108d761b485f3501c
+          command: [sh, -eu, -c]
+          args:
+            - |
+              if ! printf '%s  %s\n' "$STUDIO_IMPORT_RECEIPT_SHA256" /receipts/receipt.json | sha256sum -c --status; then
+                printf 'import_production.receipt_sha256_mismatch\n' >&2
+                exit 1
+              fi
+              exec studio-api-admin import-production "$@"
+            - import-production
+            - /archives/one-more-meeting-e1-942
+            - --receipt
+            - /receipts/receipt.json
+            - --name
+            - "One More Meeting"
+            - --media-type
+            - short
+          env:
+            - name: STUDIO_MIGRATION_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: studio-migrator-db
+                  key: STUDIO_MIGRATION_DATABASE_URL
+            - name: STUDIO_DATABASE_SCHEMA
+              value: studio
+            - name: STUDIO_STORE_ROOT
+              value: /studio
+            # Exact files object from haynes-studio f33073c4a29cd0ea27efe6e452198ff753e8ac62.
+            - name: STUDIO_IMPORT_RECEIPT_SHA256
+              value: b25bc60f11492bbce5bb87b3275da245413c9b4099905a39774b455e2bafc5f9
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "2", memory: 384Mi}
+          volumeMounts:
+            - name: archive
+              mountPath: /archives/one-more-meeting-e1-942
+              subPath: data/studio/productions/one-more-meeting-e1-942
+              readOnly: true
+            - name: store
+              mountPath: /studio
+              subPath: data/studio/api-store-v1
+            - name: receipt
+              mountPath: /receipts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: archive
+          nfs:
+            server: gasha01.haynesnetwork
+            path: /hdd-nfs-repl
+            readOnly: true
+        - name: store
+          nfs:
+            server: gasha01.haynesnetwork
+            path: /hdd-nfs-repl
+        - name: receipt
+          configMap:
+            name: studio-import-one-more-meeting-receipt
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}

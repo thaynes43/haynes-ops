@@ -1,6 +1,7 @@
 """Verify the rendered Studio image pins and their Flux Job gates."""
 
 import argparse
+from hashlib import sha256
 import re
 import subprocess
 from pathlib import Path
@@ -51,7 +52,47 @@ def check_job(job, flux, prefix, digest):
         raise ValueError(f"{flux['metadata']['name']} must check Job ai/{name}")
 
 
+def env(workload):
+    return {entry["name"]: entry.get("value") for entry in container(workload)["env"]}
+
+
+def check_receipt(path, documents, job):
+    volumes = job["spec"]["template"]["spec"]["volumes"]
+    receipt_volume, = [volume for volume in volumes if volume["name"] == "receipt"]
+    config = resource(documents, "ConfigMap", receipt_volume["configMap"]["name"])
+    source_bytes = (path / "receipt.json").read_bytes()
+    mounted_bytes = config["data"]["receipt.json"].encode("utf-8")
+    expected = env(job)["STUDIO_IMPORT_RECEIPT_SHA256"]
+    if source_bytes != mounted_bytes or sha256(mounted_bytes).hexdigest() != expected:
+        raise ValueError(f"{job['metadata']['name']} receipt SHA-256 or rendered bytes differ")
+
+
+def check_archive_jobs(path, flux, digest):
+    stages = (
+        ("import-one-more-meeting", "studio-import-one-more-meeting", {"studio-migration", "studio-archive-access"}),
+        ("import-winter-menu", "studio-import-winter-menu", {"studio-migration", "studio-import-one-more-meeting"}),
+        ("playback-registration", "studio-register-playback", {"studio", "studio-import-winter-menu"}),
+        ("playback-proof", "studio-verify-playback", {"studio-playback-registration"}),
+    )
+    resource(flux, "Kustomization", "studio-archive-access")
+    for folder, prefix, dependencies in stages:
+        stage = resource(flux, "Kustomization", f"studio-{folder}")
+        spec = stage["spec"]
+        if spec["path"] != f"./{STUDIO_PATH}/{folder}":
+            raise ValueError(f"{stage['metadata']['name']} points at the wrong Job directory")
+        if {item["name"] for item in spec["dependsOn"]} != dependencies:
+            raise ValueError(f"{stage['metadata']['name']} has the wrong dependencies")
+        documents = render(path / folder)
+        job = resource(documents, "Job")
+        if image_digest(job, API_IMAGE) != digest:
+            raise ValueError(f"{job['metadata']['name']} must use studio-api's digest {digest}")
+        check_job(job, stage, prefix, digest)
+        if folder.startswith("import-"):
+            check_receipt(path / folder, documents, job)
+
+
 def check(path):
+    release = yaml.safe_load((path / "release.yaml").read_text(encoding="utf-8"))
     flux = list(yaml.safe_load_all((path / "ks.yaml").read_text(encoding="utf-8")))
     app = render(path / "app")
     api = resource(app, "Deployment", "studio-api")
@@ -65,20 +106,24 @@ def check(path):
     for workload in (mcp, worker, migration, registration):
         if image_digest(workload, API_IMAGE) != digest:
             raise ValueError(f"{workload['metadata']['name']} must use studio-api's digest {digest}")
-    image_digest(web, API_IMAGE + "-web")
+    if digest != release["apiDigest"] or image_digest(web, API_IMAGE + "-web") != release["webDigest"]:
+        raise ValueError("studio-api and studio-web must use the published release digest pair")
 
-    api_env = {entry["name"]: entry.get("value") for entry in container(api)["env"]}
-    worker_env = {entry["name"]: entry.get("value") for entry in container(worker)["env"]}
-    revision = api_env.get("STUDIO_BUILD_REVISION", "")
-    if not re.fullmatch(r"git:[0-9a-f]{40}", revision) or worker_env.get("STUDIO_BUILD_REVISION") != revision:
-        raise ValueError("studio-api and studio-worker must specify the same full git revision")
+    api_env = env(api)
+    worker_env = env(worker)
+    revision = f"git:{release['revision']}"
+    if not re.fullmatch(r"git:[0-9a-f]{40}", revision) or any(
+        settings.get("STUDIO_BUILD_REVISION") != revision for settings in (api_env, worker_env)
+    ):
+        raise ValueError("studio-api and studio-worker must specify the full published git revision")
     if worker_env.get("STUDIO_BUILD_IMAGE_DIGEST") != digest:
         raise ValueError("studio-worker provenance digest must match its image")
 
     check_job(migration, resource(flux, "Kustomization", "studio-migration"), "studio-migrate", digest)
     check_job(registration, resource(flux, "Kustomization", "studio-worker-registration"),
               "studio-register-worker", digest)
-    print(f"Studio release pins and Job health gates agree for {revision} ({digest})")
+    check_archive_jobs(path, flux, digest)
+    print(f"Studio release pins, Job health gates and archive receipts agree for {revision} ({digest})")
 
 
 def main():
