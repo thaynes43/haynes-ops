@@ -46,6 +46,7 @@ jobs:
             kubernetes/main/apps/ai/studio/**
             kubernetes/main/apps/ai/studio-render/**
             scripts/tests/studio-release/**
+            scripts/studio-segmentation/**
             .github/workflows/flux-local.yaml
 
   # The `cluster` matrix carries a single entry since the edge cluster was retired

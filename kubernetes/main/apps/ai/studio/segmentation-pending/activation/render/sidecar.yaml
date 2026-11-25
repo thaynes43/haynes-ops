@@ -18,8 +18,8 @@ spec:
             env:
               STUDIO_SEGMENTATION_IMAGE: image-replaced-by-release
             securityContext:
-              runAsUser: 1000
-              runAsGroup: 1000
+              runAsUser: 10001
+              runAsGroup: 10001
               runAsNonRoot: true
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
@@ -71,6 +71,7 @@ spec:
             app:
               - {path: /tmp}
       segmentation-scratch:
+        # Inherit the render pod's shared fsGroup 1000 for the socket and attempts.
         type: emptyDir
         sizeLimit: 256Mi
         advancedMounts:

@@ -8,6 +8,7 @@ data:
   # Replace this sentinel with the digest from the Studio main publish.
   image: ghcr.io/thaynes43/haynes-studio-segmentation@sha256:0000000000000000000000000000000000000000000000000000000000000000
   allocation: segmentation-op460-dino-sam-v1-01
+  # The image's measurement label sets the minimum; raise these with available headroom.
   measurementRequest: 16Gi
   measurementLimit: 16Gi
   servingRequest: unmeasured

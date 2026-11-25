@@ -15,7 +15,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 HUB = "huggingface.co"
 CDN = "us.aws.cdn.hf.co"
 BUDGET = 2 * 1024**3
-RESERVE = 8 * 1024**3
+RESERVE = 32 * 1024**3
 ENTRY_BUDGET = 64
 ENTRY_RESERVE = 1024
 CHUNK = 1024**2
@@ -66,7 +66,15 @@ def sync_dir(path: Path) -> None:
 
 
 def settle(fd: int) -> None:
-    """Flush each bounded write interval and let the NFS pages go (OP459)."""
+    """Commit what has been written and let its cached pages go.
+
+    A file written with one fsync at the end keeps its pages in the container's
+    memory account until then: pages not yet committed to the server cannot be
+    reclaimed. The first GGUF attempt of story 442 was killed for memory that way
+    (haynes-ops PR 5053). Settling every FLUSH_EVERY bytes bounds it to one
+    interval, and dropping the cache before hashing makes the read-back come
+    from the server and not from this client's cache.
+    """
     os.fsync(fd)
     os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
 

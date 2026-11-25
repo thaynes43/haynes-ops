@@ -322,7 +322,7 @@ def segmentation_memory(memory):
     request, limit = memory["request_gib"], memory["limit_gib"]
     if type(request) is not int or type(limit) is not int or not 0 < request <= limit:
         raise ValueError("invalid segmentation image memory contract")
-    return f"{request}Gi", f"{limit}Gi"
+    return request, limit
 
 
 def _check_segmentation_policy(policy):
@@ -354,14 +354,14 @@ def _check_segmentation_policy(policy):
 def _check_segmentation_jobs(pending, policy, pin, image, allocation):
     nfs = {"server": "gasha01.haynesnetwork", "path": "/hdd-nfs-repl"}
     hardening = {"allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True, "capabilities": {"drop": ["ALL"]}}
-    pod_security = {"runAsNonRoot": True, "runAsUser": 1000, "runAsGroup": 1000,
-                    "seccompProfile": {"type": "RuntimeDefault"}}
+    pod_security = {"runAsNonRoot": True, "seccompProfile": {"type": "RuntimeDefault"}}
     weight_path = f"data/studio/jobs/{allocation}/weights"
     suffix = allocation.rsplit("-", 1)[1]
     settings = {"STUDIO_SEGMENTATION_IMAGE": image}
     for stage, deadline, security, arguments, resources, mounts, volumes, expected_env in (
         (
-            "provision", 600, pod_security, ["python", "-B", "/config/provision.py"],
+            "provision", 600, {**pod_security, "runAsUser": 1000, "runAsGroup": 1000},
+            ["python", "-B", "/config/provision.py"],
             {"requests": {"cpu": "100m", "memory": "128Mi"}, "limits": {"cpu": "500m", "memory": "1Gi"}},
             [
                 {"name": "media", "mountPath": "/jobs", "subPath": "data/studio/jobs"},
@@ -373,7 +373,7 @@ def _check_segmentation_jobs(pending, policy, pin, image, allocation):
             {**settings, "STUDIO_SEGMENTATION_ALLOCATION": allocation},
         ),
         (
-            "smoke", 900, {**pod_security, "fsGroup": 1000},
+            "smoke", 900, {**pod_security, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001},
             ["studio-segmentation", "smoke", "--load-strategy", "mmap", "--compare-load-strategy", "buffered"],
             {"requests": {"cpu": "250m", "memory": pin["measurementRequest"]},
              "limits": {"cpu": "2", "memory": pin["measurementLimit"]}},
@@ -434,12 +434,14 @@ def _check_segmentation_activation(path, pending, pin, image, digest, allocation
         volume["globalMounts"] = volume.pop("advancedMounts")["studio-render"]["app"]
     if values != base:
         raise ValueError("segmentation activation must preserve the base render workload")
+    if values["defaultPodOptions"]["securityContext"]["fsGroup"] != 1000:
+        raise ValueError("segmentation activation needs fsGroup 1000 for shared scratch and socket access")
     if (sidecar["image"] != {"repository": SEGMENTATION_IMAGE, "tag": f"pinned@{digest}"}
             or sidecar["env"] != {"STUDIO_SEGMENTATION_IMAGE": image}
             or sidecar["command"] != ["studio-segmentation", "serve"]
             or sidecar.get("ports")
             or sidecar["securityContext"] != {
-                "runAsUser": 1000, "runAsGroup": 1000, "runAsNonRoot": True, "allowPrivilegeEscalation": False,
+                "runAsUser": 10001, "runAsGroup": 10001, "runAsNonRoot": True, "allowPrivilegeEscalation": False,
                 "readOnlyRootFilesystem": True, "capabilities": {"drop": ["ALL"]},
             }
             or sidecar["resources"] != {
@@ -489,20 +491,27 @@ def check_segmentation(path, flux):
                 or labels["org.opencontainers.image.source"] != "https://github.com/thaynes43/haynes-studio"
                 or memory["schema"] != "studio.segmentation-resources/v1"):
             raise ValueError("invalid segmentation image resource label")
-        measurement = segmentation_memory(memory["measurement"])
+        minimum_request, minimum_limit = segmentation_memory(memory["measurement"])
         serving = memory["serving"]
         if serving is None:
             expected_serving = ("unmeasured", "unmeasured", "unmeasured")
         else:
             request, limit = segmentation_memory(serving)
-            if serving["limit_gib"] > 31:
+            if limit > 31:
                 raise ValueError("segmentation serving must leave memory for render")
-            expected_serving = request, limit, f"{32 - serving['limit_gib']}Gi"
+            expected_serving = f"{request}Gi", f"{limit}Gi", f"{32 - limit}Gi"
     except (KeyError, OSError, TypeError, ValueError) as error:
         raise ValueError("published segmentation image must carry the Studio profile resource contract") from error
-    if ((pin["measurementRequest"], pin["measurementLimit"]) != measurement
-            or (pin["servingRequest"], pin["servingLimit"], pin["renderMemoryLimit"]) != expected_serving):
-        raise ValueError("segmentation stage resources must match the pinned image's measured/measurement contract")
+    if config["config"].get("User") != "10001:10001":
+        raise ValueError("published segmentation image must default to 10001:10001")
+    measurement = (pin["measurementRequest"], pin["measurementLimit"])
+    if not all(re.fullmatch(r"[1-9][0-9]*Gi", value) for value in measurement):
+        raise ValueError("segmentation measurement resources must be positive whole GiB")
+    request, limit = (int(value.removesuffix("Gi")) for value in measurement)
+    if request < minimum_request or limit < minimum_limit or request > limit:
+        raise ValueError("segmentation measurement resources must meet the pinned image's minimums")
+    if (pin["servingRequest"], pin["servingLimit"], pin["renderMemoryLimit"]) != expected_serving:
+        raise ValueError("segmentation serving resources must match the pinned image's measured contract")
 
 
 def check(path):

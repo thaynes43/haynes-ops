@@ -16,7 +16,9 @@ for that revision. Record the image byte size and the run's
 [release.yaml](../../kubernetes/main/apps/ai/studio/segmentation-pending/release/release.yaml)
 before merging this measuring release. The release guard fetches the exact
 digest's OCI manifest and config and checks its resource contract. The
-`16Gi` request and limit are allowances for the first measurement.
+`16Gi` request and limit are the first measurement allowances and the
+image's minimums. If the measurement needs more room and the node has
+headroom, raise the release's measuring resources in Git with the same image.
 Run the blocks below from the merged Ops revision.
 
 ```bash
@@ -52,9 +54,20 @@ syncs to NFS and drops cached pages every 64 MiB. It rehashes the staged
 bytes, syncs the files and publishes the manifest and both verified
 directories together. The only writable mount is the existing Studio
 jobs subtree. A failed allocation remains private and needs a fresh suffix
-for the next attempt. Use the 2 GiB and 64-entry budget with 8 GiB and
+for the next attempt. Use the 2 GiB and 64-entry budget with 32 GiB and
 1,024 entries in reserve. CR-34 accepts the bounded entry budget when
-NFS reports the inode count as unavailable.
+NFS reports the inode count as unavailable. Published files are mode `0444`
+and directories are `0555`, readable by the smoke and sidecar at 10001:10001.
+
+Segmentation takes its pins from the image's two-model profile and publishes
+both safetensors sets, their allowlisted auxiliary files and the profile in a
+single rename. Matting stages one ONNX graph and its bundled licence. The
+larger payload accounts for the 2 GiB budget and 540 s download deadline.
+The entry budget covers the two model directories and their auxiliary files.
+Segmentation allows exact same-host cache redirects for auxiliary files and
+releases read-back pages every 64 MiB to bound the two-model rehash. The
+provisioners each ship in a stage-local hashed ConfigMap. The release tests
+check that their directory sync and write/cache flush functions match.
 
 ```bash
 (
@@ -73,13 +86,13 @@ NFS reports the inode count as unavailable.
   status=0
   check 'Flux provision script present' kubectl -n ai get "configmap/$config" -o name || status=1
   check 'Studio byte and reported inode reserve' kubectl -n ai exec deploy/studio-render -c app -- sh -ec '
-    df -Pk /studio/jobs | awk "NR == 2 { print; ok = (\$4 >= 10485760) } END { exit !ok }"
+    df -Pk /studio/jobs | awk "NR == 2 { print; ok = (\$4 >= 35651584) } END { exit !ok }"
     df -Pi /studio/jobs | awk "NR == 2 { print; ok = (\$4 == \"-\" || \$4 >= 1088) } END { exit !ok }"
   ' || status=1
   if (( status )); then exit "$status"; fi
   check 'Provision Job created' kubectl -n ai create -f - <<< "$provision"
-  check 'Provision Job completed' kubectl -n ai wait --for=condition=complete "job/$job" --timeout=11m || status=1
-  report=$(kubectl -n ai logs "job/$job" | tail -n 1) || report=
+  check 'Provision Job completed' bash scripts/studio-segmentation/wait-job.sh "$job" 660 || status=1
+  report=$(kubectl -n ai --request-timeout=10s logs "job/$job" -c segmentation | tail -n 1) || report=
   printf '%s\n' "$report"
   check 'Provision report matches both model pins and release' jq -e --arg allocation "$allocation" \
     --arg image "${image##*@}" '
@@ -90,10 +103,7 @@ NFS reports the inode count as unavailable.
       "48c14467e5cf9e51870511feb72c89688e82dd74523142c0538b663e193ac2a7"
     ]
   ' <<< "$report" || status=1
-  if (( status )); then
-    kubectl -n ai get "job/$job" -o wide
-    exit "$status"
-  fi
+  if (( status )); then exit "$status"; fi
   profile=$(jq -er '.profile_sha256' <<< "$report")
   kubectl -n ai exec -i deploy/studio-render -c app -- python -B - "$allocation" "$profile" <<'PY'
 from hashlib import sha256
@@ -132,12 +142,15 @@ PY
 ## Measure the first offline smoke
 
 Reserve an exclusive heavy-job window on talosw01. The idle gate requires
-current node CPU at most 50%, node memory at most 70%, the render app
-at most one CPU, Wan with no active job and a clear shared ComfyUI queue.
+current node CPU at most 10%, node memory at most 25%, the render app
+at most 250m CPU, Wan with no active job and a clear shared ComfyUI queue.
 Record the readings and hold competing heavy render, Wan, Foley and local
 model work for this window. The smoke requests 16 GiB for scheduling and
-limits CPU to two and memory to 16 GiB for measurement. The Job has a
-900 s total deadline to fit both bounded passes, with no retries. It runs
+limits CPU to two and memory to 16 GiB for the first measurement. It runs at
+10001:10001 with read-only weights. The 250m CPU request means timings may
+include contention. Timings are indicative and measured memory sets the
+serving memory limit. The Job has a 900 s total deadline to fit both bounded
+passes, with no retries. It runs
 memory-mapped first and buffered second, in separate child processes.
 It compares PNG bytes and canonical receipts with the experimental
 load field removed. Startup and each request keep the 60 s bounds.
@@ -161,20 +174,23 @@ with urlopen(sys.argv[1], timeout=5) as response:
   stage=kubernetes/main/apps/ai/studio/segmentation-pending
   allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
   image=$(yq '.data.image' "$stage/release/release.yaml")
+  measurement=$(yq '.data.measurementLimit' "$stage/release/release.yaml")
+  limit_bytes=$(( ${measurement%Gi} * 1024 * 1024 * 1024 ))
   provision="studio-segmentation-provision-${allocation##*-}"
   status=0
-  check 'Provision Job complete' kubectl -n ai wait --for=condition=complete "job/$provision" --timeout=5s || status=1
-  profile=$(kubectl -n ai logs "job/$provision" | tail -n 1 | jq -r '.profile_sha256 // ""') || profile=
+  check 'Provision Job complete' bash scripts/studio-segmentation/wait-job.sh "$provision" 15 || status=1
+  profile=$(kubectl -n ai --request-timeout=10s logs "job/$provision" -c segmentation |
+    tail -n 1 | jq -r '.profile_sha256 // ""') || profile=
   check 'Provision profile digest available' test "${#profile}" -eq 64 || status=1
   node=$(kubectl top node talosw01 --no-headers) || node=
   render=$(kubectl -n ai top pod --containers -l app.kubernetes.io/name=studio-render --no-headers) || render=
   printf '%s\n%s\n' "$node" "$render"
   check 'Node load within measuring window' awk '
-    $1 == "talosw01" && $3 ~ /^[0-9]+%$/ && $5 ~ /^[0-9]+%$/ && $3+0 <= 50 && $5+0 <= 70 { ok = 1 }
+    $1 == "talosw01" && $3 ~ /^[0-9]+%$/ && $5 ~ /^[0-9]+%$/ && $3+0 <= 10 && $5+0 <= 25 { ok = 1 }
     END { exit !ok }
   ' <<< "$node" || status=1
   check 'Offline render app idle' awk '
-    $2 == "app" { count++; ok = ($3 ~ /^[0-9]+m$/ && $3+0 <= 1000) }
+    $2 == "app" { count++; ok = ($3 ~ /^[0-9]+m$/ && $3+0 <= 250) }
     END { exit !(count == 1 && ok) }
   ' <<< "$render" || status=1
   wan=$(endpoint deploy/wan-video api http://127.0.0.1:8080/health) || wan=
@@ -187,14 +203,14 @@ with urlopen(sys.argv[1], timeout=5) as response:
   smoke=$(kustomize build "$stage/smoke")
   job=$(yq '.metadata.name' <<< "$smoke")
   check 'Smoke Job created' kubectl -n ai create -f - <<< "$smoke"
-  check 'Smoke Job completed' kubectl -n ai wait --for=condition=complete "job/$job" --timeout=16m || status=1
-  report=$(kubectl -n ai logs "job/$job" | tail -n 1) || report=
+  check 'Smoke Job completed' bash scripts/studio-segmentation/wait-job.sh "$job" 960 || status=1
+  report=$(kubectl -n ai --request-timeout=10s logs "job/$job" -c segmentation | tail -n 1) || report=
   printf '%s\n' "$report"
   check 'Exact image, profile and two tested settings' jq -e --arg image "${image##*@}" --arg profile "$profile" '
     .image_digest == $image and .profile_sha256 == $profile and [.runs[].weight_load] == ["mmap", "buffered"]
   ' <<< "$report" || status=1
-  check 'Memory by phase within the 16 GiB measuring allowance' jq -e '
-    .cgroup_limit_bytes == 17179869184 and .verdicts.cgroup_allowance == true and
+  check 'Memory by phase and measured cgroup limit' jq -e --argjson limit "$limit_bytes" '
+    (.cgroup_limit_bytes | type == "number" and . >= $limit) and .verdicts.cgroup_allowance == true and
     ([.runs[].verdicts.phase_memory] == [true, true])
   ' <<< "$report" || status=1
   check 'Byte parity across load strategies' jq -e '.verdicts.byte_parity == true' <<< "$report" || status=1
@@ -206,7 +222,10 @@ with urlopen(sys.argv[1], timeout=5) as response:
 
 Keep the final JSON report with the story. Record both cold starts, per-case
 wall times, per-phase worker peak and resident RSS, and container cgroup
-peak bytes. The visible-face and hidden-prop fractions exercise the fixed
+peak and limit bytes. The Job waits stop on `Complete` or `Failed`.
+A failed poll can recover at the next read. On failure or timeout, the
+wait prints the Job, pod termination state when available and container logs.
+The visible-face and hidden-prop fractions exercise the fixed
 synthetic arrangement. Story [452](https://work.haynesnetwork.com/work_packages/452)
 owns real fixture quality and the adapter's build-time layout decision.
 
@@ -218,8 +237,10 @@ Studio image and pin its digest and measured fields in the Ops release.
 Give it a fresh allocation and run a bounded smoke on that exact pin.
 The measuring image refuses `serve`. The staged Helm overlay reserves two
 of the 20 offline render CPUs and subtracts the measured limit from the
-32 GiB offline render ceiling. Cap manual render workers at 16 in this
-split. If another companion already draws from that budget, account for
+32 GiB offline render ceiling. The sidecar runs at 10001:10001 with
+read-only weights and shares scratch with the render app via fsGroup 1000.
+Cap manual render workers at 16 in this split. If another companion already
+draws from that budget, account for
 both before changing the render Flux path. Keep the four-CPU queue lane
 separate.
 
