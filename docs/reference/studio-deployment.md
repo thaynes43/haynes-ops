@@ -1502,6 +1502,9 @@ the sample file. The loop samples at most one request per second for
 sample must return after the replacement Ready check. The tolerance is **zero**
 unexpected statuses or transport errors. The surviving API is Ready at
 the start, so even a brief ingress failure is evidence to keep and investigate.
+The API has no `preStop` drain. A 502 around deletion can mean Traefik
+still had the terminating endpoint in its routing table. Keep that
+sample and count it as a failed request.
 On any refusal or failed check, record it and stop without a second deletion.
 
 ```bash
