@@ -49,6 +49,17 @@ image's offline runtime.
 
 ## Provision one new allocation
 
+**Changed (2026-11-25): the first provisioning Job refused the share, and the
+allocation suffix is now `02`.** `studio-segmentation-provision-01` exited in
+one second with `free_file_reserve_too_small` before creating anything. The
+Studio share reports a file total but `-1` for free files; the provisioner
+treated only "no file total" as an unreported count and compared `-1` with the
+reserve. The runbook's own `df` gate had passed, because `df` shows `-` there.
+The provisioner now treats a negative or all-ones free count as unreported
+(CR-34's accepted case) and still enforces a count that is reported. No
+allocation directory was created by the failed Job; a Job's name cannot be
+reused, so the retry uses a new suffix.
+
 The Job runs at 1000:1000 on talosw01 with a 1 GiB limit. The downloader
 syncs to NFS and drops cached pages every 64 MiB. It rehashes the staged
 bytes, syncs the files and publishes the manifest and both verified
