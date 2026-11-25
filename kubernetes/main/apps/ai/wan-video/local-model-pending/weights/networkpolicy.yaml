@@ -17,10 +17,10 @@ spec:
           rules:
             dns:
               - matchName: huggingface.co
-              - matchName: us.aws.cdn.hf.co
+              - matchPattern: "**.cdn.hf.co"
     - toFQDNs:
         - matchName: huggingface.co
-        - matchName: us.aws.cdn.hf.co
+        - matchPattern: "**.cdn.hf.co"
       toPorts:
         - ports:
             - {port: "443", protocol: TCP}

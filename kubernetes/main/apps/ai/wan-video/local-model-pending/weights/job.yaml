@@ -34,7 +34,7 @@ spec:
             limits: {cpu: "2", memory: 256Mi}
           volumeMounts:
             - {name: config, mountPath: /config, readOnly: true}
-            - {name: workspace, mountPath: /workspace}
+            - {name: workspace, mountPath: /workspace/local-model-weights, subPath: local-model-weights}
       volumes:
         - name: config
           configMap:

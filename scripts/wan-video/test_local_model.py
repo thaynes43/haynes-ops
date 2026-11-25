@@ -48,6 +48,7 @@ class FakeModel:
         self.f = fixture
 
     def load(self):
+        self.f.baseline_at_load = self.f.lane.read_state().get("baseline_memory_mib")
         self.f.record_work("load")
         self.f.memory = self.f.load_memory
 
@@ -67,7 +68,7 @@ class FakeModel:
     def unload(self):
         self.f.record_work("unload")
         if self.f.free_on_unload:
-            self.f.memory = 64
+            self.f.memory = self.f.drained_memory
 
 
 class InlineProcess:
@@ -76,6 +77,7 @@ class InlineProcess:
         self.f = fixture
         self.profile = profile
         self.backend = FakeModel(fixture)
+        self.resident = False
 
     def execute(self, request, deadline, parent_fds):
         operation = request["operation"]
@@ -83,19 +85,25 @@ class InlineProcess:
         try:
             if operation == "load":
                 self.backend.load()
+                self.resident = True
             elif operation == "unload":
-                self.backend.unload()
+                self.stop()
             else:
                 reply = sidecar.infer(self.backend, self.f.root, self.profile, request)
                 if reply.get("error") == "output_limit":
-                    self.backend.unload()
+                    self.stop()
                 return reply
         except ValueError:
+            self.stop()
             return {"error": "backend_failed"}
         return {}
 
+    def alive(self):
+        return self.resident
+
     def stop(self):
-        pass
+        self.backend.unload()
+        self.resident = False
 
 
 class LocalModelTests(unittest.TestCase):
@@ -112,7 +120,9 @@ class LocalModelTests(unittest.TestCase):
         self.events = []
         self.prompts = []
         self.engine_calls = []
-        self.memory = 64
+        self.memory = self.drained_memory = self.other_memory = 64
+        self.wan_cache = None
+        self.baseline_at_load = None
         self.load_memory = 5000
         self.report_card = CARD
         self.card_temperature = 50
@@ -188,7 +198,11 @@ class LocalModelTests(unittest.TestCase):
             with engine:
                 api.require_empty_queue()
 
-        worker = sidecar.Sidecar(self.root, profile, None, check_idle=check_idle, sample=self.card_sample)
+        def evict_cache():
+            self.engine("/free", {"unload_models": True, "free_memory": True})
+
+        worker = sidecar.Sidecar(self.root, profile, None, check_idle=check_idle,
+                                 evict_cache=evict_cache, sample=self.card_sample)
         worker.model = InlineProcess(self, profile)
         return worker
 
@@ -199,7 +213,7 @@ class LocalModelTests(unittest.TestCase):
 
     def gpu_sample(self):
         return {"gpus": [self.card_sample(CARD), {
-            "gpu_uuid": OTHER, "memory_mib": 64, "temperature_c": 50, "utilization_percent": 0,
+            "gpu_uuid": OTHER, "memory_mib": self.other_memory, "temperature_c": 50, "utilization_percent": 0,
         }]}
 
     def engine(self, path, body=None):
@@ -209,14 +223,22 @@ class LocalModelTests(unittest.TestCase):
         if path == "/system_stats":
             return {}
         if path == "/free":
+            self.assertEqual(body, {"unload_models": True, "free_memory": True})
+            competing = api.acquire_compute()
+            if competing is not None:
+                competing.close()
+                self.fail("Cache eviction requires the compute lease")
             self.events.append(("free_cache", self.memory))
-            self.memory = 64
+            self.memory = self.drained_memory
+            self.other_memory = 64
             return None
         if path == "/prompt":
             self.events.append(("wan_prompt", self.memory))
             prompt_id = body.get("prompt_id", "legacy-prompt")
             filename = body["client_id"] + "_00001_.mp4"
             self.prompts.append((prompt_id, filename))
+            if self.wan_cache is not None:
+                self.memory, self.other_memory = self.wan_cache
             output = self.root / "output" / "video" / filename
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_bytes(b"synthetic")
@@ -324,24 +346,51 @@ class LocalModelTests(unittest.TestCase):
             exchange.assert_not_called()
         self.assertFalse(self.lane.path.exists())
 
-    def test_mounted_outage_skips_sidecar_only_without_residency_record(self):
+    def test_mounted_outage_refuses_without_latching_even_with_engine_cache(self):
+        self.memory = 5000
         with patch.object(local, "exchange", side_effect=ConnectionRefusedError) as exchange:
             api.recover_with_local()
-            self.assertEqual(self.generate("i2v")["state"], "succeeded")
+            job = self.generate("i2v")
+            self.assertEqual(job["admission_code"], "local_model_unavailable")
             with patch.object(product_foley, "CONFIG", self.config), \
                     patch.multiple(product_foley.service, ROOT=self.root, idle=api.check_local_queue), \
                     api.acquire_compute() as lease:
-                product_foley.prepare_foley(lease)
-            exchange.assert_not_called()
-        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
-        with patch.object(local, "exchange", side_effect=ConnectionRefusedError) as exchange:
-            job = self.generate("s2v", "e1" * 16)
-            self.assertEqual((job["error"], job["admission_code"]), (
-                "RuntimeError: Rack GPUs are busy; refusing to start a competing job", "local_model_unavailable",
-            ))
-            exchange.assert_called_once_with(self.root, {"action": "status"})
-        self.assertEqual(len(self.prompts), 1)
-        self.assertTrue(self.lane.read_state()["resident"])
+                with self.assertRaises(product.AdmissionRefusal) as refusal:
+                    product_foley.prepare_foley(lease)
+                self.assertEqual(refusal.exception.code, "local_model_unavailable")
+            job = self.perform(LOAD, "load")
+            self.assertEqual(job["error"], "local_model_unavailable")
+            self.assertEqual(exchange.call_count, 3)
+            self.assertFalse(self.lane.path.exists())
+        self.assertEqual(self.work("wan_prompt", "free_cache", "load"), [])
+        self.assertEqual(self.generate("i2v", "e1" * 16)["state"], "succeeded")
+
+    def test_wan_foley_sequence_keeps_idle_engine_cache_usable(self):
+        self.wan_cache = (5000, 8000)
+        self.assertEqual(self.generate("i2v", "a1" * 16)["state"], "succeeded")
+        with patch.object(self.worker, "sample", side_effect=OSError("No sidecar GPU telemetry")):
+            self.assertEqual(self.generate("i2v", "a2" * 16)["state"], "succeeded")
+        foley = product_foley.service
+        job = {"id": "a3" * 16, "state": "queued"}
+
+        def fake_audio_worker(job, lease):
+            with lease:
+                self.engine("/free", {"unload_models": True, "free_memory": True})
+                self.events.append(("foley", self.memory))
+                self.memory, self.other_memory = self.wan_cache
+                job["state"] = "succeeded"
+
+        with patch.object(product_foley, "CONFIG", self.config), \
+                patch.multiple(foley, ROOT=self.root, idle=api.check_local_queue):
+            product_foley.generate(job, api.acquire_compute(), fake_audio_worker)
+        self.assertEqual(job["state"], "succeeded")
+        self.assertEqual(self.generate("i2v", "a4" * 16)["state"], "succeeded")
+        self.assertEqual(self.work("wan_prompt", "foley"), [
+            ("wan_prompt", 64), ("wan_prompt", 5000), ("foley", 64), ("wan_prompt", 5000),
+        ])
+        self.assertFalse(self.lane.path.exists())
+        self.assertFalse(api.UNSAFE)
+        self.assertEqual(self.work("free_cache"), [("free_cache", 5000)])
 
     def test_no_profile_foley_startup_and_health_keep_the_pinned_service_contract(self):
         self.config.joinpath("local-model.json").unlink()
@@ -662,8 +711,8 @@ class LocalModelTests(unittest.TestCase):
         snapshot_status = self.worker.status
         self.text = '{"scene_id":"scene1","shots":[{"technical_direction":"Closeup."}]}'
 
-        def changed():
-            snapshot = snapshot_status()
+        def changed(**kwargs):
+            snapshot = snapshot_status(**kwargs)
             receipt = snapshot.get("receipt")
             if receipt and receipt["operation"] == "infer":
                 return {**snapshot, "receipt": {**receipt, "result": {**receipt["result"], "text": "{}"}}}
@@ -722,10 +771,18 @@ class LocalModelTests(unittest.TestCase):
                 job = self.perform(f"{offset + 20:032x}", "infer", mode="plan_v1")
                 self.assertEqual(job["error"], "output_limit")
                 self.assertEqual(job["released_memory_mib"], 64)
-                self.assertFalse(self.worker.resident)
+                self.assertFalse(self.worker.model.alive())
                 self.assertFalse(self.lane.path.exists())
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
         self.assertEqual(self.perform(UNLOAD, "unload")["state"], "succeeded")
+
+    def test_unexpected_supervisor_failure_reaps_and_records_release(self):
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        with patch.object(self.worker.model, "execute", side_effect=RuntimeError("Unexpected supervisor error")):
+            job = self.perform(INFER, "infer")
+        self.assertEqual((job["error"], job["released_memory_mib"]), ("backend_failed", 64))
+        self.assertFalse(self.worker.model.alive())
+        self.assertFalse(self.lane.path.exists())
 
     def test_output_limit_with_memory_still_allocated_holds(self):
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
@@ -740,8 +797,8 @@ class LocalModelTests(unittest.TestCase):
         self.text = '{"scene_id":"scene1","shots":[{"technical_direction":"Closeup."}]}'
         snapshot_status = self.worker.status
 
-        def changed():
-            snapshot = snapshot_status()
+        def changed(**kwargs):
+            snapshot = snapshot_status(**kwargs)
             receipt = snapshot.get("receipt")
             if receipt and receipt["operation"] == "infer":
                 return {**snapshot, "receipt": {**receipt, "result": {**receipt["result"], "output_tokens": 13}}}
@@ -886,30 +943,86 @@ class LocalModelTests(unittest.TestCase):
         self.assertEqual(len(self.work("load")), 1)
         self.assertTrue(product.read_job(self.lane.path)["held"])
 
-    def test_memory_above_ceiling_without_state_holds_wan_and_foley(self):
-        # Model state disappeared and the sidecar is unreachable. Independent
-        # telemetry still finds allocations on the profile's card.
+    def test_live_child_without_state_holds_wan_and_foley_even_with_low_memory(self):
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
         self.lane.path.unlink()
-        with patch.object(local, "exchange", side_effect=ConnectionRefusedError) as exchange:
-            job = self.generate("s2v")
-            self.assertEqual(job["admission_code"], "local_model_handover")
-            self.assertEqual(self.prompts, [])
-            self.assertTrue(product.read_job(self.lane.path)["held"])
-            with patch.object(product_foley, "CONFIG", self.config), \
-                    patch.object(product_foley.service, "ROOT", self.root), api.acquire_compute() as lease:
-                with self.assertRaises(product.AdmissionRefusal) as refusal:
-                    product_foley.prepare_foley(lease)
-                self.assertEqual(refusal.exception.code, "local_model_handover")
-            exchange.assert_not_called()
-
-    def test_unaccounted_memory_refuses_local_load_before_any_mutation(self):
-        self.memory = PROFILE["unloaded_max_mib"] + 1
-        with patch.object(local, "exchange", side_effect=ConnectionRefusedError):
-            job = self.perform(LOAD, "load")
-        self.assertEqual(job["error"], "local_model_held")
+        # An idle GPU reading cannot override proof of the model process.
+        self.memory = 64
+        job = self.generate("s2v")
+        self.assertEqual(job.get("admission_code"), "local_model_handover")
+        self.assertEqual(self.prompts, [])
         self.assertTrue(product.read_job(self.lane.path)["held"])
-        self.assertEqual(self.work("load", "free_cache"), [])
+        self.lane.path.unlink()
+        with patch.object(product_foley, "CONFIG", self.config), \
+                patch.multiple(product_foley.service, ROOT=self.root, idle=api.check_local_queue), \
+                api.acquire_compute() as lease:
+            with self.assertRaises(product.AdmissionRefusal) as refusal:
+                product_foley.prepare_foley(lease)
+            self.assertEqual(refusal.exception.code, "local_model_handover")
+        self.assertTrue(product.read_job(self.lane.path)["held"])
+
+    def test_stale_get_accepts_cache_and_refuses_sidecar_outage_without_a_hold(self):
+        request = self.body("load")
+        with api.acquire_compute():
+            job = self.lane.create(LOAD, request)
+            job.update(state="running")
+            local.write_record(local.job_path(self.root, LOAD), job)
+        self.memory = 5000
+        with server(api.Handler) as url:
+            with patch.object(local, "exchange", side_effect=ConnectionRefusedError):
+                status, _, response = call(url, endpoint(LOAD))
+                self.assertEqual((status, response["code"]), (503, "local_model_unavailable"))
+            status, _, response = call(url, endpoint(LOAD))
+        self.assertEqual((status, response["error"]), (200, "submission_lost"))
+        self.assertEqual(self.memory, 5000)
+        self.assertFalse(self.lane.path.exists())
+        self.assertEqual(self.work("free_cache", "load"), [])
+
+    def test_load_evicts_idle_cache_and_releases_to_its_drained_baseline(self):
+        self.memory, self.drained_memory = 5600, 96
+        loaded = self.perform(LOAD, "load")
+        self.assertEqual((loaded["state"], loaded["baseline_memory_mib"]), ("succeeded", 96))
+        self.assertEqual(self.lane.read_state()["baseline_memory_mib"], 96)
+        self.assertEqual(self.baseline_at_load, 96)
+        evict = self.events.index(("free_cache", 5600))
+        load = self.events.index(("load", LOAD, "running", False))
+        self.assertIn(("memory", CARD, 96), self.events[evict + 1:load])
+        released = self.perform(UNLOAD, "unload")
+        self.assertEqual((released["state"], released["released_memory_mib"]), ("succeeded", 96))
+        self.assertEqual(released["baseline_memory_mib"], 96)
+        self.assertFalse(self.lane.path.exists())
+
+    def test_load_rechecks_queue_before_evicting_cache_and_after_post(self):
+        self.memory = 5600
+        foreign = {**EMPTY, "queue_running": [[0, "late-foreign"]]}
+        for index, observations in enumerate(((EMPTY, foreign), (EMPTY, EMPTY, foreign))):
+            with self.subTest(index=index), patch.object(self.worker, "check_idle") as check:
+                check.side_effect = [
+                    None if queue is EMPTY else local.UnknownEngineWork("Foreign work", engine_busy=True)
+                    for queue in observations
+                ]
+                job = self.perform(f"{index + 10:032x}", "load")
+                self.assertEqual((job["error"], job["admission_code"]), ("engine_work_unknown", "engine_busy"))
+                self.assertFalse(self.lane.path.exists())
+                self.assertEqual(len(self.work("free_cache")), index)
+        self.assertEqual(self.work("load"), [])
+
+    def test_load_refuses_undrained_card_at_profile_ceiling_without_a_hold(self):
+        self.memory = 5600
+        self.drained_memory = PROFILE["unloaded_max_mib"] + 1
+        # The first sample after eviction exceeds the configured cap.
+        with patch.object(sidecar.time, "monotonic", side_effect=[0, 0, PROFILE["load_timeout_seconds"]]), \
+                patch.object(sidecar.time, "sleep"):
+            job = self.perform(LOAD, "load")
+        self.assertEqual((job["error"], job["admission_code"]), ("model_card_busy", "gpu_busy"))
+        self.assertEqual(self.work("load"), [])
+        self.assertFalse(self.lane.path.exists())
+
+    def test_invalid_baseline_refuses_handover_before_dispatch(self):
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        self.lane.write_state(self.worker.instance, True, baseline=False)
+        self.assertEqual(self.generate("i2v")["admission_code"], "local_model_handover")
+        self.assertEqual(self.work("unload", "wan_prompt"), [])
 
     def test_changed_profile_cannot_discard_a_resident_reservation(self):
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
@@ -957,7 +1070,7 @@ class LocalModelTests(unittest.TestCase):
             job = self.lane.create(INFER, request)
             job.update(state="running", started_at=0)
             local.write_record(local.job_path(self.root, INFER), job)
-            self.lane.write_state(self.worker.instance, True, pending=INFER)
+            self.lane.write_state(self.worker.instance, True, pending=INFER, baseline=64)
             self.block_infer = True
             conn.connect(str(local.socket_path(self.root)))
             local.send_packet(conn, {"action": "run", "id": INFER, "request": request}, (lease.fileno(),))
@@ -1021,7 +1134,7 @@ class LocalModelTests(unittest.TestCase):
             job = self.lane.create(INFER, request)
             job.update(state="running", started_at=0)
             local.write_record(local.job_path(self.root, INFER), job)
-            self.lane.write_state(self.worker.instance, True, pending=INFER)
+            self.lane.write_state(self.worker.instance, True, pending=INFER, baseline=64)
         self.worker = self.new_sidecar()
         self.memory = 64
         api.recover_with_local()
@@ -1075,7 +1188,7 @@ class LocalModelTests(unittest.TestCase):
             job = self.lane.create(INFER, request)
             job.update(state="running")
             local.write_record(local.job_path(self.root, INFER), job)
-            self.lane.write_state(self.worker.instance, True, pending=INFER)
+            self.lane.write_state(self.worker.instance, True, pending=INFER, baseline=64)
             changed = {**request, "prompt": "A different request"}
             with self.assertRaises(ValueError):
                 local.exchange(self.root, {"action": "run", "id": INFER, "request": changed}, lease)

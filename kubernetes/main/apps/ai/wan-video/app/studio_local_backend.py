@@ -1,5 +1,6 @@
 """Single-card, in-process llama.cpp and libmtmd adapter for the Wan lease."""
 import argparse
+import codecs
 import ctypes as c
 import json
 import os
@@ -57,7 +58,7 @@ def encode_json(value):
 def weight_paths(profile, root, pins):
     if (profile["model"] != pins["model"] or "s2v_gpu_uuid" in profile
             or profile["context_tokens"] > 8192 or profile["max_output_tokens"] > 2048
-            or profile["unloaded_max_mib"] > 512):
+            or profile["unloaded_max_mib"] > local.MAX_UNLOADED_MIB):
         raise ValueError("This image serves only the selected CR-20 profile")
     directory = root / pins["model"] / pins["revision"]
     with (directory / "manifest.json").open("rb") as manifest:
@@ -128,7 +129,11 @@ class LlamaBackend:
             if size.value > BYTE_LIMIT:
                 # Do not copy an oversized response across the native boundary.
                 return " " * (BYTE_LIMIT + 1), output_tokens.value, False
-            answer = c.string_at(data, size.value).decode("utf-8", errors="surrogateescape")
+            # A token may end partway through a UTF-8 character. A capped
+            # answer can discard that suffix, while invalid bytes elsewhere
+            # still fail the sidecar's independent UTF-8 output check.
+            decoder = codecs.getincrementaldecoder("utf-8")("surrogateescape")
+            answer = decoder.decode(c.string_at(data, size.value), final=complete.value)
             return answer, output_tokens.value, complete.value
         finally:
             prepared.close()

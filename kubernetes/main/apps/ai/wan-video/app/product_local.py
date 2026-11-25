@@ -29,6 +29,13 @@ MAX_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_VISUAL_TOKENS = 1024
 MAX_PACKET = 64 * 1024
 STATUS_SECONDS = 15
+MAX_UNLOADED_MIB = 512
+REAPED_ERRORS = frozenset({"operation_timeout", "backend_exited", "backend_failed", "output_limit"})
+LOAD_REFUSALS = {
+    "model_card_busy": "gpu_busy",
+    "model_card_hot": "gpu_warm",
+    "local_model_unavailable": "local_model_unavailable",
+}
 PROFILE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}")
 
 
@@ -62,7 +69,7 @@ def load_profile(config):
         integers = {
             "context_tokens": (2, 262144), "max_output_tokens": (1, 4096),
             "load_timeout_seconds": (1, 300), "infer_timeout_seconds": (1, 300),
-            "unload_timeout_seconds": (1, 300), "unloaded_max_mib": (0, 2048),
+            "unload_timeout_seconds": (1, 300), "unloaded_max_mib": (0, MAX_UNLOADED_MIB),
             "resident_min_mib": (1, 22000), "resident_max_mib": (1, 22000),
         }
         required = integers.keys() | {"model", "gpu_uuid"}
@@ -264,12 +271,13 @@ class Lane:
             or type(state.get("resident")) is not bool
             or not valid_id(state.get("instance"))
             or ("pending" in state and not valid_id(state["pending"]))
+            or ("baseline_memory_mib" in state and not gpu_range(state["baseline_memory_mib"], 0, 32768))
             or state.get("held")
         ):
             raise held()
         return state
 
-    def write_state(self, instance, resident, *, pending=None, hold=False):
+    def write_state(self, instance, resident, *, pending=None, baseline=None, hold=False):
         if not (resident or pending or hold):
             if self.path.exists():
                 self.path.unlink()
@@ -278,20 +286,20 @@ class Lane:
         state = {"profile_sha256": self.profile_hash, "instance": instance, "resident": resident}
         if pending:
             state["pending"] = pending
+        if baseline is not None:
+            state["baseline_memory_mib"] = baseline
         if hold:
             state["held"] = True
         write_record(self.path, state)
 
-    def status(self):
+    def status(self, *, residency_only=False):
         try:
-            snapshot = exchange(self.root, {"action": "status"})
+            snapshot = exchange(self.root, {"action": "residency" if residency_only else "status"})
             if (snapshot.get("profile_sha256") != self.profile_hash
                     or not valid_id(snapshot.get("instance"))
                     or type(snapshot.get("resident")) is not bool
                     or snapshot.get("gpu_uuid") != self.profile["gpu_uuid"]
-                    or not gpu_range(snapshot.get("memory_mib"), 0, 32768)
-                    or not gpu_range(snapshot.get("utilization_percent"), 0, 100)
-                    or not gpu_range(snapshot.get("temperature_c"), 0, 120)):
+                    or (not residency_only and not valid_card_sample(snapshot, self.profile["gpu_uuid"]))):
                 raise ValueError("Invalid local-model status")
         except (OSError, ValueError, RecursionError) as exc:
             raise product.RequestError("local_model_unavailable", "Local-model sidecar state is unavailable", 503) from exc
@@ -302,6 +310,9 @@ class Lane:
 
     def unloaded(self, snapshot):
         return self.own_card_idle(snapshot) and snapshot["memory_mib"] <= self.profile["unloaded_max_mib"]
+
+    def released(self, snapshot, baseline):
+        return baseline is not None and self.unloaded(snapshot) and snapshot["memory_mib"] <= baseline
 
     def resident(self, snapshot):
         return self.own_card_idle(snapshot) and (
@@ -328,7 +339,7 @@ class Lane:
         return job
 
     def finish(self, job, *, error=None, result=None, admission_code=None, reason_code=None,
-               released_memory_mib=None):
+               released_memory_mib=None, baseline_memory_mib=None):
         if job["state"] in {"succeeded", "failed"}:
             return job
         job.update(state="failed" if error else "succeeded", finished_at=time.time())
@@ -340,55 +351,42 @@ class Lane:
                 job["reason_code"] = reason_code
         elif result is not None:
             job["result"] = result
+        if baseline_memory_mib is not None:
+            job["baseline_memory_mib"] = baseline_memory_mib
         if released_memory_mib is not None:
             job["released_memory_mib"] = released_memory_mib
         write_record(job_path(self.root, job["id"]), job)
         return job
 
-    def check_absent(self, snapshot):
-        if snapshot.get("resident") or self.above_unloaded_ceiling(snapshot):
-            self.write_state(snapshot.get("instance", uuid.uuid4().hex), snapshot.get("resident", False), hold=True)
-            raise held()
-
-    def above_unloaded_ceiling(self, snapshot):
-        return snapshot["memory_mib"] > self.profile["unloaded_max_mib"]
-
-    def check_unrecorded_memory(self):
-        # Inspect the GPU directly so an unavailable sidecar cannot hide a
-        # missing journal with outstanding allocations.
-        try:
-            sample = sample_card(self.profile["gpu_uuid"])
-        except (OSError, ValueError, csv.Error, subprocess.SubprocessError) as exc:
-            raise product.RequestError("local_model_unavailable", "Model card state is unavailable", 503) from exc
-        if not gpu_range(sample["memory_mib"], 0, 32768):
-            raise product.RequestError("local_model_unavailable", "Model card state is unavailable", 503)
-        self.check_absent(sample)
-
     def reconcile(self, state=None):
         """Resolve the only possible outstanding dispatch under a newly held lease."""
         if state is None:
             state = self.read_state()
-        try:
-            snapshot = self.status()
-        except product.RequestError:
-            if state is None:
-                self.check_unrecorded_memory()
-            raise
         if state is None:
-            self.check_absent(snapshot)
+            snapshot = self.status(residency_only=True)
+            if snapshot["resident"]:
+                self.write_state(snapshot["instance"], True, hold=True)
+                raise held()
+            return snapshot
+
+        baseline = state.get("baseline_memory_mib")
+        was_resident = state["resident"]
+        pending = state.get("pending")
+        # No baseline is written until immediately before the first child
+        # starts. Before that point only process evidence is needed.
+        snapshot = self.status(residency_only=baseline is None and not was_resident)
         instance = snapshot["instance"]
-        was_resident = state["resident"] if state else False
-        pending = state.get("pending") if state else None
         job = self.read(pending) if pending else None
         if pending and (not job or job.get("id") != pending):
             raise held()
 
-        if state and state["instance"] != instance:
+        if state["instance"] != instance:
             # GPU resources from a dead sidecar can outlive its process briefly.
-            if snapshot["resident"] or not self.unloaded(snapshot):
+            needs_proof = was_resident or baseline is not None
+            if snapshot["resident"] or (needs_proof and not self.released(snapshot, baseline)):
                 if job:
                     self.finish(job, error="residency_unverified")
-                self.write_state(instance, was_resident, pending=pending, hold=True)
+                self.write_state(instance, was_resident, pending=pending, baseline=baseline, hold=True)
                 raise held()
             if job:
                 self.finish(job, error="sidecar_restarted")
@@ -403,7 +401,7 @@ class Lane:
         if matched and receipt.get("operation") != job["operation"]:
             raise held()
         error = result = admission_code = reason_code = None
-        reaped_errors = {"operation_timeout", "backend_exited", "output_limit"}
+        reaped = False
         if matched:
             error = receipt.get("error")
             if error is None:
@@ -415,9 +413,10 @@ class Lane:
                     elif not valid_result_mode(job, result):
                         error = "invalid_result"
                         reason_code = "mode_mismatch"
-            elif error in reaped_errors:
+            elif error in REAPED_ERRORS:
                 # The supervisor reaped the model process before publishing
                 # this receipt. Still require the card's unloaded memory proof.
+                reaped = True
                 expected = False
             elif error in ("engine_work_unknown", "engine_queue_unavailable"):
                 # The sidecar declined the request before touching the model.
@@ -431,13 +430,15 @@ class Lane:
                     foreign_work = receipt.get("engine_busy") is True
                     if not foreign_work and not job.get("internal"):
                         self.finish(job, error=error, admission_code="engine_busy")
-                        self.write_state(instance, was_resident, pending=pending, hold=True)
+                        self.write_state(instance, was_resident, pending=pending, baseline=baseline, hold=True)
                         raise held()
                     if job.get("internal"):
                         error = "engine_busy" if foreign_work else "engine_queue_malformed"
                 self.finish(job, error=error, admission_code="engine_busy")
-                self.write_state(instance, was_resident)
+                self.write_state(instance, was_resident, baseline=baseline)
                 return snapshot
+            elif error in LOAD_REFUSALS and job["operation"] == "load" and not was_resident:
+                admission_code = LOAD_REFUSALS[error]
             elif error == "context_limit":
                 admission_code = "pre_admission_failed"
             elif error == "invalid_result" and job["operation"] == "infer" and "mode" in job:
@@ -448,35 +449,42 @@ class Lane:
         elif pending:
             error = "submission_lost"
 
-        # An unload receipt must agree with the card. Failed or missing dispatches
-        # also need memory proof when their pre-dispatch state was unloaded.
-        needs_unloaded_proof = bool(pending and not expected)
-        memory_ok = self.resident(snapshot) if expected else (
-            not needs_unloaded_proof or self.unloaded(snapshot)
-        )
-        if (matched and (not error or error in reaped_errors)
+        # With a baseline, any dispatch that left the child absent must
+        # prove release. A lost pre-dispatch request never touched the card.
+        needs_unloaded_proof = bool(pending and not expected and (
+            baseline is not None or reaped or (matched and error is None)
+        ))
+
+        def memory_ok(sample):
+            if expected:
+                return baseline is not None and self.resident(sample)
+            return not needs_unloaded_proof or self.released(sample, baseline)
+
+        verified = memory_ok(snapshot)
+        if (matched and (not error or reaped) and baseline is not None
                 and snapshot["resident"] == expected):
             for _ in range(3):
-                if memory_ok:
+                if verified:
                     break
                 time.sleep(1)
                 snapshot = self.status()
                 if snapshot["instance"] != instance or snapshot["resident"] != expected:
-                    memory_ok = False
+                    verified = False
                     break
-                memory_ok = self.resident(snapshot) if expected else self.unloaded(snapshot)
-        unsafe_error = error == "backend_failed"
-        if snapshot["resident"] != expected or not memory_ok or unsafe_error:
+                verified = memory_ok(snapshot)
+        unsafe_error = error == "backend_failed" and not reaped
+        if snapshot["resident"] != expected or not verified or unsafe_error:
             if job:
                 self.finish(job, error=error if unsafe_error else "residency_unverified",
-                            admission_code=admission_code if unsafe_error else None)
-            self.write_state(instance, snapshot["resident"], pending=pending, hold=True)
+                            reason_code=error if reaped else None, baseline_memory_mib=baseline)
+            self.write_state(instance, snapshot["resident"], pending=pending, baseline=baseline, hold=True)
             raise held()
         if job:
             self.finish(job, error=error, result=result, admission_code=admission_code, reason_code=reason_code,
+                        baseline_memory_mib=baseline if needs_unloaded_proof or job["operation"] == "load" else None,
                         released_memory_mib=snapshot["memory_mib"] if needs_unloaded_proof else None)
         if pending:
-            self.write_state(instance, expected)
+            self.write_state(instance, expected, baseline=baseline)
         return snapshot
 
     def run(self, job, request, lease, check_idle, *, snapshot=None):
@@ -489,11 +497,11 @@ class Lane:
                 return self.finish(job, error="model_not_loaded", admission_code="pre_admission_failed")
             if operation != "infer" and snapshot["resident"] == (operation == "load"):
                 return self.finish(job)
-            if operation == "load" and not self.unloaded(snapshot):
-                return self.finish(job, error="model_card_busy", admission_code="gpu_busy")
-            if operation != "unload" and snapshot["temperature_c"] >= 62:
+            if operation == "infer" and snapshot["temperature_c"] >= 62:
                 return self.finish(job, error="model_card_hot", admission_code="gpu_warm")
             check_idle()
+            state = self.read_state()
+            baseline = state.get("baseline_memory_mib") if state else None
         except product.AdmissionRefusal as exc:
             self.finish(job, error=exc.error, admission_code=exc.code)
             raise
@@ -505,7 +513,7 @@ class Lane:
             return self.finish(job, error=error, admission_code=code)
         job.update(state="running", started_at=time.time())
         write_record(job_path(self.root, job["id"]), job)
-        self.write_state(snapshot["instance"], snapshot["resident"], pending=job["id"])
+        self.write_state(snapshot["instance"], snapshot["resident"], pending=job["id"], baseline=baseline)
         try:
             exchange(self.root, {"action": "run", "id": job["id"], "request": request},
                      lease, self.profile[operation + "_timeout_seconds"] + STATUS_SECONDS)
@@ -521,10 +529,6 @@ class Lane:
     def prepare_other(self, cards, lease, check_idle):
         """Resolve outstanding work and evict conflicting residency before admission."""
         state = self.read_state()
-        if state is None:
-            check_idle()
-            self.check_unrecorded_memory()
-            return
         check_idle()
         snapshot = self.reconcile(state)
         if not snapshot["resident"] or self.profile["gpu_uuid"] not in cards:
@@ -559,8 +563,17 @@ def gpu_range(value, low, high):
     return type(value) in (int, float) and low <= value <= high
 
 
+def valid_card_sample(sample, card):
+    return (sample.get("gpu_uuid") == card
+            and gpu_range(sample.get("memory_mib"), 0, 32768)
+            and gpu_range(sample.get("utilization_percent"), 0, 100)
+            and gpu_range(sample.get("temperature_c"), 0, 120))
+
+
 def valid_result_bounds(profile, job, result):
-    if type(result) is not dict or result.keys() != {"text", "input_tokens", "output_tokens"}:
+    required = {"text", "input_tokens", "output_tokens"}
+    if (type(result) is not dict or not required <= result.keys() or result.keys() - required - {"truncated"}
+            or ("truncated" in result and (result["truncated"] is not True or job.get("mode", "text") != "text"))):
         return False
     inputs, outputs = result["input_tokens"], result["output_tokens"]
     cap = job.get("max_output_tokens", profile["max_output_tokens"])

@@ -13,7 +13,7 @@ data:
       "load_timeout_seconds": 120,
       "infer_timeout_seconds": 180,
       "unload_timeout_seconds": 15,
-      "unloaded_max_mib": null,
+      "unloaded_max_mib": 512,
       "resident_min_mib": 5120,
       "resident_max_mib": 12288
     }

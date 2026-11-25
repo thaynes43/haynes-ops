@@ -29,6 +29,8 @@ class ProcessBackend:
         if any("compute.lock" in entry.readlink().name for entry in Path("/proc/self/fd").iterdir()
                if entry.exists()):
             raise RuntimeError("Backend inherited the compute descriptor")
+        if self.scenario == "failed-load":
+            raise RuntimeError("Load failed after allocating")
         if self.scenario == "hung-load":
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
             signal.pause()
@@ -48,6 +50,8 @@ class ProcessBackend:
                 os._exit(0)
             (self.root / "helper.pid").write_text(str(helper))
             signal.pause()
+        if self.scenario == "failed-infer":
+            raise RuntimeError("Decode failed")
         if self.scenario == "oversized-infer":
             return "x" * (local.MAX_TEXT_BYTES + 1), 2, True
         if self.scenario == "dead-infer":
@@ -66,8 +70,15 @@ def serve_fixture(root, scenario):
         # becomes available only after its process has been reaped.
         pid_file = root / "model.pid"
         allocated = pid_file.exists() and Path(f"/proc/{child_pid(root)}").exists()
-        return {"gpu_uuid": card, "memory_mib": 5000 if allocated or (root / "memory.stuck").exists() else 64,
-                "temperature_c": 50, "utilization_percent": 0}
+        if allocated or (root / "memory.stuck").exists():
+            memory = 5000
+        elif (root / "memory.leaked").exists():
+            memory = 65
+        elif scenario == "tight-ceiling" and not pid_file.exists():
+            memory = 63
+        else:
+            memory = 64
+        return {"gpu_uuid": card, "memory_mib": memory, "temperature_c": 50, "utilization_percent": 0}
 
     listen = socket.socket.listen
 
@@ -75,8 +86,8 @@ def serve_fixture(root, scenario):
         listen(sock, backlog)
         print("ready", flush=True)
 
-    def make_sidecar(root, profile, factory, *, check_idle):
-        return original(root, profile, factory, check_idle=check_idle, sample=sample)
+    def make_sidecar(root, profile, factory, *, check_idle, evict_cache):
+        return original(root, profile, factory, check_idle=check_idle, evict_cache=evict_cache, sample=sample)
 
     original = sidecar.Sidecar
     os.environ.update(CUDA_VISIBLE_DEVICES=CARD, NVIDIA_VISIBLE_DEVICES=CARD)
@@ -85,8 +96,17 @@ def serve_fixture(root, scenario):
         profile["unloaded_max_mib"] = 63
     with patch.object(socket.socket, "listen", listening), patch.object(sidecar, "Sidecar", make_sidecar), \
             patch.object(api, "ROOT", root), patch.object(api, "require_empty_queue", return_value=None), \
+            patch.object(api, "engine", return_value=None), \
             patch.dict(sys.modules, {"api": api}):
-        sidecar.serve(root, profile, lambda _: ProcessBackend(root, scenario))
+        try:
+            sidecar.serve(root, profile, lambda _: ProcessBackend(root, scenario))
+        finally:
+            # Keep even a failing watchdog test from leaving adopted zombies.
+            try:
+                while os.waitpid(-1, os.WNOHANG)[0]:
+                    pass
+            except ChildProcessError:
+                pass
 
 
 class ModelProcessTests(unittest.TestCase):
@@ -102,7 +122,7 @@ class ModelProcessTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         self.parent = subprocess.Popen(
-            [sys.executable, __file__, str(self.root), scenario],
+            [sys.executable, "-B", __file__, str(self.root), scenario],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
         )
 
@@ -177,18 +197,22 @@ class ModelProcessTests(unittest.TestCase):
         self.addCleanup(cleanup_helper)
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
         self.assertEqual(os.getpgid(child_pid(self.root)), child_pid(self.root))
-        self.assertEqual(self.perform(INFER, "infer")["error"], "operation_timeout")
+        self.assertEqual(self.perform(INFER, "infer").get("error"), "operation_timeout")
         self.assert_reaped()
         helper = int((self.root / "helper.pid").read_text())
-        try:
-            pidfd = os.pidfd_open(helper)
-        except ProcessLookupError:
-            return
-        try:
-            exited, _, _ = select.select([pidfd], [], [], 0.5)
-            self.assertEqual(exited, [pidfd], "Watchdog left a runnable descendant")
-        finally:
-            os.close(pidfd)
+        self.assertFalse(Path(f"/proc/{helper}").exists(), "Watchdog left a live or unreaped descendant")
+
+    def test_residency_reports_the_live_child_and_needs_no_gpu_sample(self):
+        self.start_supervisor("normal")
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        pid = child_pid(self.root)
+        self.assertTrue(self.lane.status(residency_only=True)["resident"])
+        with os.fdopen(os.pidfd_open(pid), "rb") as pidfd:
+            os.kill(pid, signal.SIGKILL)
+            self.assertEqual(select.select([pidfd], [], [], 1)[0], [pidfd])
+        snapshot = self.lane.status(residency_only=True)
+        self.assertFalse(snapshot["resident"])
+        self.assertNotIn("memory_mib", snapshot)
 
     def test_output_limit_has_a_reaped_memory_receipt(self):
         self.start_supervisor("oversized-infer")
@@ -199,16 +223,10 @@ class ModelProcessTests(unittest.TestCase):
 
     def test_unload_uses_profile_ceiling_on_post_exit_sample(self):
         self.start_supervisor("tight-ceiling")
-        original = self.lane.status
-
-        def initial_idle():
-            snapshot = original()
-            if not (self.root / "model.pid").exists():
-                snapshot["memory_mib"] = 63
-            return snapshot
-
-        with patch.object(self.lane, "status", side_effect=initial_idle):
-            self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        # Give the journal a larger historical baseline. The active profile
+        # ceiling still independently gates the release.
+        self.lane.write_state(self.lane.read_state()["instance"], True, baseline=64)
         with patch.object(local.time, "sleep"):
             job = self.perform(UNLOAD, "unload")
         self.assertEqual(job["error"], "residency_unverified")
@@ -216,6 +234,32 @@ class ModelProcessTests(unittest.TestCase):
         self.assertEqual(self.lane.status()["memory_mib"], 64)
         self.assertFalse(Path(f"/proc/{child_pid(self.root)}").exists())
         self.assertTrue(local.product.read_job(self.lane.path)["held"])
+
+    def test_failed_load_is_reaped_and_records_verified_release(self):
+        self.start_supervisor("failed-load")
+        job = self.perform(LOAD, "load")
+        self.assertEqual((job["error"], job["released_memory_mib"]), ("backend_failed", 64))
+        self.assert_reaped()
+
+    def test_failed_inference_is_reaped_and_records_verified_release(self):
+        self.start_supervisor("failed-infer")
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        job = self.perform(INFER, "infer")
+        self.assertEqual((job["error"], job["released_memory_mib"]), ("backend_failed", 64))
+        self.assert_reaped()
+
+    def test_failed_inference_with_leak_below_ceiling_holds_and_records_reason(self):
+        self.start_supervisor("failed-infer")
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        (self.root / "memory.leaked").touch()
+        with patch.object(local.time, "sleep"):
+            job = self.perform(INFER, "infer")
+        self.assertEqual((job["error"], job["reason_code"]), ("residency_unverified", "backend_failed"))
+        self.assertEqual(job["baseline_memory_mib"], 64)
+        self.assertNotIn("released_memory_mib", job)
+        self.assertEqual(self.lane.status()["memory_mib"], 65)
+        self.assertTrue(local.product.read_job(self.lane.path)["held"])
+        self.assertFalse(Path(f"/proc/{child_pid(self.root)}").exists())
 
     def test_child_death_mid_inference_is_reported_and_reaped(self):
         self.start_supervisor("dead-infer")

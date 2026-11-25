@@ -31,7 +31,7 @@
           exec:
             command: [python3, -m, studio_local_backend, ready, --workspace, /workspace]
           periodSeconds: 5
-          timeoutSeconds: 1
+          timeoutSeconds: 10
           failureThreshold: 12
       readiness:
         enabled: true
@@ -40,7 +40,7 @@
           exec:
             command: [python3, -m, studio_local_backend, ready, --workspace, /workspace]
           periodSeconds: 10
-          timeoutSeconds: 1
+          timeoutSeconds: 10
           failureThreshold: 3
 - op: add
   path: /spec/values/controllers/wan-video/annotations/configmap.reloader.stakater.com~1reload
@@ -54,9 +54,47 @@
       - configMap: {name: wan-local-model-profile}
     globalMounts:
       - {path: /config/video, readOnly: true}
+# Mount the existing lock by inode. Kubelet would create a directory for a
+# missing subPath, so prepare the file before it starts the serving containers.
+- op: add
+  path: /spec/values/controllers/wan-video/initContainers/prepare-local-model
+  value:
+    command:
+      - python
+      - -B
+      - -c
+      - |
+        from pathlib import Path
+        root = Path("/workspace")
+        with (root / "compute.lock").open("a"):
+            pass
+        (root / "local-model").mkdir(mode=0o700, exist_ok=True)
+        (root / "input" / "studio-v1").mkdir(parents=True, exist_ok=True)
+    env:
+      NVIDIA_VISIBLE_DEVICES: void
+    resources:
+      requests: {cpu: 50m, memory: 32Mi}
+      limits: {cpu: "1", memory: 128Mi}
+- op: copy
+  from: /spec/values/controllers/wan-video/containers/app/image
+  path: /spec/values/controllers/wan-video/initContainers/prepare-local-model/image
+- op: remove
+  path: /spec/values/persistence/workspace/globalMounts
 - op: add
   path: /spec/values/persistence/workspace/advancedMounts
   value:
     wan-video:
+      app: &wan-mounts
+        - {path: /workspace}
+        - {path: /opt/ComfyUI/models, subPath: models}
+      foley: *wan-mounts
+      api: *wan-mounts
+      provision-models: *wan-mounts
+      provision-foley-models: *wan-mounts
+      prepare-local-model:
+        - {path: /workspace}
       local-model:
+        - {path: /workspace/compute.lock, subPath: compute.lock, readOnly: true}
+        - {path: /workspace/local-model, subPath: local-model}
+        - {path: /workspace/input/studio-v1, subPath: input/studio-v1, readOnly: true}
         - {path: /workspace/local-model-weights, subPath: local-model-weights, readOnly: true}

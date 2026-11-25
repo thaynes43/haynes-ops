@@ -907,7 +907,7 @@
             }
           },
           "503": {
-            "description": "Local model is unconfigured or configuration is invalid",
+            "description": "Local model is unconfigured, invalid or temporarily unavailable for reconciliation",
             "content": {
               "application/json": {
                 "schema": {
@@ -1398,7 +1398,7 @@
               "unloaded_max_mib": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 2048
+                "maximum": 512
               },
               "resident_min_mib": {
                 "type": "integer",
@@ -1493,13 +1493,18 @@
           },
           "reason_code": {
             "type": "string",
-            "enum": ["incomplete_output", "mode_mismatch"],
-            "description": "Reason for invalid_result. The output was rejected after inference."
+            "enum": ["incomplete_output", "mode_mismatch", "operation_timeout", "backend_exited", "backend_failed", "output_limit"],
+            "description": "Rejected structured output reason or the reaped worker failure when release could not be verified."
+          },
+          "baseline_memory_mib": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Selected-card idle level recorded under the compute lease after ComfyUI cache eviction and before load."
           },
           "released_memory_mib": {
             "type": "number",
             "minimum": 0,
-            "description": "Fresh selected-card measurement after the worker was reaped and release passed the profile ceiling."
+            "description": "Fresh selected-card measurement after the worker was reaped and release passed both the pre-load baseline and profile ceiling."
           },
           "result": {
             "type": "object",
@@ -1513,6 +1518,11 @@
               "text": {
                 "type": "string",
                 "description": "At most 32768 UTF-8 bytes. Structured modes return a JSON object as text. frame_check_v1 has one face, code and wardrobe result per input frame, in order. plan_v1 returns scene_id and shots with technical_direction. plan_tool_v1 returns exactly one name (record_plan_v1) and arguments object with scene_id, shot_count and technical_direction. Invalid or incomplete structured output fails with invalid_result."
+              },
+              "truncated": {
+                "type": "boolean",
+                "const": true,
+                "description": "Present on capped text output. Any trailing incomplete UTF-8 character was removed."
               },
               "input_tokens": {
                 "type": "integer",

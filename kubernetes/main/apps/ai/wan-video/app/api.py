@@ -659,6 +659,9 @@ def get_local_request(lane, job_id):
                         if state is None:
                             lane.reconcile()
                         lane.finish(job, error="submission_lost")
+                except product.RequestError as exc:
+                    if exc.code == "local_model_unavailable":
+                        raise
                 except (OSError, ValueError):
                     pass
                 job = lane.read(job_id)

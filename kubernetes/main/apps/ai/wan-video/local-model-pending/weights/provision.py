@@ -12,7 +12,8 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 HUB = "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF"
-CDN = "us.aws.cdn.hf.co"
+DNS_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+CDN = re.compile(rf"(?:{DNS_LABEL}\.)+cdn\.hf\.co", re.IGNORECASE | re.ASCII)
 FREE_BYTES = 8 * 1024**3
 FREE_INODES = 1024
 STAGING_INODES = 16
@@ -54,7 +55,7 @@ def publish(staged, target):
 class PinnedRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         dest = urlsplit(newurl)
-        if dest.scheme != "https" or dest.netloc != CDN:
+        if dest.scheme != "https" or not CDN.fullmatch(dest.netloc):
             raise ProvisionError("unexpected_download_redirect")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -98,7 +99,7 @@ def provision(root, pins, opener):
             or sum(entry["bytes"] for entry in pins["files"]) != pins["byte_cap"]):
         raise ProvisionError("invalid_weights_pins")
 
-    reserve(root.parent, size=pins["byte_cap"] + CHUNK, inodes=STAGING_INODES)
+    reserve(root, size=pins["byte_cap"] + CHUNK, inodes=STAGING_INODES)
     parent = root / model
     parent.mkdir(parents=True, exist_ok=True)
     target = parent / revision
@@ -123,7 +124,6 @@ def provision(root, pins, opener):
     publish(staged, target)
     sync_directory(parent)
     sync_directory(root)
-    sync_directory(root.parent)
     return target
 
 

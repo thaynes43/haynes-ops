@@ -10,6 +10,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
+from urllib.request import Request
 
 from test_api import APP
 from test_local_model import CARD, PROFILE
@@ -135,6 +136,26 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.infer("text"), {"error": "output_limit"})
         self.lib.studio_request_free.assert_called_once_with(456)
 
+    def test_capped_utf8_trims_only_the_partial_suffix_and_marks_text_truncated(self):
+        self.lib.answer = "ok€".encode() + b"\xf0\x9f"
+        self.lib.complete = False
+        self.assertEqual(self.infer("text"), {"result": {
+            "text": "ok€", "input_tokens": 10, "output_tokens": 4, "truncated": True,
+        }})
+        self.lib.complete = True
+        self.assertEqual(self.infer("text"), {"error": "output_limit"})
+        self.lib.complete = False
+        self.lib.answer = b"ok\xffno\xf0"
+        self.assertEqual(self.infer("text"), {"error": "output_limit"})
+
+    def test_truncation_flag_is_canonical_and_text_only(self):
+        text = {"text": "A result", "input_tokens": 10, "output_tokens": 4}
+        for mode, truncated in (("text", False), ("text", 1), ("plan_v1", True)):
+            with self.subTest(mode=mode, truncated=truncated):
+                self.assertFalse(local.valid_result_bounds(
+                    self.profile, self.request(mode), {**text, "truncated": truncated},
+                ))
+
     def test_frame_constraints_and_native_image_order(self):
         second = bytearray(PNG)
         # The staging validator checks the PNG envelope. The fake receives
@@ -179,6 +200,7 @@ class ProvisionTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         self.root = Path(temp.name) / "weights"
+        self.root.mkdir()
         self.pins = json.loads((WEIGHTS / "weights.json").read_text())
         for item, data in zip(self.pins["files"], (b"model", b"projector"), strict=True):
             item.update(bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
@@ -231,10 +253,26 @@ class ProvisionTests(unittest.TestCase):
         self.assertEqual(len(list(self.root.glob("*/.quarantine-*"))), 2)
         self.assertFalse((self.root / self.pins["model"] / self.pins["revision"]).exists())
 
-    def test_redirect_outside_exact_https_cdn_is_refused(self):
+    def test_redirect_accepts_hugging_face_cdn_subdomains(self):
         handler = provision.PinnedRedirect()
-        for destination in ("http://us.aws.cdn.hf.co/blob", "https://example.test/blob",
-                            "https://us.aws.cdn.hf.co@example.test/blob"):
+        request = Request("https://huggingface.co")
+        for host in ("us.aws.cdn.hf.co", "us.gcp.cdn.hf.co", "edge.cdn.hf.co"):
+            with self.subTest(host=host):
+                url = f"https://{host}/blob"
+                result = handler.redirect_request(request, None, 302, "", {}, url)
+                self.assertEqual(result.full_url, url)
+
+    def test_redirect_outside_https_cdn_is_refused(self):
+        handler = provision.PinnedRedirect()
+        for destination in (
+            "http://us.aws.cdn.hf.co/blob",
+            "https://example.test/blob",
+            "https://us.aws.cdn.hf.co@example.test/blob",
+            "https://other@us.aws.cdn.hf.co/blob",
+            "https://us.aws.cdn.hf.co:443/blob",
+            "https://us.aws.cdn.hf.co.example.test/blob",
+            "https://cdn.hf.co/blob",
+        ):
             with self.subTest(destination=destination):
                 with self.assertRaisesRegex(provision.ProvisionError, "unexpected_download_redirect"):
                     handler.redirect_request(None, None, 302, "", {}, destination)
