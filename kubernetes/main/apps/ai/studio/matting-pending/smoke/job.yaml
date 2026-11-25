@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: studio-matting-smoke-00
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: studio-matting-smoke
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        kubernetes.io/hostname: talosw01
+      priorityClassName: dev-env-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: matting
+          image: image-replaced-by-release
+          command: [studio-matting, smoke]
+          env:
+            - {name: STUDIO_MATTING_IMAGE, value: image-replaced-by-release}
+          resources:
+            requests: {cpu: 250m, memory: 2Gi}
+            limits: {cpu: "2", memory: 6Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: scratch, mountPath: /matting}
+            - name: weights
+              mountPath: /weights
+              subPath: data/studio/jobs/allocation-replaced-by-release/weights
+              readOnly: true
+      volumes:
+        - name: scratch
+          emptyDir: {sizeLimit: 256Mi}
+        - name: weights
+          nfs:
+            server: gasha01.haynesnetwork
+            path: /hdd-nfs-repl
+            readOnly: true

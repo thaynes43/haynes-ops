@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: studio-worker
+spec:
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: worker
+          volumeMounts:
+            - {name: matte-scratch, mountPath: /matting}
+        - name: matting
+          image: image-replaced-by-release
+          command: [studio-matting, serve]
+          env:
+            - {name: STUDIO_MATTING_IMAGE, value: image-replaced-by-release}
+          resources:
+            requests: {cpu: 250m, memory: 2Gi}
+            limits: {cpu: "2", memory: 6Gi}
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          startupProbe:
+            exec: {command: [studio-matting, ready]}
+            periodSeconds: 5
+            failureThreshold: 26
+            timeoutSeconds: 3
+          readinessProbe:
+            exec: {command: [studio-matting, ready]}
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec: {command: [studio-matting, ready]}
+            periodSeconds: 5
+            failureThreshold: 26
+            timeoutSeconds: 3
+          volumeMounts:
+            - {name: matte-scratch, mountPath: /matting}
+            - name: weights
+              mountPath: /weights
+              subPath: data/studio/jobs/allocation-replaced-by-release/weights
+              readOnly: true
+      volumes:
+        - name: matte-scratch
+          emptyDir: {sizeLimit: 256Mi}
+        - name: weights
+          nfs:
+            server: gasha01.haynesnetwork
+            path: /hdd-nfs-repl
+            readOnly: true

@@ -44,6 +44,7 @@ jobs:
         with:
           patterns: |
             kubernetes/main/apps/ai/studio/**
+            kubernetes/main/apps/ai/studio-render/**
             scripts/tests/studio-release/**
             .github/workflows/flux-local.yaml
 
@@ -225,6 +226,7 @@ jobs:
             sha256sum --check "$GITHUB_WORKSPACE/scripts/tests/portal178-m5a/kustomize.sha256"
             tar -xzf kustomize_v5.8.3_linux_amd64.tar.gz
           )
+          "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_matting_provision.py
           PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
             "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/check.py
 

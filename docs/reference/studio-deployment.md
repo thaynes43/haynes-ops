@@ -76,6 +76,9 @@ D47 excludes NFS media from backups. The NFS server is outside the
 cluster and remains a shared dependency of all API replicas. PostgreSQL
 uses the existing [CNPG backup coverage](studio-database.md#backup-and-rollback).
 
+For the CPU matting release sequence and dormant sidecar, see the
+[Studio matting deployment](studio-matting-deployment.md).
+
 ## Gatus and backup coverage
 
 [OP435](https://work.haynesnetwork.com/work_packages/435) verified the Gatus
