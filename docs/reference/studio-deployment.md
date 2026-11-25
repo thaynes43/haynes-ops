@@ -1533,8 +1533,8 @@ films = (
     ("One More Meeting", "prd_01M7ZGYNHFET1GKR4304FVD4PE",
      "sty_01M7ZGYNHFET1GKR4304FVD4PF", "run_01M7ZHNZJ2PWA8XR8K7KKWP17V",
      "dlv_01M7ZHP1QS82QGK196ZPCM7MQS", True, 1),
-    ("The Winter Menu", "prd_01M79V9FC00000000000001",
-     "sty_01M79V9FC00000000000001", "run_01M7C5CJA7XKBCRPM0ZRP2P5RS",
+    ("The Winter Menu", "prd_01M79V9FC00000000000000001",
+     "sty_01M79V9FC00000000000000001", "run_01M7C5CJA7XKBCRPM0ZRP2P5RS",
      "dlv_01M7C5D3KFX3MFVWCXBCVJHMG7", False, 0),
 )
 
@@ -1778,8 +1778,13 @@ The installed starting point is Studio `393fe1d` at
 `0007_escalation_packages`. Migrate to the head shipped in the selected
 Python image. The old API reads named columns, checks database and store
 readiness, and continues serving after the schema transaction commits.
-Changes to existing tables can take locks. Sample old API availability
-before, during and after migration.
+Changes to existing tables can take locks. **The whole upgrade is one
+transaction:** the `ALTER TABLE stories` and the index on `runs` in 0008 and
+the `SHARE ROW EXCLUSIVE` lock on `stories` in 0009 are held until the single
+commit after 0012, so the old API's story reads wait for the entire run
+(seconds on this data, against its 30-second statement timeout), and a failure
+in any revision rolls the schema back to 0007 with `393fe1d` still serving.
+Sample old API availability before, during and after migration.
 [Migration source](https://github.com/thaynes43/haynes-studio/tree/main/src/haynes_studio/db/migrations/versions)
 
 | Revision | Schema change | Effect on the serving `393fe1d` build |
@@ -2266,7 +2271,68 @@ Prefer a forward fix as soon as people have used the new features.
 | 0010 | Staged text and versions stay in the database but are unavailable in the old app. Once a storyboard is applied, its `draft_application.archive_version_id` stamp is outside the old board schema. Keep affected drafts out of old editing and enqueue. A full writer rollback requires no archive applies or new archive work to continue. |
 | 0011 | The seeded grants and token rows survive rollback. The old API ignores lane bindings even after the new schema is in place. Keep all submissions stopped until the lane-aware app is restored. The old pin can cover private import reads in the meantime. |
 | 0012 | Package, publication and archive integrity constraints remain in place. The old build uses none of those tables. Their records retain the 0009/0010 visibility and writer restrictions above. |
+| No revision (Studio PR 128) | The new build's format recipe schema accepts `matte_slots`. A format version saved with it by the new build is outside the old build's recipe schema, so the old build would likely refuse any story or run pinned to that version. Count such versions below before an image rollback; if any exist, fix forward. |
 
 Keep any data written by the new build. An image rollback never calls
 `alembic downgrade` and never rewrites a legacy published flag to imitate a
 new publication record.
+
+**Count what the new build has written before deciding on an image rollback.**
+`compare` covers only the import counts and the store totals. This read-only
+block counts every kind of row and field that only the new build writes. All
+zero means an image rollback strands nothing; anything else is listed by name,
+and the table above says what the old build does with it.
+
+```bash
+(
+  set -uo pipefail
+  kubectl -n ai exec -i deploy/studio-api -c api -- python -I -B - <<'PY'
+import os
+import sys
+
+import psycopg
+
+QUERIES = {
+    "run candidates": "SELECT count(*) FROM studio.run_candidates",
+    "feedback notes": "SELECT count(*) FROM studio.candidate_feedback",
+    "feedback iterations": "SELECT count(*) FROM studio.feedback_iterations",
+    "iteration clears": "SELECT count(*) FROM studio.feedback_iteration_clears",
+    "stories with an active iteration": "SELECT count(*) FROM studio.stories WHERE feedback_iteration_id IS NOT NULL",
+    "release packages": "SELECT count(*) FROM studio.release_packages",
+    "publications": "SELECT count(*) FROM studio.publications",
+    "archive records": "SELECT count(*) FROM studio.archive_records",
+    "archive versions": "SELECT count(*) FROM studio.archive_versions",
+    "runs with feedback answers": "SELECT count(*) FROM studio.runs WHERE document ? 'answers'",
+    "boards stamped from the archive":
+        "SELECT count(*) FROM studio.boards WHERE document::text LIKE '%\"archive_version_id\"%'",
+    "format versions with matte slots":
+        "SELECT count(*) FROM studio.format_versions WHERE recipe::text LIKE '%\"matte_slots\"%'",
+}
+written = 0
+with psycopg.connect(os.environ["STUDIO_DATABASE_URL"]) as conn:
+    conn.read_only = True
+    for label, query in QUERIES.items():
+        try:
+            count = conn.execute(query).fetchone()[0]
+        except psycopg.Error as error:
+            print(f"FAIL {label}: {type(error).__name__}")
+            conn.rollback()
+            written = -1
+            continue
+        print(f"{'PASS' if count == 0 else 'NOTE'} {label}: {count}")
+        if count and written >= 0:
+            written += count
+if written < 0:
+    print("FAIL some counts could not be read; do not conclude anything from this block")
+    sys.exit(2)
+print("PASS nothing written by the new build" if written == 0
+      else "NOTE the new build has written data: see the rollback table before an image rollback")
+sys.exit(0 if written == 0 else 1)
+PY
+)
+```
+
+The block exits 0 only when every count is zero, 1 when the new build has
+written something (a result, not an error), and 2 when a count could not be
+read. Column and table names are those of the schema at the pinned build; if a
+count fails after a later pin, correct the query before trusting the block.
