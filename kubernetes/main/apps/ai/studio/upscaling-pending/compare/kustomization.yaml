@@ -5,3 +5,22 @@ resources:
   - job.yaml
 components:
   - ../release
+configMapGenerator:
+  - name: studio-upscaling-compare-script
+    files:
+      - reserve.py
+    options:
+      disableNameSuffixHash: true
+      annotations:
+        config.kubernetes.io/local-config: "true"
+replacements:
+  - source:
+      kind: ConfigMap
+      name: studio-upscaling-compare-script
+      fieldPath: data.[reserve.py]
+    targets:
+      - select:
+          kind: Job
+          name: studio-upscaling-compare
+        fieldPaths:
+          - spec.template.spec.initContainers.[name=reserve-output].args.0

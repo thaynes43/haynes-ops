@@ -116,11 +116,12 @@ def download(opener, target: Path, deadline: float) -> None:
         raise ProvisionError("download_hash_mismatch")
 
 
-def provision(root: Path, allocation: str, opener, manifest: bytes) -> dict:
+def provision(root: Path, allocation: str, opener, manifest: bytes, notice: bytes) -> dict:
     if not ALLOCATION.fullmatch(allocation):
         raise ProvisionError("invalid_allocation")
     profile_hash = hashlib.sha256(manifest).hexdigest()
     documents = {
+        "FSRCNN-NOTICE": notice,
         "profile.json": manifest,
         "profile.sha256": (profile_hash + "\n").encode("ascii"),
     }
@@ -168,7 +169,7 @@ def provision(root: Path, allocation: str, opener, manifest: bytes) -> dict:
         raise
     return {"allocation": allocation, "graph_bytes": GRAPH_BYTES, "graph_sha256": GRAPH_SHA256,
             "graph_git_blob": GRAPH_BLOB,
-            "profile_sha256": profile_hash}
+            "profile_sha256": profile_hash, "notice_sha256": hashlib.sha256(notice).hexdigest()}
 
 
 def main() -> int:
@@ -183,7 +184,7 @@ def main() -> int:
         opener = build_opener(ProxyHandler({}), PinnedRedirect())
         result = provision(
             Path("/jobs"), os.environ.get("STUDIO_UPSCALING_ALLOCATION", ""), opener,
-            profile.manifest(),
+            profile.manifest(), Path("/opt/studio/FSRCNN-NOTICE").read_bytes(),
         )
     except ProvisionError as error:
         print(json.dumps({"code": str(error)}), file=sys.stderr)

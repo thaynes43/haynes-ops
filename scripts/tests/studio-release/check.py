@@ -353,24 +353,29 @@ def check_upscaling_jobs(stage, image, allocation, measuring, policies):
          {"media": False}),
         ("smoke", 10001, ["studio-upscaling", "smoke"], ["--allocator", "compare"],
          {"scratch": scratch, "weights": weights}, {"weights": True}),
-        ("compare", 1000, ["studio-upscaling", "compare"],
-         ["--input", "input-required", "--input-sha256", "sha256-required", "--allocation", "allocation-required"],
-         {"scratch": scratch, "weights": weights, "jobs": jobs_mount,
-          "source": {"name": "source", "mountPath": "/studio-source", "subPath": "data/studio", "readOnly": True}},
+        ("compare", 10001, ["studio-upscaling", "compare"],
+         ["--input", "input-required", "--input-sha256", "sha256-required"],
+         {"scratch": scratch, "weights": weights,
+          "jobs": {"name": "jobs", "mountPath": "/output",
+                   "subPath": "data/studio/jobs/output-directory-replaced-by-runbook"},
+          "source": {"name": "source", "mountPath": "/input",
+                     "subPath": "private-input-directory-replaced-by-runbook", "readOnly": True}},
          {"weights": True, "jobs": False, "source": True}),
     ):
         name = f"studio-upscaling-{role}"
-        job_name = name if role == "compare" else f"{name}-{suffix}"
+        comparing = role == "compare"
+        job_name = name if comparing else f"{name}-{suffix}"
         documents = provision_docs if role == "provision" else render(stage / role)
         job = resource(documents, "Job", job_name)
         spec = job["spec"]
         pod = spec["template"]["spec"]
         label = {"app.kubernetes.io/name": name}
         if (job["metadata"]["namespace"] != "ai" or spec["activeDeadlineSeconds"] != 300
-                or spec["backoffLimit"] != 0 or spec["ttlSecondsAfterFinished"] != 86400
+                or spec["backoffLimit"] != 0 or spec["ttlSecondsAfterFinished"] != (3600 if comparing else 86400)
                 or spec["template"]["metadata"]["labels"] != label
                 or pod["restartPolicy"] != "Never" or pod["automountServiceAccountToken"]
-                or pod["enableServiceLinks"] or pod.get("serviceAccountName") or pod.get("initContainers")
+                or pod["enableServiceLinks"] or pod.get("serviceAccountName")
+                or (not comparing and pod.get("initContainers"))
                 or pod.get("hostNetwork") or pod.get("hostPID") or pod.get("hostIPC")
                 or pod["nodeSelector"] != {"kubernetes.io/hostname": "talosw01"}
                 or pod["priorityClassName"] != "dev-env-agent"):
@@ -382,6 +387,28 @@ def check_upscaling_jobs(stage, image, allocation, measuring, policies):
         c = container(job)
         check_upscaling_container(c, image, command)
         check_upscaling_mounts(c, pod, mounts, nfs)
+        if comparing:
+            sandbox = {"allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True,
+                       "capabilities": {"drop": ["ALL"]}}
+            if (security != {"runAsNonRoot": True, "runAsUser": 10001, "runAsGroup": 10001,
+                             "fsGroup": 10001, "supplementalGroups": [1000],
+                             "seccompProfile": {"type": "RuntimeDefault"}}
+                    or c["securityContext"] != sandbox or len(pod["containers"]) != 1):
+                raise ValueError("comparison must run only UID/GID 10001 with supplemental group 1000")
+            if pod.get("initContainers") != [{
+                "name": "reserve-output",
+                "image": image,
+                "command": ["python", "-B", "-c"],
+                "args": [(stage / "compare/reserve.py").read_text(encoding="utf-8")],
+                "resources": {"requests": {"cpu": "10m", "memory": "16Mi"},
+                              "limits": {"cpu": "100m", "memory": "64Mi"}},
+                "securityContext": {**sandbox, "runAsUser": 1000, "runAsGroup": 1000},
+                "volumeMounts": [jobs_mount],
+            }]:
+                raise ValueError("comparison requires one UID/GID 1000 init container for output reservation")
+            if (len(documents) != 1 or len(c["volumeMounts"]) != len(mounts)
+                    or len(pod["volumes"]) != len(mounts)):
+                raise ValueError("comparison requires one Job and only the declared volumes and mounts")
         if c.get("args") != args or {volume["name"] for volume in pod["volumes"]} != set(mounts):
             raise ValueError(f"unexpected {name} arguments or volumes")
         request, limit = measuring

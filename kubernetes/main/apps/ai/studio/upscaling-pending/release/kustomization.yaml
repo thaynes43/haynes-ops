@@ -14,6 +14,11 @@ replacements:
         fieldPaths:
           - spec.template.spec.containers.[name=upscaling].image
           - spec.template.spec.containers.[name=upscaling].env.[name=STUDIO_UPSCALING_IMAGE].value
+      - select:
+          kind: Job
+          name: studio-upscaling-compare
+        fieldPaths:
+          - spec.template.spec.initContainers.[name=reserve-output].image
   - source:
       kind: ConfigMap
       name: studio-upscaling-release

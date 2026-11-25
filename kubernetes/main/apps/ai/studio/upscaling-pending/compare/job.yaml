@@ -6,7 +6,7 @@ metadata:
 spec:
   activeDeadlineSeconds: 300
   backoffLimit: 0
-  ttlSecondsAfterFinished: 86400
+  ttlSecondsAfterFinished: 3600
   template:
     metadata:
       labels:
@@ -20,15 +20,32 @@ spec:
       priorityClassName: dev-env-agent
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        supplementalGroups: [1000]
         seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: reserve-output
+          image: image-replaced-by-release
+          command: [python, -B, -c]
+          args: [script-replaced-by-kustomize]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: jobs, mountPath: /jobs, subPath: data/studio/jobs}
       containers:
         - name: upscaling
           image: image-replaced-by-release
           command: [studio-upscaling, compare]
-          args: [--input, input-required, --input-sha256, sha256-required, --allocation, allocation-required]
+          args: [--input, input-required, --input-sha256, sha256-required]
           env:
             - {name: STUDIO_UPSCALING_IMAGE, value: image-replaced-by-release}
           resources:
@@ -41,8 +58,13 @@ spec:
             capabilities: {drop: [ALL]}
           volumeMounts:
             - {name: scratch, mountPath: /upscaling}
-            - {name: source, mountPath: /studio-source, subPath: data/studio, readOnly: true}
-            - {name: jobs, mountPath: /jobs, subPath: data/studio/jobs}
+            - name: source
+              mountPath: /input
+              subPath: private-input-directory-replaced-by-runbook
+              readOnly: true
+            - name: jobs
+              mountPath: /output
+              subPath: data/studio/jobs/output-directory-replaced-by-runbook
             - name: weights
               mountPath: /weights
               subPath: data/studio/jobs/allocation-replaced-by-release/weights

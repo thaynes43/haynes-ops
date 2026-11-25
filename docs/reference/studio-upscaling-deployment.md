@@ -22,7 +22,8 @@ Tom's verdict are pending.
    ConfigMap with the provisioner and the three targeted policies. The
    download pod can use CoreDNS and HTTPS for the immutable raw GitHub URL.
    Smoke and comparison have ingress and egress denied. Each Job is created
-   once by the coordinator and retained for 24 hours.
+   once by the coordinator. Provision and smoke are retained for 24 hours.
+   The comparison expires one hour after finishing.
 
 Keep these helpers in the shell for the other blocks. Each check reports its
 own result. An idle gate failure prevents the Job creation.
@@ -57,12 +58,13 @@ idle_gate() {
   node=$(kubectl top node talosw01 --no-headers) || node=
   render=$(kubectl -n ai top pod --containers --no-headers -l app.kubernetes.io/name=studio-render) || render=
   printf '%s\n%s\n' "$node" "$render" >&2
-  check 'node CPU and RAM at or below 70%' awk '
-    NF == 5 && $3 ~ /^[0-9]+%$/ && $5 ~ /^[0-9]+%$/ && $3+0 <= 70 && $5+0 <= 70 {pass=1}
+  check 'talosw01 CPU at most 10% and memory at most 25%' awk '
+    $1 == "talosw01" && NF == 5 && $3 ~ /^[0-9]+%$/ && $5 ~ /^[0-9]+%$/ &&
+    $3+0 <= 10 && $5+0 <= 25 {pass=1}
     END {exit !pass}
   ' <<< "$node" || status=1
-  check 'render app below one CPU' awk '
-    $2 == "app" {n++; if ($3 ~ /^[0-9]+m$/ && $3+0 < 1000) pass++}
+  check 'render app CPU at most 250m' awk '
+    $2 == "app" {n++; if ($3 ~ /^[0-9]+m$/ && $3+0 <= 250) pass++}
     END {exit !(n == 1 && pass == 1)}
   ' <<< "$render" || status=1
   read_endpoint deploy/wan-video api http://127.0.0.1:8080/health |
@@ -76,18 +78,18 @@ wait_for_job() {
   local name=$1 condition stop=$((SECONDS + 330))
   while (( SECONDS < stop )); do
     condition=$(kubectl -n ai get "job/$name" -o json | jq -r '
-      [.status.conditions[]? | select(.status == "True" and (.type == "Failed" or .type == "Complete")) | .type][0] // ""
+      [.status.conditions[]? | select(.status == "True" and (.type == "Failed" or .type == "FailureTarget" or .type == "Complete")) | .type][0] // ""
     ') || return 1
     case "$condition" in
       Complete) return 0 ;;
-      Failed) return 1 ;;
+      Failed|FailureTarget) return 1 ;;
     esac
     sleep 10
   done
   return 1
 }
 
-final_report() { kubectl -n ai logs "job/$1" | tail -n 1; }
+final_report() { kubectl -n ai logs "job/$1" -c "${2:-upscaling}" | tail -n 1; }
 
 (
   set -euo pipefail
@@ -104,8 +106,8 @@ final_report() { kubectl -n ai logs "job/$1" | tail -n 1; }
 The Job streams the exact 38,973-byte graph to a new allocation. The writer
 syncs and drops cached pages every 64 MiB and at EOF under a 1 GiB container
 limit, then verifies the Git blob ID and file SHA-256 from read-back. It writes
-the image, tool, host CPU and resource manifest before publishing the weights
-directory. The following block also verifies the published files independently.
+the image, tool, host CPU and resource manifest and the pinned image's
+`FSRCNN-NOTICE` before publishing the weights directory. The following block also verifies the published files independently.
 If NFS omits free inode counts, set `OP461_INODE_RESERVE_CONFIRMED=yes` only
 after the existing storage owner confirms room for 1,024 planned entries and at
 least 1,024 further free entries. Keep failed allocations in the file budget.
@@ -136,11 +138,13 @@ least 1,024 further free entries. Keep failed allocations in the file budget.
     .graph_bytes == 38973 and
     .graph_sha256 == "366b33f0084c7b3f2bf6724f0a2c77bca94fcec9d7b6d72389d330073b380d5c" and
     .graph_git_blob == "2509b0e19b8a45ebce2ba50128e2fcb43ce8589c" and
-    (.profile_sha256 | test("^[0-9a-f]{64}$"))
+    (.profile_sha256 | test("^[0-9a-f]{64}$")) and
+    (.notice_sha256 | test("^[0-9a-f]{64}$"))
   ' <<< "$report" || status=1
   (( status == 0 )) || exit "$status"
   profile=$(jq -er '.profile_sha256' <<< "$report")
-  kubectl -n ai exec -i deploy/studio-render -c app -- python -B - "$allocation" "$profile" <<'PY'
+  notice=$(jq -er '.notice_sha256' <<< "$report")
+  kubectl -n ai exec -i deploy/studio-render -c app -- python -B - "$allocation" "$profile" "$notice" <<'PY'
 from hashlib import sha1, sha256
 from pathlib import Path
 import sys
@@ -148,11 +152,13 @@ import sys
 weights = Path("/studio/jobs") / sys.argv[1] / "weights"
 graph = (weights / "FSRCNN_x2.pb").read_bytes()
 manifest = (weights / "profile.json").read_bytes()
+notice = (weights / "FSRCNN-NOTICE").read_bytes()
 checks = {
     "graph bytes": len(graph) == 38973,
     "graph SHA-256": sha256(graph).hexdigest() == "366b33f0084c7b3f2bf6724f0a2c77bca94fcec9d7b6d72389d330073b380d5c",
     "Git blob": sha1(b"blob 38973\0" + graph, usedforsecurity=False).hexdigest() == "2509b0e19b8a45ebce2ba50128e2fcb43ce8589c",
     "profile": sha256(manifest).hexdigest() == sys.argv[2] == (weights / "profile.sha256").read_text().strip(),
+    "licence notice": bool(notice) and sha256(notice).hexdigest() == sys.argv[3],
 }
 for label, passed in checks.items():
     print(f"{'PASS' if passed else 'FAIL'} {label}")
@@ -170,7 +176,8 @@ compares the default and compact glibc allocator across the same frames and
 runs the deliberate timeout and fresh-worker replay. Capture the final log
 line even if Kubernetes recorded a failed Job. Record the measuring and
 quality verdicts separately. Use the observed worker RSS and cgroup peaks
-by phase to propose serving resources in a second change.
+by phase to propose serving resources in a second change. The allowance check
+reads the running container’s cgroup limit from `/sys/fs/cgroup/memory.max`.
 
 ```bash
 (
@@ -179,6 +186,9 @@ by phase to propose serving resources in a second change.
   provision="studio-upscaling-provision-${allocation##*-}"
   profile=$(final_report "$provision" | jq -er '.profile_sha256 | select(test("^[0-9a-f]{64}$"))')
   pin=$(yq '.data.image' "$stage/release/release.yaml")
+  allowance=$(yq '.data.memoryLimit' "$stage/release/release.yaml")
+  [[ $allowance =~ ^[1-9][0-9]*Gi$ ]]
+  allowance_bytes=$(( ${allowance%Gi} * 1024**3 ))
   idle_gate
   smoke=$(kustomize build "$stage/smoke")
   job=$(yq '.metadata.name' <<< "$smoke")
@@ -193,9 +203,12 @@ by phase to propose serving resources in a second change.
   ' --arg profile "$profile" --arg digest "${pin##*@}" <<< "$report" || status=1
   check_json 'both allocator runs measured by phase' '
     .verdicts.allocator_measured and .verdicts.phase_memory_measured and
-    .measuring_limit_bytes == 8589934592 and (.whole_job_cgroup_peak_bytes > 0) and
+    (.whole_job_cgroup_peak_bytes > 0) and
     ([.settings[].frame_count] == [19, 19])
   ' <<< "$report" || status=1
+  check_json 'actual cgroup memory limit matches the measuring allowance' '
+    .measuring_limit_bytes == $bytes
+  ' --argjson bytes "$allowance_bytes" <<< "$report" || status=1
   check_json 'allocator and fresh-worker bytes are stable' '
     .verdicts.allocator_byte_match and .verdicts.fresh_worker_repeat
   ' <<< "$report" || status=1
@@ -206,40 +219,84 @@ by phase to propose serving resources in a second change.
 
 ## Run the private still comparison
 
-After the synthetic smoke passes, choose one opaque frame or still by a
-verified SHA-256, using a relative path under the Studio share. It must be a
-single PNG or JPEG, at most 4 MiB with a 1280 px long edge and 921,600 pixels.
-Use an exact-aspect frame, or pass `--plate` to center-crop an off-aspect
-plate. Default orientation is portrait. Optional `--lettering-roi`,
-`--face-roi` and `--hair-roi` take four output pixel bounds `X0 Y0 X1 Y1`,
-with the lower-right bounds exclusive. Select ROIs from the approved source.
-Keep the input path in the operator's shell and Job argument only. Do not use
-shell tracing or print the rendered Job. Use a new 12-hex suffix for every
-attempt.
+After the synthetic smoke passes, choose one authorized opaque PNG or JPEG
+from the Studio store. Set `OP461_INPUT` to its path relative to `/studio`.
+Use `library/sha256/<first-two-hex>/<sha256>.<jpg|png>` for global scope or
+`productions/<prd_id>/sha256/<first-two-hex>/<sha256>.<jpg|png>` for a production.
+Set `OP461_INPUT_SHA256` to the bare digest and `OP461_RUN` to a fresh 12-hex
+suffix. The input must be a regular single-link file of at most 4 MiB with
+a 1280 px long edge and 921,600 pixels. Use an exact-aspect frame or pass
+`--plate` for delivery's centered cover fit. Portrait is the default.
+The optional `--lettering-roi`, `--face-roi` and `--hair-roi` take output
+pixel bounds `X0 Y0 X1 Y1`, with the lower-right bounds exclusive.
+
+The gate checks the store shape and verifies the bytes before the idle
+window. The Job has a dedicated deny-all network policy. Its UID/GID 1000
+init container reserves one new group-writable job directory exclusively.
+The comparison runs as UID/GID 10001 with supplemental group 1000. It
+mounts the pinned weights and the input directory read-only. Its only
+writable share mount is the new output directory. The Job spec contains
+the hash-based locator. Keep the locator and rendered Job private.
 
 ```bash
 (
   set -euo pipefail
-  : "${OP461_INPUT:?set the approved Studio-relative path}"
+  : "${OP461_INPUT:?set the approved Studio-relative store path}"
   : "${OP461_INPUT_SHA256:?set its verified bare SHA-256}"
   : "${OP461_RUN:?set a fresh 12-hex suffix}"
-  [[ $OP461_RUN =~ ^[a-f0-9]{12}$ && $OP461_INPUT_SHA256 =~ ^[a-f0-9]{64}$ ]]
-  export OP461_INPUT OP461_INPUT_SHA256
+
+  input_matches_store_hash() {
+    local hash=$OP461_INPUT_SHA256 root stem
+    [[ $hash =~ ^[a-f0-9]{64}$ ]] || return 1
+    if [[ $OP461_INPUT == library/* ]]; then
+      root=library
+    elif [[ $OP461_INPUT =~ ^(productions/prd_[0-7][0-9a-hjkmnp-tv-z]{25})/ ]]; then
+      root=${BASH_REMATCH[1]}
+    else
+      return 1
+    fi
+    stem="$root/sha256/${hash:0:2}/$hash"
+    [[ $OP461_INPUT == "$stem.jpg" || $OP461_INPUT == "$stem.png" ]] || return 1
+    kubectl -n ai exec deploy/studio-render -c app -- sh -ec '
+      path=$1
+      test "$(realpath -e -- "$path")" = "$path"
+      test -f "$path"
+      test "$(stat -c %h -- "$path")" = 1
+      test "$(stat -c %s -- "$path")" -le 4194304
+      sum=$(sha256sum -- "$path")
+      test "${sum%% *}" = "$2"
+    ' sh "/studio/$OP461_INPUT" "$hash" >/dev/null 2>&1
+  }
+
+  check 'fresh comparison suffix has 12 hex characters' bash -ec '[[ $1 =~ ^[a-f0-9]{12}$ ]]' -- "$OP461_RUN"
+  check 'content-addressed regular single-link input matches SHA-256' input_matches_store_hash
+  export OP461_INPUT_SHA256
+  export OP461_INPUT_DIR="data/studio/${OP461_INPUT%/*}" OP461_INPUT_NAME="${OP461_INPUT##*/}"
   export OP461_JOB="studio-upscaling-compare-$OP461_RUN"
   export OP461_ALLOCATION="upscaling-op461-compare-$OP461_RUN"
   allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
   final_report "studio-upscaling-smoke-${allocation##*-}" |
     check_json 'synthetic install smoke passed' '.passed == true'
+  kubectl -n ai get ciliumnetworkpolicy studio-upscaling-compare -o json |
+    check_json 'dedicated deny-all comparison policy is installed' '.spec == {
+      "endpointSelector":{"matchLabels":{"app.kubernetes.io/name":"studio-upscaling-compare"}},
+      "ingressDeny":[{"fromEntities":["all"]}], "egressDeny":[{"toEntities":["all"]}]}'
   idle_gate
   kustomize build "$stage/compare" | yq '
     .metadata.name = strenv(OP461_JOB) |
-    .spec.template.spec.containers[0].args[1] = strenv(OP461_INPUT) |
-    .spec.template.spec.containers[0].args[3] = strenv(OP461_INPUT_SHA256) |
-    .spec.template.spec.containers[0].args[5] = strenv(OP461_ALLOCATION)
+    .spec.template.spec.initContainers[0].args += [strenv(OP461_ALLOCATION)] |
+    (.spec.template.spec.containers[0].volumeMounts[] | select(.name == "source").subPath) = strenv(OP461_INPUT_DIR) |
+    (.spec.template.spec.containers[0].volumeMounts[] | select(.name == "jobs").subPath) =
+      ("data/studio/jobs/" + strenv(OP461_ALLOCATION)) |
+    .spec.template.spec.containers[0].args[1] = strenv(OP461_INPUT_NAME) |
+    .spec.template.spec.containers[0].args[3] = strenv(OP461_INPUT_SHA256)
   ' | kubectl -n ai create -f -
   status=0
   check 'comparison Job complete' wait_for_job "$OP461_JOB" || status=1
-  report=$(final_report "$OP461_JOB") || report=
+  report=$(final_report "$OP461_JOB" 2>/dev/null) || report=
+  if [[ -z $report ]]; then
+    report=$(final_report "$OP461_JOB" reserve-output 2>/dev/null) || report=
+  fi
   check 'comparison final log line present' test -n "$report" || status=1
   printf '%s\n' "$report"
   check_json 'source and both outputs recorded with measurements' '
