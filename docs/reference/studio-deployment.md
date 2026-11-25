@@ -1419,10 +1419,13 @@ revision, digest pair and successful Studio images run ID. The Python digest
 covers the API, MCP, three workers, migration and three registration Jobs.
 The web digest covers the web pods and the API's media-worker listener.
 
-The selected pair includes Studio PRs 116, 118, 120, 121, 123, 125 and 127.
-Its Alembic head is `0011_worker_lane_grants`. OP963 (0012), OP437 and OP451
-are outside this pin. For a repin, select a successful main publish containing
-all seven required PRs. Run the following from haynes-ops with the selected
+The selected pair (Studio `80975a9`) includes Studio PRs 116, 118, 120, 121,
+123, 125, 127, 128 and 131. Its Alembic head is `0012_release_constraints`.
+OP437 is outside this pin. PR 128 is the matting adapter's source (OP451):
+nothing calls it yet, and the matting sidecar is not part of this pin. The
+coordinator repinned from `b182c1d` with the command below after PRs 131 and
+128 merged. For a repin, select a successful main publish containing all nine
+PRs. Run the following from haynes-ops with the selected
 full SHA and publish run ID. It verifies both Linux/amd64 tags, immutable
 manifests and revision labels anonymously, then updates the release record,
 workload references and digest-named Job gates together. Update the recorded
@@ -1432,6 +1435,17 @@ PR ancestry and migration head. [Studio images](https://github.com/thaynes43/hay
 uv run --no-project --with PyYAML==6.0.3 -- python -I -B scripts/tests/studio-release/check.py \
   --pin "$studio_revision" "$studio_publish_run"
 ```
+
+**Drain on termination (added with this pin).** The API container, its
+media-worker listener, MCP and web each sleep 8 seconds in `preStop` before they
+receive the stop signal, inside the default 30-second grace period. A
+terminating pod stays in the ingress's rotation for a moment; without the drain
+the next request to it is a 502, on a pod delete and on every roll. The release
+check requires the sleep on all four containers. The first roll to this pin
+still terminates pods of the previous pin, which have no drain, so a brief 502
+is possible during this roll only. Once this pin is installed, the
+[one-app-pod recovery check](https://work.haynesnetwork.com/work_packages/437)
+can require zero failed requests.
 
 ### Preflight
 
@@ -1774,10 +1788,10 @@ before, during and after migration.
 | `0009_release_packages` | Adds append-only package, publication and iteration-clear tables. Locks `stories` in SHARE ROW EXCLUSIVE mode, installs a constraint trigger on story insert/update for a non-null feedback iteration, and validates existing references against the candidate's run story. | Old inserts and existing drafts without an active iteration pass the trigger condition. The previous API's published status, list filters and story insert default still use `stories.published`. This migration preserves the Boolean column and its default. |
 | `0010_staging_archive` | Creates production-scoped archive records and immutable version chains and grants runtime SELECT and INSERT. | Old API and workers never query these tables. The production foreign key uses existing IDs. |
 | `0011_worker_lane_grants` | Creates a SELECT-only runtime grant table and seeds `studio-worker → run`, `studio-voice-worker → voice` and `studio-image-worker → image`. The new API joins the binding to the active worker identity. | Old API ignores the table. The migration changes neither token rows nor token projections. Lane enforcement starts on a per-pod basis at the API rollout. |
-| `0012_release_constraints`, if included (OP963) | Backfills `publications.target_id` from the package, rejects duplicate run/target publications, constrains the package byte count and composite publication/package identity, and requires archive version parents and roots to be contiguous (the root FK is deferred). | These release and archive tables were introduced after the old build. At a first upgrade from 0007 they have no rows to backfill or validate. If an intermediate pin has already written records, resolve any data-integrity failure through a reviewed forward fix. |
+| `0012_release_constraints` (OP963) | Backfills `publications.target_id` from the package, rejects duplicate run/target publications, constrains the package byte count and composite publication/package identity, and requires archive version parents and roots to be contiguous (the root FK is deferred). | These release and archive tables were introduced after the old build. At a first upgrade from 0007 they have no rows to backfill or validate. If an intermediate pin has already written records, resolve any data-integrity failure through a reviewed forward fix. |
 
-The selected publish must include 0011 and have one Alembic head. If OP963
-is included, verify its parent chain incorporates 0011. Read the migration
+The selected publish has one Alembic head, 0012, whose parents in order are
+0011, 0010, 0009 and 0008. Read the migration
 Job output for the actual revisions and head. Expect the migrator to use
 TLS and the configured role policies to refuse the other connections.
 Record a missed active window explicitly if the Job finishes before a
@@ -2251,7 +2265,7 @@ Prefer a forward fix as soon as people have used the new features.
 | 0009 | The old app can still read `stories.published`. It ignores release packages, iteration-clear events and publications. New publication rows won't appear in the old column's status or filters, and the old approval path lacks the package checks. Restore old publishing and edit semantics only before new release or feedback state has been written. Preserve all package copies and records. |
 | 0010 | Staged text and versions stay in the database but are unavailable in the old app. Once a storyboard is applied, its `draft_application.archive_version_id` stamp is outside the old board schema. Keep affected drafts out of old editing and enqueue. A full writer rollback requires no archive applies or new archive work to continue. |
 | 0011 | The seeded grants and token rows survive rollback. The old API ignores lane bindings even after the new schema is in place. Keep all submissions stopped until the lane-aware app is restored. The old pin can cover private import reads in the meantime. |
-| 0012, if included | Package, publication and archive integrity constraints remain in place. The old build uses none of those tables. Their records retain the 0009/0010 visibility and writer restrictions above. |
+| 0012 | Package, publication and archive integrity constraints remain in place. The old build uses none of those tables. Their records retain the 0009/0010 visibility and writer restrictions above. |
 
 Keep any data written by the new build. An image rollback never calls
 `alembic downgrade` and never rewrites a legacy published flag to imitate a
