@@ -1499,12 +1499,15 @@ pod deletion bypasses PDB enforcement, so the block rechecks both API pods
 immediately before deleting the named target. Keep the printed evidence and
 the sample file. The loop samples at most one request per second for
 300 requests, starting before deletion, with no HTTP retries. At least one
-sample must return after the replacement Ready check. The tolerance is **zero**
-unexpected statuses or transport errors. The surviving API is Ready at
-the start, so even a brief ingress failure is evidence to keep and investigate.
-The API has no `preStop` drain. A 502 around deletion can mean Traefik
-still had the terminating endpoint in its routing table. Keep that
-sample and count it as a failed request.
+expected response must arrive after the replacement Ready check. Until the
+`preStop` drain in [story 964](https://work.haynesnetwork.com/work_packages/964)
+is installed, allow at most **two HTTP 502 responses** in the five seconds
+starting when the delete request is issued. Traefik can briefly route to the
+terminating endpoint during that window. Keep every response in the log. Any
+other unexpected status, any transport error, or any 502 outside that window
+fails the check. Set `tolerated_502s` to `0` once the drain is installed.
+The surviving API pod's two containers and the three workers must retain their
+recorded restart counts and pod identities throughout the drill.
 On any refusal or failed check, record it and stop without a second deletion.
 
 ```bash
@@ -1516,8 +1519,10 @@ On any refusal or failed check, record it and stop without a second deletion.
   base=https://studio.haynesops.com
   k=(kubectl -n ai --request-timeout=15s)
   workers=(studio-worker studio-voice-worker studio-image-worker)
+  worker_pods=()
   routes=(/v1/me /v1/productions /v1/queue/lanes)
   samples=300
+  tolerated_502s=2
   failed=0
   sampler=
   trap 'if [[ -n $sampler ]]; then kill "$sampler" 2>/dev/null || true; wait "$sampler" 2>/dev/null || true; fi' EXIT
@@ -1551,8 +1556,28 @@ On any refusal or failed check, record it and stop without a second deletion.
     ready_pods "$1" | jq -ce 'select(length == 2 and (map(.node) | unique | length == 2))'
   }
   worker_placement() {
-    ready_pods "$1" | jq -ce --arg worker "$1" '
-      select(length == 1 and (.[0].node == "talosw01") == ($worker == "studio-worker"))'
+    local pods name
+    pods=$(ready_pods "$1" | jq -ce --arg worker "$1" '
+      select(length == 1 and (.[0].node == "talosw01") == ($worker == "studio-worker"))') || return 1
+    name=$(jq -er '.[0].name' <<<"$pods") || return 1
+    worker_pods+=("$name")
+    printf '%s\n' "$pods"
+  }
+  record_restarts() {
+    local counts
+    counts=$("${k[@]}" get pod "$survivor" "${worker_pods[@]}" -o json | jq -ce --arg survivor "$survivor" '
+      [.items[] | {pod: .metadata.name, uid: .metadata.uid,
+        containers: ([.status.containerStatuses[]? | {name, restarts: .restartCount}] | sort_by(.name))}]
+      | sort_by(.pod)
+      | select(length == 4 and all(.[];
+          (.uid | type == "string" and length > 0)
+          and (.containers | map(.name)) == (if .pod == $survivor then ["api", "media-worker-routes"] else ["worker"] end)
+          and all(.containers[]; (.restarts | type) == "number")))') || return 1
+    printf '%s\n' "$counts" | tee "$1"
+  }
+  unchanged_restarts() {
+    record_restarts "$evidence/restarts-after.json" &&
+      diff -u "$evidence/restarts-before.json" "$evidence/restarts-after.json"
   }
   deployment_ready() {
     "${k[@]}" get "deploy/$1" -o json | jq -e --argjson replicas "$2" '
@@ -1569,11 +1594,12 @@ On any refusal or failed check, record it and stop without a second deletion.
                     and (.containers | index("media-worker-routes")) != null)' <<<"$1" >/dev/null
   }
   status() {
-    local expected=$1 route=$2 actual rc=0
+    local expected=$1 route=$2 actual observed rc=0
     actual=$(curl --disable --silent --show-error --max-time 3 --output /dev/null \
                   --write-out '%{http_code}' "$base$route") || rc=$?
-    printf '%s %s HTTP %s expected %s curl %s\n' "$(date -u +%FT%TZ)" "$route" "${actual:-000}" "$expected" "$rc"
-    [[ $rc == 0 && $actual == "$expected" ]]
+    observed=$(date -u '+%s%3N %FT%TZ') || return 1
+    printf '%s %s HTTP %s expected %s curl %s\n' "$observed" "$route" "${actual:-000}" "$expected" "$rc" &&
+      [[ $rc == 0 && $actual == "$expected" ]]
   }
   signed_out() {
     local route rc=0
@@ -1594,13 +1620,32 @@ On any refusal or failed check, record it and stop without a second deletion.
     status 401 /v1/me | tee "$evidence/ingress.log"
   }
   sample() {
-    local i errors=0
+    local i
     for ((i=1; i<samples; ++i)); do
-      sleep 1
-      status 401 "${routes[i % ${#routes[@]}]}" || ((errors+=1))
+      sleep 1 || return 1
+      status 401 "${routes[i % ${#routes[@]}]}" || true
     done
-    printf 'ingress samples=%s unexpected=%s tolerance=0\n' "$samples" "$errors"
-    (( errors == 0 ))
+  }
+  verify_ingress_samples() {
+    awk -v samples="$samples" -v deleted="$delete_requested_at_ms" -v ready="$ready_at_ms" \
+        -v tolerance="$tolerated_502s" '
+      NF != 9 || $1 !~ /^[0-9]+$/ || $4 != "HTTP" || $5 !~ /^[0-9][0-9][0-9]$/ ||
+      $6 != "expected" || $7 != 401 || $8 != "curl" || $9 !~ /^[0-9]+$/ { invalid++; next }
+      {
+        count++
+        if ($9 == 0 && $5 == 401) {
+          if ($1 > ready) covered=1
+        } else if ($9 == 0 && $5 == 502 && $1 >= deleted && $1 - deleted <= 5000) {
+          window_502++
+        } else {
+          unexpected++
+        }
+      }
+      END {
+        printf "ingress samples=%d/%d window_502=%d tolerance=%d unexpected=%d invalid=%d after_ready=%d\n",
+          count, samples, window_502, tolerance, unexpected, invalid, covered
+        exit !(count == samples && window_502 <= tolerance && !unexpected && !invalid && covered)
+      }' "$evidence/ingress.log"
   }
   api_before=
   read_api_pair() {
@@ -1613,6 +1658,8 @@ On any refusal or failed check, record it and stop without a second deletion.
     local current
     current=$(ready_pair studio-api) && [[ $current == "$api_before" ]] &&
       budget_ready studio-api &&
+      delete_requested_at_ms=$(date -u +%s%3N) &&
+      printf '%s\n' "$delete_requested_at_ms" >"$evidence/delete-start-ms" &&
       "${k[@]}" delete pod "$victim" --wait=false
   }
   replacement=
@@ -1660,6 +1707,7 @@ On any refusal or failed check, record it and stop without a second deletion.
   victim=$(pod_name 0) && survivor=$(pod_name 1) || exit 1
   check 'imported proxies, selections and queue baseline' timeout 45s bash "$data_probe" recovery-baseline \
     "$evidence/baseline.json" "pod/$survivor"
+  check 'survivor and worker restart counts before deletion' record_restarts "$evidence/restarts-before.json"
   check 'continuity sample before deletion' first_sample
   gate
   sample >>"$evidence/ingress.log" &
@@ -1668,23 +1716,22 @@ On any refusal or failed check, record it and stop without a second deletion.
   gate
   check 'deleted pod is gone' kubectl -n ai wait --for=delete "pod/$victim" --timeout=90s
   check 'replacement and survivor Ready on different nodes with both listeners' find_replacement
-  ready_at=$(date -u +%FT%TZ)
+  read -r ready_at_ms ready_at < <(date -u '+%s%3N %FT%TZ') || exit 1
   if [[ -n $replacement ]]; then
     check 'unchanged data probe on replacement' timeout 45s bash "$data_probe" recovery-compare \
       "$evidence/baseline.json" "pod/$replacement"
   else
     check 'unchanged data probe requires a replacement' false
   fi
-  check 'ingress continuity during replacement' wait "$sampler"
+  check 'ingress sampler completed' wait "$sampler"
   sampler=
-  check 'continuity sample spans replacement readiness' awk -v ready="$ready_at" \
-    '$3 == "HTTP" && $1 > ready { covered=1 } END { exit !covered }' "$evidence/ingress.log"
-  check 'continuity sample summary' tail -n 1 "$evidence/ingress.log"
+  check 'ingress continuity counts and sample after replacement readiness' verify_ingress_samples
   check 'signed-out ingress routes after replacement' signed_out
   sleep 10  # Two normal worker claim intervals after the replacement Ready timestamp.
   for worker in "${workers[@]}"; do
     check "$worker claims after replacement" idle_claims_since "$worker" "$ready_at"
   done
+  check 'survivor and worker restart counts unchanged' unchanged_restarts
   gate
   printf 'PASS OP437 API recovery (evidence %s)\n' "$evidence"
 )
