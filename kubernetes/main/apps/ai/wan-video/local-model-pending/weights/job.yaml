@@ -2,7 +2,8 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   # -r2: the first attempt was killed for memory five seconds in (limit 256Mi)
-  # with 570 MB written and no error of its own; see the hosting page. A Job is
+  # with 570 MB written and no error of its own; see "Part 2b activation" in
+  # docs/reference/local-model-hosting.md. A Job is
   # immutable, so a new attempt is a new name. The pod label, and with it the
   # download policy, is unchanged.
   name: wan-local-model-provision-r2

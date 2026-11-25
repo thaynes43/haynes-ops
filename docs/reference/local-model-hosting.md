@@ -150,8 +150,21 @@ if root.is_symlink() or not os.access(root, os.R_OK | os.W_OK | os.X_OK):
     raise SystemExit("Weights directory must be writable by UID 1000")
 '
 # After introducing the Job with the FQDN policy in place.
-kubectl -n ai wait --for=condition=complete job/wan-local-model-provision --timeout=30m
+kubectl -n ai wait --for=condition=complete job/wan-local-model-provision-r2 --timeout=30m
 ```
+
+**Changed: the first attempt failed and was retried under a new name.** On
+2026-11-25 at 05:16Z the Job `wan-local-model-provision` (memory limit 256Mi)
+was killed for memory five seconds after it started (`OOMKilled`, exit 137). It
+had logged the redirect to `us.aws.cdn.hf.co` and written 570,458,112 bytes of
+the first file to
+`/workspace/local-model-weights/qwen3.5-9b-q5_k_m/.quarantine-rgimzg5p/`.
+Nothing was published and the Wan pod was not restarted. The downloader wrote
+the file with a single `fsync` at the end, so its written pages stayed in the
+container's memory account. The retry, `wan-local-model-provision-r2`, flushes
+and drops the file's cached pages every 64 MiB and has a 1Gi limit. The
+quarantined partial is accounted for as described below and stays until the
+retry has published.
 
 A failed or interrupted Job can leave one or more quarantined directories.
 After the Job's pod has stopped, list the matching entries under
