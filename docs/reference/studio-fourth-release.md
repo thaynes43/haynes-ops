@@ -69,8 +69,9 @@ tree, every required receipt check marked PASS and the named baseline file
 present with its recorded hash. The gate stays open for 60 minutes after the
 selected merge's commit time so manual actions still fall in the admitted
 quiet window. The checks run at block entry and before each reconciliation
-and the idle claim. If the window closes, stop manual actions and assess the live state.
-Terminal retry and workload rollback use their own admission below. The
+and the idle claim. After the window closes, use the read-only verification
+below to assess the live state. Terminal retry and workload rollback use
+their own admission below. The
 reconcile blocks read the Flux source artifact revision before each reconcile.
 Wait for the exact revision to arrive. A different revision stops manual
 reconciliation.
@@ -300,6 +301,20 @@ if ! bash scripts/studio-release/op967.sh postflight; then
   exit 1
 fi
 printf 'PASS release verification\n'
+```
+
+If Flux takes more than an hour, the saved receipt and baseline still support
+read-only verification. Use the same selected merge SHA and evidence paths.
+This block checks the installed builds, endpoints, policies, sidecar, encoders,
+LAN and data snapshot. The listener POST probes and idle claim remain pending
+until separately admitted.
+
+```bash
+if ! bash scripts/studio-release/op967.sh verify; then
+  printf 'FAIL read-only release verification\n' >&2
+  exit 1
+fi
+printf 'PASS read-only release verification\n'
 ```
 
 The probe reports `av.__version__` and `av.library_versions` from both API

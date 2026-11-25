@@ -314,7 +314,9 @@ class PhaseTest(unittest.TestCase):
             phase = re.search(r"bash scripts/studio-release/op967\.sh ([\w-]+)", block)
             if phase:
                 cls.blocks[phase[1]] = block
-        cls.assert_blocks = set(cls.blocks) == {"preflight", "retry-preflight", *ROLLOUT, "rollback-baseline", "compare"}
+        cls.assert_blocks = set(cls.blocks) == {
+            "preflight", "retry-preflight", *ROLLOUT, "verify", "rollback-baseline", "compare",
+        }
 
     def setUp(self):
         self.assertTrue(self.assert_blocks, self.blocks)
@@ -533,6 +535,23 @@ class PhaseTest(unittest.TestCase):
         self.assertFalse(any("idle-claim" in call for call in calls))
         self.baseline.write_text("{}")
         _, calls = self.run_phase("postflight", expected=1, workloads="new")
+        self.assertEqual(calls, [])
+
+    def test_read_only_verification_uses_a_historical_receipt_without_mutation(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        self.admit()
+        result, calls = self.run_phase("verify", now=NOW + 86400, workloads="new")
+        self.assertIn("PASS read-only release verification", result.stdout)
+        self.assertTrue(any("ciliumendpoints.cilium.io" in call for call in calls))
+        self.assertTrue(any("postflight" in call for call in calls))
+        self.assertFalse(any(call[0] == "flux" or "idle-claim" in call or
+                             (call[-2] == "-" and call[-1] in {"voice", "image", "run", "matte"}) for call in calls))
+        _, calls = self.run_phase("postflight", expected=1, now=NOW + 86400, workloads="new")
+        self.assertEqual(calls, [])
+        _, calls = self.run_phase("verify", expected=1, now=NOW - 11, workloads="new")
+        self.assertEqual(calls, [])
+        self.baseline.write_text("{}")
+        _, calls = self.run_phase("verify", expected=1, now=NOW + 86400, workloads="new")
         self.assertEqual(calls, [])
 
     def test_rollback_accepts_either_ready_verified_build_and_requires_committed_schema(self):

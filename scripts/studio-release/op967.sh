@@ -176,12 +176,16 @@ validate_receipt() {
 }
 
 release_admitted() {
-  local merged_at now
+  local freshness=${1:-current} merged_at now
   [[ -n $baseline && -n $receipt ]] || return 1
   baseline=$(realpath -m -- "$baseline") || return 1
   selected_checkout || return 1
   merged_at=$(git show -s --format=%ct "$head") || return 1
   now=$(date -u +%s) || return 1
+  if [[ $freshness == historical ]]; then
+    (( merged_at <= now )) || return 1
+    now=$merged_at
+  fi
   validate_receipt "$receipt" "$tree" "$merged_at" "$now" rollout "$baseline"
 }
 
@@ -654,6 +658,10 @@ case $phase in
     check 'passing preflight receipt for the selected merged Ops revision' release_admitted
     if ((failed)); then finish; fi
     ;;
+  verify)
+    check 'historical preflight receipt for the selected merged Ops revision' release_admitted historical
+    if ((failed)); then finish; fi
+    ;;
   compare)
     check 'current rollback receipt for the selected fourth-pin Ops revision' rollback_admitted
     if ((failed)); then finish; fi
@@ -740,7 +748,7 @@ case $phase in
     check 'image worker registration reused its token' registration image-worker '[200]'
     check 'matte grant registered or reused the same token on retry' registration matte-worker '[201,200]'
     ;;
-  postflight)
+  postflight|verify)
     check 'fourth-pin workload set' pins "$api" "$web" yes
     check 'both selected API endpoints Ready' api_endpoints
     check 'installed effective matte policy and API ingress' installed_policies
@@ -754,15 +762,17 @@ case $phase in
     check 'LAN root available' lan '' 200
     check 'LAN API still refuses anonymous access' lan v1/me 401
     check 'all queues idle, grants present and archived data and store identical' data_probe postflight "$revision" "$api"
-    if (( ! failed )); then worker_routes; fi
-    if (( ! failed )); then
-      check 'receipt still current before the idle claim' release_admitted
-    fi
-    if (( ! failed )); then
-      check 'matte idle claim over port 8002' kubectl -n ai exec -i deploy/studio-matte-worker \
-        -c worker -- python -I -B - matte idle-claim < "$script_dir/op967-routes.py"
-    else
-      printf 'FAIL idle claim skipped after unsuccessful postflight checks\n' >&2
+    if [[ $phase == postflight ]]; then
+      if (( ! failed )); then worker_routes; fi
+      if (( ! failed )); then
+        check 'receipt still current before the idle claim' release_admitted
+      fi
+      if (( ! failed )); then
+        check 'matte idle claim over port 8002' kubectl -n ai exec -i deploy/studio-matte-worker \
+          -c worker -- python -I -B - matte idle-claim < "$script_dir/op967-routes.py"
+      else
+        printf 'FAIL idle claim skipped after unsuccessful postflight checks\n' >&2
+      fi
     fi
     ;;
   rollback-baseline)
@@ -784,6 +794,6 @@ case $phase in
     check 'LAN API still refuses anonymous access' lan v1/me 401
     check '0013 retained and archived data and store identical' data_probe compare "$old_revision" "$old_digest"
     ;;
-  *) printf 'Usage: bash %s {preflight|retry-preflight|migration|roll|postflight|rollback-baseline|compare}\n' "$0" >&2; exit 2 ;;
+  *) printf 'Usage: bash %s {preflight|retry-preflight|migration|roll|postflight|verify|rollback-baseline|compare}\n' "$0" >&2; exit 2 ;;
 esac
 finish
