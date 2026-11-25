@@ -46,6 +46,8 @@ jobs:
             kubernetes/main/apps/ai/studio/**
             kubernetes/main/apps/ai/studio-render/**
             scripts/tests/studio-release/**
+            docs/reference/studio-matting-deployment.md
+            docs/reference/studio-upscaling-deployment.md
             scripts/studio-segmentation/**
             .github/workflows/flux-local.yaml
 
@@ -234,6 +236,8 @@ jobs:
             "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_segmentation.py
           PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
             "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_upscaling.py
+          PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
+            "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_release.py
       - name: Check out the Studio matting source for the synthetic trial
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

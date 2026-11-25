@@ -34,7 +34,8 @@ Tom's choice determine whether to write a serving story.
    The probe and comparison expire one hour after finishing.
 
 Keep these helpers in the shell for the other blocks. Each check reports its
-own result. An idle gate failure prevents the Job creation.
+own result. An idle gate failure prevents the Job creation. Before
+2026-11-25 14:30Z, the idle gates read only `/health`.
 
 ```bash
 stage=kubernetes/main/apps/ai/studio/upscaling-pending
@@ -75,8 +76,10 @@ idle_gate() {
     $2 == "app" {n++; if ($3 ~ /^[0-9]+m$/ && $3+0 <= 250) pass++}
     END {exit !(n == 1 && pass == 1)}
   ' <<< "$render" || status=1
-  read_endpoint deploy/wan-video api http://127.0.0.1:8080/health |
-    check_json 'Wan idle' 'has("active_job") and .active_job == null' || status=1
+  read_endpoint deploy/wan-video api http://127.0.0.1:8080/v1/ready |
+    check_json 'Wan idle' '.ready == true and
+      has("active_video_job") and .active_video_job == null and
+      has("active_foley_job") and .active_foley_job == null' || status=1
   read_endpoint comfyui-0 app http://127.0.0.1:8188/queue |
     check_json 'shared ComfyUI queue empty' '.queue_running == [] and .queue_pending == []' || status=1
   return "$status"
@@ -181,9 +184,9 @@ PY
 ## Run the measuring smoke
 
 Choose a window with no heavy render, Wan or Foley work. The idle gate reads
-node and render load, checks Wan health and checks the queue from
-`comfyui-0` itself. Keep this window exclusive for the smoke. The Job
-compares the default and compact glibc allocator across the same frames and
+node and render load, requires Wan readiness with both video and Foley
+idle, and checks the queue from `comfyui-0` itself. Keep this window exclusive
+for the smoke. The Job compares the default and compact glibc allocator across the same frames and
 runs the deliberate timeout and fresh-worker replay. Capture the last JSON
 line even if Kubernetes recorded a failed Job. Record the measuring and
 quality verdicts separately. Record the observed worker RSS and cgroup peaks
