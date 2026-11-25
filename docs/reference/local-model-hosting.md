@@ -724,11 +724,16 @@ bash -s <<'BASH'
   gate_passed
   gate='Read diagnostic Job condition'
   deadline=$((SECONDS + 660))
+  condition=''
   while :; do
-    kubectl -n ai get "job/$name" -o json --request-timeout=10s > "$attempt/job.json"
-    condition=$(jq -r '[.status.conditions[]? | select(.status == "True") | .type] |
-      if index("Failed") then "Failed" elif index("Complete") then "Complete" else "" end
-    ' "$attempt/job.json")
+    # One failed read must not end the block before the logs are saved: a
+    # re-run would create a second Job. Keep the last good read and poll on.
+    if kubectl -n ai get "job/$name" -o json --request-timeout=10s > "$attempt/job.json.next"; then
+      mv "$attempt/job.json.next" "$attempt/job.json"
+      condition=$(jq -r '[.status.conditions[]? | select(.status == "True") | .type] |
+        if index("Failed") then "Failed" elif index("Complete") then "Complete" else "" end
+      ' "$attempt/job.json")
+    fi
     if [[ -n $condition ]] || (( SECONDS >= deadline )); then
       break
     fi
@@ -899,6 +904,15 @@ review the empty queue, cleared residency and idle ownership before
 proceeding. Set `OP442_WAN_MODE=dormant` to check a dormant deployment.
 Allow for a Service outage in the change window and repeat these checks
 after the replacement pod starts.
+
+**After a recreate of an active pod, prove the pin first.** The API holds
+the compute lease while it recovers, so the sidecar normally starts with
+`gpu_pin_unproven` and serves a refusal. Local discovery then answers 503 and
+the active health command below fails closed, although nothing is wrong. Run
+the gate "Local-model startup proof under the compute lease" from
+[Activate and verify the Service](#activate-and-verify-the-service) on the
+replacement pod before this check. A submit proves the pin as well; discovery
+only reads it. (Found in the delta review of PR 5060.)
 
 ```bash
 bash -s <<'BASH'
