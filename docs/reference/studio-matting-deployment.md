@@ -1,13 +1,11 @@
 # Stage Studio still matting
 
-**Expected** for [OP459](https://work.haynesnetwork.com/work_packages/459).
-CR-33 selects BiRefNet Lite FP32 on ONNX Runtime CPU. The published Studio
-image, one pinned weight file and three staged workloads are the release.
-The Ops merge registers the targeted network policies and provisioner
-ConfigMap. The provisioning and smoke Jobs are launched individually after
-the preceding checks pass. The worker sidecar and the render CPU change
-remain outside Flux's applied paths. Existing worker and render pods do
-not roll during this install.
+CR-33 selects BiRefNet Lite FP32 on ONNX Runtime CPU. Provisioning and
+the first two smoke attempts ran on 2026-11-25. CR-38 stages the new image,
+a fresh immutable profile allocation and the CPU-arena retest. Flux owns
+the previously registered network policies and provisioner ConfigMap.
+The Jobs, worker sidecar and render resource split stay staged. Launch each
+Job individually after its checks pass. [OP459](https://work.haynesnetwork.com/work_packages/459)
 
 OP459 authorizes a one-shot exception to Flux ownership for these two
 unprivileged Job objects. The saga coordinator runs the reviewed Git
@@ -26,9 +24,11 @@ the private Studio share, and both Job objects expire after 24 hours.
 2. Set that full reference as `data.image` in
    [release.yaml](../../kubernetes/main/apps/ai/studio/matting-pending/release/release.yaml).
    It feeds the image and profile identity of both Jobs and the staged
-   sidecar. The Studio release check refuses a tag or an unset digest.
-   Merge the Ops PR after its check passes. Run the following blocks from
-   that checked-out Ops revision.
+   sidecar. The release check refuses the previous installed digest and
+   reads the resource profile from the pinned image's OCI config. Both
+   the rendered smoke and sidecar must match its request and limit.
+   Merge the Ops PR after its check passes. Run the following blocks
+   from that checked-out Ops revision.
 3. Reconcile and check the policy stage and the two existing workloads.
    The download pod can reach only DNS and HTTPS for `huggingface.co`
    and `us.aws.cdn.hf.co`. The smoke pod has no permitted traffic.
@@ -46,7 +46,11 @@ the private Studio share, and both Job objects expire after 24 hours.
 
 ## Provision and read back the weight
 
-Check the jobs allocation exists and has at least 33 GiB free. The provisioner
+The image digest and serving settings are part of the immutable profile.
+Provision the same pinned graph into allocation
+`matting-op459-birefnet-lite-v1-02` for the new image. Preserve the first
+allocation as the installed baseline. Check that the jobs root has at
+least 33 GiB free. The provisioner
 checks the 1 GiB budget and 32 GiB free reserve before and during writes. CR-33
 accepts a 32-inode allocation here without an NFS free-inode reading. The
 Job writes as 1000:1000, with only `data/studio/jobs` mounted read-write.
@@ -103,13 +107,14 @@ PY
 
 ## Run the install smoke
 
-Use a window with no overlapping heavy offline render on `talosw01`. Keep
-the queue worker's four-CPU allocation available. Run once after the above
-read-back. The smoke has a 300 s deadline, no retries, no network,
-read-only root and weights, and a 256 MiB private scratch. It runs as
-10001:10001. It requests 2 GiB of memory and limits the job to 2 CPUs and
-6 GiB. The reported metrics include fixture regions, per-request timing,
-cold load and peak RSS. Capture the report from a failed run too.
+Use an exclusive heavy-job window on `talosw01`. Check render and Wan
+activity and node pressure before dispatch. Run `studio-matting-smoke-02-r3`
+once after the new pin's read-back. The Job requests 14 GiB and limits the
+container to 2 CPUs and 16 GiB. It has a 300 s deadline, no retries, no
+network, read-only root and weights, and a 256 MiB private scratch. It runs
+as 10001:10001. This run changes only the CPU arena. Capture the report
+including phase peaks, post-request RSS and fixture hash matches. Capture
+logs and pod termination state if the Job is killed before it reports.
 
 ```bash
 (
@@ -120,6 +125,9 @@ cold load and peak RSS. Capture the report from a failed run too.
   kubectl -n ai wait --for=condition=complete "job/$provision" --timeout=5s
   profile=$(kubectl -n ai logs "job/$provision" | jq -er '.profile_sha256')
   pin=$(yq '.data.image' "$stage/release/release.yaml")
+  memory_limit=$(yq '.data.memoryLimit' "$stage/release/release.yaml")
+  limit_bytes=$(( ${memory_limit%Gi} * 1024 * 1024 * 1024 ))
+  kubectl top node talosw01
   kubectl -n ai top pod --containers -l app.kubernetes.io/name=studio-render
   smoke=$(kustomize build "$stage/smoke")
   job=$(yq '.metadata.name' <<< "$smoke")
@@ -131,26 +139,23 @@ cold load and peak RSS. Capture the report from a failed run too.
   fi
   kubectl -n ai get "job/$job" -o wide
   kubectl -n ai logs "job/$job" |
-    jq -ce --arg profile "$profile" --arg digest "${pin##*@}" '
-      select(.passed and .profile_sha256 == $profile and .image_digest == $digest and
-        .provider == "CPUExecutionProvider")
+    jq -ce --arg profile "$profile" --arg digest "${pin##*@}" --argjson limit "$limit_bytes" '
+      select(.passed and .pinned_profile_sha256 == $profile and .image_digest == $digest and
+        .provider == "CPUExecutionProvider" and .memory_limit_bytes == $limit and
+        .session_settings.cpu_arena == false and .verdicts.memory_phases_measured and
+        .verdicts.installed_artifacts_match)
     '
 )
 ```
 
-**Changed: the first smoke was killed for memory and is retried with room to
-measure.** On 2026-11-25 `studio-matting-smoke-01` was `OOMKilled` (exit 137)
-14 seconds after its container started, under the 6Gi limit, before it printed
-a report. The weights had been provisioned and read back correctly
-(`studio-matting-provision-01`). The profile's 2Gi request and 6Gi limit were
-an engineering budget, never a measurement. The retry is
-`studio-matting-smoke-01-r2` with a 16Gi allowance so that it can finish and
-report the real peak resident memory. That number, not this allowance, decides
-the serving limit: the staged sidecar and the profile page keep saying 6Gi
-until the measurement is recorded, and story 451 does not activate the
-sidecar before they are corrected. If the peak is higher than the render
-worker's allocation can spare, the profile goes back to the coordinator for a
-new ruling.
+**Measured** on 2026-11-25. The first Job was OOMKilled after 14 s
+under the unmeasured 6 GiB budget. Retry `studio-matting-smoke-01-r2`
+peaked at 12,997,890,048 bytes in the worker and 13,150,916,608 bytes
+for the sum of process peaks. Fixture quality and replay passed. The
+14 GiB request and 16 GiB limit use that measured baseline. The new
+runtime peak and byte parity are pending the retest. Reject a candidate on
+any cutout or mask hash difference. If the retest fails the 16 GiB memory
+gate, hand back to the coordinator for a new ruling. [OP459, comment 9969](https://work.haynesnetwork.com/work_packages/459)
 
 Record the Ops Git revision, both Job names and statuses, published image
 digest, verified graph and profile hashes, smoke JSON and deployed health
@@ -161,12 +166,28 @@ owns the private cast quality and serving integration. Tom owns acceptance.
 
 ## Activation, retries and rollback
 
-Story 451 can promote the two dormant overlays after the smoke. First
-move the offline worker's Flux path to `studio-render/matting-pending` and
-verify the 18-CPU, 32 GiB limit. Cap offline render commands at
+Read-only accounting on 2026-11-25 showed 105.98 GiB allocatable and
+54.29 GiB requested, including Wan (24 GiB requested, 64 GiB limit),
+Foley (12 GiB, 32 GiB) and their API (128 MiB, 512 MiB). Adding the
+dormant local-model sidecar (8 GiB, 16 GiB) and one matting instance
+(14 GiB, 16 GiB) leaves 29.69 GiB unrequested. Existing limits sum
+to 239,904 MiB. At their limits, Wan, local model, the Studio queue
+worker and matting alone consume 104 GiB before offline render, Foley
+or other workloads. The node cannot carry those peaks simultaneously.
+Keep heavy jobs serialized unless measured headroom shows the second
+fits. Follow the Wan, Foley and local-model lease rules.
+[Matting profile](https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/matting-backend-profile.md)
+
+Story 451 can promote the dormant overlays after the smoke and proof
+that commands fit the reduced renderer limit. First move the offline
+worker's Flux path to `studio-render/matting-pending` and verify its
+1 GiB request and 18-CPU, 16 GiB limit. Cap offline render commands at
 `--workers 16`. Then stage the queue consumer with
-`studio/matting-pending/activation`: the queue keeps its four-CPU limit
-and matting adds two, so the two pods total 24 CPU. The sidecar uses a
+`studio/matting-pending/activation`. The worker has 4 CPUs, 2 GiB
+requested and an 8 GiB limit. The matting sidecar has 2 CPUs,
+14 GiB requested and a 16 GiB limit. The two pods total 24 CPUs. The
+serving command retains the established ORT settings. Adopting the
+measured candidate requires the passing byte comparison. The sidecar uses a
 shared, group-writable `/matting` emptyDir and the read-only `/weights`
 mount. Only the worker keeps its API credential and media mounts. Stage
 per-attempt directories with shared GID 10001, permissions 2770, and an
@@ -177,8 +198,8 @@ If provisioning fails, preserve the logs and failed allocation. Investigate
 the code before deciding whether a fresh run is appropriate. A reviewed
 change to `data.allocation` selects the next two-digit suffix for the two
 Job names and their corresponding weights mount. Keep the original
-allocation intact. If only the smoke fails, retain the exact model and scores
-while diagnosing. Alternate weights require a new ruling.
+allocation intact. After a smoke failure, retain the exact model and any
+reported scores and record the coordinator's ruling before a new attempt.
 
 After both Jobs finish, capture their evidence before the 24-hour Job TTL
 removes their objects and pods. The coordinator can remove the
