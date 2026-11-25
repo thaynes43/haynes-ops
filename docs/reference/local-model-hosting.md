@@ -234,7 +234,7 @@ print(json.dumps({"id": job["id"], "state": job["state"]}))
         [{"matchName":"huggingface.co"},{"matchPattern":"**.cdn.hf.co"}]) and
       (.spec.egress[1].toPorts[0].ports == [{"port":"443","protocol":"TCP"}])
     '
-  job=$(kubectl -n ai get job wan-local-model-provision --ignore-not-found -o name)
+  job=$(kubectl -n ai get job wan-local-model-provision-r2 --ignore-not-found -o name)
   job_inventory=$(kubectl -n ai get kustomization wan-local-model-weights --ignore-not-found -o name)
   [[ -z "$job" && -z "$job_inventory" ]]
   uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
@@ -297,6 +297,32 @@ the Cilium DNS and FQDN rules, with the same file SHA-256s and caps. Require a
 new attempt after reviewing space and the refused Job. Keep path, query and
 signature values out of the evidence.
 
+**Changed: the first attempt failed and was retried under a new name.** On
+2026-11-25 at 05:16Z the original provisioning Job (memory limit 256Mi)
+was killed for memory five seconds after it started (`OOMKilled`, exit 137). It
+had logged the redirect to `us.aws.cdn.hf.co` and written 570,458,112 bytes of
+the first file to
+`/workspace/local-model-weights/qwen3.5-9b-q5_k_m/.quarantine-rgimzg5p/`.
+Nothing was published and the Wan pod was not restarted. The downloader wrote
+the file with a single `fsync` at the end, so its written pages stayed in the
+container's memory account. The retry, `wan-local-model-provision-r2`, flushes
+and drops the file's cached pages every 64 MiB and has a 1Gi limit. The
+quarantined partial is accounted for as described below and stays until the
+retry has published.
+
+A failed or interrupted Job can leave one or more quarantined directories.
+After the Job's pod has stopped, list the matching entries under
+`/workspace/local-model-weights/qwen3.5-9b-q5_k_m/`. Record the Job ID,
+failure code, exact attempt path, allocated bytes (`du -s --block-size=1`) and
+entry count (`find -xdev -printf . | wc -c`). Recheck the byte and inode
+reserves before any retry. Keep the attempt while it is needed as evidence.
+For operator cleanup, select one exact `.quarantine-*` directory, resolve
+and verify its parent and name, and confirm it is a directory and has no
+active Job using it. As the owning UID, run `chmod u+w -- "$attempt"` if it
+was sealed, then `rm -r -- "$attempt"` using the verified path. Check that
+the path is gone and record the freed space. Leave the revision directory
+and other attempts in place.
+
 ```bash
 (
   set -euo pipefail
@@ -304,13 +330,13 @@ signature values out of the evidence.
   evidence=${OP442_EVIDENCE:?}
   flux reconcile kustomization cluster-apps -n flux-system --with-source
   if ! flux --timeout=34m reconcile kustomization wan-local-model-weights -n ai; then
-    kubectl -n ai logs job/wan-local-model-provision > "$evidence/b-provision.log" || true
+    kubectl -n ai logs job/wan-local-model-provision-r2 > "$evidence/b-provision.log" || true
     exit 1
   fi
-  kubectl -n ai wait --for=condition=complete job/wan-local-model-provision --timeout=30s
-  kubectl -n ai logs job/wan-local-model-provision > "$evidence/b-provision.log"
+  kubectl -n ai wait --for=condition=complete job/wan-local-model-provision-r2 --timeout=30s
+  kubectl -n ai logs job/wan-local-model-provision-r2 > "$evidence/b-provision.log"
   provisioner=docker.io/library/python:3.12.16-slim-bookworm@sha256:1475c4f5b6bcb7d35e57661d6f5d7429ec4041275633c15f2b49350ac898276d
-  kubectl -n ai get pods -l app.kubernetes.io/name=wan-local-model-provision -o json |
+  kubectl -n ai get pods -l batch.kubernetes.io/job-name=wan-local-model-provision-r2 -o json |
     jq -e --arg provisioner "$provisioner" '.items | select(length == 1) | .[0] |
       select(.status.phase == "Succeeded" and .spec.containers[0].image == $provisioner) |
       {uid: .metadata.uid, image: .spec.containers[0].image, imageID: .status.containerStatuses[0].imageID}' \
@@ -497,7 +523,7 @@ settled.
     retired=$(kubectl -n ai get "kustomization/$name" --ignore-not-found -o name)
     [[ -z "$retired" ]]
   done
-  job=$(kubectl -n ai get job wan-local-model-provision --ignore-not-found -o name)
+  job=$(kubectl -n ai get job wan-local-model-provision-r2 --ignore-not-found -o name)
   policy=$(kubectl -n ai get ciliumnetworkpolicy wan-local-model-provision --ignore-not-found -o name)
   [[ -z "$job" && -z "$policy" ]]
   kubectl -n ai get configmaps -o name |

@@ -216,6 +216,19 @@ class ProvisionTests(unittest.TestCase):
         opener.open.side_effect = responses
         return opener
 
+    def test_download_flushes_at_intervals_so_written_pages_do_not_accumulate(self):
+        # The first installed attempt was killed for memory after 570 MB with one
+        # fsync planned at the end. With a 2-byte chunk and a 4-byte interval, a
+        # 5-byte and a 9-byte file must each be settled inside the loop and once
+        # more at the end, and still hash to their pins.
+        opener = self.opener(DownloadResponse(b"model", 5), DownloadResponse(b"projector", 9))
+        with patch.object(provision, "CHUNK", 2), patch.object(provision, "FLUSH_EVERY", 4), \
+                patch.object(provision, "settle", wraps=provision.settle) as settle:
+            target = provision.provision(self.root, self.pins, opener)
+        self.assertEqual(settle.call_count, (1 + 1) + (2 + 1))
+        self.assertEqual((target / self.pins["files"][0]["name"]).read_bytes(), b"model")
+        self.assertEqual((target / self.pins["files"][1]["name"]).read_bytes(), b"projector")
+
     def test_publish_verified_pair_create_only(self):
         opener = self.opener(DownloadResponse(b"model", 5), DownloadResponse(b"projector", 9))
         target = provision.provision(self.root, self.pins, opener)
