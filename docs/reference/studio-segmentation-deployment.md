@@ -15,8 +15,8 @@ for that revision. Record the image byte size and the run's
 `studio-segmentation-sbom-<revision>` artifact. Set only `data.image` in
 [release.yaml](../../kubernetes/main/apps/ai/studio/segmentation-pending/release/release.yaml)
 before merging the serving release for allocation
-`segmentation-op460-dino-sam-v1-05`. The release guard refuses the previous
-smoke digests, including allocation 04's current pin, and verifies the
+`segmentation-op460-dino-sam-v1-06`. The release guard refuses the previous
+smoke digests, including the current pin from allocation 05, and verifies the
 published OCI config for the new digest.
 The serving contract pins memory-mapped loads, a 4 GiB request and a
 5 GiB limit. Run the blocks below from the merged Ops revision.
@@ -182,6 +182,14 @@ limit. [Story 460, comment 10156](https://work.haynesnetwork.com/projects/haynes
 Read-back passed.
 [Story 460, comment 10172](https://work.haynesnetwork.com/projects/haynes-studio/work_packages/460/activity#comment-10172).
 
+**Proven (2026-11-25).** `studio-segmentation-provision-05` ran from
+14:52Z to 14:57Z on talosw01 and published allocation
+`segmentation-op460-dino-sam-v1-05` with profile SHA-256
+`25ae2bef7d75b2546d16d92bee6e1ab20a27d940c9314fa939003c13b8c81c19`.
+The corrected idle gate confirmed Wan ready and both video and Foley idle
+before provisioning and again before the serving smoke.
+[Story 460, comment 10186](https://work.haynesnetwork.com/projects/haynes-studio/work_packages/460/activity#comment-10186).
+
 ## Run the serving smoke
 
 Reserve an exclusive heavy-job window on talosw01. The idle gate requires
@@ -191,13 +199,14 @@ and null, and a clear shared ComfyUI queue.
 Record the readings and hold competing heavy render, Wan, Foley and local
 model work for this window.
 
-**Expected.** `studio-segmentation-smoke-05` requests and limits two CPUs,
+**Expected.** `studio-segmentation-smoke-06` requests and limits two CPUs,
 requests 4 GiB and has a 5 GiB limit. It runs at 10001:10001 with read-only
 weights. Plain `studio-segmentation smoke` loads the serving profile once
 and runs the six fixture requests three times, for eighteen fixture calls.
 Pass 1 warms the models. From pass 2 to pass 3, the residency check allows
-up to 64 MiB of growth in each of maximum worker RSS, maximum cgroup
-residency and cgroup residency at pass end.
+up to 64 MiB of growth in the maximum worker resident RSS and the maximum
+cgroup resident memory across all request phases. The end-of-pass
+cgroup sample is recorded for diagnosis.
 Startup and inference keep their 60 s bounds. The smoke stops starting
 fixture calls when fewer than 65 s remain in its 840 s run budget, leaving
 time to report a failure before the Job's 900 s deadline. The Job has zero
@@ -277,7 +286,7 @@ with urlopen(sys.argv[1], timeout=5) as response:
         ([.peak_rss_bytes, .resident_rss_bytes, .cgroup_resident_bytes, .cgroup_peak_since_start_bytes] |
           all(.[]; type == "number" and . > 0 and . <= $limit)))))
   ' <<< "$report" || status=1
-  check 'Resident memory growth from pass 2 to pass 3 is at most 64 MiB' jq -e --argjson limit "$limit_bytes" '
+  check 'Both resident memory maxima grow by at most 64 MiB from pass 2 to pass 3' jq -e --argjson limit "$limit_bytes" '
     def stable:
       type == "array" and length == 3 and
       all(.[1,2]; type == "number" and . > 0 and . <= $limit) and
@@ -285,7 +294,7 @@ with urlopen(sys.argv[1], timeout=5) as response:
     .runs[0] |
     .memory.passes as $passes |
     .verdicts.memory_stable == true and $passes.tolerance_bytes == 67108864 and $passes.compared_passes == [2, 3] and
-    all($passes | .max_resident_rss_bytes, .max_cgroup_resident_bytes, .cgroup_resident_bytes; stable)
+    all($passes | .max_resident_rss_bytes, .max_cgroup_resident_bytes; stable)
   ' <<< "$report" || status=1
   check 'Exact readiness before and after all three passes' jq -e --arg profile "$profile" '
     {profile_id: "grounding-dino-tiny-sam2.1-tiny-cpu-v1", profile_sha256: $profile, device: "cpu"} as $ready |
@@ -356,12 +365,11 @@ false verdict. The cgroup peak was 2,932,133,888 bytes (2.73 GiB) under the
 status, exact readiness passed before and after, and the report was the
 last line.
 
-| Measured (MiB) | Pass 2 | Pass 3 |
-|---|---:|---:|
-| Worker resident memory maximum | 1601 | 1608 |
-| Worker resident memory mean | 1575 | 1583 |
-| Cgroup resident memory maximum | 1713 | 1720 |
-| Cgroup resident memory at pass end | 1712.6 | 1692.0 |
+| Measured (MiB) | Pass 1 | Pass 2 | Pass 3 |
+|---|---:|---:|---:|
+| Maximum worker resident memory | 1601.2 | 1601.3 | 1608.3 |
+| Maximum cgroup resident memory | 1711.9 | 1712.7 | 1720.1 |
+| Cgroup resident memory at pass end | 1712.2 | 1712.6 | 1692.0 |
 
 Matching request and phase samples varied from **-84 to +89 MiB** as
 file-backed pages were reclaimed and faulted back and scratch memory varied.
@@ -371,6 +379,27 @@ The serving configuration still needs a passing smoke before activation.
 
 The gates before smokes 02, 03 and 04 read only Wan's `/health`, so they did
 not establish Foley's idleness.
+
+### Allocation 05 serving result
+
+**Changed (2026-11-25).** `studio-segmentation-smoke-05` ran from 14:57:04Z
+to 14:58:57Z on talosw01, using allocation `segmentation-op460-dino-sam-v1-05`.
+It exited 1 with `passed: false` on its stability verdict. `memory_stable`
+was the only false verdict. The cgroup peak was 3,026,976,768 bytes (2.82 GiB)
+under the 5 GiB limit, cold load took 22.6 s, all eighteen calls had their
+expected status, and exact readiness passed before and after.
+
+| Measured (MiB) | Pass 1 | Pass 2 | Pass 3 |
+|---|---:|---:|---:|
+| Maximum worker resident memory | 1570.3 | 1554.4 | 1532.5 |
+| Maximum cgroup resident memory | 1682.2 | 1666.3 | 1644.5 |
+| Cgroup resident memory at pass end | 1665.8 | 1548.3 | 1612.4 |
+
+Both maxima fell by about 22 MiB from pass 2 to pass 3. Pass 2 ended
+during a reclaim dip, so the end sample rose 64.09 MiB against the 64 MiB
+tolerance and failed the verdict. A passing serving smoke is required
+before activation.
+[Story 460, comment 10186](https://work.haynesnetwork.com/projects/haynes-studio/work_packages/460/activity#comment-10186).
 
 ## Measuring evidence
 

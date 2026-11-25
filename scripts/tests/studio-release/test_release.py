@@ -44,6 +44,16 @@ class EntryPointTest(unittest.TestCase):
                 }},
             }
         self.enterContext(patch.object(guard, "published_config", side_effect=lambda image, digest: configs[image]))
+        check_stage = guard.check_segmentation_stage
+
+        def segmentation_stage_with_test_digest(path, flux):
+            pin, _ = check_stage(path, flux)
+            return pin, "sha256:" + "a" * 64
+
+        # Validate the staged manifests before using a digest for the stub registry.
+        # The segmentation suite exercises refusal of the actual stale digests.
+        self.enterContext(patch.object(guard, "check_segmentation_stage",
+                                       side_effect=segmentation_stage_with_test_digest))
 
     def override_source(self, path, content):
         read_text = Path.read_text
