@@ -156,7 +156,9 @@ def check_matting(path, flux):
     for name, uid in (("provision", 1000), ("smoke", 10001)):
         stage = render(pending / name)
         name_suffix = allocation.rsplit("-", 1)[1]
-        job = resource(stage, "Job", f"studio-matting-{name}-{name_suffix}")
+        # The smoke is on its second attempt: see the comment in smoke/job.yaml.
+        attempt = "-r2" if name == "smoke" else ""
+        job = resource(stage, "Job", f"studio-matting-{name}-{name_suffix}{attempt}")
         pod = job["spec"]["template"]["spec"]
         if (job["spec"]["activeDeadlineSeconds"] != 300 or job["spec"]["backoffLimit"] != 0
                 or job["spec"]["ttlSecondsAfterFinished"] != 86400
@@ -190,7 +192,8 @@ def check_matting(path, flux):
     smoke, pod = jobs["smoke"]
     if container(smoke)["command"] != ["studio-matting", "smoke"] or pod["securityContext"]["fsGroup"] != 10001:
         raise ValueError("the smoke Job must run the pinned smoke with writable private scratch")
-    check_matting_mounts(container(smoke), pod, weight_path, "scratch")
+    # 16Gi is a measuring allowance for the retried smoke, not a serving limit.
+    check_matting_mounts(container(smoke), pod, weight_path, "scratch", memory="16Gi")
 
     stage = render(pending / "activation")
     worker = resource(stage, "Deployment", "studio-worker")
@@ -239,7 +242,7 @@ def check_matting_container(spec, image):
         raise ValueError("matting must use the selected image, no credentials, read-only root and CPU only")
 
 
-def check_matting_mounts(spec, pod, subpath, scratch_name):
+def check_matting_mounts(spec, pod, subpath, scratch_name, memory="6Gi"):
     volumes = {item["name"]: item for item in pod["volumes"]}
     mounts = {item["name"]: item for item in spec["volumeMounts"]}
     if (mounts != {
@@ -247,9 +250,10 @@ def check_matting_mounts(spec, pod, subpath, scratch_name):
             "weights": {"name": "weights", "mountPath": "/weights", "subPath": subpath, "readOnly": True},
         } or volumes[scratch_name]["emptyDir"]["sizeLimit"] != "256Mi"
             or not volumes["weights"]["nfs"]["readOnly"]
-            or spec["resources"]["limits"] != {"cpu": "2", "memory": "6Gi"}
+            or spec["resources"]["limits"] != {"cpu": "2", "memory": memory}
             or spec["resources"]["requests"]["memory"] != "2Gi"):
-        raise ValueError("matting needs 2 CPUs, 2/6 GiB RAM, a private emptyDir and read-only pinned weights")
+        raise ValueError(f"matting needs 2 CPUs, 2Gi requested and {memory} limit, a private emptyDir "
+                         "and read-only pinned weights")
 
 
 def check(path):

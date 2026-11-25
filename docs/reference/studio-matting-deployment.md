@@ -138,6 +138,20 @@ cold load and peak RSS. Capture the report from a failed run too.
 )
 ```
 
+**Changed: the first smoke was killed for memory and is retried with room to
+measure.** On 2026-11-25 `studio-matting-smoke-01` was `OOMKilled` (exit 137)
+14 seconds after its container started, under the 6Gi limit, before it printed
+a report. The weights had been provisioned and read back correctly
+(`studio-matting-provision-01`). The profile's 2Gi request and 6Gi limit were
+an engineering budget, never a measurement. The retry is
+`studio-matting-smoke-01-r2` with a 16Gi allowance so that it can finish and
+report the real peak resident memory. That number, not this allowance, decides
+the serving limit: the staged sidecar and the profile page keep saying 6Gi
+until the measurement is recorded, and story 451 does not activate the
+sidecar before they are corrected. If the peak is higher than the render
+worker's allocation can spare, the profile goes back to the coordinator for a
+new ruling.
+
 Record the Ops Git revision, both Job names and statuses, published image
 digest, verified graph and profile hashes, smoke JSON and deployed health
 on OP459. Record the private
