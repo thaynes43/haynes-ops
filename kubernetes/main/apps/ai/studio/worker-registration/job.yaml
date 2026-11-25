@@ -38,6 +38,10 @@ spec:
             - studio-worker
             - --token-file
             - /run/studio-credentials/token
+            # The same token is a no-op. A different token (a deliberate rotation:
+            # a new Job name with an -rN suffix) revokes the old one and registers
+            # the new one, instead of failing with a conflict.
+            - --replace
           env:
             - name: STUDIO_DATABASE_SCHEMA
               value: studio

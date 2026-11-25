@@ -501,8 +501,18 @@ replicas roll independently of a registration failure. The replacement worker
 requires both successful Job gates and the healthy app at the new Git
 artifact revision. A failed migration leaves the existing app serving.
 Investigate the failure and use a new digest-named Job for a forward fix.
-A lost or replaced token requires an explicit rotation plan. Preserve the
-credential during routine image rollbacks.
+Preserve the credential during routine image rollbacks. The token's
+ExternalSecret has `deletionPolicy: Retain`, so pruning or deleting it leaves the
+Secret in place, and the registration Job passes `--replace`, so re-running it with
+the same token changes nothing.
+
+To rotate the worker token on purpose: scale the worker to zero in GitOps; delete
+the Secret `ai/studio-worker-token` (External Secrets then mints a new value);
+give the registration Job a new name with the next `-rN` suffix and update the
+Flux health check that names it, in one PR; reconcile. The new Job revokes the
+old token and registers the new one; restore the worker's replica once the Job is
+Complete. Until that Job has run, a worker started with the new value is refused
+with 401, which is the safe failure.
 
 To pause builds, use the zero-replica GitOps change above and keep the queue,
 registration and storage. To restore the pre-OP956 app before its migration
