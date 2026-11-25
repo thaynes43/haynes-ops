@@ -765,7 +765,9 @@ class PhaseTest(unittest.TestCase):
         self.rollback_baseline.write_bytes(self.baseline.read_bytes())
         self.receipt.unlink()
         rollback = {"artifact": ROLLBACK, "stages": STAGES[:-2], "now": NOW + 14400}
-        self.run_phase("compare", **rollback)
+        _, calls = self.run_phase("compare", **rollback)
+        for engine in ("image", "voice", "run"):
+            self.assertTrue(any("exec" in call and call[-1] == engine for call in calls), engine)
         self.run_phase("compare", expected=1, matte_pod_remaining=True, **rollback)
         self.run_phase("compare", expected=1, snapshot={**SNAPSHOT, "runs": 3}, **rollback)
         self.run_phase("compare", expected=1, **{**rollback, "artifact": HEAD})

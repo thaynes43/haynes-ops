@@ -692,6 +692,12 @@ else:
 ' "$service"
 }
 
+worker_engines() {
+  check 'image worker reaches the shared queue' worker_engine image-worker image
+  check 'voice worker reaches Kokoro' worker_engine voice-worker voice
+  check 'run worker reaches the Wan listener' worker_engine worker run
+}
+
 matte_queue_idle() {
   local pod
   pod=$(ready_api_pod "$api") || return 1
@@ -821,9 +827,7 @@ case $phase in
     check 'offline render app on the 17-CPU split and forwarding init' render_pin
     check 'exact sidecar profile reached from the matte worker' sidecar_ready
     check 'matte worker entered its normal polling loop and reports progress' matte_loop
-    check 'image worker reaches the shared queue' worker_engine image-worker image
-    check 'voice worker reaches Kokoro' worker_engine voice-worker voice
-    check 'run worker reaches the Wan listener' worker_engine worker run
+    worker_engines
     check 'one PyAV 18.1.1 encoder and bundled libraries' encoders
     check 'LAN root available' lan '' 200
     check 'LAN API still refuses anonymous access' lan v1/me 401
@@ -874,6 +878,7 @@ case $phase in
     check 'third-pin workload set' pins "$old_digest" "$old_web" no
     check 'matte worker removed' matte_removed
     check 'old API endpoints' api_endpoints "$old_digest"
+    worker_engines
     check 'LAN root available on previous build' lan '' 200
     check 'LAN API still refuses anonymous access' lan v1/me 401
     check '0013 retained and archived data and store identical' data_probe compare "$old_revision" "$old_digest"

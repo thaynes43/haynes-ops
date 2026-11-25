@@ -20,7 +20,7 @@ is the only action that changes the cluster. Flux receives a GitHub push
 event and polls Git every 30 minutes. The stages start automatically when
 the new artifact arrives.
 
-Use a LAN-capable Bash shell with GNU coreutils, jq, yq, Python with PyYAML,
+Use a LAN-capable Bash shell with GNU coreutils, jq, yq, Python 3.12 with PyYAML,
 and Flux CLI 2.10. Work from the clean reviewed PR head incorporating
 current Ops `main`. Set `STUDIO_OP967_RECEIPT` and `STUDIO_OP967_BASELINE` to
 new paths in a private directory outside the checkout. Keep submissions
@@ -311,11 +311,9 @@ The API validation order was independently exercised on Studio PR 139.
 permitted still and a separate supervised test. The store held no suitable
 still at pickup.
 
-Read the existing [Gatus check](studio-deployment.md#gatus-and-backup-coverage)
-and the [read-only engine checks](studio-deployment.md#reconcile-and-check-health).
-Record each check before opening submissions. The fourth pin checks
-runtime reachability and compares archived data hashes. A real cutout and a
-person's review are separate evidence.
+Record the script's engine reachability results and the Gatus result before
+opening submissions. A real cutout and a person's review are separate
+evidence. [Gatus check](studio-deployment.md#gatus-and-backup-coverage)
 
 ## Roll back workloads through a reviewed PR
 
@@ -364,7 +362,7 @@ After the revert merges, return to the fourth-pin checkout. Set
 `ROLLBACK_OPS_REVISION` to the full revert merge SHA and set
 `STUDIO_OP967_ROLLBACK_BASELINE` to the revert preflight's snapshot.
 Run the same `wait` block, then compare the old images, endpoints,
-matte removal and retained schema and data.
+engine reachability, matte removal and retained schema and data.
 
 ```bash
 if ! bash scripts/studio-release/op967.sh compare; then
@@ -373,8 +371,8 @@ if ! bash scripts/studio-release/op967.sh compare; then
 fi
 ```
 
-Verify the engines and Gatus before reopening the original lanes. A
-forward fix is needed to resume matte submissions and job detail.
+Record the Gatus result before reopening the original lanes. A forward
+fix is needed to resume matte submissions and job detail.
 
 A separate reviewed change can restore the offline 20-CPU limit after
 a passing rollback comparison and read-back that the matte pod has
