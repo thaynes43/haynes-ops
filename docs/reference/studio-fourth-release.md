@@ -30,9 +30,14 @@ in story 967, comment 10322. [Merge PR](https://github.com/thaynes43/haynes-ops/
 | Migration | `studio-migrate-c13c8ad74dfb` ran from 22:56:51Z to 22:57:05Z with one succeeded pod and zero failed pods. The audit read `0013_matte_jobs` under the migrator identity over TLS. |
 | Workloads | API replicas started at 22:57:11Z and 22:57:32Z, and the voice and image workers at 22:58:23Z. The run worker started at 23:01:30Z after Helm reported the offline render worker Ready. The render pod started at 22:56:42Z with 20 CPUs and forwarding init. All new pods, including two web and two MCP replicas, were Ready with zero restarts. |
 | `wait` | Passed at 23:02:12Z. Flux stages were Ready at the selected pin. |
-| `postflight` | **75 PASS, 0 FAIL** at 23:02:39Z. All three registration Jobs reused their tokens, both API endpoints were Ready, and the worker dependency reads passed. The three existing lane grants were present and read-only, the lanes were idle, the matte queue was empty and there was no matte grant. All 39 listener and lane probes returned the expected 401, 403 or 422. |
+| `postflight` | **75 PASS, 0 FAIL** at 23:02:39Z. All three registration Jobs reused their tokens, both API endpoints were Ready, and the worker dependency reads passed. The three existing lane grants were present and read-only, the lanes were idle, the matte queue was empty and there was no matte grant. The listener checks passed. |
 | Gatus `internal/studio` | All 21 samples between the merge and 23:02Z returned the expected 401. The last six took 2–7 ms. |
 | Independent `verify` | **75 PASS, 0 FAIL** from 23:06:36Z to 23:06:52Z, exit 0. Ran the block as its own Bash process from a clean checkout of the exact merge, with `MERGED_OPS_REVISION` set and no baseline. |
+
+Comment 10322 reported 39 listener and lane probes. The pinned listener script
+sends 35 HTTP requests: 13 from voice, 13 from image and nine from run. The
+independent `verify` logged the expected 401, 403 or 422 for each request. The
+75 PASS total counts all PASS lines, including summary lines.
 
 **Changed.** Flux fetched the merge at 22:56:10Z on its 30-minute poll,
 13 minutes 44 seconds after the merge. The audit accepted the later source
