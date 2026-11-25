@@ -1504,7 +1504,7 @@
           "released_memory_mib": {
             "type": "number",
             "minimum": 0,
-            "description": "Fresh selected-card measurement after the worker was reaped and release passed both the pre-load baseline and profile ceiling."
+            "description": "Fresh selected-card measurement after the worker was reaped and release was within 4 MiB above the pre-load baseline and at or below the profile ceiling."
           },
           "result": {
             "type": "object",

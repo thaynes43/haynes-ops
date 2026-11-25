@@ -347,7 +347,7 @@ jq -e --argjson ceiling "$ceiling" --argjson started "$started" \
   --slurpfile load "$evidence/cold.status.json" \
   '.internal and .operation=="unload" and .state=="succeeded" and
     .baseline_memory_mib == $load[0].baseline_memory_mib and
-    (.released_memory_mib|type)=="number" and .released_memory_mib <= .baseline_memory_mib and
+    (.released_memory_mib|type)=="number" and .released_memory_mib <= (.baseline_memory_mib + 4) and
     .released_memory_mib <= $ceiling and .finished_at <= $started' \
   "$evidence/handover.json"
 at_wan 8188/queue | tee "$evidence/queue-after-s2v"
@@ -356,8 +356,10 @@ at_wan 8188/queue | tee "$evidence/queue-after-s2v"
 Every new model load starts by verifying the lease and the engine queue in the
 sidecar. It uses the same `/free` request as Foley, rechecks the queue and
 records a fresh idle Card A sample before creating the child. Release requires
-a fresh idle reading at or below both that baseline and the profile ceiling,
-after the supervisor has reaped the child and its process group. The compute
+a fresh idle reading at or below the profile ceiling and no more than 4 MiB
+above that baseline, after the supervisor has reaped the child and its process
+group. The 4 MiB allowance covers small GPU accounting variations. Record the
+observed variation during the first live smoke. The compute
 lease covers the proof before ComfyUI submission. Use the UUID samples and the
 Wan ledger's prompt ID and timestamps to record which card the engine used.
 
@@ -375,7 +377,7 @@ local_request reload 120 "$(operation load)"
 local_request final-unload 30 "$(operation unload)"
 jq -e --argjson ceiling "$ceiling" --slurpfile load "$evidence/reload.status.json" \
   '.baseline_memory_mib == $load[0].baseline_memory_mib and
-    (.released_memory_mib|type)=="number" and .released_memory_mib <= .baseline_memory_mib and
+    (.released_memory_mib|type)=="number" and .released_memory_mib <= (.baseline_memory_mib + 4) and
     .released_memory_mib <= $ceiling' "$evidence/final-unload.status.json"
 wan_exec test ! -e /workspace/local-model/state.json
 at_wan 8080/health

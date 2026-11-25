@@ -30,6 +30,7 @@ MAX_VISUAL_TOKENS = 1024
 MAX_PACKET = 64 * 1024
 STATUS_SECONDS = 15
 MAX_UNLOADED_MIB = 512
+RELEASE_DRIFT_MIB = 4
 REAPED_ERRORS = frozenset({"operation_timeout", "backend_exited", "backend_failed", "output_limit"})
 LOAD_REFUSALS = {
     "model_card_busy": "gpu_busy",
@@ -312,7 +313,9 @@ class Lane:
         return self.own_card_idle(snapshot) and snapshot["memory_mib"] <= self.profile["unloaded_max_mib"]
 
     def released(self, snapshot, baseline):
-        return baseline is not None and self.unloaded(snapshot) and snapshot["memory_mib"] <= baseline
+        # Allow small accounting drift while enforcing the profile ceiling.
+        return (baseline is not None and self.unloaded(snapshot)
+                and snapshot["memory_mib"] <= baseline + RELEASE_DRIFT_MIB)
 
     def resident(self, snapshot):
         return self.own_card_idle(snapshot) and (

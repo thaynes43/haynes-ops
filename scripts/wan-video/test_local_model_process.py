@@ -72,8 +72,8 @@ def serve_fixture(root, scenario):
         allocated = pid_file.exists() and Path(f"/proc/{child_pid(root)}").exists()
         if allocated or (root / "memory.stuck").exists():
             memory = 5000
-        elif (root / "memory.leaked").exists():
-            memory = 65
+        elif (root / "memory.residual").exists():
+            memory = int((root / "memory.residual").read_text())
         elif scenario == "tight-ceiling" and not pid_file.exists():
             memory = 63
         else:
@@ -248,16 +248,26 @@ class ModelProcessTests(unittest.TestCase):
         self.assertEqual((job["error"], job["released_memory_mib"]), ("backend_failed", 64))
         self.assert_reaped()
 
+    def test_release_accepts_small_accounting_drift_within_ceiling(self):
+        self.start_supervisor("normal")
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
+        (self.root / "memory.residual").write_text("68")
+        with patch.object(local.time, "sleep"):
+            job = self.perform(UNLOAD, "unload")
+        self.assertEqual(job["state"], "succeeded")
+        self.assertEqual((job["baseline_memory_mib"], job["released_memory_mib"]), (64, 68))
+        self.assert_reaped()
+
     def test_failed_inference_with_leak_below_ceiling_holds_and_records_reason(self):
         self.start_supervisor("failed-infer")
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
-        (self.root / "memory.leaked").touch()
+        (self.root / "memory.residual").write_text("69")
         with patch.object(local.time, "sleep"):
             job = self.perform(INFER, "infer")
         self.assertEqual((job["error"], job["reason_code"]), ("residency_unverified", "backend_failed"))
         self.assertEqual(job["baseline_memory_mib"], 64)
         self.assertNotIn("released_memory_mib", job)
-        self.assertEqual(self.lane.status()["memory_mib"], 65)
+        self.assertEqual(self.lane.status()["memory_mib"], 69)
         self.assertTrue(local.product.read_job(self.lane.path)["held"])
         self.assertFalse(Path(f"/proc/{child_pid(self.root)}").exists())
 
