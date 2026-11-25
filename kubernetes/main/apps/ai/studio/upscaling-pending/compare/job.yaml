@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   # The runbook assigns a fresh name and supplies the authorized input and digest.
-  name: studio-upscaling-compare
+  name: studio-upscaling-compare-00
 spec:
   activeDeadlineSeconds: 300
   backoffLimit: 0

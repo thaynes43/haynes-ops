@@ -21,6 +21,6 @@ replacements:
     targets:
       - select:
           kind: Job
-          name: studio-upscaling-compare
+          name: studio-upscaling-compare-[0-9]{2}
         fieldPaths:
           - spec.template.spec.initContainers.[name=reserve-output].args.0

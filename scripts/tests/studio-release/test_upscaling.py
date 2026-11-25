@@ -404,6 +404,14 @@ class ReleaseGuardTest(unittest.TestCase):
                 self.guard.check_upscaling(self.studio, self.flux)
             fetch.assert_not_called()
 
+    def test_failed_smoke_image_is_refused_without_registry_lookup(self):
+        stale = "sha256:577f9763a172164ca355de3afc335241deeb3c49ffcb103ba9ebcb1535a1c2ab"
+        self.configured_image(f"{self.guard.UPSCALING_IMAGE}@{stale}")
+        with patch.object(self.guard, "published_labels") as fetch:
+            with self.assertRaisesRegex(ValueError, "stale upscaling image digest"):
+                self.guard.check_upscaling(self.studio, self.flux)
+            fetch.assert_not_called()
+
     def test_malformed_image_reference_is_refused_before_registry_lookup(self):
         self.configured_image(f"{self.guard.UPSCALING_IMAGE}:latest")
         with patch.object(self.guard, "published_labels") as fetch:
@@ -592,6 +600,8 @@ class ReleaseGuardTest(unittest.TestCase):
 
     def test_comparison_renders_each_input_form_and_mounts_only_used_shards(self):
         template = self.guard.resource(self.guard.render(STAGE / "compare"), "Job")
+        allocation = yaml.safe_load((STAGE / "release/release.yaml").read_text())["data"]["allocation"]
+        suffix = allocation.rsplit("-", 1)[1]
         source_shard = PROXY.rsplit("/", 1)[0]
         master_shard = MASTER.rsplit("/", 1)[0]
         still = PROXY.removesuffix(".mp4") + ".jpg"
@@ -607,7 +617,7 @@ class ReleaseGuardTest(unittest.TestCase):
         ):
             with self.subTest(expected=expected):
                 job = COMPARE_JOB(template, source=source, run="000000000001", **options)
-                self.assertEqual(job["metadata"]["name"], "studio-upscaling-compare-000000000001")
+                self.assertEqual(job["metadata"]["name"], f"studio-upscaling-compare-{suffix}-000000000001")
                 self.assertEqual(job["spec"]["ttlSecondsAfterFinished"], 3600)
                 pod = job["spec"]["template"]["spec"]
                 self.assertEqual(pod["initContainers"][0]["args"][-1], COMPARE_ALLOCATION)
