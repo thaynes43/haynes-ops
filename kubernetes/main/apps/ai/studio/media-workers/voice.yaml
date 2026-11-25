@@ -37,7 +37,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: worker
-          image: ghcr.io/thaynes43/haynes-studio@sha256:c4f06807de8c852426dfd79e996d1e4e9b8859ca44eb2dc683395d5b0dbb1be6
+          image: ghcr.io/thaynes43/haynes-studio@sha256:c13c8ad74dfb4a4fe14bd9ed037bae8eacccaa05925e8b45453825ff84580f5a
           command: [studio-worker]
           args: [--lane, voice]
           env:

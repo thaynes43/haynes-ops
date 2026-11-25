@@ -3,7 +3,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   # Keep this name and its Flux health check tied to the image digest.
-  name: studio-register-voice-worker-c4f06807de8c
+  name: studio-register-voice-worker-c13c8ad74dfb
 spec:
   activeDeadlineSeconds: 300
   backoffLimit: 2
@@ -23,7 +23,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: register
-          image: ghcr.io/thaynes43/haynes-studio@sha256:c4f06807de8c852426dfd79e996d1e4e9b8859ca44eb2dc683395d5b0dbb1be6
+          image: ghcr.io/thaynes43/haynes-studio@sha256:c13c8ad74dfb4a4fe14bd9ed037bae8eacccaa05925e8b45453825ff84580f5a
           command: [studio-api-admin]
           args:
             - worker-token

@@ -1,5 +1,5 @@
 # Runtime dependencies from thaynes43/haynes-studio uv.lock at
-# 0f6ca21e48f8a8e4d6745cba91267c4726733b47 (Python 3.12, linux x86_64).
+# 470a90af73a2201e6542b5d867853dce6facad04 (Python 3.12, linux x86_64).
 # Generated with uv 0.13.6 from that checkout (project and all dev groups omitted):
 # uv export --locked --no-default-groups --no-emit-project --no-annotate --no-header --no-hashes --python 3.12
 alembic==1.20.1

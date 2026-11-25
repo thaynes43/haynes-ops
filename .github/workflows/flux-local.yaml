@@ -209,7 +209,7 @@ jobs:
             --rendered "$RUNNER_TEMP/authentik-rendered.yaml"
 
   studio-effective-policy:
-    # Any active Flux source or shared base can add a selecting policy.
+    # Advisory on all cluster paths. The Studio-path release guard is required.
     if: ${{ needs.filter.outputs.changed-files != '[]' || needs.filter.outputs.studio-files != '[]' }}
     needs: filter
     name: Flux Local - Studio effective policy guard
@@ -307,8 +307,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: thaynes43/haynes-studio
-          # First released source containing all three schema revisions under test.
-          ref: 0f6ca21e48f8a8e4d6745cba91267c4726733b47
+          # Fourth release source with all three schema revisions and the 0013 lock fix.
+          ref: 470a90af73a2201e6542b5d867853dce6facad04
           path: studio-retry-source
           persist-credentials: false
       - name: Exercise the retry probe against PostgreSQL
@@ -329,7 +329,6 @@ jobs:
       - diff
       - annotation-guard
       - portal-identity-guard
-      - studio-effective-policy
       - studio-release-guard
     name: Flux Local - Success
     runs-on: ubuntu-latest

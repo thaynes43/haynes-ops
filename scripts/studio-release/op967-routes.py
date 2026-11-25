@@ -78,7 +78,7 @@ def probe(client, lane):
 
 def main():
     lane, *mode = sys.argv[1:]
-    if lane not in LANES or (mode and (lane, mode) != ("matte", ["idle-claim"])):
+    if lane not in LANES or (mode and (lane, mode) != ("matte", ["claim-validation"])):
         return 1
     if lane == "matte":
         os.environ["STUDIO_WORKER_TOKEN"] = Path("/run/secrets/studio-worker/token").read_text().strip()
@@ -89,8 +89,9 @@ def main():
         return 1
     with httpx.Client(base_url=base, trust_env=False, timeout=5) as client:
         if mode:
-            # Run only after the coordinator's idle and route gates pass.
-            passed = check(client, "matte idle claim over port 8002", "claim", 204, json={"lane": "matte"})
+            # Validation rejects the extra field before any work can be claimed.
+            passed = check(client, "matte claim validation over port 8002", "claim", 422, "schema.unknown_field",
+                           json={"lane": "matte", "unexpected": True})
         else:
             passed = probe(client, lane)
     print("PASS" if passed else "FAIL", lane, "route checks")

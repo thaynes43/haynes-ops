@@ -7,7 +7,9 @@ import os
 import re
 import subprocess
 import sys
+import tarfile
 from fractions import Fraction
+from functools import cache
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -51,6 +53,8 @@ PREDECESSOR_RENDER_SHA256 = "51d95b693bf4a07a2f5818d5e8e9143d889b763fe5bc7d4442a
 MIGRATION_0013_SHA256 = "6e68c22881ed4129b9557402accaee5a054eb490bb3fc58b3d04b399019d71be"
 NAMESPACE_POLICY_KINDS = {"NetworkPolicy", "CiliumNetworkPolicy"}
 CLUSTER_POLICY_KIND = "CiliumClusterwideNetworkPolicy"
+FLUX_ROOT = Path("kubernetes/main/flux/config/cluster.yaml")
+MATTE_STAGES = {"studio-matte-worker", "studio-matte-worker-registration"}
 STALE_MATTING_DIGESTS = {
     "sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f",
     "sha256:5c431978f3bfe7a48deb062c6b2854ca8b086d1a5d9c600e2db4b1e26d702d72",
@@ -272,9 +276,167 @@ def render(path):
     return list(yaml.safe_load_all(output))
 
 
+def flux_build(repo, stage):
+    with TemporaryDirectory(prefix="studio-flux-stage-") as directory:
+        manifest = Path(directory) / "stage.yaml"
+        manifest.write_text(yaml.safe_dump(stage))
+        output = subprocess.check_output(
+            ["flux", "build", "kustomization", stage["metadata"]["name"],
+             "--namespace", stage["metadata"]["namespace"],
+             "--path", stage["spec"]["path"], "--kustomization-file", str(manifest),
+             "--dry-run", "--in-memory-build"],
+            cwd=repo, env={**os.environ, "GOMAXPROCS": "2"}, text=True,
+        )
+    return [doc for doc in yaml.load_all(output, Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)) if doc]
+
+
+def studio_inventory(repo):
+    bootstrap = list(yaml.safe_load_all((repo / FLUX_ROOT).read_text()))
+    source = resource(bootstrap, "GitRepository", "haynes-ops")
+    cluster = resource(bootstrap, "Kustomization", "cluster")
+    inventory = resource(flux_build(repo, cluster), "Kustomization", "cluster-apps")
+    stages = {
+        doc["metadata"]["name"]: doc for doc in flux_build(repo, inventory)
+        if doc["kind"] == "Kustomization" and doc["metadata"].get("namespace") == "ai"
+        and re.match(r"^studio(?:-|$)", doc["metadata"]["name"])
+    }
+    return source, cluster, inventory, stages
+
+
+def flux_reference(stage):
+    source = stage["spec"]["sourceRef"]
+    return source["kind"], source.get("namespace") or stage["metadata"]["namespace"], source["name"]
+
+
+def flux_ready(stage):
+    status = stage.get("status", {})
+    generation = stage["metadata"]["generation"]
+    return (not stage["metadata"].get("deletionTimestamp") and not stage["spec"].get("suspend")
+            and status.get("observedGeneration") == generation
+            and any(condition["type"] == "Ready" and condition["status"] == "True"
+                    and condition.get("observedGeneration") == generation
+                    for condition in status.get("conditions", [])))
+
+
+def audit_flux(expected, mode, snapshot):
+    """Return 0 when ready, 2 while stages converge, or 3 before source pickup."""
+    source, inventory, stages = snapshot
+
+    def git(*args):
+        return subprocess.check_output(["git", *args], text=True).strip()
+
+    @cache
+    def revision(value):
+        match = re.fullmatch(r"main@sha1:([0-9a-f]{40})", value)
+        if not match:
+            raise ValueError(f"unexpected Flux revision {value}")
+        commit = match[1]
+        if subprocess.run(["git", "cat-file", "-e", f"{commit}^{{commit}}"], check=False).returncode:
+            raise ValueError(f"observed Flux revision {commit} is missing after fetching main")
+        return commit
+
+    def ancestor(older, newer):
+        return subprocess.run(["git", "merge-base", "--is-ancestor", older, newer], check=False).returncode == 0
+
+    @cache
+    def admitted(commit):
+        if ancestor(expected, commit):
+            if not ancestor(commit, "refs/remotes/origin/main"):
+                raise ValueError(f"Flux revision {commit} is outside fetched main")
+            return True
+        if ancestor(commit, expected):
+            return False
+        raise ValueError(f"Flux revision {commit} is outside the selected merge history")
+
+    artifact = revision(source.get("status", {}).get("artifact", {}).get("revision", ""))
+    if not admitted(artifact):
+        print(f"Pending Flux source pickup: {artifact}")
+        return 3
+
+    with TemporaryDirectory(prefix="studio-pin-audit-") as directory:
+        @cache
+        def inputs(commit):
+            repo = Path(directory) / commit
+            repo.mkdir()
+            archive = repo / "source.tar"
+            subprocess.run(["git", "archive", "--output", str(archive), commit, "kubernetes"], check=True)
+            with tarfile.open(archive) as files:
+                files.extractall(repo, filter="data")
+            git_source, cluster, parent, definitions = studio_inventory(repo)
+            for name, stage in {"cluster": cluster, "cluster-apps": parent, **definitions}.items():
+                if flux_reference(stage) != ("GitRepository", "flux-system", "haynes-ops"):
+                    raise ValueError(f"different pin at {commit}: {name} source")
+            return repo, (git_source["spec"], cluster["spec"], parent["spec"]), definitions
+
+        pinned_repo, pinned_inputs, expected_stages = inputs(expected)
+        matte = MATTE_STAGES.intersection(expected_stages)
+        if matte != (MATTE_STAGES if mode == "release" else set()):
+            raise ValueError(f"selected {mode} revision has unexpected matte stages")
+        if {"timeout": "60s", **source["spec"]} != {"timeout": "60s", **pinned_inputs[0]}:
+            raise ValueError("different pin: live GitRepository spec differs from the selected merge")
+
+        @cache
+        def tree(commit, path):
+            return git("rev-parse", "--verify", f"{commit}:{path.removeprefix('./')}")
+
+        @cache
+        def rendered_pin(name):
+            return flux_build(pinned_repo, expected_stages[name])
+
+        @cache
+        def compare(commit):
+            if commit == expected:
+                return
+            repo, observed_inputs, observed_stages = inputs(commit)
+            # The shared inventory can gain or patch other stages. Only its
+            # own source/path and the resulting Studio definitions matter.
+            if observed_inputs[0] != pinned_inputs[0] or any(
+                observed["path"] != pinned["path"]
+                for observed, pinned in zip(observed_inputs[1:], pinned_inputs[1:], strict=True)
+            ):
+                raise ValueError(f"different pin at {commit}: Git source or Flux inventory inputs changed")
+            for name in sorted(expected_stages.keys() | observed_stages.keys()):
+                stage = expected_stages.get(name)
+                observed = observed_stages.get(name)
+                if stage != observed or (
+                    tree(commit, stage["spec"]["path"]) != tree(expected, stage["spec"]["path"])
+                    or flux_build(repo, observed) != rendered_pin(name)
+                ):
+                    raise ValueError(f"different pin at {commit}: {name} inputs changed")
+
+        compare(artifact)
+
+        def applied(stage, spec):
+            name = stage["metadata"]["name"]
+            status = stage.get("status", {})
+            at_pin = False
+            for field in ("lastAttemptedRevision", "lastAppliedRevision"):
+                if value := status.get(field):
+                    commit = revision(value)
+                    if admitted(commit):
+                        compare(commit)
+                        if field == "lastAppliedRevision":
+                            at_pin = True
+            if at_pin:
+                wanted = {"metadata": stage["metadata"], "spec": spec}
+                if stage["spec"].get("path") != spec["path"] or flux_reference(stage) != flux_reference(wanted):
+                    raise ValueError(f"different pin: live {name} path or source differs from the selected merge")
+            ready = at_pin and flux_ready(stage)
+            print(f"Flux {name}: applied {status.get('lastAppliedRevision', '-')}, ready at pin {ready}")
+            return ready
+
+        inventory_ready = applied(inventory, pinned_inputs[2])
+        live = {stage["metadata"]["name"]: stage for stage in stages["items"]}
+        if inventory_ready and (missing := expected_stages.keys() - live.keys()):
+            raise ValueError(f"ready Flux inventory is missing Studio stages: {', '.join(sorted(missing))}")
+        ready = [applied(live[name], stage["spec"]) for name, stage in expected_stages.items() if name in live]
+        extra = any(re.match(r"^studio(?:-|$)", name) and name not in expected_stages for name in live)
+        return 0 if inventory_ready and all(ready) and not extra else 2
+
+
 def render_cluster_inventory(repo):
     """Render the complete active Flux tree rooted at the cluster Kustomization."""
-    bootstrap = repo / "kubernetes/main/flux/config/cluster.yaml"
+    bootstrap = repo / FLUX_ROOT
     cluster = resource(list(yaml.safe_load_all(bootstrap.read_text())), "Kustomization", "cluster")
     flux_env = {**os.environ, "GOMAXPROCS": "2"}
     loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
@@ -783,6 +945,8 @@ def check_matte_policies(documents, api, matte, api_identity, matte_identity):
         rule("to", [listener], [(8002, "TCP")]),
     ], "matte worker effective egress must be DNS and the Studio port-8002 listener only")
     expect_rules(matte, matte_identity, MATTE_WORKER, "ingress", [], "matte worker must refuse pod ingress")
+    if api is None:
+        return
     traefik = {**peer(**{"app.kubernetes.io/instance": "traefik-internal-network"}),
                "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "network"}}}
     media = {"podSelector": {"matchExpressions": [{"key": app_label, "operator": "In", "values": media_names}]}}
@@ -824,11 +988,30 @@ def check_effective_policies(path):
     check_matte_network(documents, *workloads, cilium["cluster"]["name"])
 
 
-def check_installed_policies(data):
-    namespaced, clusterwide, endpoints, api, matte = data
+def check_installed_policies(data, *, stage_repo=None):
+    namespaced, clusterwide, cilium, *workloads = data
+    if cilium["data"]["enable-policy"] not in {"default", "always"}:
+        raise ValueError("installed Cilium does not enforce network policy")
+    policies = [doc for doc in namespaced["items"] if doc["metadata"]["namespace"] == "ai"]
+    policies.extend(clusterwide["items"])
+    if stage_repo is not None:
+        (namespace,) = workloads
+        _, _, _, stages = studio_inventory(stage_repo)
+        projected = flux_build(stage_repo, stages[MATTE_WORKER])
+        matte = resource(projected, "Deployment", MATTE_WORKER)["spec"]["template"]
+        # The Deployment and its policy arrive together. Include all policies
+        # deployed by that stage as well as installed Helm-managed policies.
+        policies.extend(doc for doc in projected if doc["kind"] in NAMESPACE_POLICY_KINDS | {CLUSTER_POLICY_KIND})
+        identity = cilium_labels(matte, namespace["metadata"]["labels"], cilium["data"]["cluster-name"])
+        check_policy_selectors(policies)
+        matches = sorted({f"{doc['kind']}/{doc['metadata']['name']}"
+                          for doc, _ in selected_policies(policies, matte, identity)})
+        print(f"Projected {MATTE_WORKER} matching policies: {', '.join(matches)}")
+        check_matte_policies(policies, None, matte, None, identity)
+        return
+    endpoints, api, matte = workloads
     if len(api["items"]) != 2 or len(matte["items"]) != 1:
         raise ValueError("expected two installed API pods and one matte worker pod for the policy read")
-    policies = namespaced["items"] + clusterwide["items"]
     check_policy_selectors(policies)
     endpoint_by_name = {ep["metadata"]["name"]: ep for ep in endpoints["items"]}
     identities = {}
@@ -1578,8 +1761,10 @@ def main():
                         help="verify the published image pair and update all release references")
     parser.add_argument("--effective-policies", action="store_true",
                         help="verify Studio policy from the complete active Flux inventory")
-    parser.add_argument("--installed-policies", action="store_true",
-                        help="verify namespace and clusterwide policy JSON and installed pod labels on stdin")
+    parser.add_argument("--installed-policies", choices=("preflight", "postflight"),
+                        help="audit installed policy JSON on stdin against the projected or real matte pod")
+    parser.add_argument("--audit-flux", nargs=2, metavar=("MODE", "OPS_REVISION"),
+                        help="compare applied Flux inputs against the selected merge")
     args = parser.parse_args()
     try:
         if args.effective_policies:
@@ -1587,8 +1772,15 @@ def main():
             print("Studio effective network policies match the reviewed rules")
             return
         if args.installed_policies:
-            check_installed_policies(json.load(sys.stdin))
+            repo = args.studio_path.resolve().parents[len(STUDIO_PATH.parts) - 1]
+            check_installed_policies(json.load(sys.stdin),
+                                     stage_repo=repo if args.installed_policies == "preflight" else None)
             return
+        if args.audit_flux:
+            mode, revision = args.audit_flux
+            if mode not in {"release", "rollback"} or not re.fullmatch(r"[0-9a-f]{40}", revision):
+                raise ValueError("Flux comparison requires a release or rollback and its full merged revision")
+            raise SystemExit(audit_flux(revision, mode, json.load(sys.stdin)))
         if args.pin:
             repin(args.studio_path, *args.pin)
         check(args.studio_path)

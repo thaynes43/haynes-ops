@@ -15,6 +15,7 @@ DSN = os.getenv("STUDIO_OP967_TEST_DATABASE_URL")
 class RetrySchemaTest(unittest.TestCase):
     def test_retry_probe_distinguishes_0011_0012_and_0013(self):
         import psycopg
+        from psycopg import sql
         from psycopg.conninfo import conninfo_to_dict
 
         from haynes_studio.db.engine import connect_engine
@@ -38,6 +39,15 @@ class RetrySchemaTest(unittest.TestCase):
             try:
                 admin.execute("GRANT USAGE ON SCHEMA studio TO studio_op967_probe")
                 engine = connect_engine(DSN)
+
+                def catalogue(conn):
+                    conn.execute("SET LOCAL ROLE studio_op967_probe")
+                    results = {}
+                    with redirect_stderr(StringIO()):
+                        probe.database_snapshot(conn, "retry-preflight", results)
+                    return results
+
+                label = "0012 release constraints present and 0013 release column absent"
                 try:
                     for revision, can_retry in (
                         ("0011_worker_lane_grants", False),
@@ -46,17 +56,22 @@ class RetrySchemaTest(unittest.TestCase):
                     ):
                         with self.subTest(revision=revision):
                             migrate(engine, target=revision, runtime_role=role)
-                            with psycopg.connect(DSN) as runtime, redirect_stderr(StringIO()):
+                            with psycopg.connect(DSN) as runtime:
                                 runtime.read_only = True
-                                runtime.execute("SET LOCAL ROLE studio_op967_probe")
-                                results = {}
-                                probe.database_snapshot(runtime, "retry-preflight", results)
-                            self.assertIs(
-                                results["0012 release constraints present and 0013 release column absent"],
-                                can_retry,
-                            )
+                                results = catalogue(runtime)
+                            self.assertIs(results[label], can_retry)
                             if revision == "0011_worker_lane_grants":
                                 self.assertTrue(results["required lanes idle (image, voice)"])
+                            if revision == "0012_release_constraints":
+                                for table, constraint in (
+                                    ("publications", "publications_package_run_target_fkey"),
+                                    ("archive_records", "archive_records_root_version_fkey"),
+                                ):
+                                    with self.subTest(missing=constraint), admin.transaction(force_rollback=True):
+                                        admin.execute(sql.SQL("ALTER TABLE {} DROP CONSTRAINT {}").format(
+                                            sql.Identifier("studio", table), sql.Identifier(constraint),
+                                        ))
+                                        self.assertIs(catalogue(admin)[label], False)
                 finally:
                     engine.dispose()
             finally:
