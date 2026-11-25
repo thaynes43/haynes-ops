@@ -56,6 +56,8 @@ class EntryPointTest(unittest.TestCase):
     def test_check_invokes_each_backend_once(self):
         with ExitStack() as stack:
             output = stack.enter_context(redirect_stdout(io.StringIO()))
+            # The committed upscaling pin remains stale until the CR-56 image publishes.
+            stack.enter_context(patch.object(guard, "STALE_UPSCALING_DIGESTS", set()))
             checks = {
                 name: stack.enter_context(patch.object(guard, name, wraps=getattr(guard, name)))
                 for name in ("check_matting", "check_segmentation", "check_upscaling")

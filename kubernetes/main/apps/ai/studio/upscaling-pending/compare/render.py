@@ -50,8 +50,8 @@ def comparison_job(template, *, source, run, index=None, timestamp=None, master=
         args += [f"--{name}-roi", *map(str, box)]
 
     job = deepcopy(template)
-    role = "probe" if probe else "compare"
-    job["metadata"]["name"] = f"studio-upscaling-{role}-{run}"
+    name = job["metadata"]["name"]
+    job["metadata"]["name"] = f"studio-upscaling-probe-{run}" if probe else f"{name}-{run}"
     pod = job["spec"]["template"]["spec"]
     container = pod["containers"][0]
     container["args"] = args

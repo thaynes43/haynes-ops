@@ -40,6 +40,9 @@ STALE_SEGMENTATION_DIGESTS = {
     "sha256:3261efedf5d52baa4c53aa0ce6fc8f538b40cb0675fc2dc7a0c2ca74fd8184be",
     "sha256:" + "0" * 64,
 }
+STALE_UPSCALING_DIGESTS = {
+    "sha256:577f9763a172164ca355de3afc335241deeb3c49ffcb103ba9ebcb1535a1c2ab",
+}
 GIB = 1024**3
 DECIMAL_SI = {"n": -9, "u": -6, "m": -3, "": 0, "k": 3, "M": 6, "G": 9, "T": 12, "P": 15, "E": 18}
 BINARY_SI = {f"{unit}i": 1024**power for power, unit in enumerate("KMGTPE", start=1)}
@@ -848,9 +851,8 @@ def check_upscaling_jobs(stage, image, allocation, measuring, policies):
     ):
         name = f"studio-upscaling-{role}"
         comparing = role == "compare"
-        job_name = name if comparing else f"{name}-{suffix}"
         documents = provision_docs if role == "provision" else render(stage / role)
-        job = resource(documents, "Job", job_name)
+        job = resource(documents, "Job", f"{name}-{suffix}")
         spec = job["spec"]
         pod = spec["template"]["spec"]
         label = {"app.kubernetes.io/name": name}
@@ -950,6 +952,9 @@ def check_upscaling(path, flux):
     match = re.fullmatch(rf"{re.escape(UPSCALING_IMAGE)}@(sha256:[0-9a-f]{{64}})", image)
     if not match or match[1] == "sha256:" + "0" * 64:
         raise ValueError("set upscaling-pending/release/release.yaml data.image to the published Studio main digest")
+    if match[1] in STALE_UPSCALING_DIGESTS:
+        raise ValueError("stale upscaling image digest: set upscaling-pending/release/release.yaml data.image "
+                         "to the published CR-56 digest from Studio main")
     try:
         published = published_labels(UPSCALING_IMAGE, match[1])
     except (KeyError, OSError, TypeError, ValueError) as error:
