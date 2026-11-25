@@ -42,16 +42,25 @@ PROFILE_STARTUP_ERRORS = frozenset({"profile_missing", "profile_invalid"})
 STARTUP_ERRORS = PROFILE_STARTUP_ERRORS | {
     "gpu_pin_missing", "gpu_pin_mismatch", "profile_unsupported", "weights_missing",
     "weights_mismatch", "weights_unreadable", "process_supervision_unavailable",
+    "cuda_pin_missing", "cuda_pin_empty", "cuda_pin_mismatch",
+    "nvidia_pin_missing", "nvidia_pin_empty", "nvidia_pin_mismatch",
+    "gpu_pin_unproven", "gpu_pin_lease_unavailable", "gpu_visibility_unavailable",
+    "gpu_visibility_timeout", "gpu_visibility_empty", "gpu_visibility_multiple",
+    "gpu_visibility_mismatch",
 }
 
 
-def sample_card(card):
+def query_gpu(fields, *options):
     result = subprocess.run(
-        ["nvidia-smi", "--id=" + card, "--query-gpu=uuid,memory.used,utilization.gpu,temperature.gpu",
+        ["nvidia-smi", *options, "--query-gpu=" + fields,
          "--format=csv,noheader,nounits"],
         capture_output=True, text=True, check=True, timeout=10,
     )
-    (row,) = csv.reader(io.StringIO(result.stdout))
+    return list(csv.reader(io.StringIO(result.stdout)))
+
+
+def sample_card(card):
+    (row,) = query_gpu("uuid,memory.used,utilization.gpu,temperature.gpu", "--id=" + card)
     identity, memory, utilization, temperature = (value.strip() for value in row)
     if identity != card:
         raise ValueError("Unexpected local-model GPU UUID")
@@ -333,9 +342,10 @@ class Lane:
             state["held"] = True
         write_record(self.path, state)
 
-    def status(self, *, residency_only=False, allow_unbound=False):
+    def status(self, *, residency_only=False, allow_unbound=False, lease=None):
         try:
-            snapshot = exchange(self.root, {"action": "residency" if residency_only else "status"})
+            message = {"action": "residency" if residency_only else "status"}
+            snapshot = exchange(self.root, message) if lease is None else exchange(self.root, message, lease)
             if not valid_id(snapshot.get("instance")) or type(snapshot.get("resident")) is not bool:
                 raise ValueError("Invalid local-model status")
             reason = snapshot.get("startup_error")

@@ -1,6 +1,5 @@
 """Inspect a private serve process without calling CUDA or loading a model."""
 import argparse
-import csv
 import ctypes
 import fcntl
 import json
@@ -36,45 +35,52 @@ def wait_for_listener(output, event, timeout=20):
     raise RuntimeError("Local-model listener startup record was not received")
 
 
-def inspect_driver(lock_path, card):
-    import product_local as local
-
-    # Take the original flock by inode. This only runs the loader and
-    # the same read-only NVML query as status; it never calls cuInit().
-    with lock_path.open("rb") as lease:
-        fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        try:
+def cuda_library_loads(lock_path):
+    # Map the library while holding the original lease. Never call cuInit().
+    try:
+        with lock_path.open("rb") as lease:
+            fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
             ctypes.CDLL("libcuda.so.1")
-            library_loaded = True
-        except OSError:
-            library_loaded = False
-        try:
-            identity = local.sample_card(card)["gpu_uuid"]
-        except (OSError, ValueError, csv.Error, subprocess.SubprocessError):
-            identity = None
-    return {"cuda_library_loaded": library_loaded, "nvml_gpu_uuid": identity}
+    except OSError:
+        return False
+    return True
 
 
-def diagnose(workspace, driver_lock):
+def diagnose(workspace, driver_lock, profile_json):
     import local_model_sidecar as sidecar
     import product_local as local
 
+    profile_dir = workspace / "diagnostic"
+    profile_dir.mkdir(mode=0o700)
+    profile_path = profile_dir / "local-model.json"
+    profile_path.write_text(profile_json)
+    # The serving function uses the original lock for the startup read only.
+    # Its private workspace has no compute.lock to authorize a dispatch.
+    launch = (
+        "import sys; from pathlib import Path; from studio_local_backend import serve; "
+        "workspace, profile, lock = map(Path, sys.argv[1:]); "
+        "serve(workspace, profile, workspace / 'local-model-weights', pin_lock=lock)"
+    )
     command = [sys.executable, "-m", "studio_local_backend"]
-    with subprocess.Popen([*command, "serve", "--workspace", str(workspace)], stdout=subprocess.PIPE, bufsize=0) as server:
+    with subprocess.Popen([sys.executable, "-c", launch, str(workspace), str(profile_path), str(driver_lock)],
+                          stdout=subprocess.PIPE, bufsize=0) as server:
         try:
             startup = wait_for_listener(server.stdout, sidecar.STARTUP_LOG)
-            print(json.dumps(startup), flush=True)
+            passed = startup["reason_code"] is None
+            print(json.dumps({**startup, "verdict": "ready" if passed else "refused"}), flush=True)
             probe = subprocess.run([*command, "ready", "--workspace", str(workspace), "--pid", str(server.pid)],
                                    check=False, timeout=10)
             ready = probe.returncode == 0
-            residency = local.exchange(workspace, {"action": "residency"})
+            # A terminal refusal is available on either action. Use status in
+            # the pin-pending case to observe it without another proof attempt.
+            action = "residency" if passed else "status"
+            residency = local.exchange(workspace, {"action": action})
             print(json.dumps({"ready": ready, "residency": residency}), flush=True)
-            card = startup.get("gpu_uuid")
-            proof = inspect_driver(driver_lock, card) if card in local.APPROVED_CARDS else {}
-            print(json.dumps(proof), flush=True)
-            return 0 if (ready and residency.get("resident") is False and residency.get("receipt") is None
-                         and "startup_error" not in residency and not startup["startup_error"]
-                         and proof == {"cuda_library_loaded": True, "nvml_gpu_uuid": card}) else 1
+            library_loaded = passed and cuda_library_loads(driver_lock)
+            print(json.dumps({"cuda_library_loaded": library_loaded}), flush=True)
+            return 0 if (passed and ready and residency.get("resident") is False
+                         and residency.get("receipt") is None and "startup_error" not in residency
+                         and library_loaded) else 1
         finally:
             server.terminate()
             try:
@@ -88,5 +94,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, default=Path("/workspace"))
     parser.add_argument("--driver-lock", type=Path, required=True)
+    parser.add_argument("--profile-json", required=True)
     args = parser.parse_args()
-    raise SystemExit(diagnose(args.workspace, args.driver_lock))
+    raise SystemExit(diagnose(args.workspace, args.driver_lock, args.profile_json))

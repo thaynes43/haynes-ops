@@ -91,15 +91,26 @@ def serve_fixture(root, scenario):
 
     original = sidecar.Sidecar
     os.environ.update(CUDA_VISIBLE_DEVICES=CARD, NVIDIA_VISIBLE_DEVICES=CARD)
+    (root / "compute.lock").touch()
     profile = {**PROFILE, "load_timeout_seconds": 1, "infer_timeout_seconds": 1, "unload_timeout_seconds": 1}
     if scenario == "tight-ceiling":
         profile["unloaded_max_mib"] = 63
+    def verify_lease(*args):
+        if scenario == "refused-verify-term":
+            print("verifying", flush=True)
+            signal.pause()
+        return verify(*args)
+
+    verify = sidecar.verify_lease
+    refusal = "cuda_pin_mismatch" if scenario == "refused-verify-term" else None
     with patch.object(socket.socket, "listen", listening), patch.object(sidecar, "Sidecar", make_sidecar), \
+            patch.object(sidecar, "visible_gpu_uuids", return_value=[CARD]), \
+            patch.object(sidecar, "verify_lease", verify_lease), \
             patch.object(api, "ROOT", root), patch.object(api, "require_empty_queue", return_value=None), \
             patch.object(api, "engine", return_value=None), \
             patch.dict(sys.modules, {"api": api}):
         try:
-            sidecar.serve(root, profile, lambda _: ProcessBackend(root, scenario))
+            sidecar.serve(root, profile, lambda _: ProcessBackend(root, scenario), startup_error=refusal)
         finally:
             # Keep even a failing watchdog test from leaving adopted zombies.
             try:
@@ -151,6 +162,21 @@ class ModelProcessTests(unittest.TestCase):
         self.assertIsNotNone(lease, "Previous operation kept a copy of the lease")
         with lease:
             return self.lane.run(self.lane.create(job_id, request), request, lease, lambda: None)
+
+    def test_sigterm_during_lease_verification_in_startup_refusal(self):
+        self.start_supervisor("refused-verify-term")
+        self.assertEqual(self.lane.status(residency_only=True)["startup_error"], "cuda_pin_mismatch")
+        # The ready sentinel precedes the structured startup log.
+        self.assertIn(sidecar.STARTUP_LOG.encode(), self.parent.stdout.readline())
+        with api.acquire_compute() as lease, socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as conn:
+            conn.connect(str(local.socket_path(self.root)))
+            local.send_packet(conn, {"action": "run", "id": LOAD, "request": {}}, (lease.fileno(),))
+            ready, _, _ = select.select([self.parent.stdout], [], [], 5)
+            self.assertTrue(ready, "Supervisor did not enter verify_lease")
+            self.assertEqual(self.parent.stdout.readline(), b"verifying\n")
+            self.parent.terminate()
+            self.assertEqual(self.parent.wait(timeout=5), 128 + signal.SIGTERM)
+        self.assertFalse(local.socket_path(self.root).exists())
 
     def assert_reaped(self):
         pid = child_pid(self.root)

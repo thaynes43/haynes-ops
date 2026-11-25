@@ -86,7 +86,7 @@ class LlamaBackend:
 
     def load(self):
         card = self.profile["gpu_uuid"]
-        if sidecar.pin_error(card):
+        if sidecar.pin_environment_error(card):
             raise ValueError("Local-model GPU does not match the profile")
         weights, projector = weight_paths(self.profile, self.weights_root, self.pins)
         self.lib = self.library()
@@ -180,8 +180,6 @@ def startup(profile_path, weights_root):
     profile, reason = local.startup_profile(profile_path.parent)
     if reason:
         return None, None, reason
-    if reason := sidecar.pin_error(profile["gpu_uuid"]):
-        return profile, None, reason
     try:
         pins = json.loads((MODULE_DIR / "weights.json").read_text())
         weight_paths(profile, weights_root, pins)
@@ -196,15 +194,21 @@ def startup(profile_path, weights_root):
     return profile, pins, None
 
 
+def serve(workspace, profile_path, weights_root, *, pin_lock=None):
+    profile, pins, reason = startup(profile_path, weights_root)
+    sidecar.serve(workspace, profile, lambda p: LlamaBackend(p, weights_root, pins),
+                  startup_error=reason, pin_lock=pin_lock)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("serve", "ready"):
         commands.add_parser(name).add_argument("--workspace", type=Path, default=Path("/workspace"))
     commands.choices["ready"].add_argument("--pid", type=int, default=1)
-    serve = commands.choices["serve"]
-    serve.add_argument("--profile", type=Path, default=Path("/config/video/local-model.json"))
-    serve.add_argument("--weights-root", type=Path, default=Path("/workspace/local-model-weights"))
+    serve_parser = commands.choices["serve"]
+    serve_parser.add_argument("--profile", type=Path, default=Path("/config/video/local-model.json"))
+    serve_parser.add_argument("--weights-root", type=Path, default=Path("/workspace/local-model-weights"))
     commands.add_parser("self-check")
     args = parser.parse_args()
     if args.command == "ready":
@@ -213,9 +217,7 @@ def main():
         template = (MODULE_DIR / "Qwen3.5-4B.jinja").read_bytes()
         return 0 if open_library().studio_cpu_check(template, encode_json(modes.PLAN),
                                                     encode_json(modes.PLAN_TOOL)) else 1
-    profile, pins, reason = startup(args.profile, args.weights_root)
-    sidecar.serve(args.workspace, profile, lambda p: LlamaBackend(p, args.weights_root, pins),
-                  startup_error=reason)
+    serve(args.workspace, args.profile, args.weights_root)
     return 0
 
 

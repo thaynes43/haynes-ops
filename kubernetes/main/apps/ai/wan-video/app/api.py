@@ -622,7 +622,7 @@ def submit_local_request(lane, job_id, request):
         started = False
         try:
             lane.read_state()
-            local.require_started(lane.status(residency_only=True, allow_unbound=True))
+            local.require_started(lane.status(residency_only=True, allow_unbound=True, lease=lease))
             local.check_images(ROOT, request)
             job = lane.create(job_id, request)
             ACTIVE = job_id

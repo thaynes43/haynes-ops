@@ -2,11 +2,13 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: wan-local-model-start-check
+  generateName: wan-local-model-start-check-
   namespace: ai
 spec:
   backoffLimit: 0
-  activeDeadlineSeconds: 120
+  # Job time includes scheduling and pulling the image. The probe itself is bounded.
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
   template:
     metadata:
       labels:
@@ -28,6 +30,7 @@ spec:
         - name: local-model
           image: studio-local-model:pending-op442-startup-proof
           command: [python3, -m, startup_check, --driver-lock, /lease/compute.lock]
+          args: [--profile-json, pending-approved-profile]
           env:
             - {name: NVIDIA_VISIBLE_DEVICES, value: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a}
             - {name: CUDA_VISIBLE_DEVICES, value: GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a}
@@ -48,7 +51,6 @@ spec:
           volumeMounts:
             - {name: private, mountPath: /workspace}
             - {name: tmp, mountPath: /tmp}
-            - {name: profile, mountPath: /config/video, readOnly: true}
             - name: workspace
               mountPath: /workspace/local-model-weights
               subPath: local-model-weights
@@ -60,7 +62,5 @@ spec:
       volumes:
         - name: workspace
           persistentVolumeClaim: {claimName: wan-video, readOnly: true}
-        - name: profile
-          configMap: {name: wan-local-model-start-check}
         - {name: private, emptyDir: {sizeLimit: 32Mi}}
         - {name: tmp, emptyDir: {sizeLimit: 32Mi}}
