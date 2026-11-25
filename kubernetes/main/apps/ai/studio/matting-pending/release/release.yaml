@@ -5,6 +5,8 @@ metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
 data:
-  # Replace this one value with the digest from the Studio main publish.
+  # Set this one image value to the CR-38 digest from the Studio main publish.
   image: ghcr.io/thaynes43/haynes-studio-matting@sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f
-  allocation: matting-op459-birefnet-lite-v1-01
+  allocation: matting-op459-birefnet-lite-v1-02
+  memoryRequest: 14Gi
+  memoryLimit: 16Gi
