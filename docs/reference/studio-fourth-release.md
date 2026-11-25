@@ -104,6 +104,11 @@ blocks activation. [OP459](https://work.haynesnetwork.com/work_packages/459)
 
 ## Migrate while the third pin serves
 
+`release.yaml` still names the pre-fix candidate until the coordinator
+repins. The lock order and timings below apply to the corrected 0013 in
+the next published Studio image. The current candidate fails the release
+guard and is held from deployment. [Reviewed migration lock code](https://github.com/thaynes43/haynes-studio/blob/ad48829a14555639abb3980dac7fd60c1c1bd952/src/haynes_studio/db/migrations/versions/0013_matte_jobs.py#L20-L30)
+
 `0013_matte_jobs` widens the three lane checks on `media_job_lanes`,
 `queue_lane_events` and `worker_lane_grants`, and the kind, lane and
 board/story checks on `media_jobs`. It seeds the matte FIFO and adds
