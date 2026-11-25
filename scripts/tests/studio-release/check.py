@@ -117,6 +117,33 @@ def published_matting_memory(digest):
     return f"{request}Gi", f"{limit}Gi"
 
 
+# Cilium's default label filter leaves these out of a pod's security identity,
+# so a NetworkPolicy peer that requires one of them never matches.
+IDENTITY_EXCLUDED_LABELS = (
+    "statefulset.kubernetes.io/pod-name", "apps.kubernetes.io/pod-index",
+    "batch.kubernetes.io/job-completion-index", "controller-revision-hash",
+    "pod-template-hash", "pod-template-generation",
+)
+
+
+def check_policy_selectors(documents):
+    def keys(selector):
+        selector = selector or {}
+        yield from (selector.get("matchLabels") or {})
+        yield from (item["key"] for item in selector.get("matchExpressions") or [])
+
+    for policy in (doc for doc in documents if doc["kind"] == "NetworkPolicy"):
+        spec = policy["spec"]
+        selectors = [spec.get("podSelector")]
+        for rule in [*(spec.get("ingress") or []), *(spec.get("egress") or [])]:
+            for peer in [*(rule.get("to") or []), *(rule.get("from") or [])]:
+                selectors += [peer.get("podSelector"), peer.get("namespaceSelector")]
+        used = {key for selector in selectors for key in keys(selector)}
+        if bad := sorted(used.intersection(IDENTITY_EXCLUDED_LABELS)):
+            raise ValueError(f"{policy['metadata']['name']} selects by {bad[0]}, which Cilium leaves "
+                             "out of pod identities; the rule would never match")
+
+
 def check_matting(path, flux):
     pending = path / "matting-pending"
     if not pending.exists():
@@ -282,6 +309,8 @@ def check(path):
     media = render(path / "media-workers")
     voice = resource(media, "Deployment", "studio-voice-worker")
     image = resource(media, "Deployment", "studio-image-worker")
+    for stage in (app, media, render(path / "worker")):
+        check_policy_selectors(stage)
 
     digest = image_digest(api, API_IMAGE, name="api")
     jobs = [

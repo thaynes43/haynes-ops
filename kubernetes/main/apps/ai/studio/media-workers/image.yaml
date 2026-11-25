@@ -126,6 +126,8 @@ spec:
               app.kubernetes.io/name: comfyui
               app.kubernetes.io/instance: comfyui
               app.kubernetes.io/controller: comfyui
-              statefulset.kubernetes.io/pod-name: comfyui-0
+              # Do not select by statefulset.kubernetes.io/pod-name: Cilium leaves
+              # that label out of a pod's identity, so a rule that needs it never
+              # matches and the worker cannot reach the engine.
       ports:
         - {port: 8188, protocol: TCP}
