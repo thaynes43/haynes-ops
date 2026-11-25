@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: studio-matting-release
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  # Replace this one value with the digest from the Studio main publish.
+  image: ghcr.io/thaynes43/haynes-studio-matting:pending-op459
+  allocation: matting-op459-birefnet-lite-v1-01
