@@ -2,9 +2,9 @@
 
 CR-35 keeps Pillow Lanczos in delivery and permits a private CPU comparison
 with FSRCNN ×2 followed by Lanczos. Provisional CR-49 adds stored proxy frames
-and an optional master reference. The Ops stage and both Jobs that run the
-graph are **Expected**. Model measurement, installed health, comparison and
-Tom's verdict are pending.
+and an optional master reference. Allocation `-02` was provisioned and its
+measuring smoke failed two quality verdicts. The `-03` Jobs and the private
+comparison are **Expected** under provisional CR-56. Tom's verdict is pending.
 [Story 461](https://work.haynesnetwork.com/work_packages/461) ·
 [Studio profile](https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/upscaling-backend-profile.md)
 
@@ -21,9 +21,10 @@ Tom's choice determine whether to write a serving story.
 2. Set only `data.image` in the Ops [release file](../../kubernetes/main/apps/ai/studio/upscaling-pending/release/release.yaml).
    The release guard fetches the immutable OCI manifest and config, checks
    their digests and verifies the resource label and `stored-proxy-frame-v2`
-   comparison capability. Provision the new profile under the fresh `-02`
-   allocation. The first smoke requests
-   2 GiB and caps at 8 GiB for measurement on talosw01. The 2 GiB quality
+   comparison capability. The guard refuses the `-02` image because it still
+   applies the former absolute caps. Provision the published CR-56 image
+   under `upscaling-op461-fsrcnn-x2-v1-03`. The measuring smoke requests
+   2 GiB and caps at 8 GiB on talosw01. The 2 GiB quality
    budget from CR-35 is checked against the observed peak. Merge after the
    release guard passes with the published pin.
 3. Run the following in Bash from that Ops revision. Flux owns just the
@@ -126,6 +127,15 @@ If NFS omits free inode counts, set `OP461_INODE_RESERVE_CONFIRMED=yes` only
 after the existing storage owner confirms room for 1,024 planned entries and at
 least 1,024 further free entries. Keep failed allocations in the file budget.
 
+**Proven, 2026-11-25 14:38Z.** `studio-upscaling-provision-02` published
+allocation `upscaling-op461-fsrcnn-x2-v1-02`. Read-back verified the 38,973-byte
+graph, raw SHA-256 `366b33f0084c7b3f2bf6724f0a2c77bca94fcec9d7b6d72389d330073b380d5c`,
+Git blob `2509b0e19b8a45ebce2ba50128e2fcb43ce8589c`, profile
+`dd4518ebcd629f390bd4550f4f05465737d8ff9abbef0ef3e96abf1db7e3ab66` and the
+licence notice. The share reported no free-file count. The operator confirmed
+the reserve with `OP461_INODE_RESERVE_CONFIRMED=yes`.
+[Provisioning evidence](https://work.haynesnetwork.com/work_packages/461#activity-10180)
+
 ```bash
 (
   set -euo pipefail
@@ -192,6 +202,34 @@ line even if Kubernetes recorded a failed Job. Record the measuring and
 quality verdicts separately. Record the observed worker RSS and cgroup peaks
 by phase. The allowance check
 reads the running container’s cgroup limit from `/sys/fs/cgroup/memory.max`.
+
+**Ran and failed, 2026-11-25 14:38:42Z to 14:39:22Z.**
+`studio-upscaling-smoke-02` used allocation `upscaling-op461-fsrcnn-x2-v1-02`
+and image `sha256:577f9763a172164ca355de3afc335241deeb3c49ffcb103ba9ebcb1535a1c2ab`
+on talosw01 (AMD Threadripper 7960X, OpenCV DNN CPU with AVX-512 dispatch).
+Whole-Job cgroup peak was 1,290,694,656 bytes, within the 8 GiB measuring limit
+and 2 GiB quality budget. The Job exited 1. Both allocator settings gave the
+same results and passed every verdict except `edge_overshoot` and
+`motion_residual`. Both failures were on the former absolute caps.
+[Smoke evidence](https://work.haynesnetwork.com/work_packages/461#activity-10180)
+
+| Measure (synthetic fixtures) | FSRCNN | Lanczos (delivery scaler) | Rule in the `-02` smoke |
+|---|---|---|---|
+| Edge overshoot | 0.070588 (18/255) | 0.121569 (31/255) | At most 12/255 **and** at most Lanczos + 2/255 |
+| Dark undershoot | 0.066667 | 0.117647 | Reported |
+| Edge spread, px | 1.6216 | 2.1173 | At most 0.90 × Lanczos. Pass. |
+| Motion residual, worst mean | 0.011776 (3.00/255) | 0.011209 (2.86/255) | At most 2/255 **and** at most Lanczos + 0.5/255 |
+| Motion residual, worst p95 | 0.076465 | 0.080104 | At most Lanczos + 2/255. Pass. |
+| Text luma error, three sizes | 0.0482, 0.0568, 0.0469 | 0.0554, 0.0686, 0.0618 | At most Lanczos. Pass. |
+
+**Provisional CR-56, for Tom's review.** Both scalers exceeded both absolute
+caps. For `studio-upscaling-smoke-03`, the edge overshoot limit is Lanczos +
+2/255. The worst mean and p95 motion residual limits are Lanczos + 0.5/255
+and Lanczos + 2/255 respectively. Each allocator still reports absolute
+measurements for both scalers, with diagnostic booleans in
+`.settings[].baseline_meets_former_caps` for the Lanczos overshoot and
+worst mean residual. The smoke must pass before the comparison can run.
+Delivery stays on Lanczos under CR-35.
 
 ```bash
 (
@@ -265,6 +303,8 @@ A locator is `library/sha256/<first-two-hex>/<sha256>.<ext>` or
 must match it. Set `OP461_RUN` to a fresh 12-hex suffix. For optional ROIs,
 add `--lettering-roi`, `--face-roi` or `--hair-roi` and output coordinates
 `X0 Y0 X1 Y1` to `options` before rendering. The lower-right bounds are exclusive.
+Allocation `-03` renders the comparison as `studio-upscaling-compare-03-<suffix>`.
+Each run reserves its output directory using the fresh suffix.
 
 The gate checks the store shape and verifies the bytes. For an MP4 input,
 the probe runs before the idle gate and heavy window. It reads the clock

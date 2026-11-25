@@ -10,13 +10,13 @@ replacements:
     targets:
       - select:
           kind: Job
-          name: studio-upscaling-provision-00|studio-upscaling-smoke-00|studio-upscaling-compare
+          name: studio-upscaling-provision-00|studio-upscaling-smoke-00|studio-upscaling-compare-00
         fieldPaths:
           - spec.template.spec.containers.[name=upscaling].image
           - spec.template.spec.containers.[name=upscaling].env.[name=STUDIO_UPSCALING_IMAGE].value
       - select:
           kind: Job
-          name: studio-upscaling-compare
+          name: studio-upscaling-compare-00
         fieldPaths:
           - spec.template.spec.initContainers.[name=reserve-output].image
   - source:
@@ -31,7 +31,7 @@ replacements:
           - spec.template.spec.containers.[name=upscaling].env.[name=STUDIO_UPSCALING_ALLOCATION].value
       - select:
           kind: Job
-          name: studio-upscaling-smoke-00|studio-upscaling-compare
+          name: studio-upscaling-smoke-00|studio-upscaling-compare-00
         fieldPaths:
           - spec.template.spec.containers.[name=upscaling].volumeMounts.[name=weights].subPath
         options:
@@ -44,7 +44,7 @@ replacements:
     targets:
       - select:
           kind: Job
-          name: studio-upscaling-smoke-00|studio-upscaling-compare
+          name: studio-upscaling-smoke-00|studio-upscaling-compare-00
         fieldPaths:
           - spec.template.spec.containers.[name=upscaling].resources.requests.memory
   - source:
@@ -54,7 +54,7 @@ replacements:
     targets:
       - select:
           kind: Job
-          name: studio-upscaling-smoke-00|studio-upscaling-compare
+          name: studio-upscaling-smoke-00|studio-upscaling-compare-00
         fieldPaths:
           - spec.template.spec.containers.[name=upscaling].resources.limits.memory
   - source:
@@ -67,7 +67,7 @@ replacements:
     targets:
       - select:
           kind: Job
-          name: studio-upscaling-provision-00|studio-upscaling-smoke-00
+          name: studio-upscaling-provision-00|studio-upscaling-smoke-00|studio-upscaling-compare-00
         fieldPaths:
           - metadata.name
         options:
