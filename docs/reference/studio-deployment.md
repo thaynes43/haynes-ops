@@ -1408,6 +1408,15 @@ absent.
 
 ## OP964 third release
 
+**Proven (2026-11-25, 11:14Z to 11:18Z):** this pin is installed. Evidence:
+[OP964, comment 10061](https://work.haynesnetwork.com/work_packages/964).
+**Changed:** the postflight probe at first asserted that The Winter Menu's run
+document carries no snapshot reference. It does; only the stored snapshot is
+absent. The assertion below is corrected, and the probe passed in full with it.
+The anonymous ingress block was run from inside the cluster through the
+internal ingress with the certificate verified, since the coordinator's pod has
+no LAN route.
+
 [OP964](https://work.haynesnetwork.com/work_packages/964) promotes feedback and
 iterations, the reference-photo composer, private release packages, the
 Assets page, the staging archive and worker lane grants. The coordinator
@@ -1623,7 +1632,9 @@ def check_snapshot(conn, row, has_snapshot):
         pin = runs.get(conn, row["id"], snapshot_pin_only=True)
         response = _stored_snapshot(LocalStore(os.environ["STUDIO_STORE_ROOT"]), pin, None)
     except APIError as error:
-        assert not has_snapshot and row["snapshot"] is None and row["document"]["snapshot"] is None
+        # A recovered run has no stored snapshot (the column is null). Its document still
+        # names the snapshot it was built from, so that reference is not null.
+        assert not has_snapshot and row["snapshot"] is None
         assert (error.status_code, error.details["code"]) == (404, "run.snapshot_missing")
         return "404 run.snapshot_missing (recovered run)"
     digest = sha256(response.body).hexdigest()
