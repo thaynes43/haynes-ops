@@ -1,16 +1,51 @@
 # Runtime dependencies from thaynes43/haynes-studio uv.lock at
-# f431c2402fa21819ee739f4e34e31b2c59e56091 (Python 3.12, linux x86_64).
+# 470a90af73a2201e6542b5d867853dce6facad04 (Python 3.12, linux x86_64).
 # Generated with uv 0.13.6 from that checkout (project and all dev groups omitted):
 # uv export --locked --no-default-groups --no-emit-project --no-annotate --no-header --no-hashes --python 3.12
+alembic==1.20.1
+annotated-doc==0.0.7
+annotated-types==0.8.0
+anyio==4.16.0
 attrs==26.1.0
-av==18.1.0
+av==18.1.1
+certifi==2026.11.20
+cffi==2.1.1 ; platform_python_implementation != 'PyPy'
+click==8.5.1
+cryptography==50.0.2
+fastapi==0.165.0
+greenlet==3.5.6 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+httpx-sse==0.4.3
+idna==3.20
 imageio-ffmpeg==0.7.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
+mako==1.4.3
+markupsafe==3.0.4
+mcp==1.30.0
 numpy==2.4.6
 opencv-python-headless==4.14.0.94
+opentelemetry-api==1.45.2
 pillow==13.0.0
+psycopg==3.3.9
+psycopg-binary==3.3.9 ; implementation_name != 'pypy'
+pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pydantic==2.14.4
+pydantic-core==2.50.5
+pydantic-settings==2.16.3
+pyjwt==2.15.1
+python-dotenv==1.2.4
+python-multipart==0.0.34
+pywin32==312 ; sys_platform == 'win32'
 referencing==0.37.0
 rpds-py==2026.9.1
 scipy==1.16.3
+sqlalchemy==2.0.58
+sse-starlette==3.7.1
+starlette==1.10.0
 typing-extensions==4.16.0
+typing-inspection==0.4.5
+tzdata==2026.6 ; sys_platform == 'win32'
+uvicorn==0.54.0

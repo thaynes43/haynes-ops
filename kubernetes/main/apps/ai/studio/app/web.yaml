@@ -33,7 +33,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: nginx
-          image: ghcr.io/thaynes43/haynes-studio-web@sha256:497e020b8846f09cdeab6d822aa1536dfeb325edd26205cd6e28f0061bb6d9ca
+          image: ghcr.io/thaynes43/haynes-studio-web@sha256:da1ffb93df2ada155de20600142c4dc2368ec642dcf37aff979d22521142b7df
           ports:
             - name: http
               containerPort: 8080

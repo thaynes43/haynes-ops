@@ -9,7 +9,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   # Change this name and the Flux health check together for a changed Job spec.
-  name: studio-migrate-08ac310f246c
+  name: studio-migrate-c13c8ad74dfb
   labels:
     app.kubernetes.io/name: studio-migration
 spec:
@@ -31,11 +31,12 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: migrate
-          image: ghcr.io/thaynes43/haynes-studio@sha256:08ac310f246cdc43225478e9496e480af6430b53751f4ae93f3e34206714c3e7
+          image: ghcr.io/thaynes43/haynes-studio@sha256:c13c8ad74dfb4a4fe14bd9ed037bae8eacccaa05925e8b45453825ff84580f5a
           command: [sh, -eu, -c]
           args:
             - |
               python - <<'PY'
+              import json
               import os
               import subprocess
 
@@ -69,6 +70,8 @@ spec:
                   with psycopg.connect(dsn) as conn:
                       revision = conn.execute("SELECT version_num FROM studio.alembic_version").fetchone()[0]
                   print("Alembic revision:", revision)
+                  print(json.dumps({"revision": revision, "user": "studio_migrator", "database": "studio",
+                                    "tls": True, "hba_rejected": ["other database", "plaintext"]}))
 
               try:
                   dsn = os.environ["STUDIO_MIGRATION_DATABASE_URL"]

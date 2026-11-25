@@ -46,6 +46,8 @@ jobs:
             kubernetes/main/apps/ai/studio/**
             kubernetes/main/apps/ai/studio-render/**
             scripts/tests/studio-release/**
+            scripts/studio-release/op967*
+            docs/reference/studio-fourth-release.md
             docs/reference/studio-matting-deployment.md
             docs/reference/studio-upscaling-deployment.md
             scripts/studio-segmentation/**
@@ -211,10 +213,25 @@ jobs:
     needs: filter
     name: Flux Local - Studio release guard
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16@sha256:63e83b5a3dc36a917dccb76fe1bd2ac51f1ec9c1deb47ff20d4f04233bf6eae9
+        env:
+          POSTGRES_DB: studio_op967_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres -d studio_op967_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Install Flux for offline Studio stage rendering
+        run: bash scripts/tests/studio-release/install-flux.sh
       - name: Test Studio Flux Job gates
         run: |
           python3 -m venv "$RUNNER_TEMP/studio-release-venv"
@@ -238,6 +255,7 @@ jobs:
             "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_upscaling.py
           PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
             "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_release.py
+          "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_op967.py
       - name: Check out the Studio matting source for the synthetic trial
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -266,6 +284,19 @@ jobs:
           uv sync --project studio-trial-source --locked --python 3.12
           PYTHONPATH="$GITHUB_WORKSPACE/studio-trial-source" \
             studio-trial-source/.venv/bin/python -B scripts/tests/studio-release/test_matting_trial.py
+      - name: Check out the retry probe's Studio migrations
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: thaynes43/haynes-studio
+          # Fourth release source with all three schema revisions and the 0013 lock fix.
+          ref: 470a90af73a2201e6542b5d867853dce6facad04
+          path: studio-retry-source
+          persist-credentials: false
+      - name: Exercise the retry probe against PostgreSQL
+        env:
+          STUDIO_OP967_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:${{ job.services.postgres.ports[5432] }}/studio_op967_test
+          PYTHONPATH: ${{ github.workspace }}/studio-retry-source/src
+        run: studio-trial-source/.venv/bin/python -B scripts/tests/studio-release/test_retry_schema.py -v
       - name: Verify Studio release pins
         run: |
           PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \

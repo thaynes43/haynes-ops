@@ -20,7 +20,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-migrate-08ac310f246c
+      name: studio-migrate-c13c8ad74dfb
       namespace: ai
   interval: 30m
   retryInterval: 1m
@@ -72,10 +72,10 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-worker-08ac310f246c
+      name: studio-register-worker-c13c8ad74dfb
       namespace: ai
     # studio-render's Kustomization applies the HelmRelease but does not wait
-    # for Helm. Wait here so the worker cannot start until the 20-CPU cap is live.
+    # for Helm. Wait here for the offline render app to turn over.
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: studio-render
@@ -157,11 +157,11 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-voice-worker-08ac310f246c
+      name: studio-register-voice-worker-c13c8ad74dfb
       namespace: ai
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-image-worker-08ac310f246c
+      name: studio-register-image-worker-c13c8ad74dfb
       namespace: ai
   interval: 30m
   retryInterval: 1m

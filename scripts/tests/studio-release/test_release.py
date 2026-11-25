@@ -8,6 +8,7 @@ import re
 import subprocess
 import unittest
 from contextlib import ExitStack, redirect_stdout
+from hashlib import sha256
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,9 +19,37 @@ spec = importlib.util.spec_from_file_location("studio_release_check", Path(__fil
 guard = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guard)
 STUDIO = guard.STUDIO_PATH
+AUTH_SOURCE = b"""
+class WorkerRoute(MetadataRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+        async def authenticated(request):
+            await run_in_threadpool(worker_access, request)
+            return await handler(request)
+        return authenticated
+
+def worker_access(request):
+    if len(headers) != 1:
+        raise unauthenticated()
+    if scheme.lower() != 'bearer' or not valid_worker_bearer(token):
+        raise unauthenticated()
+    worker = identity.get_worker_lane(conn, token)
+    if worker is None:
+        raise unauthenticated()
+    return worker
+"""
+ROUTES_SOURCE = ("""
+from .auth import WorkerRoute
+class WorkRoute(WorkerRoute):
+    pass
+def worker_router():
+    router = APIRouter(prefix="/internal/v1/work", route_class=WorkRoute)
+""" + "\n".join(f"    @router.post('/{route}')\n    def route_{index}(): pass"
+               for index, route in enumerate(guard.MEDIA_ROUTES))).encode()
+REVIEWED_MIGRATION = b"reviewed 0013 migration bytes"
 
 
-class EntryPointTest(unittest.TestCase):
+class ReleaseFixture:
     def setUp(self):
         contracts = {
             "matting": {"request_gib": 8, "limit_gib": 10},
@@ -30,6 +59,15 @@ class EntryPointTest(unittest.TestCase):
             },
             "upscaling": {"measuring": {"request_gib": 2, "limit_gib": 8}, "quality_peak_gib": 1},
         }
+        release = yaml.safe_load((STUDIO / "release.yaml").read_text())
+        digests = {guard.API_IMAGE: release["apiDigest"], f"{guard.API_IMAGE}-web": release["webDigest"]}
+        self.enterContext(patch.object(guard, "studio_image_digest", side_effect=lambda image, _: digests[image]))
+        sources = {
+            "api/run_routes.py": ROUTES_SOURCE, "api/auth.py": AUTH_SOURCE,
+            "db/migrations/versions/0013_matte_jobs.py": REVIEWED_MIGRATION,
+        }
+        self.enterContext(patch.object(guard, "studio_source", side_effect=lambda _, path: sources[path]))
+        self.enterContext(patch.object(guard, "MIGRATION_0013_SHA256", sha256(REVIEWED_MIGRATION).hexdigest()))
         configs = {}
         for backend, contract in contracts.items():
             configs[f"{guard.API_IMAGE}-{backend}"] = {
@@ -63,6 +101,8 @@ class EntryPointTest(unittest.TestCase):
 
         return patch.object(Path, "read_text", read)
 
+
+class EntryPointTest(ReleaseFixture, unittest.TestCase):
     def test_check_invokes_each_backend_once(self):
         with ExitStack() as stack:
             output = stack.enter_context(redirect_stdout(io.StringIO()))
@@ -123,6 +163,160 @@ class EntryPointTest(unittest.TestCase):
             self.assertRaisesRegex(ValueError, "upscaling store sub-path must match the studio-api Deployment"),
         ):
             guard.check(STUDIO)
+
+
+class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
+    def check_refuses_rendered_mutation(self, stage, mutate, expected):
+        render = guard.render
+        changed = render(stage)
+        mutate(changed)
+        with (
+            patch.object(guard, "render", side_effect=lambda path: changed if path == stage else render(path)),
+            self.assertRaisesRegex(ValueError, expected),
+        ):
+            guard.check(STUDIO)
+
+    def test_active_flux_inventory_keeps_matte_staged(self):
+        repo = Path.cwd()
+        _, _, _, stages = guard.studio_inventory(repo)
+        self.assertFalse(any(name.startswith("studio-matte-") for name in stages))
+        for name in ("studio", "studio-worker", "studio-media-workers", "studio-media-worker-registration"):
+            with self.subTest(stage=name):
+                active = guard.flux_build(repo, stages[name])
+                self.assertFalse(any("studio-matte-" in doc["metadata"]["name"] for doc in active))
+        self.assertEqual(stages["studio-render"]["spec"]["path"], f"./{STUDIO.with_name('studio-render')}/app")
+
+    def test_old_render_pyav_is_refused(self):
+        path = STUDIO.with_name("studio-render") / "app/requirements.txt"
+        with (
+            self.override_source(path, path.read_text().replace("av==18.1.1", "av==18.1.0")),
+            self.assertRaisesRegex(ValueError, "offline render must export PyAV 18.1.1"),
+        ):
+            guard.check(STUDIO)
+
+    def test_registry_digest_cross_check_and_unfixed_migration_refusal(self):
+        with (
+            patch.object(guard, "studio_image_digest", return_value="sha256:" + "a" * 64),
+            self.assertRaisesRegex(ValueError, "digest must match the published Studio revision"),
+        ):
+            guard.check(STUDIO)
+        source = guard.studio_source
+        with (
+            patch.object(guard, "studio_source",
+                         side_effect=lambda revision, name: b"old migration" if name.endswith("0013_matte_jobs.py")
+                         else source(revision, name)),
+            self.assertRaisesRegex(ValueError, "repin to published Studio main images"),
+        ):
+            guard.check(STUDIO)
+
+    def test_registry_listener_requires_worker_token_on_every_forwarded_route(self):
+        guard.check_listener_auth(ROUTES_SOURCE, AUTH_SOURCE)
+        for routes, auth in (
+            (ROUTES_SOURCE.replace(b"route_class=WorkRoute", b"route_class=MetadataRoute"), AUTH_SOURCE),
+            (ROUTES_SOURCE.replace(b"@router.post('/claim')", b"@router.get('/claim')"), AUTH_SOURCE),
+            (ROUTES_SOURCE, AUTH_SOURCE.replace(b"await run_in_threadpool(worker_access, request)", b"pass")),
+            (ROUTES_SOURCE, AUTH_SOURCE.replace(b"valid_worker_bearer(token)", b"True")),
+            (ROUTES_SOURCE, AUTH_SOURCE.replace(b"identity.get_worker_lane(conn, token)", b"'wrong grant'")),
+            (ROUTES_SOURCE.replace(b"/internal/v1/work", b"/other"), AUTH_SOURCE),
+            (ROUTES_SOURCE.replace(b"class WorkRoute(WorkerRoute)", b"class WorkRoute(MetadataRoute)"), AUTH_SOURCE),
+            (ROUTES_SOURCE.replace(b"from .auth import WorkerRoute", b"from .other import WorkerRoute"), AUTH_SOURCE),
+            (ROUTES_SOURCE.replace(b"    pass", b"    def get_route_handler(self): pass", 1), AUTH_SOURCE),
+            (ROUTES_SOURCE, AUTH_SOURCE.replace(b"return authenticated", b"return handler")),
+        ):
+            with self.assertRaisesRegex(ValueError, "every port-8002 route must require a worker token"):
+                guard.check_listener_auth(routes, auth)
+        with self.assertRaisesRegex(ValueError, "must define worker_access exactly once"):
+            guard.check_listener_auth(ROUTES_SOURCE, AUTH_SOURCE + b"\ndef worker_access(request): pass\n")
+
+    def test_entrypoint_refuses_a_listener_without_the_bearer_handler_or_grant_lookup(self):
+        for previous, replacement in (
+            (b"await run_in_threadpool(worker_access, request)", b"pass"),
+            (b"identity.get_worker_lane(conn, token)", b"'wrong grant'"),
+        ):
+            studio_source = guard.studio_source
+            with (
+                self.subTest(source=previous),
+                patch.object(guard, "studio_source", side_effect=lambda rev, name:
+                             AUTH_SOURCE.replace(previous, replacement) if name == "api/auth.py" else studio_source(rev, name)),
+                self.assertRaisesRegex(ValueError, "every port-8002 route must require a worker token"),
+            ):
+                guard.check(STUDIO)
+
+    def test_listener_must_mount_and_read_the_existing_config(self):
+        for target, keys, value in (
+            ("pod", ("volumes", "media-worker-routes", "configMap", "name"), "wrong-config"),
+            ("listener", ("volumeMounts", "media-worker-routes", "mountPath"), "/wrong"),
+            ("listener", ("volumeMounts", "media-worker-routes", "readOnly"), False),
+            ("listener", ("args", 1), "/wrong/nginx.conf"),
+        ):
+            def mutate(documents):
+                api = guard.resource(documents, "Deployment", "studio-api")
+                objects = {"pod": api["spec"]["template"]["spec"], "listener": guard.container(api, "media-worker-routes")}
+                change(objects[target], keys, value)
+
+            with self.subTest(field=keys):
+                self.check_refuses_rendered_mutation(STUDIO / "app", mutate, "must keep and mount the exact existing media listener configuration")
+
+    def test_listener_keeps_the_existing_routes_and_config_map(self):
+        path = STUDIO / "app/media-worker-routes.conf"
+        with (
+            self.override_source(path, path.read_text().replace("|fail", "|fail|release-matte")),
+            self.assertRaisesRegex(ValueError, "port 8002 must allow exactly the five existing media POST routes"),
+        ):
+            guard.check(STUDIO)
+
+        def change_config(documents):
+            guard.resource(documents, "ConfigMap", guard.PREDECESSOR_LISTENER)["data"]["nginx.conf"] += "# changed\n"
+
+        self.check_refuses_rendered_mutation(STUDIO / "app", change_config, "exact existing media listener configuration")
+
+    def test_render_keeps_20_cpus_and_predecessor_requirements(self):
+        stage = STUDIO.with_name("studio-render") / "app"
+
+        def change_cpu(documents):
+            release = guard.resource(documents, "HelmRelease", "studio-render")
+            change(release, ("spec", "values", "controllers", "studio-render", "containers", "app",
+                             "resources", "limits", "cpu"), "19")
+
+        def change_previous_config(documents):
+            guard.resource(documents, "ConfigMap", "studio-render-requirements")["data"]["requirements.txt"] = "bad"
+
+        self.check_refuses_rendered_mutation(stage, change_cpu, "offline render app must limit CPU to 20")
+        self.check_refuses_rendered_mutation(stage, change_previous_config, "keep the byte-identical offline requirements")
+
+    def test_render_turnover_requires_its_config_contents_init_and_recreate(self):
+        render_path = STUDIO.with_name("studio-render")
+        requirements = (render_path / "app/requirements.txt").read_text()
+        render = guard.render
+        for target, field, value in (
+            ("config", "requirements.txt", "wrong export"),
+            ("config", "render-init.py", "wrong init"),
+            ("app", "command", ["sleep", "infinity"]),
+            ("controller", "strategy", "RollingUpdate"),
+            ("volume", "name", "studio-render-requirements"),
+        ):
+            docs = render(render_path / "app")
+            values = guard.resource(docs, "HelmRelease", "studio-render")["spec"]["values"]
+            controller = values["controllers"]["studio-render"]
+            volume = values["persistence"]["config"]
+            config = guard.resource(docs, "ConfigMap", volume["name"])["data"]
+            objects = {"controller": controller, "app": controller["containers"]["app"],
+                       "volume": volume, "config": config}
+            objects[target][field] = value
+            with (
+                self.subTest(target=target, field=field),
+                patch.object(guard, "render", return_value=docs),
+                self.assertRaisesRegex(ValueError, "offline replacement must use its own config"),
+            ):
+                guard.check_render_turnover(STUDIO, requirements)
+
+
+def change(document, keys, value):
+    for key in keys[:-1]:
+        document = (next(item for item in document if item["name"] == key)
+                    if isinstance(document, list) and isinstance(key, str) else document[key])
+    key = keys[-1]
+    document[key] = value(document[key]) if callable(value) else value
 
 
 class IdleGateTest(unittest.TestCase):

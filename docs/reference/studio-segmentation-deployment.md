@@ -468,12 +468,10 @@ recorded experimental load setting.
 
 ## Activate in a follow-up
 
-**Expected.** Activate matting first in the fourth deployment pin
-([story 967](https://work.haynesnetwork.com/work_packages/967)). Follow the
-[matting runbook](studio-matting-deployment.md#activation-retries-and-rollback)
-to activate the `studio-render/matting-pending` render split and the matting
-sidecar on `studio-worker`. After matting is ready and the segmentation smoke
-passes, point the render Flux Kustomization at `studio/segmentation-pending/activation`.
+**Expected.** [Story 970](https://work.haynesnetwork.com/work_packages/970)
+owns matting activation. The dormant overlays and limits below describe the
+previously staged layout. Verify the segmentation overlay against the layout
+that story 970 adopts before any activation.
 That overlay builds on `studio-render/matting-pending`. It adds the segmentation
 sidecar while the queue stays on its matting overlay. The release guard checks
 both combinations below. Cap manual render at `--workers 16` with matting and

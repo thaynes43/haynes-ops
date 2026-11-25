@@ -1,12 +1,18 @@
 """Verify the rendered Studio image pins and their Flux Job gates."""
 
 import argparse
+import ast
 import json
+import os
 import re
 import subprocess
+import sys
+import tarfile
 from fractions import Fraction
+from functools import cache
 from hashlib import sha256
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from urllib.request import Request, urlopen
 
 import yaml
@@ -29,6 +35,18 @@ PIN_FILES = (
     "media-workers/voice.yaml", "media-worker-registration/image-job.yaml",
     "media-worker-registration/voice-job.yaml",
 )
+RENDER_EXPORT = (
+    "uv", "export", "--locked", "--no-default-groups", "--no-emit-project",
+    "--no-annotate", "--no-header", "--no-hashes", "--python", "3.12",
+)
+MEDIA_ROUTES = ("claim", "heartbeat", "publish", "complete", "fail")
+PREDECESSOR_LISTENER = "studio-media-worker-routes-cbf48cht27"
+PREDECESSOR_LISTENER_SHA256 = "f8b500a868d689f51ee5a0239a6208580d25790a36511b1a2b3069c973b736f1"
+PREDECESSOR_RENDER_SHA256 = "51d95b693bf4a07a2f5818d5e8e9143d889b763fe5bc7d4442a62988efd5c4be"
+MIGRATION_0013_SHA256 = "6e68c22881ed4129b9557402accaee5a054eb490bb3fc58b3d04b399019d71be"
+FLUX_ROOT = Path("kubernetes/main/flux/config/cluster.yaml")
+# Flux Kustomization v1 CRD defaults. A field explicitly set in Git must match.
+FLUX_SPEC_DEFAULTS = {"force": False}
 STALE_MATTING_DIGESTS = {
     "sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f",
     "sha256:5c431978f3bfe7a48deb062c6b2854ca8b086d1a5d9c600e2db4b1e26d702d72",
@@ -115,6 +133,90 @@ def studio_image_digest(image, revision):
     return digest
 
 
+def studio_source(revision, name):
+    url = f"https://raw.githubusercontent.com/thaynes43/haynes-studio/{revision}/src/haynes_studio/{name}"
+    with urlopen(url, timeout=15) as response:
+        data = response.read(256 * 1024 + 1)
+    if len(data) > 256 * 1024:
+        raise ValueError(f"published Studio source is too large: {name}")
+    return data
+
+
+def check_release_migration(revision):
+    migration = studio_source(revision, "db/migrations/versions/0013_matte_jobs.py")
+    if sha256(migration).hexdigest() != MIGRATION_0013_SHA256:
+        raise ValueError("OP967 must repin to published Studio main images carrying the reviewed 0013 lock fix")
+
+
+def check_listener_auth(routes, auth):
+    route_module = ast.parse(routes)
+    auth_module = ast.parse(auth)
+
+    def one(parent, node_type, name):
+        nodes = [item for item in parent.body if isinstance(item, node_type) and item.name == name]
+        if len(nodes) != 1:
+            raise ValueError(f"port 8002 token authentication must define {name} exactly once")
+        return nodes[0]
+
+    route_class = one(route_module, ast.ClassDef, "WorkRoute")
+    router = one(route_module, ast.FunctionDef, "worker_router")
+    worker_route = one(auth_module, ast.ClassDef, "WorkerRoute")
+    get_handler = one(worker_route, ast.FunctionDef, "get_route_handler")
+    authenticated = one(get_handler, ast.AsyncFunctionDef, "authenticated")
+    worker_access = one(auth_module, ast.FunctionDef, "worker_access")
+
+    router_calls = [node for node in ast.walk(router) if isinstance(node, ast.Call)
+                    and ast.unparse(node.func) == "APIRouter"]
+    options = ({item.arg: ast.unparse(item.value) for item in router_calls[0].keywords}
+               if len(router_calls) == 1 else {})
+    mounted = [
+        node.args[0].value for node in ast.walk(router)
+        if isinstance(node, ast.Call) and ast.unparse(node.func) == "router.post"
+        and node.args and isinstance(node.args[0], ast.Constant)
+    ]
+    refused = {
+        ast.unparse(node.test) for node in worker_access.body
+        if isinstance(node, ast.If) and [ast.unparse(item) for item in node.body] == ["raise unauthenticated()"]
+    }
+    if ([ast.unparse(base) for base in route_class.bases] != ["WorkerRoute"]
+            or any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "get_route_handler"
+                   for node in route_class.body)
+            or not any(isinstance(node, ast.ImportFrom) and node.level == 1 and node.module == "auth"
+                       and any(alias.name == "WorkerRoute" and alias.asname is None for alias in node.names)
+                       for node in route_module.body)
+            or options.get("route_class") != "WorkRoute"
+            or options.get("prefix") != "'/internal/v1/work'"
+            or any(mounted.count(f"/{path}") != 1 for path in MEDIA_ROUTES)
+            or [ast.unparse(node) for node in authenticated.body] != [
+                "await run_in_threadpool(worker_access, request)", "return await handler(request)",
+            ]
+            or not isinstance(get_handler.body[-1], ast.Return)
+            or ast.unparse(get_handler.body[-1]) != "return authenticated"
+            or not {"len(headers) != 1", "scheme.lower() != 'bearer' or not valid_worker_bearer(token)",
+                    "worker is None"}.issubset(refused)
+            or "identity.get_worker_lane(conn, token)" not in {
+                ast.unparse(node) for node in ast.walk(worker_access) if isinstance(node, ast.Call)
+            }):
+        raise ValueError("every port-8002 route must require a worker token before parsing the request")
+
+
+def export_render_requirements(revision):
+    """Export the offline worker requirements from the selected Studio lock."""
+    source = f"https://raw.githubusercontent.com/thaynes43/haynes-studio/{revision}"
+    with TemporaryDirectory(prefix="studio-render-lock-") as directory:
+        for name in ("pyproject.toml", "uv.lock"):
+            with urlopen(f"{source}/{name}", timeout=15) as response:
+                Path(directory, name).write_bytes(response.read(4 * 1024 * 1024 + 1))
+        requirements = subprocess.check_output(RENDER_EXPORT, cwd=directory, text=True)
+        uv = subprocess.check_output(["uv", "--version"], text=True).split()[1]
+    return (
+        "# Runtime dependencies from thaynes43/haynes-studio uv.lock at\n"
+        f"# {revision} (Python 3.12, linux x86_64).\n"
+        f"# Generated with uv {uv} from that checkout (project and all dev groups omitted):\n"
+        f"# {' '.join(RENDER_EXPORT)}\n{requirements}"
+    )
+
+
 def repin(path, revision, publish_run):
     """Update the release record and its literal Kubernetes references together."""
     if not re.fullmatch(r"[0-9a-f]{40}", revision) or not re.fullmatch(r"[0-9]+", publish_run):
@@ -145,6 +247,7 @@ def repin(path, revision, publish_run):
         f'# Successful "Studio images" publish from haynes-studio main, run {publish_run}.\n'
         f"revision: {revision}\napiDigest: {api}\nwebDigest: {web}\n"
     )
+    updates[path.with_name("studio-render") / "app/requirements.txt"] = export_render_requirements(revision)
     for file, content in updates.items():
         file.write_text(content, encoding="utf-8")
 
@@ -163,6 +266,174 @@ def resource(documents, kind, name=None):
 def render(path):
     output = subprocess.check_output(["kustomize", "build", str(path)], text=True)
     return list(yaml.safe_load_all(output))
+
+
+def flux_build(repo, stage):
+    with TemporaryDirectory(prefix="studio-flux-stage-") as directory:
+        manifest = Path(directory) / "stage.yaml"
+        manifest.write_text(yaml.safe_dump(stage))
+        output = subprocess.check_output(
+            ["flux", "build", "kustomization", stage["metadata"]["name"],
+             "--namespace", stage["metadata"]["namespace"],
+             "--path", stage["spec"]["path"], "--kustomization-file", str(manifest),
+             "--dry-run", "--in-memory-build"],
+            cwd=repo, env={**os.environ, "GOMAXPROCS": "2"}, text=True,
+        )
+    return [doc for doc in yaml.load_all(output, Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)) if doc]
+
+
+def studio_inventory(repo):
+    bootstrap = list(yaml.safe_load_all((repo / FLUX_ROOT).read_text()))
+    source = resource(bootstrap, "GitRepository", "haynes-ops")
+    cluster = resource(bootstrap, "Kustomization", "cluster")
+    inventory = resource(flux_build(repo, cluster), "Kustomization", "cluster-apps")
+    stages = {
+        doc["metadata"]["name"]: doc for doc in flux_build(repo, inventory)
+        if doc["kind"] == "Kustomization" and doc["metadata"].get("namespace") == "ai"
+        and re.match(r"^studio(?:-|$)", doc["metadata"]["name"])
+    }
+    return source, cluster, inventory, stages
+
+
+def flux_reference(stage):
+    source = stage["spec"]["sourceRef"]
+    return source["kind"], source.get("namespace") or stage["metadata"]["namespace"], source["name"]
+
+
+def flux_ready(stage):
+    status = stage.get("status", {})
+    generation = stage["metadata"]["generation"]
+    return (not stage["metadata"].get("deletionTimestamp") and not stage["spec"].get("suspend")
+            and status.get("observedGeneration") == generation
+            and any(condition["type"] == "Ready" and condition["status"] == "True"
+                    and condition.get("observedGeneration") == generation
+                    for condition in status.get("conditions", [])))
+
+
+def check_live_flux_spec(name, live, reviewed):
+    def compare(actual, expected, field):
+        if isinstance(actual, dict) and isinstance(expected, dict):
+            for key in sorted(actual.keys() | expected.keys()):
+                child = f"{field}.{key}"
+                if key not in actual or key not in expected:
+                    raise ValueError(f"different pin: live {name} {child} differs from the selected merge")
+                compare(actual[key], expected[key], child)
+        elif json.dumps(actual, sort_keys=True) != json.dumps(expected, sort_keys=True):
+            raise ValueError(f"different pin: live {name} {field} differs from the selected merge")
+
+    implicit = {key: value for key, value in FLUX_SPEC_DEFAULTS.items() if key in live}
+    compare(live, {**implicit, **reviewed}, "spec")
+
+
+def audit_flux(expected, snapshot):
+    """Return 0 when ready, 2 while stages converge, or 3 before source pickup."""
+    source, inventory, stages = snapshot
+
+    def git(*args):
+        return subprocess.check_output(["git", *args], text=True).strip()
+
+    @cache
+    def revision(value):
+        match = re.fullmatch(r"main@sha1:([0-9a-f]{40})", value)
+        if not match:
+            raise ValueError(f"unexpected Flux revision {value}")
+        commit = match[1]
+        if subprocess.run(["git", "cat-file", "-e", f"{commit}^{{commit}}"], check=False).returncode:
+            raise ValueError(f"observed Flux revision {commit} is missing after fetching main")
+        return commit
+
+    def ancestor(older, newer):
+        return subprocess.run(["git", "merge-base", "--is-ancestor", older, newer], check=False).returncode == 0
+
+    @cache
+    def admitted(commit):
+        if ancestor(expected, commit):
+            if not ancestor(commit, "refs/remotes/origin/main"):
+                raise ValueError(f"Flux revision {commit} is outside fetched main")
+            return True
+        if ancestor(commit, expected):
+            return False
+        raise ValueError(f"Flux revision {commit} is outside the selected merge history")
+
+    artifact = revision(source.get("status", {}).get("artifact", {}).get("revision", ""))
+    if not admitted(artifact):
+        print(f"Pending Flux source pickup: {artifact}")
+        return 3
+
+    with TemporaryDirectory(prefix="studio-pin-audit-") as directory:
+        @cache
+        def inputs(commit):
+            repo = Path(directory) / commit
+            repo.mkdir()
+            archive = repo / "source.tar"
+            subprocess.run(["git", "archive", "--output", str(archive), commit, "kubernetes"], check=True)
+            with tarfile.open(archive) as files:
+                files.extractall(repo, filter="data")
+            git_source, cluster, parent, definitions = studio_inventory(repo)
+            for name, stage in {"cluster": cluster, "cluster-apps": parent, **definitions}.items():
+                if flux_reference(stage) != ("GitRepository", "flux-system", "haynes-ops"):
+                    raise ValueError(f"different pin at {commit}: {name} source")
+            return repo, (git_source["spec"], cluster["spec"], parent["spec"]), definitions
+
+        pinned_repo, pinned_inputs, expected_stages = inputs(expected)
+        if {"timeout": "60s", **source["spec"]} != {"timeout": "60s", **pinned_inputs[0]}:
+            raise ValueError("different pin: live GitRepository spec differs from the selected merge")
+
+        @cache
+        def tree(commit, path):
+            return git("rev-parse", "--verify", f"{commit}:{path.removeprefix('./')}")
+
+        @cache
+        def rendered_pin(name):
+            return flux_build(pinned_repo, expected_stages[name])
+
+        @cache
+        def compare(commit):
+            if commit == expected:
+                return
+            repo, observed_inputs, observed_stages = inputs(commit)
+            # The shared inventory can gain or patch other stages. Only its
+            # own source/path and the resulting Studio definitions matter.
+            if observed_inputs[0] != pinned_inputs[0] or any(
+                observed["path"] != pinned["path"]
+                for observed, pinned in zip(observed_inputs[1:], pinned_inputs[1:], strict=True)
+            ):
+                raise ValueError(f"different pin at {commit}: Git source or Flux inventory inputs changed")
+            for name in sorted(expected_stages.keys() | observed_stages.keys()):
+                stage = expected_stages.get(name)
+                observed = observed_stages.get(name)
+                if stage != observed or (
+                    tree(commit, stage["spec"]["path"]) != tree(expected, stage["spec"]["path"])
+                    or flux_build(repo, observed) != rendered_pin(name)
+                ):
+                    raise ValueError(f"different pin at {commit}: {name} inputs changed")
+
+        compare(artifact)
+
+        def applied(stage, spec):
+            name = stage["metadata"]["name"]
+            status = stage.get("status", {})
+            at_pin = False
+            for field in ("lastAttemptedRevision", "lastAppliedRevision"):
+                if value := status.get(field):
+                    commit = revision(value)
+                    if admitted(commit):
+                        compare(commit)
+                        if field == "lastAppliedRevision":
+                            at_pin = True
+            if at_pin:
+                check_live_flux_spec(name, stage["spec"], spec)
+            ready = at_pin and flux_ready(stage)
+            print(f"Flux {name}: applied {status.get('lastAppliedRevision', '-')}, ready at pin {ready}")
+            return ready
+
+        inventory_ready = applied(inventory, pinned_inputs[2])
+        live = {stage["metadata"]["name"]: stage for stage in stages["items"]}
+        if inventory_ready and (missing := expected_stages.keys() - live.keys()):
+            raise ValueError(f"ready Flux inventory is missing Studio stages: {', '.join(sorted(missing))}")
+        ready = [applied(live[name], stage["spec"]) for name, stage in expected_stages.items() if name in live]
+        extra = any(re.match(r"^studio(?:-|$)", name) and name not in expected_stages for name in live)
+        return 0 if inventory_ready and all(ready) and not extra else 2
 
 
 def container(workload, name=None):
@@ -988,6 +1259,25 @@ def resource_volume(pod, name):
     return next(volume for volume in pod["volumes"] if volume["name"] == name)
 
 
+def check_render_turnover(path, requirements):
+    render_path = path.with_name("studio-render")
+    base = render(render_path / "app")
+    previous = resource(base, "ConfigMap", "studio-render-requirements")["data"]["requirements.txt"]
+    if sha256(previous.encode()).hexdigest() != PREDECESSOR_RENDER_SHA256:
+        raise ValueError("keep the byte-identical offline requirements for the predecessor pod")
+    release = resource(base, "HelmRelease", "studio-render")
+    values = release["spec"]["values"]
+    controller = values["controllers"]["studio-render"]
+    app = controller["containers"]["app"]
+    config_name = values["persistence"]["config"]["name"]
+    current = resource(base, "ConfigMap", config_name)["data"]
+    if (config_name == "studio-render-requirements" or current["requirements.txt"] != requirements
+            or current["render-init.py"] != (render_path / "app/render-init.py").read_text()
+            or app["command"] != ["/usr/local/bin/python", "-B", "/config/render-init.py"]
+            or controller["strategy"] != "Recreate"):
+        raise ValueError("offline replacement must use its own config, forwarding init and Recreate strategy")
+
+
 def check(path):
     release = yaml.safe_load((path / "release.yaml").read_text(encoding="utf-8"))
     flux = list(yaml.safe_load_all((path / "ks.yaml").read_text(encoding="utf-8")))
@@ -1001,9 +1291,6 @@ def check(path):
     media = render(path / "media-workers")
     voice = resource(media, "Deployment", "studio-voice-worker")
     image = resource(media, "Deployment", "studio-image-worker")
-    for stage in (app, media, worker_stage):
-        check_policy_selectors(stage)
-
     digest, web_digest = release["apiDigest"], release["webDigest"]
     if (image_digest(api, API_IMAGE, name="api") != digest
             or image_digest(web, API_IMAGE + "-web") != web_digest):
@@ -1030,9 +1317,29 @@ def check(path):
         if spec["command"] != ["studio-worker"] or spec.get("args", []) != args:
             raise ValueError(f"{workload['metadata']['name']} must consume its assigned queue lane")
     routes = (path / "app/media-worker-routes.conf").read_text()
+    locations = re.findall(r"(?m)^\s*location\s+([^\n{]+?)\s*\{", routes)
+    allowlist = "~ ^/internal/v1/work/(" + "|".join(MEDIA_ROUTES) + ")$"
+    if (locations != [allowlist, "/"]
+            or "if ($request_method != POST) { return 403; }" not in routes
+            or "proxy_pass http://127.0.0.1:8000$uri;" not in routes
+            or not re.search(r"location / \{\s*return 403;\s*\}", routes)):
+        raise ValueError("port 8002 must allow exactly the five existing media POST routes")
     for header in ("X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host", "X-Real-IP", "Forwarded"):
         if f'proxy_set_header {header} "";' not in routes:
             raise ValueError(f"The API media-worker listener must clear {header} before the loopback API")
+
+    api_pod = api["spec"]["template"]["spec"]
+    listener_config = resource_volume(api_pod, "media-worker-routes")["configMap"]["name"]
+    listener = container(api, "media-worker-routes")
+    if (listener_config != PREDECESSOR_LISTENER
+            or resource(app, "ConfigMap", listener_config)["data"]["nginx.conf"] != routes
+            or sha256(routes.encode()).hexdigest() != PREDECESSOR_LISTENER_SHA256
+            or {"name": "media-worker-routes", "mountPath": "/etc/studio-worker-routes", "readOnly": True}
+            not in listener["volumeMounts"]
+            or listener["args"] != ["-c", "/etc/studio-worker-routes/nginx.conf", "-g", "daemon off;"]):
+        raise ValueError("the API must keep and mount the exact existing media listener configuration")
+    check_listener_auth(studio_source(release["revision"], "api/run_routes.py"),
+                        studio_source(release["revision"], "api/auth.py"))
 
     api_env = env(api, "api")
     worker_env = env(worker)
@@ -1044,10 +1351,20 @@ def check(path):
     if worker_env.get("STUDIO_BUILD_IMAGE_DIGEST") != digest:
         raise ValueError("studio-worker provenance digest must match its image")
 
+    offline_lock = (path.with_name("studio-render") / "app/requirements.txt").read_text()
+    requirements = offline_lock.splitlines()
+    if ([line for line in requirements if line.startswith("av==")] != ["av==18.1.1"]
+            or f"# {release['revision']} (Python 3.12, linux x86_64)." not in requirements):
+        raise ValueError("offline render must export PyAV 18.1.1 from the same Studio release lock")
+    check_render_turnover(path, offline_lock)
     check_packaged_register(app + media, ((api, "api"), (worker, None), (voice, None), (image, None)))
     check_drain(((api, ("api", "media-worker-routes")), (mcp, ("mcp",)), (web, ("nginx",))))
+    for repository, expected in ((API_IMAGE, digest), (API_IMAGE + "-web", web_digest)):
+        if studio_image_digest(repository, release["revision"]) != expected:
+            raise ValueError(f"{repository} digest must match the published Studio revision")
     check_segmentation(path, flux)
     check_upscaling(path, flux, api)
+    check_release_migration(release["revision"])
     print(f"Studio release pins and Job health gates agree for {revision} ({digest})")
 
 
@@ -1056,12 +1373,18 @@ def main():
     parser.add_argument("studio_path", type=Path, nargs="?", default=STUDIO_PATH)
     parser.add_argument("--pin", nargs=2, metavar=("STUDIO_REVISION", "PUBLISH_RUN"),
                         help="verify the published image pair and update all release references")
+    parser.add_argument("--audit-flux", metavar="OPS_REVISION",
+                        help="compare applied Flux inputs against the selected merge")
     args = parser.parse_args()
     try:
+        if args.audit_flux:
+            if not re.fullmatch(r"[0-9a-f]{40}", args.audit_flux):
+                raise ValueError("Flux comparison requires the full selected Ops merge SHA")
+            raise SystemExit(audit_flux(args.audit_flux, json.load(sys.stdin)))
         if args.pin:
             repin(args.studio_path, *args.pin)
         check(args.studio_path)
-    except (KeyError, OSError, ValueError, subprocess.CalledProcessError, yaml.YAMLError) as error:
+    except (KeyError, OSError, SyntaxError, ValueError, subprocess.CalledProcessError, yaml.YAMLError) as error:
         parser.exit(1, f"Studio release check failed: {error}\n")
 
 

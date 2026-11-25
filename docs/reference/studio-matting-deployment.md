@@ -463,7 +463,9 @@ Keep heavy jobs serialized unless measured headroom shows the second
 fits. Follow the Wan, Foley and local-model lease rules.
 [Matting profile](https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/matting-backend-profile.md)
 
-Sidecar activation is a separate deployment pin after the smoke. First move the
+Sidecar activation after the smoke is tracked in
+[story 970](https://work.haynesnetwork.com/work_packages/970). The staged
+overlay below predates that story. First move the
 offline worker's Flux path to `studio-render/matting-pending` and verify its
 1 GiB request and 18-CPU, 32 GiB limit. Cap offline render commands at
 `--workers 16`. Then stage the queue consumer with
