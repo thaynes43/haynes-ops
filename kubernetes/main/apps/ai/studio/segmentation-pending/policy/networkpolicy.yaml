@@ -1,0 +1,42 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: studio-segmentation-provision
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: studio-segmentation-provision
+  ingressDeny:
+    - fromEntities: [all]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:app.kubernetes.io/name: coredns
+      toPorts:
+        - ports:
+            - {port: "53", protocol: ANY}
+          rules:
+            dns:
+              - matchName: huggingface.co
+              - matchName: us.aws.cdn.hf.co
+    - toFQDNs:
+        - matchName: huggingface.co
+        - matchName: us.aws.cdn.hf.co
+      toPorts:
+        - ports:
+            - {port: "443", protocol: TCP}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: studio-segmentation-smoke
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: studio-segmentation-smoke
+  ingressDeny:
+    - fromEntities: [all]
+  egressDeny:
+    - toEntities: [all]

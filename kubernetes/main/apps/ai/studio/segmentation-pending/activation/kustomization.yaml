@@ -1,0 +1,8 @@
+# Dormant. Apply only after OP460's measured serving memory has a published pin.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ai
+resources:
+  - render
+components:
+  - ../release
