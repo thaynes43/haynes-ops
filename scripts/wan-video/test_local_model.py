@@ -86,7 +86,10 @@ class InlineProcess:
             elif operation == "unload":
                 self.backend.unload()
             else:
-                return sidecar.infer(self.backend, self.f.root, self.profile, request)
+                reply = sidecar.infer(self.backend, self.f.root, self.profile, request)
+                if reply.get("error") == "output_limit":
+                    self.backend.unload()
+                return reply
         except ValueError:
             return {"error": "backend_failed"}
         return {}
@@ -125,6 +128,7 @@ class LocalModelTests(unittest.TestCase):
         self.infer_connection_closed = threading.Event()
         self.worker = self.new_sidecar()
         self.http_done = threading.Event()
+        self.start_patch(local, sample_card=self.card_sample)
         self.start_patch(api, ROOT=self.root, CONFIG=self.config, ACTIVE=None, UNSAFE=False,
                          engine=self.engine, gpu_sample=self.gpu_sample)
         self.start_patch(api, run_local_request=self.run_http_worker)
@@ -251,8 +255,7 @@ class LocalModelTests(unittest.TestCase):
         request = local.validate(self.lane.profile, self.body(operation, **fields))
         with api.acquire_compute() as lease:
             job = self.lane.create(job_id, request)
-            return self.lane.run(job, request, lease, api.check_local_compute,
-                                 ensure_load_memory=api.clear_local_load_memory)
+            return self.lane.run(job, request, lease, api.check_local_compute)
 
     def generate(self, kind, job_id="a1" * 16):
         if kind is None:
@@ -326,7 +329,8 @@ class LocalModelTests(unittest.TestCase):
             api.recover_with_local()
             self.assertEqual(self.generate("i2v")["state"], "succeeded")
             with patch.object(product_foley, "CONFIG", self.config), \
-                    patch.object(product_foley.service, "ROOT", self.root), api.acquire_compute() as lease:
+                    patch.multiple(product_foley.service, ROOT=self.root, idle=api.check_local_queue), \
+                    api.acquire_compute() as lease:
                 product_foley.prepare_foley(lease)
             exchange.assert_not_called()
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
@@ -677,13 +681,16 @@ class LocalModelTests(unittest.TestCase):
         self.complete = False
         job = self.perform(INFER, "infer", mode="plan_v1")
         self.assertEqual(job["error"], "invalid_result")
+        self.assertEqual(job["reason_code"], "incomplete_output")
         self.assertNotIn("admission_code", job)
         self.complete = True
         valid_text = self.text
         self.text = "{}"
-        self.assertEqual(self.perform(UNLOAD, "infer", mode="plan_v1")["error"], "invalid_result")
+        bad = self.perform(UNLOAD, "infer", mode="plan_v1")
+        self.assertEqual((bad["error"], bad["reason_code"]), ("invalid_result", "mode_mismatch"))
         self.text = valid_text
         self.assertEqual(self.perform("04" * 16, "infer", mode="plan_v1")["result"]["text"], valid_text)
+        self.assertEqual(self.perform("05" * 16, "unload")["released_memory_mib"], 64)
 
     def test_context_cap_counts_prepared_input_and_bounds_backend_output(self):
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
@@ -692,34 +699,40 @@ class LocalModelTests(unittest.TestCase):
         self.assertEqual(self.work("prepare"), [("prepare", "Describe the board", [])])
         self.assertEqual(self.work("infer"), [])
         self.inputs, self.outputs = 8, 13
-        self.assertEqual(self.perform("04" * 16, "infer")["error"], "backend_failed")
+        self.assertEqual(self.perform("04" * 16, "infer")["error"], "output_limit")
         self.assertEqual(self.work("token_cap"), [("token_cap", 12)])
-        self.assertTrue(product.read_job(self.lane.path)["held"])
+        self.assertFalse(self.lane.path.exists())
 
     def test_output_byte_budget_is_measured_in_utf8(self):
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
         self.text = "€" * (local.MAX_TEXT_BYTES // 3 + 1)
-        self.assertEqual(self.perform(INFER, "infer")["error"], "backend_failed")
+        self.assertEqual(self.perform(INFER, "infer")["error"], "output_limit")
         self.assertEqual(self.work("infer"), [("infer", INFER, "running", False)])
-        self.assertTrue(product.read_job(self.lane.path)["held"])
+        self.assertFalse(self.lane.path.exists())
 
-    def test_structured_output_token_cap_violation_stops_backend_and_holds(self):
+    def test_output_limits_reap_and_leave_lane_usable_after_fresh_proof(self):
+        for offset, (text, tokens) in enumerate((
+            ('{"scene_id":"s1","shots":[{"technical_direction":"Closeup."}]}', 13),
+            ("€" * (local.MAX_TEXT_BYTES // 3 + 1), 3),
+            ("\x01" * local.MAX_TEXT_BYTES, 3),
+        )):
+            with self.subTest(offset=offset):
+                self.assertEqual(self.perform(f"{offset + 10:032x}", "load")["state"], "succeeded")
+                self.text, self.outputs = text, tokens
+                job = self.perform(f"{offset + 20:032x}", "infer", mode="plan_v1")
+                self.assertEqual(job["error"], "output_limit")
+                self.assertEqual(job["released_memory_mib"], 64)
+                self.assertFalse(self.worker.resident)
+                self.assertFalse(self.lane.path.exists())
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
-        self.text = '{"scene_id":"scene1","shots":[{"technical_direction":"Closeup."}]}'
-        self.outputs = 13
-        job = self.perform(INFER, "infer", mode="plan_v1")
-        self.assertEqual(job["error"], "backend_failed")
-        self.assertEqual(self.worker.receipt["error"], "backend_failed")
-        self.assertFalse(self.worker.resident)
-        self.assertTrue(product.read_job(self.lane.path)["held"])
+        self.assertEqual(self.perform(UNLOAD, "unload")["state"], "succeeded")
 
-    def test_structured_utf8_byte_ceiling_violation_stops_backend_and_holds(self):
+    def test_output_limit_with_memory_still_allocated_holds(self):
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
-        self.text = "€" * (local.MAX_TEXT_BYTES // 3 + 1)
-        job = self.perform(INFER, "infer", mode="plan_v1")
-        self.assertEqual(job["error"], "backend_failed")
-        self.assertEqual(self.worker.receipt["error"], "backend_failed")
-        self.assertFalse(self.worker.resident)
+        self.free_on_unload = False
+        self.outputs = PROFILE["max_output_tokens"] + 1
+        with patch.object(local.time, "sleep"):
+            self.assertEqual(self.perform(INFER, "infer")["error"], "residency_unverified")
         self.assertTrue(product.read_job(self.lane.path)["held"])
 
     def test_structured_receipt_bound_violation_cannot_downgrade_to_invalid_result(self):
@@ -816,7 +829,7 @@ class LocalModelTests(unittest.TestCase):
                 self.engine_calls.clear()
                 job_id = "a" * 32 if "queue_running" not in queue else "b" * 32
                 self.assertEqual(self.perform(job_id, "load")["error"], "worker_busy")
-                self.assertTrue(api.UNSAFE)
+                self.assertEqual(api.UNSAFE, "queue_running" not in queue)
                 self.assertEqual(self.engine_calls, [("/queue", None)])
         self.assertEqual(self.work("load", "unload", "infer"), [])
 
@@ -840,13 +853,24 @@ class LocalModelTests(unittest.TestCase):
         self.sidecar_queue = None
         self.assertEqual(self.perform(UNLOAD, "load")["state"], "succeeded")
 
-    def test_sidecar_rechecks_engine_queue_at_dispatch(self):
+    def test_local_foreign_work_race_refuses_without_a_hold(self):
+        self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
         self.sidecar_queue = {**EMPTY, "queue_running": [[0, "late-foreign"]]}
+        job = self.perform(INFER, "infer")
+        self.assertEqual((job["error"], job["admission_code"]), ("engine_work_unknown", "engine_busy"))
+        self.assertEqual(self.work("infer"), [])
+        self.assertNotIn("pending", self.lane.read_state())
+        self.assertTrue(self.lane.read_state()["resident"])
+        self.assertFalse(api.UNSAFE)
+        self.assertEqual(self.prompts, [])
+        self.sidecar_queue = None
+        self.assertEqual(self.perform(UNLOAD, "unload")["state"], "succeeded")
+
+    def test_malformed_receiver_queue_still_holds_direct_local_request(self):
+        self.sidecar_queue = {"queue_pending": []}
         self.assertEqual(self.perform(LOAD, "load")["error"], "engine_work_unknown")
-        self.assertEqual(self.work("receiver_queue"), [("receiver_queue", self.sidecar_queue)])
         self.assertEqual(self.work("load"), [])
         self.assertTrue(product.read_job(self.lane.path)["held"])
-        self.assertEqual(self.prompts, [])
 
     def test_local_card_identity_temperature_and_resident_memory_are_checked(self):
         self.report_card = OTHER
@@ -862,13 +886,30 @@ class LocalModelTests(unittest.TestCase):
         self.assertEqual(len(self.work("load")), 1)
         self.assertTrue(product.read_job(self.lane.path)["held"])
 
-    def test_local_load_releases_only_idle_comfy_cache(self):
-        self.memory = 3000
+    def test_memory_above_ceiling_without_state_holds_wan_and_foley(self):
+        # Model state disappeared and the sidecar is unreachable. Independent
+        # telemetry still finds allocations on the profile's card.
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")
-        self.assertEqual([event[0] for event in self.work("free_cache", "load")], ["free_cache", "load"])
-        index = self.engine_calls.index(("/free", {"unload_models": True, "free_memory": True}))
-        self.assertEqual(self.engine_calls[index - 1], ("/queue", None))
-        self.assertEqual(self.engine_calls[index + 1], ("/queue", None))
+        self.lane.path.unlink()
+        with patch.object(local, "exchange", side_effect=ConnectionRefusedError) as exchange:
+            job = self.generate("s2v")
+            self.assertEqual(job["admission_code"], "local_model_handover")
+            self.assertEqual(self.prompts, [])
+            self.assertTrue(product.read_job(self.lane.path)["held"])
+            with patch.object(product_foley, "CONFIG", self.config), \
+                    patch.object(product_foley.service, "ROOT", self.root), api.acquire_compute() as lease:
+                with self.assertRaises(product.AdmissionRefusal) as refusal:
+                    product_foley.prepare_foley(lease)
+                self.assertEqual(refusal.exception.code, "local_model_handover")
+            exchange.assert_not_called()
+
+    def test_unaccounted_memory_refuses_local_load_before_any_mutation(self):
+        self.memory = PROFILE["unloaded_max_mib"] + 1
+        with patch.object(local, "exchange", side_effect=ConnectionRefusedError):
+            job = self.perform(LOAD, "load")
+        self.assertEqual(job["error"], "local_model_held")
+        self.assertTrue(product.read_job(self.lane.path)["held"])
+        self.assertEqual(self.work("load", "free_cache"), [])
 
     def test_changed_profile_cannot_discard_a_resident_reservation(self):
         self.assertEqual(self.perform(LOAD, "load")["state"], "succeeded")

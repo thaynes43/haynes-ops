@@ -1,10 +1,13 @@
 """Local-model requests and residency, fenced by the existing Wan compute lease."""
 from array import array
+import csv
+import io
 import json
 import os
 from pathlib import Path
 import re
 import socket
+import subprocess
 import tempfile
 import time
 import uuid
@@ -27,6 +30,22 @@ MAX_VISUAL_TOKENS = 1024
 MAX_PACKET = 64 * 1024
 STATUS_SECONDS = 15
 PROFILE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}")
+
+
+def sample_card(card):
+    result = subprocess.run(
+        ["nvidia-smi", "--id=" + card, "--query-gpu=uuid,memory.used,utilization.gpu,temperature.gpu",
+         "--format=csv,noheader,nounits"],
+        capture_output=True, text=True, check=True, timeout=10,
+    )
+    (row,) = csv.reader(io.StringIO(result.stdout))
+    identity, memory, utilization, temperature = (value.strip() for value in row)
+    if identity != card:
+        raise ValueError("Unexpected local-model GPU UUID")
+    return {
+        "gpu_uuid": identity, "memory_mib": float(memory),
+        "utilization_percent": float(utilization), "temperature_c": float(temperature),
+    }
 
 
 def load_profile(config):
@@ -308,7 +327,8 @@ class Lane:
         sync_directory(path.parent)
         return job
 
-    def finish(self, job, *, error=None, result=None, admission_code=None):
+    def finish(self, job, *, error=None, result=None, admission_code=None, reason_code=None,
+               released_memory_mib=None):
         if job["state"] in {"succeeded", "failed"}:
             return job
         job.update(state="failed" if error else "succeeded", finished_at=time.time())
@@ -316,16 +336,46 @@ class Lane:
             job["error"] = error
             if admission_code:
                 job["admission_code"] = admission_code
+            if reason_code:
+                job["reason_code"] = reason_code
         elif result is not None:
             job["result"] = result
+        if released_memory_mib is not None:
+            job["released_memory_mib"] = released_memory_mib
         write_record(job_path(self.root, job["id"]), job)
         return job
+
+    def check_absent(self, snapshot):
+        if snapshot.get("resident") or self.above_unloaded_ceiling(snapshot):
+            self.write_state(snapshot.get("instance", uuid.uuid4().hex), snapshot.get("resident", False), hold=True)
+            raise held()
+
+    def above_unloaded_ceiling(self, snapshot):
+        return snapshot["memory_mib"] > self.profile["unloaded_max_mib"]
+
+    def check_unrecorded_memory(self):
+        # Inspect the GPU directly so an unavailable sidecar cannot hide a
+        # missing journal with outstanding allocations.
+        try:
+            sample = sample_card(self.profile["gpu_uuid"])
+        except (OSError, ValueError, csv.Error, subprocess.SubprocessError) as exc:
+            raise product.RequestError("local_model_unavailable", "Model card state is unavailable", 503) from exc
+        if not gpu_range(sample["memory_mib"], 0, 32768):
+            raise product.RequestError("local_model_unavailable", "Model card state is unavailable", 503)
+        self.check_absent(sample)
 
     def reconcile(self, state=None):
         """Resolve the only possible outstanding dispatch under a newly held lease."""
         if state is None:
             state = self.read_state()
-        snapshot = self.status()
+        try:
+            snapshot = self.status()
+        except product.RequestError:
+            if state is None:
+                self.check_unrecorded_memory()
+            raise
+        if state is None:
+            self.check_absent(snapshot)
         instance = snapshot["instance"]
         was_resident = state["resident"] if state else False
         pending = state.get("pending") if state else None
@@ -352,7 +402,8 @@ class Lane:
         matched = bool(receipt and receipt.get("id") == pending)
         if matched and receipt.get("operation") != job["operation"]:
             raise held()
-        error = result = admission_code = None
+        error = result = admission_code = reason_code = None
+        reaped_errors = {"operation_timeout", "backend_exited", "output_limit"}
         if matched:
             error = receipt.get("error")
             if error is None:
@@ -363,26 +414,36 @@ class Lane:
                         error = "backend_failed"
                     elif not valid_result_mode(job, result):
                         error = "invalid_result"
-            elif error in ("operation_timeout", "backend_exited"):
+                        reason_code = "mode_mismatch"
+            elif error in reaped_errors:
                 # The supervisor reaped the model process before publishing
                 # this receipt. Still require the card's unloaded memory proof.
                 expected = False
-            elif job.get("internal") and error in ("engine_work_unknown", "engine_queue_unavailable"):
-                # The sidecar declined the unload before touching the model.
+            elif error in ("engine_work_unknown", "engine_queue_unavailable"):
+                # The sidecar declined the request before touching the model.
                 # Foreign work may be visible in telemetry. Preserve the
                 # existing reservation and retry its memory proof next time.
                 if snapshot["resident"] != was_resident:
                     raise held()
+                # Preserve Wan/Foley's existing refusal mapping. Malformed
+                # replies still require inspection on the direct local lane.
                 if error == "engine_work_unknown":
-                    error = "engine_busy" if receipt.get("engine_busy") else "engine_queue_malformed"
+                    foreign_work = receipt.get("engine_busy") is True
+                    if not foreign_work and not job.get("internal"):
+                        self.finish(job, error=error, admission_code="engine_busy")
+                        self.write_state(instance, was_resident, pending=pending, hold=True)
+                        raise held()
+                    if job.get("internal"):
+                        error = "engine_busy" if foreign_work else "engine_queue_malformed"
                 self.finish(job, error=error, admission_code="engine_busy")
                 self.write_state(instance, was_resident)
                 return snapshot
-            elif error in ("engine_work_unknown", "engine_queue_unavailable"):
-                admission_code = "engine_busy"
             elif error == "context_limit":
                 admission_code = "pre_admission_failed"
-            elif error != "invalid_result" or job["operation"] != "infer" or "mode" not in job:
+            elif error == "invalid_result" and job["operation"] == "infer" and "mode" in job:
+                reason_code = ("incomplete_output" if receipt.get("reason_code") == "incomplete_output"
+                               else "mode_mismatch")
+            else:
                 error = "backend_failed"
         elif pending:
             error = "submission_lost"
@@ -393,7 +454,7 @@ class Lane:
         memory_ok = self.resident(snapshot) if expected else (
             not needs_unloaded_proof or self.unloaded(snapshot)
         )
-        if (matched and (not error or error in ("operation_timeout", "backend_exited"))
+        if (matched and (not error or error in reaped_errors)
                 and snapshot["resident"] == expected):
             for _ in range(3):
                 if memory_ok:
@@ -404,7 +465,7 @@ class Lane:
                     memory_ok = False
                     break
                 memory_ok = self.resident(snapshot) if expected else self.unloaded(snapshot)
-        unsafe_error = error in ("backend_failed", "engine_work_unknown")
+        unsafe_error = error == "backend_failed"
         if snapshot["resident"] != expected or not memory_ok or unsafe_error:
             if job:
                 self.finish(job, error=error if unsafe_error else "residency_unverified",
@@ -412,12 +473,13 @@ class Lane:
             self.write_state(instance, snapshot["resident"], pending=pending, hold=True)
             raise held()
         if job:
-            self.finish(job, error=error, result=result, admission_code=admission_code)
+            self.finish(job, error=error, result=result, admission_code=admission_code, reason_code=reason_code,
+                        released_memory_mib=snapshot["memory_mib"] if needs_unloaded_proof else None)
         if pending:
             self.write_state(instance, expected)
         return snapshot
 
-    def run(self, job, request, lease, check_idle, *, ensure_load_memory=None, snapshot=None):
+    def run(self, job, request, lease, check_idle, *, snapshot=None):
         """Send once. A lost transport answer leaves the pre-dispatch record in place."""
         try:
             check_idle()
@@ -427,8 +489,6 @@ class Lane:
                 return self.finish(job, error="model_not_loaded", admission_code="pre_admission_failed")
             if operation != "infer" and snapshot["resident"] == (operation == "load"):
                 return self.finish(job)
-            if operation == "load" and not self.unloaded(snapshot) and ensure_load_memory is not None:
-                snapshot = ensure_load_memory(self)
             if operation == "load" and not self.unloaded(snapshot):
                 return self.finish(job, error="model_card_busy", admission_code="gpu_busy")
             if operation != "unload" and snapshot["temperature_c"] >= 62:
@@ -462,7 +522,8 @@ class Lane:
         """Resolve outstanding work and evict conflicting residency before admission."""
         state = self.read_state()
         if state is None:
-            # A load writes pending state before it can reach the sidecar.
+            check_idle()
+            self.check_unrecorded_memory()
             return
         check_idle()
         snapshot = self.reconcile(state)
@@ -504,7 +565,9 @@ def valid_result_bounds(profile, job, result):
     inputs, outputs = result["input_tokens"], result["output_tokens"]
     cap = job.get("max_output_tokens", profile["max_output_tokens"])
     return (type(inputs) is int and 0 <= inputs <= profile["context_tokens"] - cap
-            and type(outputs) is int and 0 <= outputs <= cap and bounded_text(result["text"]))
+            and type(outputs) is int and 0 <= outputs <= cap and bounded_text(result["text"])
+            # Reserve metadata space and account for JSON escape expansion.
+            and len(json.dumps(result["text"], ensure_ascii=False).encode()) <= MAX_PACKET - 2048)
 
 
 def valid_result_mode(job, result):

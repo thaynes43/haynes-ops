@@ -10,10 +10,8 @@ lifetime.
 """
 from contextlib import closing
 import ctypes
-import csv
 import fcntl
 from http.client import HTTPException
-import io
 import multiprocessing
 import os
 import signal
@@ -26,22 +24,6 @@ import uuid
 import product
 import local_model_modes as modes
 import product_local as local
-
-
-def sample_card(card):
-    result = subprocess.run(
-        ["nvidia-smi", "--id=" + card, "--query-gpu=uuid,memory.used,utilization.gpu,temperature.gpu",
-         "--format=csv,noheader,nounits"],
-        capture_output=True, text=True, check=True, timeout=10,
-    )
-    (row,) = csv.reader(io.StringIO(result.stdout))
-    identity, memory, utilization, temperature = (value.strip() for value in row)
-    if identity != card:
-        raise ValueError("Unexpected local-model GPU UUID")
-    return {
-        "gpu_uuid": identity, "memory_mib": float(memory),
-        "utilization_percent": float(utilization), "temperature_c": float(temperature),
-    }
 
 
 def verify_lease(root, fd):
@@ -76,9 +58,11 @@ def infer(backend, root, profile, request):
     text, outputs, complete = backend.infer(prepared, cap)
     result = {"text": text, "input_tokens": inputs, "output_tokens": outputs}
     if not local.valid_result_bounds(profile, request, result):
-        raise ValueError("Invalid local-model result bounds")
-    if (mode and complete is not True) or not local.valid_result_mode(request, result):
-        return {"error": "invalid_result"}
+        return {"error": "output_limit"}
+    if mode and complete is not True:
+        return {"error": "invalid_result", "reason_code": "incomplete_output"}
+    if not local.valid_result_mode(request, result):
+        return {"error": "invalid_result", "reason_code": "mode_mismatch"}
     return {"result": result}
 
 
@@ -92,18 +76,25 @@ def model_worker(conn, parent_pid, parent_fds, root, profile, factory):
     pr_set_pdeathsig = 1
     if ctypes.CDLL(None).prctl(pr_set_pdeathsig, signal.SIGKILL, 0, 0, 0) or os.getppid() != parent_pid:
         return
+    os.setsid()
     signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM, signal.SIGINT})
     with conn:
         try:
             backend = factory(profile)
             backend.load()
             local.send_packet(conn, {})
-            while True:
-                message, _ = local.receive_packet(conn)
-                if message["operation"] == "unload":
-                    backend.unload()
-                    return
-                local.send_packet(conn, infer(backend, root, profile, message))
+            try:
+                while True:
+                    message, _ = local.receive_packet(conn)
+                    if message["operation"] == "unload":
+                        return
+                    reply = infer(backend, root, profile, message)
+                    if reply.get("error") == "output_limit":
+                        break
+                    local.send_packet(conn, reply)
+            finally:
+                backend.unload()
+            local.send_packet(conn, reply)
         except Exception:
             try:
                 local.send_packet(conn, {"error": "backend_failed"})
@@ -120,12 +111,27 @@ class ModelProcess:
 
     def stop(self):
         if self.process is not None:
-            if self.process.is_alive():
-                self.process.kill()
+            self.kill_group()
             self.process.join()
             self.process.close()
             self.conn.close()
             self.process = self.conn = None
+
+    def kill_group(self):
+        pid = self.process.pid
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            # On a startup deadline the child may still be before setsid().
+            if self.process.exitcode is None:
+                try:
+                    self.process.kill()
+                except ProcessLookupError:
+                    pass
+                try:
+                    os.killpg(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
 
     @staticmethod
     def remaining(deadline):
@@ -170,11 +176,12 @@ class ModelProcess:
                     return {"error": "backend_exited"}
                 # A clean exit is the acknowledgement. If unload raised,
                 # the child sends an error before exiting.
+                self.kill_group()
                 packet = self.conn.recv(1, socket.MSG_PEEK)
                 return {"error": "backend_failed"} if packet else {}
             self.conn.settimeout(self.remaining(deadline))
             reply, _ = local.receive_packet(self.conn)
-            if reply.get("error") == "backend_failed":
+            if reply.get("error") in {"backend_failed", "output_limit"}:
                 self.stop()
             return reply
         except TimeoutError:
@@ -189,7 +196,7 @@ class ModelProcess:
 
 
 class Sidecar:
-    def __init__(self, root, profile, backend_factory, *, check_idle, sample=sample_card):
+    def __init__(self, root, profile, backend_factory, *, check_idle, sample=local.sample_card):
         self.lane = local.Lane(root, profile)
         self.profile = profile
         self.model = ModelProcess(root, profile, backend_factory)
@@ -239,7 +246,7 @@ class Sidecar:
                 raise
             if not outcome.get("error"):
                 self.resident = operation != "unload"
-            elif outcome["error"] in {"operation_timeout", "backend_exited", "backend_failed"}:
+            elif outcome["error"] in {"operation_timeout", "backend_exited", "backend_failed", "output_limit"}:
                 self.resident = False
         self.receipt = {"id": job_id, "operation": operation, **outcome}
 

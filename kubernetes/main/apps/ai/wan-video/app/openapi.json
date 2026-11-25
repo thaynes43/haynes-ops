@@ -1491,6 +1491,16 @@
           "error": {
             "type": "string"
           },
+          "reason_code": {
+            "type": "string",
+            "enum": ["incomplete_output", "mode_mismatch"],
+            "description": "Reason for invalid_result. The output was rejected after inference."
+          },
+          "released_memory_mib": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Fresh selected-card measurement after the worker was reaped and release passed the profile ceiling."
+          },
           "result": {
             "type": "object",
             "additionalProperties": false,
