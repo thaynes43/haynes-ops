@@ -56,7 +56,7 @@ except (URLError, OSError, HTTPException):
 # residency. When requested, evict ordinary ComfyUI cache after proving the
 # child and residency journal have both gone.
 LANE = """
-import json, os, sys, time
+import json, sys, time
 from urllib.request import urlopen
 import api
 import product_local as model
@@ -79,10 +79,14 @@ with lease:
     if not api.gpus_idle(rack):
         raise SystemExit("Rack GPUs are not idle")
     if action == "dormant":
-        if model.load_profile(api.CONFIG) is not None or os.path.lexists(model.state_path(api.ROOT)):
-            raise SystemExit("Dormant gate requires no profile or residency journal")
-        print(json.dumps({"rack": rack, "journal": None}))
-        raise SystemExit()
+        if model.load_profile(api.CONFIG) is not None:
+            raise SystemExit("Dormant gate requires no profile")
+        try:
+            model.state_path(api.ROOT).lstat()
+        except FileNotFoundError:
+            print(json.dumps({"rack": rack, "journal": None}))
+            raise SystemExit()
+        raise SystemExit("Dormant gate requires no residency journal")
     lane = model.enabled_lane(api.ROOT, api.CONFIG)
     if lane is None:
         raise SystemExit("Expected the active profile")
@@ -523,7 +527,6 @@ def run_window(evidence, number):
         store(directory / "stopped.json", {"reason": str(error) or type(error).__name__})
         raise
     print(f"Window {number} passed with verified final unload and idle proof.")
-
 
 
 def main():

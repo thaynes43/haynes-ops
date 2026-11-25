@@ -172,6 +172,20 @@ class HoldRecoveryTests(unittest.TestCase):
         self.assert_refused("socket path still exists")
         self.nvidia.assert_not_called()
 
+    def test_dormant_unreadable_socket_cannot_prove_absence(self):
+        self.profile.unlink()
+        socket_path = local.socket_path(self.root)
+        lstat = Path.lstat
+
+        def unreadable(path, *args, **kwargs):
+            if path == socket_path:
+                raise PermissionError("Sidecar socket path is unreadable")
+            return lstat(path, *args, **kwargs)
+
+        with patch.object(Path, "lstat", new=unreadable):
+            self.assert_refused("Sidecar socket path is unreadable")
+        self.nvidia.assert_not_called()
+
     def test_dormant_compute_query_failure_or_malformed_row_refused(self):
         self.profile.unlink()
         self.nvidia.return_value.stdout = "bad row"

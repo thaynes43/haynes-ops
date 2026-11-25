@@ -399,8 +399,14 @@ with lease:
     if (not health["accepting_jobs"] or health["active_job"] is not None
             or status != 200 or foley["active_job"] is not None):
         raise SystemExit("Wan or Foley is busy/unavailable")
-    if api.local.load_profile(api.CONFIG) is not None or api.local.state_path(api.ROOT).exists():
-        raise SystemExit("Expected dormant Wan with no residency")
+    if api.local.load_profile(api.CONFIG) is not None:
+        raise SystemExit("Expected dormant Wan")
+    try:
+        api.local.state_path(api.ROOT).lstat()
+    except FileNotFoundError:
+        pass
+    else:
+        raise SystemExit("Expected no local-model residency journal")
     if not api.gpus_idle(api.gpu_sample()):
         raise SystemExit("Rack GPUs are not idle")
     api.require_empty_queue()
@@ -515,24 +521,30 @@ producers. Confirm there is one Ready Wan pod, four Ready containers if
 active, and a Ready Service endpoint for that pod. Save the pod UID, image,
 restart counts and listener status. Run the active health command below and
 review the empty queue, cleared residency and idle ownership before
-proceeding. On a dormant deployment use the three-container check and dormant
-health command from the [dormant gate](#gitops-revert-and-dormant-gate).
+proceeding. Set `OP442_WAN_MODE=dormant` to check a dormant deployment.
 Allow for a Service outage in the change window and repeat these checks
 after the replacement pod starts.
 
 ```bash
 (
   set -euo pipefail
+  mode=${OP442_WAN_MODE:-active}
+  case "$mode" in
+    active) containers='["api","app","foley","local-model"]' ;;
+    dormant) containers='["api","app","foley"]' ;;
+    *) printf 'Expected OP442_WAN_MODE=active or dormant\n' >&2; exit 1 ;;
+  esac
   uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
-    jq -er '.items | select(length == 1) | .[0] |
+    jq -er --argjson containers "$containers" '.items | select(length == 1) | .[0] |
       select(any(.status.conditions[]; .type == "Ready" and .status == "True")) |
-      select((.status.containerStatuses | length) == 4 and all(.status.containerStatuses[]; .ready)) |
-      .metadata.uid')
+      select(([.status.containerStatuses[].name] | sort) == $containers) |
+      select(all(.status.containerStatuses[]; .ready)) | .metadata.uid')
+  printf 'Wan pod UID %s\n' "$uid"
   kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |
     jq -e --arg uid "$uid" 'any(.items[].endpoints[]; .targetRef.uid == $uid and .conditions.ready == true)'
   kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
     jq '.items[].status.containerStatuses[] | {name, imageID, ready, restartCount}'
-  python3 -B scripts/wan-video/op442_smoke.py active
+  python3 -B scripts/wan-video/op442_smoke.py "$mode"
   kubectl -n ai exec deploy/wan-video -c api -- nvidia-smi \
     --query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory --format=csv
 )
@@ -644,9 +656,8 @@ records private. Require the inside-container proof to succeed on the same pod.
   set -euo pipefail
   pod=${OP442_FAILED_POD:?}
   kubectl -n ai exec -i "$pod" -c api -- env PYTHONPATH=/config/video python -B - <<'PY'
-import os
 import api
-from clear_local_model_hold import check_idle
+from clear_local_model_hold import check_idle, path_present
 
 lease = api.acquire_compute()
 if lease is None:
@@ -655,7 +666,7 @@ with lease:
     check_idle()
     if api.local.load_profile(api.CONFIG) is None:
         raise SystemExit("Expected the activated profile on the failed pod")
-    if os.path.lexists(api.local.state_path(api.ROOT)):
+    if path_present(api.local.state_path(api.ROOT)):
         raise SystemExit("Residency journal exists. Use the tracked rollback or hold clearing.")
     print("Compute lease acquired, engine and workers idle, no residency journal")
 PY

@@ -77,9 +77,18 @@ def calibration_baseline(calibration, profile):
     return baseline
 
 
+def path_present(path):
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
 def require_no_socket():
-    # A stale socket or a symlink is still an occupied path.
-    require(not os.path.lexists(local.socket_path(api.ROOT)), "Sidecar socket path still exists")
+    # Stale sockets and symlinks still occupy the path. An unreadable path
+    # propagates the error because it cannot establish absence.
+    require(not path_present(local.socket_path(api.ROOT)), "Sidecar socket path still exists")
 
 
 def dormant_process_proof(calibration, card):
