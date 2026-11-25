@@ -5,8 +5,8 @@ metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
 data:
-  # Set to the published Studio main digest before merging this stage.
-  image: ghcr.io/thaynes43/haynes-studio-upscaling@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  # Studio main image run 45621013680 at 6b6443de65cc87d230d98d30efdbaa984bd3e5ff.
+  image: ghcr.io/thaynes43/haynes-studio-upscaling@sha256:577f9763a172164ca355de3afc335241deeb3c49ffcb103ba9ebcb1535a1c2ab
   allocation: upscaling-op461-fsrcnn-x2-v1-02
   # First-smoke measuring allowance.
   memoryRequest: 2Gi
