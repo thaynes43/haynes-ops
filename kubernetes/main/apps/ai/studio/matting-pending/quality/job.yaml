@@ -5,12 +5,11 @@ metadata:
 spec:
   activeDeadlineSeconds: 300
   backoffLimit: 0
-  ttlSecondsAfterFinished: 86400
+  ttlSecondsAfterFinished: 3600
   template:
     metadata:
-      # The installed smoke policy denies all ingress and egress for this label.
       labels:
-        app.kubernetes.io/name: studio-matting-smoke
+        app.kubernetes.io/name: studio-matting-quality
     spec:
       restartPolicy: Never
       automountServiceAccountToken: false
@@ -20,12 +19,27 @@ spec:
       priorityClassName: dev-env-agent
       securityContext:
         runAsNonRoot: true
-        # The existing private jobs root is mode 0755, owned by 1000:1000.
-        # Use the provisioner's storage identity for the create-only write.
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        supplementalGroups: [1000]
         seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: reserve-output
+          image: image-replaced-by-release
+          command: [python, -B, -c]
+          args: [script-replaced-by-kustomize]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: jobs, mountPath: /jobs, subPath: data/studio/jobs}
       containers:
         - name: matting
           image: image-replaced-by-release
@@ -50,7 +64,9 @@ spec:
               mountPath: /input
               subPath: private-input-directory-replaced-by-runbook
               readOnly: true
-            - {name: jobs, mountPath: /jobs, subPath: data/studio/jobs}
+            - name: jobs
+              mountPath: /output
+              subPath: data/studio/jobs/output-directory-replaced-by-runbook
       volumes:
         - name: scratch
           emptyDir: {sizeLimit: 256Mi}

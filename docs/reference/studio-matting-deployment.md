@@ -215,23 +215,36 @@ owns the private cast quality and serving integration. Tom owns acceptance.
 
 **Expected.** The saga coordinator chooses one existing cast photo of an
 imported production under CR-46 and uses its read-only path and recorded
-SHA-256. Choose a representative still with eyes, lashes and hair visible,
+SHA-256. Use the content-addressed store path
+`/studio/productions/<prd_id>/sha256/<first-two-hex>/<sha256>.<jpg|png>`
+or `/studio/library/sha256/<first-two-hex>/<sha256>.<jpg|png>` for global
+scope. Choose a representative still with eyes, lashes and hair visible,
 and use the target height for its pinned cast slot. Keep the path, asset
 IDs and output locator private. Mark the iris interiors and visible hair
 before the trial. Run in an exclusive heavy-job window as for the smoke,
 including no concurrent Foley or heavy render. The block checks fresh
 node load, render load, Wan health and the shared image queue.
 
-The staged template emits one Job with its script inline. It uses the
-smoke's deny-all policy, pinned image, pinned read-only weights and
-non-root sandbox, with the provisioner's UID/GID 1000 for the jobs
-directory's existing write permission. The input directory has one
-read-only subPath mount and must be outside the jobs tree. The only
-persistent write is a new `/studio/jobs/<job>` directory
-with `cutout.png`, `mask.png` and completed `report.json`. Raw paths
-stay out of the Job log. As in the provisioning budget, leave 32 GiB
+The staged template emits one Job with inline scripts. Its dedicated
+`studio-matting-quality` deny-all policy must be live before admission.
+The init container uses UID/GID 1000 to reserve a new group-writable
+`/studio/jobs/<job>` directory exclusively. The main container uses the
+smoke's UID/GID 10001, pinned image and read-only weights. Supplemental
+group 1000 allows it to write `cutout.png`, `mask.png` and the completed
+`report.json` under just that directory's writable subPath. The input
+directory has its own read-only subPath. The gate checks the canonical
+path, regular single-link file and SHA-256 match before opening the run
+window. The report identifies the input by SHA-256. The Job spec contains
+the store's hash-based locator and expires one hour after finishing.
+As in the provisioning budget, leave 32 GiB
 free after allowing 1 GiB and 32 filesystem entries. The NFS inode
 reading may be unavailable under CR-33.
+
+The final log line reports invalid input, a hash mismatch, an existing
+output, unavailable readiness, a service refusal, failed verification or
+a timeout with distinct `trial.*` codes. Service refusals include the
+backend's `adapter.*` code. If output reservation fails, the report comes
+from the init container.
 
 Set `STUDIO_TRIAL_INPUT` to the absolute Studio-share path,
 `STUDIO_TRIAL_SOURCE_SHA256` to the pinned byte digest,
@@ -264,6 +277,7 @@ the checked-out Ops revision.
   assert_json() {
     jq -es "$@" >/dev/null
   }
+  is_sha256() { [[ $1 =~ ^[0-9a-f]{64}$ ]]; }
   read_endpoint() {
     kubectl -n ai exec "$1" -c "$2" -- python -B -c '
 import sys
@@ -289,15 +303,36 @@ with urlopen(sys.argv[1], timeout=5) as response:
       df -Pi /studio/jobs | awk "NR == 2 { print; if (\$4 == \"-\" || \$4 >= 32) ok=1 } END { exit !ok }"
     '
   }
-  input_is_canonical() {
-    [[ $STUDIO_TRIAL_INPUT == /studio/*/* && $STUDIO_TRIAL_INPUT != /studio/jobs/* &&
-       $(kubectl -n ai exec deploy/studio-render -c app -- realpath -e -- "$STUDIO_TRIAL_INPUT" 2>/dev/null) == "$STUDIO_TRIAL_INPUT" ]]
+  input_matches_store_hash() {
+    local hash=$STUDIO_TRIAL_SOURCE_SHA256 root stem
+    is_sha256 "$hash" || return 1
+    if [[ $STUDIO_TRIAL_PRODUCTION == - ]]; then
+      root=/studio/library
+    else
+      [[ $STUDIO_TRIAL_PRODUCTION =~ ^prd_[0-7][0-9a-hjkmnp-tv-z]{25}$ ]] || return 1
+      root="/studio/productions/$STUDIO_TRIAL_PRODUCTION"
+    fi
+    stem="$root/sha256/${hash:0:2}/$hash"
+    [[ $STUDIO_TRIAL_INPUT == "$stem.jpg" || $STUDIO_TRIAL_INPUT == "$stem.png" ]] || return 1
+    kubectl -n ai exec deploy/studio-render -c app -- sh -ec '
+      path=$1
+      test "$(realpath -e -- "$path")" = "$path"
+      test -f "$path"
+      test "$(stat -c %h -- "$path")" = 1
+      sum=$(sha256sum -- "$path")
+      test "${sum%% *}" = "$2"
+    ' sh "$STUDIO_TRIAL_INPUT" "$hash" >/dev/null 2>&1
+  }
+  read_profile() {
+    profile=$(kubectl -n ai exec deploy/studio-render -c app -- cat \
+      "/studio/jobs/$allocation/weights/profile.sha256" 2>/dev/null) || return 1
+    is_sha256 "$profile"
   }
   deny_all() {
-    kubectl -n ai get ciliumnetworkpolicy studio-matting-smoke -o json |
-      assert_json 'length == 1 and (.[0].spec |
-        .endpointSelector == {"matchLabels":{"app.kubernetes.io/name":"studio-matting-smoke"}} and
-        .ingressDeny == [{"fromEntities":["all"]}] and .egressDeny == [{"toEntities":["all"]}])'
+    kubectl -n ai get ciliumnetworkpolicy studio-matting-quality -o json |
+      assert_json 'length == 1 and .[0].spec == {
+        "endpointSelector":{"matchLabels":{"app.kubernetes.io/name":"studio-matting-quality"}},
+        "ingressDeny":[{"fromEntities":["all"]}], "egressDeny":[{"toEntities":["all"]}]}'
   }
   wan_idle() {
     read_endpoint deploy/wan-video api http://127.0.0.1:8080/health |
@@ -307,8 +342,12 @@ with urlopen(sys.argv[1], timeout=5) as response:
     read_endpoint comfyui-0 app http://127.0.0.1:8188/queue |
       assert_json 'length == 1 and (.[0] | .queue_running == [] and .queue_pending == [])'
   }
+  stage=kubernetes/main/apps/ai/studio/matting-pending
+  allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
+  pin=$(yq '.data.image' "$stage/release/release.yaml")
   gate=0
-  check 'Canonical private input path' input_is_canonical || gate=1
+  check 'Content-addressed regular single-link input matches its SHA-256' input_matches_store_hash || gate=1
+  check 'Installed profile hash present' read_profile || gate=1
   check 'Share byte and inode budget' room_on_share || gate=1
   check 'Deny-all network policy' deny_all || gate=1
   check 'talosw01 CPU at most 10% and memory at most 25%' node_idle || gate=1
@@ -321,27 +360,23 @@ with urlopen(sys.argv[1], timeout=5) as response:
   fi
   printf 'PASS quality trial admission\n'
 
-  stage=kubernetes/main/apps/ai/studio/matting-pending
-  allocation=$(yq '.data.allocation' "$stage/release/release.yaml")
-  pin=$(yq '.data.image' "$stage/release/release.yaml")
-  profile=$(kubectl -n ai exec deploy/studio-render -c app -- cat     "/studio/jobs/$allocation/weights/profile.sha256")
-  is_sha256() { [[ $1 =~ ^[0-9a-f]{64}$ ]]; }
-  check 'Installed profile hash present' is_sha256 "$profile"
   private_path=${STUDIO_TRIAL_INPUT#/studio/}
   export TRIAL_INPUT_DIR="data/studio/${private_path%/*}" TRIAL_INPUT_NAME="${private_path##*/}"
-  TRIAL_PATH_SHA=$(printf '%s' "$STUDIO_TRIAL_INPUT" | sha256sum)
-  export TRIAL_PATH_SHA=${TRIAL_PATH_SHA%% *} TRIAL_PROFILE="$profile"
+  export TRIAL_PROFILE="$profile"
   export STUDIO_TRIAL_SOURCE_SHA256 STUDIO_TRIAL_ASSET_VERSION STUDIO_TRIAL_PRODUCTION
   export STUDIO_TRIAL_JOB_ID STUDIO_TRIAL_TARGET_HEIGHT
   export TRIAL_OUTPUT="studio-matting-quality-$(openssl rand -hex 6)"
   manifest=$(kustomize build "$stage/quality" | yq '
     .metadata.name = strenv(TRIAL_OUTPUT) |
+    .spec.template.spec.initContainers[0].args += [strenv(TRIAL_OUTPUT)] |
     (.spec.template.spec.containers[0].volumeMounts[] | select(.name == "input").subPath) =
       strenv(TRIAL_INPUT_DIR) |
+    (.spec.template.spec.containers[0].volumeMounts[] | select(.name == "jobs").subPath) =
+      ("data/studio/jobs/" + strenv(TRIAL_OUTPUT)) |
     .spec.template.spec.containers[0].args += [
-      strenv(TRIAL_INPUT_NAME), strenv(STUDIO_TRIAL_SOURCE_SHA256), strenv(TRIAL_PATH_SHA),
+      strenv(TRIAL_INPUT_NAME), strenv(STUDIO_TRIAL_SOURCE_SHA256),
       strenv(STUDIO_TRIAL_ASSET_VERSION), strenv(STUDIO_TRIAL_PRODUCTION), strenv(STUDIO_TRIAL_JOB_ID),
-      strenv(STUDIO_TRIAL_TARGET_HEIGHT), strenv(TRIAL_OUTPUT), strenv(TRIAL_PROFILE)
+      strenv(STUDIO_TRIAL_TARGET_HEIGHT), strenv(TRIAL_PROFILE)
     ]')
   kubectl -n ai create -f - <<< "$manifest"
 
@@ -361,7 +396,11 @@ with urlopen(sys.argv[1], timeout=5) as response:
   }
   gate=0
   check 'Job completed successfully' wait_terminal || gate=1
-  report=$(kubectl -n ai --request-timeout=10s logs "job/$TRIAL_OUTPUT" | tail -n 1) || report=
+  report=$(kubectl -n ai --request-timeout=10s logs "job/$TRIAL_OUTPUT" -c matting 2>/dev/null | tail -n 1) || report=
+  if [[ -z $report ]]; then
+    report=$(kubectl -n ai --request-timeout=10s logs "job/$TRIAL_OUTPUT" -c reserve-output 2>/dev/null |
+      tail -n 1) || report=
+  fi
   final_report() {
     assert_json 'length == 1 and (.[0] | type == "object")' <<< "$report"
   }
@@ -372,9 +411,9 @@ with urlopen(sys.argv[1], timeout=5) as response:
   }
   check 'Final log line is a JSON report' final_report || gate=1
   check 'Expected source, image and profile hashes on CPU with arena off' report_check '
-    .source_sha256 == $source and .source_path_sha256 == $path and .profile_sha256 == $profile and
+    .source_sha256 == $source and .profile_sha256 == $profile and
     .image_digest == $digest and .provider == "CPUExecutionProvider" and .cpu_arena == false
-  ' --arg source "$STUDIO_TRIAL_SOURCE_SHA256" --arg path "$TRIAL_PATH_SHA"     --arg profile "$profile" --arg digest "${pin##*@}" || gate=1
+  ' --arg source "$STUDIO_TRIAL_SOURCE_SHA256" --arg profile "$profile" --arg digest "${pin##*@}" || gate=1
   check 'Cold load and request within limits with both memory phases measured' report_check '
     .startup_seconds > 0 and .startup_seconds <= 120 and .request_seconds > 0 and .request_seconds <= 35 and
     .worker_memory.session_creation.peak_rss_bytes > 0 and
