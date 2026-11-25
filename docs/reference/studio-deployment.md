@@ -833,7 +833,7 @@ before each queue and history request during long engine waits.
 The API rolls both replicas with an nginx sidecar from the already pinned
 web image. A ConfigMap supplies its configuration. Media NetworkPolicies
 allow DNS, API port 8002 and each lane's engine: Kokoro Wyoming 10210 or
-ComfyUI TCP 8188 on `comfyui-0`. There is no engine ingress policy to
+ComfyUI TCP 8188 on the `comfyui` pod. There is no engine ingress policy to
 extend. API port 8002 accepts traffic from the two media Deployments. The
 listener forwards only the five media-work POSTs to the API over loopback,
 with no request retry or access logging. The API authenticates them.
@@ -1015,6 +1015,57 @@ record the body, so retain the launch argument check and the targeted
     exit 1
   fi
   printf 'PASS worker progress and idle claims\n'
+)
+```
+
+**Changed (2026-11-25): check that each worker can reach its own engine.**
+The first install passed every check above while the image worker could
+not connect to ComfyUI. Its egress rule selected the engine pod by
+`statefulset.kubernetes.io/pod-name`, a label Cilium leaves out of a pod's
+identity, so the rule never matched and every connection timed out. No
+job had been requested, so nothing failed. The rule now selects by the
+three application labels, the release check refuses a policy peer that
+uses an identity-excluded label, and this block proves reachability
+directly. The image check is the same read-only `GET /queue` the worker
+makes before it submits. The voice check opens and closes one TCP
+connection and sends nothing.
+
+```bash
+(
+  set -uo pipefail
+  failed=0
+  if kubectl -n ai exec -i deploy/studio-voice-worker -c worker -- python -B - <<'PY'
+import os
+import socket
+
+socket.create_connection((os.environ["STUDIO_TTS_HOST"], int(os.environ.get("STUDIO_TTS_PORT", "10210"))), timeout=5).close()
+PY
+  then
+    printf 'PASS voice worker reaches its engine\n'
+  else
+    printf 'FAIL voice worker reaches its engine\n' >&2
+    failed=1
+  fi
+  if kubectl -n ai exec -i deploy/studio-image-worker -c worker -- python -B - <<'PY'
+import os
+
+import httpx
+
+response = httpx.get(os.environ["STUDIO_COMFYUI_URL"].rstrip("/") + "/queue", timeout=5, trust_env=False)
+queue = response.json()
+raise SystemExit(not (response.status_code == 200 and {"queue_running", "queue_pending"} <= queue.keys()))
+PY
+  then
+    printf 'PASS image worker reaches its engine\n'
+  else
+    printf 'FAIL image worker reaches its engine\n' >&2
+    failed=1
+  fi
+  if (( failed )); then
+    printf 'FAIL media workers reach their engines\n' >&2
+    exit 1
+  fi
+  printf 'PASS media workers reach their engines\n'
 )
 ```
 
