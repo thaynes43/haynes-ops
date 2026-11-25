@@ -227,8 +227,9 @@ jobs:
             tar -xzf kustomize_v5.8.3_linux_amd64.tar.gz
           )
           "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_matting_provision.py
-          PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
-            "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/check.py
+          export PATH="$RUNNER_TEMP/studio-kustomize:$PATH"
+          "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_upscaling.py
+          "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/check.py
 
   success:
     if: ${{ always() }}

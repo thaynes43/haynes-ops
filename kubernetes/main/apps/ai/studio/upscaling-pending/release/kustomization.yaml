@@ -1,0 +1,91 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - release.yaml
+replacements:
+  - source:
+      kind: ConfigMap
+      name: studio-upscaling-release
+      fieldPath: data.image
+    targets:
+      - select:
+          kind: Job|Deployment
+          name: studio-upscaling-provision-00|studio-upscaling-smoke-00|studio-upscaling-compare|studio-worker
+        fieldPaths:
+          - spec.template.spec.containers.[name=upscaling].image
+          - spec.template.spec.containers.[name=upscaling].env.[name=STUDIO_UPSCALING_IMAGE].value
+  - source:
+      kind: ConfigMap
+      name: studio-upscaling-release
+      fieldPath: data.allocation
+    targets:
+      - select:
+          kind: Job
+          name: studio-upscaling-provision-00
+        fieldPaths:
+          - spec.template.spec.containers.[name=upscaling].env.[name=STUDIO_UPSCALING_ALLOCATION].value
+      - select:
+          kind: Job|Deployment
+          name: studio-upscaling-smoke-00|studio-upscaling-compare|studio-worker
+        fieldPaths:
+          - spec.template.spec.containers.[name=upscaling].volumeMounts.[name=weights].subPath
+        options:
+          delimiter: /
+          index: 3
+  - source:
+      kind: ConfigMap
+      name: studio-upscaling-release
+      fieldPath: data.memoryRequest
+    targets:
+      - select:
+          kind: Job
+          name: studio-upscaling-smoke-00|studio-upscaling-compare
+        fieldPaths:
+          - spec.template.spec.containers.[name=upscaling].resources.requests.memory
+  - source:
+      kind: ConfigMap
+      name: studio-upscaling-release
+      fieldPath: data.memoryLimit
+    targets:
+      - select:
+          kind: Job
+          name: studio-upscaling-smoke-00|studio-upscaling-compare
+        fieldPaths:
+          - spec.template.spec.containers.[name=upscaling].resources.limits.memory
+  - source:
+      kind: ConfigMap
+      name: studio-upscaling-release
+      fieldPath: data.allocation
+      options:
+        delimiter: "-"
+        index: 5
+    targets:
+      - select:
+          kind: Job
+          name: studio-upscaling-provision-00|studio-upscaling-smoke-00
+        fieldPaths:
+          - metadata.name
+        options:
+          delimiter: "-"
+          index: 3
+
+  - source:
+      kind: ConfigMap
+      name: studio-upscaling-release
+      fieldPath: data.servingMemoryRequest
+    targets:
+      - select:
+          kind: Deployment
+          name: studio-worker
+        fieldPaths:
+          - spec.template.spec.containers.[name=upscaling].resources.requests.memory
+  - source:
+      kind: ConfigMap
+      name: studio-upscaling-release
+      fieldPath: data.servingMemoryLimit
+    targets:
+      - select:
+          kind: Deployment
+          name: studio-worker
+        fieldPaths:
+          - spec.template.spec.containers.[name=upscaling].resources.limits.memory
