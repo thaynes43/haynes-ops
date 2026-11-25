@@ -1,14 +1,75 @@
 """Loopback adapter for the pinned ControlFoley worker in the Wan pod."""
+import os
+from functools import partial
+from http.client import HTTPException
+from pathlib import Path
 import sys
 import threading
 import time
 from http.server import ThreadingHTTPServer
 
 import product
+import product_local as local
 
 # Use the sidecar image's own generation, lease, GPU guards and legacy routes.
 sys.path.insert(0, "/opt/controlfoley-tools")
 import service
+
+CONFIG = Path(os.environ.get("VIDEO_CONFIG", "/config/video"))
+FOLEY_ADMISSION_CODES = {
+    "RuntimeError: Live Wan hold or active work": "lease_held",
+    "RuntimeError: Malformed engine queue; fail closed": "engine_busy",
+    "RuntimeError: Unknown engine work; preserved": "engine_busy",
+    "RuntimeError: GPU busy; no competing job": "gpu_busy",
+    "RuntimeError: GPU did not return to cool low-residual idle": "gpu_warm",
+    "RuntimeError: GPU acquired by unknown work": "gpu_busy",
+}
+
+
+def check_foley_queue():
+    try:
+        service.idle()
+    except (OSError, ValueError, RuntimeError, HTTPException) as exc:
+        error = product.job_error(exc)
+        raise product.AdmissionRefusal(FOLEY_ADMISSION_CODES.get(error, "engine_busy"), error) from exc
+
+
+def prepare_foley(lease):
+    try:
+        lane = local.enabled_lane(service.ROOT, CONFIG)
+        if lane:
+            lane.prepare_other({service.CARD}, lease, check_foley_queue)
+    except local.UnknownEngineWork as exc:
+        error = "Unknown engine work; preserved" if exc.engine_busy else "Malformed engine queue; fail closed"
+        raise product.AdmissionRefusal("engine_busy", "RuntimeError: " + error) from exc
+    except product.RequestError as exc:
+        code = exc.code if exc.code in {"local_model_unavailable", "local_model_handover"} else "local_model_handover"
+        raise product.AdmissionRefusal(code, "RuntimeError: Live Wan hold or active work") from exc
+    except (OSError, ValueError, RecursionError) as exc:
+        raise product.AdmissionRefusal("local_model_unavailable", "RuntimeError: Live Wan hold or active work") from exc
+
+
+def generate(job, lease, engine):
+    try:
+        prepare_foley(lease)
+    except product.AdmissionRefusal as exc:
+        try:
+            job.update(state="failed", error=exc.error, admission_code=exc.code, finished_at=time.time())
+            service.save(job)
+        finally:
+            lease.close()
+            with service.LOCK:
+                service.ACTIVE = None
+        return
+    engine(job, lease)
+
+
+def save_job(job, save):
+    # The pinned worker sets started_at before attempting its inference
+    # subprocess. Its later failures must never advertise a safe retry.
+    if job.get("api_version") == product.VERSION and job["state"] == "failed" and "started_at" not in job:
+        job.setdefault("admission_code", FOLEY_ADMISSION_CODES.get(job["error"], "pre_admission_failed"))
+    save(job)
 
 
 def submit(job_id, request):
@@ -45,7 +106,8 @@ def submit(job_id, request):
             try:
                 threading.Thread(target=service.generate, args=(job, lease), daemon=True).start()
             except RuntimeError:
-                job.update(state="failed", error="Could not start worker", finished_at=time.time())
+                job.update(state="failed", error="Could not start worker", admission_code="pre_admission_failed",
+                           finished_at=time.time())
                 service.save(job)
                 return 503, product.job_view(job)
             started = True
@@ -91,6 +153,12 @@ def recover():
             service.save(job)
 
 
-if __name__ == "__main__":
+def main():
     recover()
+    service.generate = partial(generate, engine=service.generate)
+    service.save = partial(save_job, save=service.save)
     ThreadingHTTPServer(("127.0.0.1", 8189), Handler).serve_forever()
+
+
+if __name__ == "__main__":
+    main()

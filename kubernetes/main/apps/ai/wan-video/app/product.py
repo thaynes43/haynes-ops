@@ -49,6 +49,17 @@ class RequestError(ValueError):
         return {"code": self.code, "error": str(self)}
 
 
+class AdmissionRefusal(RuntimeError):
+    def __init__(self, code, error):
+        super().__init__(error)
+        self.code = code
+        self.error = error
+
+
+def job_error(exc):
+    return type(exc).__name__ + ": " + str(exc)[:200]
+
+
 def digest(data):
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
@@ -200,7 +211,7 @@ def validate_png(path):
                 raise RequestError("animated_png", "Use a single-frame PNG")
             if kind == b"IEND":
                 if seen_idat and length == 0 and end == size:
-                    return
+                    return width, height
                 break
             if kind == b"IDAT":
                 seen_idat = True
@@ -358,7 +369,7 @@ def job_view(job):
         "api_version", "type", "id", "state", "profile", "request_sha256", "story", "seed", "created_at",
         "started_at", "finished_at", "prompt_id", "graph_sha256", "image_sha256", "audio_sha256",
         "width", "height", "frames", "board_frames", "source_job_id", "start_seconds", "duration",
-        "poll_misses", "unexpected_work_seen", "error", "telemetry", "provenance",
+        "poll_misses", "unexpected_work_seen", "error", "admission_code", "telemetry", "provenance",
     ) if key in job}
     view.update(status_url=status, result=None)
     if job["state"] == "succeeded":

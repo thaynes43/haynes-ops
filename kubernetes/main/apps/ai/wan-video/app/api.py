@@ -16,15 +16,13 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import product
+import product_local as local
 from product_graphs import image_graph, speech_graph
 
 ENGINE = "http://127.0.0.1:8188"
 ROOT = Path(os.environ.get("VIDEO_WORKSPACE", "/workspace"))
 CONFIG = Path(os.environ.get("VIDEO_CONFIG", "/config/video"))
-EXPECTED = {
-    "GPU-d8a856f1-f955-f683-bc24-654561496774",
-    "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a",
-}
+EXPECTED = local.APPROVED_CARDS
 JOB_ID = re.compile(r"^[0-9a-f]{32}$")
 RANGE = re.compile(r"bytes=(\d{0,19})-(\d{0,19})")
 LOCK = threading.Lock()
@@ -40,7 +38,7 @@ PRESETS = {"preview": (832, 480, 49, 20), "720p": (1280, 704, 81, 20)}
 
 
 def acquire_compute():
-    """Cross-process admission shared with the private Foley sidecar."""
+    """Cross-process admission shared with the Foley and local-model sidecars."""
     lease = (ROOT / "compute.lock").open("a")
     try:
         fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -55,7 +53,7 @@ def engine(path, body=None):
     request = Request(ENGINE + path, data=data, headers={"Content-Type": "application/json"})
     with urlopen(request, timeout=20) as response:
         raw = response.read()
-    if raw == b"" and body is not None and path in ("/queue", "/interrupt"):
+    if raw == b"" and body is not None and path in ("/queue", "/interrupt", "/free"):
         return None
     return json.loads(raw)
 
@@ -299,24 +297,64 @@ def store_product_video(job, history):
     save(job)
 
 
+GPU_BUSY_ERROR = "RuntimeError: Rack GPUs are busy; refusing to start a competing job"
+ENGINE_BUSY_ERROR = "RuntimeError: ComfyUI already has a job; refusing a competing request"
+MALFORMED_QUEUE_ERROR = "ValueError: Malformed ComfyUI /queue response; backend work is unknown"
+
+
+def check_video_queue():
+    try:
+        queue = engine_queue()
+    except (OSError, HTTPException, ValueError, RecursionError) as exc:
+        raise product.AdmissionRefusal("engine_busy", product.job_error(exc)) from exc
+    if queue["queue_running"] or queue["queue_pending"]:
+        raise product.AdmissionRefusal("engine_busy", ENGINE_BUSY_ERROR)
+
+
+def prepare_video(cards, lease, lane):
+    if UNSAFE:
+        raise product.AdmissionRefusal("lease_held", GPU_BUSY_ERROR)
+    try:
+        lane.prepare_other(cards, lease, check_video_queue)
+    except local.UnknownEngineWork as exc:
+        error = ENGINE_BUSY_ERROR if exc.engine_busy else MALFORMED_QUEUE_ERROR
+        raise product.AdmissionRefusal("engine_busy", error) from exc
+    except product.RequestError as exc:
+        code = exc.code if exc.code in {"local_model_unavailable", "local_model_handover"} else "local_model_handover"
+        raise product.AdmissionRefusal(code, GPU_BUSY_ERROR) from exc
+    except (OSError, ValueError, RecursionError) as exc:
+        raise product.AdmissionRefusal("local_model_unavailable", GPU_BUSY_ERROR) from exc
+
+
 def generate(job, prompt, lease=None, *, negative=None):
     global ACTIVE, UNSAFE
     kind = job.get("type") if job.get("api_version") == product.VERSION else None
     acknowledged = False
     submission_attempted = False
+    configured = False
     try:
         if lease is None:
             lease = acquire_compute()
         if lease is None:
-            raise RuntimeError("Compute is reserved by another video/audio job")
+            raise product.AdmissionRefusal("lease_held", "RuntimeError: Compute is reserved by another video/audio job")
+        try:
+            lane = local.enabled_lane(ROOT, CONFIG)
+        except product.RequestError as exc:
+            configured = True
+            raise product.AdmissionRefusal("local_model_handover", GPU_BUSY_ERROR) from exc
+        if lane:
+            configured = True
+            # S2V can keep the model on the other card only when the deployment
+            # explicitly pins and verifies ComfyUI's single-device placement.
+            s2v_card = lane.profile.get("s2v_gpu_uuid")
+            cards = {s2v_card} if kind == "s2v" and s2v_card else EXPECTED
+            prepare_video(cards, lease, lane)
         sample = gpu_sample()
         if not gpus_idle(sample):
-            raise RuntimeError("Rack GPUs are busy; refusing to start a competing job")
+            raise product.AdmissionRefusal("gpu_busy", GPU_BUSY_ERROR)
         if kind and any(s["temperature_c"] >= 62 for s in sample["gpus"]):
-            raise RuntimeError("Rack GPUs must be below 62 C for a product job")
-        queue = engine_queue()
-        if queue["queue_running"] or queue["queue_pending"]:
-            raise RuntimeError("ComfyUI already has a job; refusing a competing request")
+            raise product.AdmissionRefusal("gpu_warm", "RuntimeError: Rack GPUs must be below 62 C for a product job")
+        check_video_queue()
         timeout = product.PROFILES[kind]["timeout_seconds"] if kind else 1200
         if kind == "i2v":
             graph = image_graph(CONFIG / "workflow.json", job, prompt, negative)
@@ -435,7 +473,10 @@ def generate(job, prompt, lease=None, *, negative=None):
             except Exception:
                 UNSAFE = True
         # Do not persist upstream response bodies or prompt content in error messages.
-        job.update(state="failed", error=type(exc).__name__ + ": " + str(exc)[:200], finished_at=time.time())
+        refusal = isinstance(exc, product.AdmissionRefusal)
+        job.update(state="failed", error=exc.error if refusal else product.job_error(exc), finished_at=time.time())
+        if not submission_attempted and (kind or configured):
+            job["admission_code"] = exc.code if refusal else "pre_admission_failed"
         save(job)
     finally:
         if lease is not None:
@@ -473,7 +514,8 @@ def submit_product_video(kind, job_id, request):
                 threading.Thread(target=generate, args=(job, request["prompt"], lease),
                                  kwargs={"negative": request["negative_prompt"]}, daemon=True).start()
             except RuntimeError:
-                job.update(state="failed", error="Could not start worker", finished_at=time.time())
+                job.update(state="failed", error="Could not start worker", admission_code="pre_admission_failed",
+                           finished_at=time.time())
                 save(job)
                 return 503, product.job_view(job)
             started = True
@@ -511,6 +553,126 @@ def foley_output(job):
     if path != expected:
         raise ValueError("Invalid Foley output file")
     return path
+
+
+def require_empty_queue():
+    try:
+        queue = engine_queue()
+    except (ValueError, RecursionError) as exc:
+        raise local.UnknownEngineWork("ComfyUI queue is malformed") from exc
+    if queue["queue_running"] or queue["queue_pending"]:
+        raise local.UnknownEngineWork("ComfyUI already has a job; preserving engine work", engine_busy=True)
+
+
+def check_local_queue():
+    global UNSAFE
+    if UNSAFE:
+        raise local.busy("Render hold requires inspection", "lease_held")
+    try:
+        require_empty_queue()
+    except local.UnknownEngineWork as exc:
+        UNSAFE = True
+        raise local.busy(str(exc), "engine_busy") from exc
+    except (OSError, HTTPException) as exc:
+        raise local.busy("ComfyUI queue is temporarily unavailable", "engine_busy") from exc
+
+
+def local_profile():
+    profile = local.load_profile(CONFIG)
+    if profile is None:
+        raise product.RequestError("local_model_not_installed", "No local model is installed", 503)
+    return profile
+
+
+def check_local_compute():
+    check_local_queue()
+    try:
+        sample = gpu_sample()
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError, RuntimeError, csv.Error) as exc:
+        raise local.busy("Rack GPU state is unknown", "pre_admission_failed") from exc
+    if not gpus_idle(sample):
+        raise local.busy("Rack GPUs are busy", "gpu_busy")
+
+
+def clear_local_load_memory(lane):
+    # As with Foley, free only the idle ComfyUI cache, never interrupt a job.
+    check_local_compute()
+    engine("/free", {"unload_models": True, "free_memory": True})
+    for _ in range(5):
+        check_local_compute()
+        snapshot = lane.reconcile()
+        if lane.unloaded(snapshot):
+            return snapshot
+        time.sleep(1)
+    return snapshot
+
+
+def run_local_request(lane, job, request, lease):
+    global ACTIVE
+    try:
+        lane.run(job, request, lease, check_local_compute, ensure_load_memory=clear_local_load_memory)
+    finally:
+        lease.close()
+        with LOCK:
+            if ACTIVE == job["id"]:
+                ACTIVE = None
+
+
+def submit_local_request(lane, job_id, request):
+    global ACTIVE
+    with LOCK:
+        existing = lane.read(job_id)
+        if existing is not None:
+            if existing.get("internal") or existing.get("request_sha256") != product.digest(request):
+                raise product.RequestError("id_conflict", "Request ID already belongs to another request", 409)
+            return 200, local.view(existing)
+        if ACTIVE or UNSAFE:
+            raise local.busy("Compute is busy or requires inspection")
+        lease = acquire_compute()
+        if lease is None:
+            raise local.busy("Compute is reserved by another job")
+        started = False
+        try:
+            lane.read_state()
+            local.check_images(ROOT, request)
+            job = lane.create(job_id, request)
+            ACTIVE = job_id
+            accepted = local.view(job)
+            try:
+                threading.Thread(target=run_local_request, args=(lane, job, request, lease), daemon=True).start()
+            except RuntimeError:
+                return 503, local.view(lane.finish(job, error="worker_unavailable", admission_code="pre_admission_failed"))
+            started = True
+            return 202, accepted
+        finally:
+            if not started:
+                lease.close()
+                if ACTIVE == job_id:
+                    ACTIVE = None
+
+
+def get_local_request(lane, job_id):
+    job = lane.read(job_id)
+    if not job or job.get("internal"):
+        raise product.RequestError("request_not_found", "Request not found", 404)
+    if job["state"] in {"queued", "running"} and (lease := acquire_compute()) is not None:
+        with lease:
+            job = lane.read(job_id)
+            if job["state"] == "queued":
+                # The worker cannot still dispatch this request after losing
+                # its lease, and dispatch always transitions to running first.
+                job = lane.finish(job, error="submission_lost")
+            elif job["state"] == "running":
+                try:
+                    state = lane.read_state()
+                    if state is not None and state.get("pending") == job_id:
+                        lane.reconcile()
+                    else:
+                        lane.finish(job, error="submission_lost")
+                except (OSError, ValueError):
+                    pass
+                job = lane.read(job_id)
+    return local.view(job)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -567,6 +729,12 @@ class Handler(BaseHTTPRequestHandler):
             count -= len(chunk)
 
     def get_product(self):
+        if self.path == local.PROFILE_ROUTE:
+            self.respond(200, {"api_version": product.VERSION, "profile": local_profile()})
+            return
+        if local_match := local.REQUEST_ROUTE.fullmatch(self.path):
+            self.respond(200, get_local_request(local.Lane(ROOT, local_profile()), local_match[1]))
+            return
         if self.path == "/v1/profiles":
             self.respond(200, {"api_version": product.VERSION, "profiles": product.PROFILES})
             return
@@ -635,6 +803,10 @@ class Handler(BaseHTTPRequestHandler):
             match = product.INPUT_ROUTE.fullmatch(self.path)
             if match:
                 status, body = self.put_input(*match.groups())
+            elif local_match := local.REQUEST_ROUTE.fullmatch(self.path):
+                profile = local_profile()
+                request = local.validate(profile, product.read_json(self))
+                status, body = submit_local_request(local.Lane(ROOT, profile), local_match[1], request)
             else:
                 match = product.JOB_ROUTE.fullmatch(self.path)
                 if not match or match[3]:
@@ -747,8 +919,34 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(503, {"error": "Worker unavailable"})
 
 
+def recover_with_local():
+    global UNSAFE
+    if not (CONFIG / "local-model.json").exists() and not local.state_path(ROOT).exists():
+        recover()
+        return
+    # A model operation can still own the lease after the API container exits.
+    # Do not run ComfyUI recovery mutations until it relinquishes that lease.
+    deadline = time.monotonic() + 300
+    while (lease := acquire_compute()) is None:
+        if time.monotonic() >= deadline:
+            UNSAFE = True
+            return
+        time.sleep(1)
+    with lease:
+        recover()
+        if not UNSAFE:
+            try:
+                lane = local.enabled_lane(ROOT, CONFIG)
+                if lane and (state := lane.read_state()) is not None:
+                    lane.reconcile(state)
+            except (OSError, ValueError):
+                # Keep serving reads. Admission will fail closed until the
+                # sidecar supplies evidence or the operator resolves a hold.
+                pass
+
+
 def main():
-    recover()
+    recover_with_local()
     server = ThreadingHTTPServer(("0.0.0.0", 8080), Handler)
     server.timeout = 10
     server.serve_forever()
