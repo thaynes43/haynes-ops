@@ -6,7 +6,7 @@ metadata:
     config.kubernetes.io/local-config: "true"
 data:
   # Measuring image. Replace with the CR-51 digest from the Studio main publish.
-  image: ghcr.io/thaynes43/haynes-studio-segmentation@sha256:58b037970810333c5ca1350d7acc32e113e06494ab49b69c184c0a8a93458e53
+  image: ghcr.io/thaynes43/haynes-studio-segmentation@sha256:05de65b703506a4591887e3063dde04a03aa142f28bacde5b3101a495b6a53c0
   allocation: segmentation-op460-dino-sam-v1-03
   servingRequest: 4Gi
   servingLimit: 5Gi
