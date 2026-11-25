@@ -31,6 +31,10 @@ STALE_MATTING_DIGESTS = {
     "sha256:5c431978f3bfe7a48deb062c6b2854ca8b086d1a5d9c600e2db4b1e26d702d72",
     "sha256:" + "0" * 64,
 }
+STALE_SEGMENTATION_DIGESTS = {
+    "sha256:58b037970810333c5ca1350d7acc32e113e06494ab49b69c184c0a8a93458e53",
+    "sha256:" + "0" * 64,
+}
 
 
 def studio_image_digest(image, revision):
@@ -544,9 +548,9 @@ def _check_segmentation_jobs(pending, policy, pin, image, allocation):
         ),
         (
             "smoke", 900, {**pod_security, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001},
-            ["studio-segmentation", "smoke", "--load-strategy", "mmap", "--compare-load-strategy", "buffered"],
-            {"requests": {"cpu": "250m", "memory": pin["measurementRequest"]},
-             "limits": {"cpu": "2", "memory": pin["measurementLimit"]}},
+            ["studio-segmentation", "smoke"],
+            {"requests": {"cpu": "2", "memory": pin["servingRequest"]},
+             "limits": {"cpu": "2", "memory": pin["servingLimit"]}},
             [
                 {"name": "scratch", "mountPath": "/segmentation"},
                 {"name": "weights", "mountPath": "/opt/studio-models", "subPath": weight_path, "readOnly": True},
@@ -583,8 +587,16 @@ def _check_segmentation_activation(path, pending, pin, image, digest, allocation
     controller = values["controllers"]["studio-render"]
     sidecar = controller["containers"].pop("segmentation")
     render_app = controller["containers"]["app"]
-    if render_app["resources"]["limits"] != {"cpu": "18", "memory": pin["renderMemoryLimit"]}:
-        raise ValueError("segmentation activation must reserve two CPU cores and its measured share of 32 GiB")
+    if render_app["resources"]["limits"] != {"cpu": "16", "memory": pin["renderMemoryLimit"]}:
+        raise ValueError("segmentation activation must reserve two CPU cores per companion and keep render at 32 GiB")
+    stage = render(path / "matting-pending/activation")
+    worker_pod = resource(stage, "Deployment", "studio-worker")["spec"]["template"]["spec"]
+    limits = [c["resources"]["limits"] for c in (render_app, sidecar, *worker_pod["containers"])]
+    # CR-43 and CR-51 cover these four containers across two pods on talosw01.
+    if (any(not re.fullmatch(r"[1-9][0-9]*Gi", limit["memory"]) for limit in limits)
+            or sum(int(limit["cpu"]) for limit in limits) > 24
+            or sum(int(limit["memory"].removesuffix("Gi")) for limit in limits) > 55):
+        raise ValueError("staged Studio limits on talosw01 exceed the combined 24 CPU or 55 GiB budget")
     render_app["resources"]["limits"] = {"cpu": "20", "memory": "32Gi"}
     nfs = values["persistence"].pop("segmentation-weights")
     scratch = values["persistence"].pop("segmentation-scratch")
@@ -633,6 +645,8 @@ def check_segmentation_stage(path, flux):
     match = re.fullmatch(rf"{re.escape(SEGMENTATION_IMAGE)}@(sha256:[a-f0-9]{{64}})", image)
     if not match or not re.fullmatch(r"segmentation-op460-dino-sam-v1-[0-9]{2}", pin["allocation"]):
         raise ValueError("invalid segmentation release image or create-only allocation")
+    if (pin["servingRequest"], pin["servingLimit"], pin["renderMemoryLimit"]) != ("4Gi", "5Gi", "32Gi"):
+        raise ValueError("segmentation serving request, limit and render limit must be 4 GiB, 5 GiB and 32 GiB")
     digest = match[1]
     policy_stage = resource(flux, "Kustomization", "studio-segmentation-policy")
     if (policy_stage["spec"]["path"] != f"./{STUDIO_PATH}/segmentation-pending/policy"
@@ -651,7 +665,7 @@ def check_segmentation(path, flux):
     if not (path / "segmentation-pending").exists():
         return
     pin, digest = check_segmentation_stage(path, flux)
-    if digest == "sha256:" + "0" * 64:
+    if digest in STALE_SEGMENTATION_DIGESTS:
         raise ValueError("set segmentation-pending/release/release.yaml data.image to the published segmentation digest")
     try:
         config = published_config(SEGMENTATION_IMAGE, digest)
@@ -661,34 +675,25 @@ def check_segmentation(path, flux):
                 or labels["org.opencontainers.image.source"] != "https://github.com/thaynes43/haynes-studio"
                 or memory["schema"] != "studio.segmentation-resources/v1"):
             raise ValueError("invalid segmentation image resource label")
-        minimum_request, minimum_limit = segmentation_memory(memory["measurement"])
+        segmentation_memory(memory["measurement"])
         serving = memory["serving"]
-        if serving is None:
-            expected_serving = ("unmeasured", "unmeasured", "unmeasured")
-        else:
-            request, limit = segmentation_memory(serving)
-            if limit > 31:
-                raise ValueError("segmentation serving must leave memory for render")
-            expected_serving = f"{request}Gi", f"{limit}Gi", f"{32 - limit}Gi"
+        request, limit = segmentation_memory(serving)
     except (KeyError, OSError, TypeError, ValueError) as error:
         raise ValueError("published segmentation image must carry the Studio profile resource contract") from error
     if config["config"].get("User") != "10001:10001":
         raise ValueError("published segmentation image must default to 10001:10001")
-    measurement = (pin["measurementRequest"], pin["measurementLimit"])
-    if not all(re.fullmatch(r"[1-9][0-9]*Gi", value) for value in measurement):
-        raise ValueError("segmentation measurement resources must be positive whole GiB")
-    request, limit = (int(value.removesuffix("Gi")) for value in measurement)
-    if request < minimum_request or limit < minimum_limit or request > limit:
-        raise ValueError("segmentation measurement resources must meet the pinned image's minimums")
-    if (pin["servingRequest"], pin["servingLimit"], pin["renderMemoryLimit"]) != expected_serving:
+    if (pin["servingRequest"], pin["servingLimit"]) != (f"{request}Gi", f"{limit}Gi"):
         raise ValueError("segmentation serving resources must match the pinned image's measured contract")
+    if serving.get("weight_load") != "mmap":
+        raise ValueError("the published segmentation image must pin memory-mapped serving")
+    if config["config"].get("Cmd") != ["studio-segmentation", "serve"]:
+        raise ValueError("the published segmentation image must default to serving")
 
 
 def check(path):
     release = yaml.safe_load((path / "release.yaml").read_text(encoding="utf-8"))
     flux = list(yaml.safe_load_all((path / "ks.yaml").read_text(encoding="utf-8")))
     check_matting(path, flux)
-    check_segmentation(path, flux)
     app = render(path / "app")
     api = resource(app, "Deployment", "studio-api")
     mcp = resource(app, "Deployment", "studio-mcp")
@@ -743,6 +748,7 @@ def check(path):
 
     check_packaged_register(app + media, ((api, "api"), (worker, None), (voice, None), (image, None)))
     check_drain(((api, ("api", "media-worker-routes")), (mcp, ("mcp",)), (web, ("nginx",))))
+    check_segmentation(path, flux)
     print(f"Studio release pins and Job health gates agree for {revision} ({digest})")
 
 

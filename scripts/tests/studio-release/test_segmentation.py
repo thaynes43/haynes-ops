@@ -7,11 +7,13 @@ import inspect
 import io
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from stat import S_IMODE
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 from urllib.request import Request
 
@@ -72,6 +74,27 @@ class Profile:
 
 
 class ProvisionTests(unittest.TestCase):
+    def test_provisioner_report_is_last(self):
+        profile_module = ModuleType("haynes_studio.segmentation.profile")
+        profile_module.Profile = SimpleNamespace(installed=Profile)
+        profile_module.SegmentationError = ValueError
+        report = {"allocation": ALLOCATION, "download_bytes": 24}
+        output = io.StringIO()
+
+        def provision_fixture(*_):
+            print("fixture download diagnostic", file=sys.stderr)
+            return report
+
+        with (
+            patch.dict(sys.modules, {profile_module.__name__: profile_module}),
+            patch.object(provision.os, "getuid", return_value=1000),
+            patch.object(provision.os, "getgid", return_value=1000),
+            patch.object(provision, "provision", side_effect=provision_fixture),
+            redirect_stdout(output), redirect_stderr(output),
+        ):
+            self.assertEqual(provision.main(), 0)
+        self.assertEqual(json.loads(output.getvalue().splitlines()[-1]), report)
+
     def test_two_models_one_create_only_allocation(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(provision, "capacity"):
             path = Path(directory)
@@ -169,13 +192,17 @@ class ProvisionTests(unittest.TestCase):
 class ReleaseTests(unittest.TestCase):
     def setUp(self):
         self.flux = list(yaml.safe_load_all((STUDIO / "ks.yaml").read_text()))
-        self.pin, self.digest = guard.check_segmentation_stage(STUDIO, self.flux)
+        self.pin, _ = guard.check_segmentation_stage(STUDIO, self.flux)
 
-    def test_published_measurement_contract(self):
-        memory = {"schema": "studio.segmentation-resources/v1",
-                  "measurement": {"request_gib": 16, "limit_gib": 16}, "serving": None}
+    def test_published_serving_contract(self):
+        memory = {
+            "schema": "studio.segmentation-resources/v1",
+            "measurement": {"request_gib": 16, "limit_gib": 16},
+            "serving": {"request_gib": 4, "limit_gib": 5, "weight_load": "mmap"},
+        }
         config = {
-            "os": "linux", "architecture": "amd64", "config": {"User": "10001:10001", "Labels": {
+            "os": "linux", "architecture": "amd64",
+            "config": {"User": "10001:10001", "Cmd": ["studio-segmentation", "serve"], "Labels": {
                 "org.opencontainers.image.source": "https://github.com/thaynes43/haynes-studio",
                 "io.haynes-studio.segmentation.resources": json.dumps(memory),
             }},
@@ -186,26 +213,57 @@ class ReleaseTests(unittest.TestCase):
         ) as fetch:
             guard.check_segmentation(STUDIO, self.flux)
             fetch.assert_called_once_with(guard.SEGMENTATION_IMAGE, digest)
-            self.pin["measurementLimit"] = "20Gi"
-            guard.check_segmentation(STUDIO, self.flux)
-            self.pin["measurementLimit"] = "15Gi"
-            with self.assertRaisesRegex(ValueError, "minimums"):
-                guard.check_segmentation(STUDIO, self.flux)
-            self.pin["measurementLimit"] = "20Gi"
+            for name, serving, reason in (
+                ("serving limit", {**memory["serving"], "limit_gib": 6}, "resources must match"),
+                ("load setting", {**memory["serving"], "weight_load": "buffered"}, "pin memory-mapped"),
+                ("measurement only", None, "carry the Studio profile resource contract"),
+            ):
+                with self.subTest(mutation=name):
+                    config["config"]["Labels"]["io.haynes-studio.segmentation.resources"] = json.dumps({
+                        **memory, "serving": serving,
+                    })
+                    with self.assertRaisesRegex(ValueError, reason):
+                        guard.check_segmentation(STUDIO, self.flux)
+            config["config"]["Labels"]["io.haynes-studio.segmentation.resources"] = json.dumps(memory)
             config["config"]["User"] = "1000:1000"
             with self.assertRaisesRegex(ValueError, "default to 10001:10001"):
                 guard.check_segmentation(STUDIO, self.flux)
-            config["config"]["User"] = "10001:10001"
-            self.pin["servingLimit"] = "16Gi"
-            with self.assertRaisesRegex(ValueError, "resources must match"):
-                guard.check_segmentation(STUDIO, self.flux)
-            memory["serving"] = {"request_gib": 8, "limit_gib": 10}
-            config["config"]["Labels"]["io.haynes-studio.segmentation.resources"] = json.dumps(memory)
-            self.pin.update(servingRequest="8Gi", servingLimit="10Gi", renderMemoryLimit="22Gi")
-            guard.check_segmentation(STUDIO, self.flux)
-            self.pin.update(servingLimit="11Gi", renderMemoryLimit="21Gi")
-            with self.assertRaisesRegex(ValueError, "resources must match"):
-                guard.check_segmentation(STUDIO, self.flux)
+
+    def test_release_refuses_changed_serving_limit(self):
+        release = PENDING / "release/release.yaml"
+        read_text = Path.read_text
+
+        def changed(path, *args, **kwargs):
+            original = read_text(path, *args, **kwargs)
+            return original.replace("servingLimit: 5Gi", "servingLimit: 6Gi") if path == release else original
+
+        with patch.object(Path, "read_text", changed):
+            with self.assertRaisesRegex(ValueError, "serving request, limit and render limit"):
+                guard.check_segmentation_stage(STUDIO, self.flux)
+
+    def test_release_refuses_measuring_smoke_command(self):
+        stage = PENDING / "smoke"
+        render = guard.render
+        documents = render(stage)
+        job = guard.resource(documents, "Job")
+        guard.container(job)["command"] += ["--compare-load-strategy", "buffered"]
+        with patch.object(guard, "render", side_effect=lambda path: documents if path == stage else render(path)):
+            with self.assertRaisesRegex(ValueError, "unsafe segmentation smoke Job envelope"):
+                guard.check_segmentation_stage(STUDIO, self.flux)
+
+    def test_activation_refuses_limits_over_the_combined_budget(self):
+        stage = STUDIO / "matting-pending/activation"
+        render = guard.render
+        documents = render(stage)
+        for resource, excess in (("cpu", "5"), ("memory", "9Gi")):
+            with self.subTest(resource=resource):
+                mutated = copy.deepcopy(documents)
+                deployment = guard.resource(mutated, "Deployment", "studio-worker")
+                guard.container(deployment, "worker")["resources"]["limits"][resource] = excess
+                with patch.object(guard, "render",
+                                  side_effect=lambda path: mutated if path == stage else render(path)):
+                    with self.assertRaisesRegex(ValueError, "combined 24 CPU or 55 GiB budget"):
+                        guard.check_segmentation_stage(STUDIO, self.flux)
 
     def test_workload_rejects_weight_owner_or_writable_weights(self):
         render = guard.render
@@ -230,13 +288,15 @@ class ReleaseTests(unittest.TestCase):
                                       else render(path)), self.assertRaisesRegex(ValueError, "segmentation"):
                         guard.check_segmentation_stage(STUDIO, self.flux)
 
-    def test_zero_digest_never_accepted(self):
-        with patch.object(guard, "check_segmentation_stage", return_value=(self.pin, "sha256:" + "0" * 64)), (
-            patch.object(guard, "published_config")
-        ) as fetch:
-            with self.assertRaisesRegex(ValueError, "published segmentation digest"):
-                guard.check_segmentation(STUDIO, self.flux)
-            fetch.assert_not_called()
+    def test_old_measuring_and_zero_digests_never_accepted(self):
+        measuring = "sha256:58b037970810333c5ca1350d7acc32e113e06494ab49b69c184c0a8a93458e53"
+        for digest in (measuring, "sha256:" + "0" * 64):
+            with self.subTest(digest=digest), (
+                patch.object(guard, "check_segmentation_stage", return_value=(self.pin, digest))
+            ), patch.object(guard, "published_config") as fetch:
+                with self.assertRaisesRegex(ValueError, "published segmentation digest"):
+                    guard.check_segmentation(STUDIO, self.flux)
+                fetch.assert_not_called()
 
     def test_cilium_identity_exclusions(self):
         policy = guard.render(PENDING / "policy")
