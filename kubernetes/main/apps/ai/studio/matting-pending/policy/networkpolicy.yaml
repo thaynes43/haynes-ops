@@ -40,3 +40,16 @@ spec:
     - fromEntities: [all]
   egressDeny:
     - toEntities: [all]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: studio-matting-quality
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: studio-matting-quality
+  ingressDeny:
+    - fromEntities: [all]
+  egressDeny:
+    - toEntities: [all]
