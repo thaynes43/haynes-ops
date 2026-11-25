@@ -1,7 +1,11 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: wan-local-model-provision
+  # -r2: the first attempt was killed for memory five seconds in (limit 256Mi)
+  # with 570 MB written and no error of its own; see the hosting page. A Job is
+  # immutable, so a new attempt is a new name. The pod label, and with it the
+  # download policy, is unchanged.
+  name: wan-local-model-provision-r2
 spec:
   activeDeadlineSeconds: 1800
   backoffLimit: 0
@@ -31,8 +35,8 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
           resources:
-            requests: {cpu: 100m, memory: 128Mi}
-            limits: {cpu: "2", memory: 256Mi}
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "2", memory: 1Gi}
           volumeMounts:
             - {name: config, mountPath: /config, readOnly: true}
             - {name: workspace, mountPath: /workspace/local-model-weights, subPath: local-model-weights}
