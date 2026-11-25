@@ -5,9 +5,9 @@ metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
 data:
-  # Serving image with the three-pass smoke, from Studio main 035ff2c.
+  # Refused by the release guard until this is pinned to the published pass-aggregate smoke image.
   image: ghcr.io/thaynes43/haynes-studio-segmentation@sha256:3261efedf5d52baa4c53aa0ce6fc8f538b40cb0675fc2dc7a0c2ca74fd8184be
-  allocation: segmentation-op460-dino-sam-v1-04
+  allocation: segmentation-op460-dino-sam-v1-05
   servingRequest: 4Gi
   servingLimit: 5Gi
   renderMemoryLimit: 32Gi

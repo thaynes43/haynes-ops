@@ -322,9 +322,13 @@ class ReleaseTests(unittest.TestCase):
                                       else render(path)), self.assertRaisesRegex(ValueError, "segmentation"):
                         guard.check_segmentation_stage(STUDIO, self.flux)
 
-    def test_old_measuring_and_zero_digests_never_accepted(self):
-        measuring = "sha256:58b037970810333c5ca1350d7acc32e113e06494ab49b69c184c0a8a93458e53"
-        for digest in (measuring, "sha256:" + "0" * 64):
+    def test_superseded_and_zero_digests_never_accepted(self):
+        for digest in (
+            "sha256:58b037970810333c5ca1350d7acc32e113e06494ab49b69c184c0a8a93458e53",
+            "sha256:05de65b703506a4591887e3063dde04a03aa142f28bacde5b3101a495b6a53c0",
+            "sha256:3261efedf5d52baa4c53aa0ce6fc8f538b40cb0675fc2dc7a0c2ca74fd8184be",
+            "sha256:" + "0" * 64,
+        ):
             with self.subTest(digest=digest), (
                 patch.object(guard, "check_segmentation_stage", return_value=(self.pin, digest))
             ), patch.object(guard, "published_config") as fetch:
@@ -396,6 +400,39 @@ class RenderOverlayTests(unittest.TestCase):
         }))
         with self.assertRaisesRegex(ValueError, "unknown studio-render overlay.*other/render"):
             guard._check_render_overlays(self.studio, self.pending)
+
+
+class IdleGateTests(unittest.TestCase):
+    def test_wan_requires_ready_and_explicitly_idle_video_and_foley(self):
+        gate = ROOT / "scripts/studio-segmentation/check-wan-idle.sh"
+        shell = r"""
+kubectl() {
+    [[ "$1 $2 $3 $4 $5 $6" == '-n ai exec deploy/wan-video -c api' &&
+       "${!#}" == 'http://127.0.0.1:8080/v1/ready' ]] || return 99
+    printf '%s\n' "$reply"
+    return "$api_exit"
+}
+export -f kubectl
+export reply=$2 api_exit=$3
+bash "$1"
+"""
+        ready = {"ready": True, "active_video_job": None, "active_foley_job": None}
+        for label, reply, api_exit, passes in (
+            ("idle", ready, 0, True),
+            ("Foley active", {**ready, "active_foley_job": "foley-1"}, 0, False),
+            ("video active", {**ready, "active_video_job": "video-1"}, 0, False),
+            ("missing Foley state", {"ready": True, "active_video_job": None}, 0, False),
+            ("missing video state", {"ready": True, "active_foley_job": None}, 0, False),
+            ("not ready", {**ready, "ready": False}, 0, False),
+            ("legacy health reply", {"api": "ok", "active_job": None}, 0, False),
+            ("API call failed", ready, 22, False),
+        ):
+            with self.subTest(label=label):
+                result = subprocess.run(
+                    ["bash", "-c", shell, "test", str(gate), json.dumps(reply), str(api_exit)],
+                    text=True, capture_output=True, timeout=5,
+                )
+                self.assertEqual(result.returncode == 0, passes, result.stderr)
 
 
 class JobWaitTests(unittest.TestCase):
