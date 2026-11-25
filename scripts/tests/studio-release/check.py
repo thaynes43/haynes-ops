@@ -184,13 +184,14 @@ def check_matting(path, flux):
         "matting-pending" in stage["spec"]["path"] and stage is not policy_stage
         for stage in flux if stage["kind"] == "Kustomization"
     ):
-        raise ValueError("matting provisioning, smoke and worker activation must stay staged")
+        raise ValueError("matting provisioning, smoke, quality trial and worker activation must stay staged")
 
     policy = render(pending / "policy")
     if {doc["kind"] for doc in policy} != {"CiliumNetworkPolicy", "ConfigMap"}:
         raise ValueError("the applied matting stage may include only policies and provisioner code")
     download = resource(policy, "CiliumNetworkPolicy", "studio-matting-provision")["spec"]
-    smoke_egress = resource(policy, "CiliumNetworkPolicy", "studio-matting-smoke")["spec"]
+    for name in ("studio-matting-smoke", "studio-matting-quality"):
+        check_matting_deny_all(resource(policy, "CiliumNetworkPolicy", name)["spec"], name)
     allow = [{"matchName": "huggingface.co"}, {"matchName": "us.aws.cdn.hf.co"}]
     dns, https = download["egress"]
     if (dns != {
@@ -199,14 +200,11 @@ def check_matting(path, flux):
         }}],
         "toPorts": [{"ports": [{"port": "53", "protocol": "ANY"}], "rules": {"dns": allow}}],
     } or https["toFQDNs"] != allow
-            or https["toPorts"] != [{"ports": [{"port": "443", "protocol": "TCP"}]}]
-            or smoke_egress.get("egressDeny") != [{"toEntities": ["all"]}]
-            or "egress" in smoke_egress):
-        raise ValueError("matting egress must be pinned DNS/HTTPS for provisioning and denied for smoke")
-    for spec, name in ((download, "studio-matting-provision"), (smoke_egress, "studio-matting-smoke")):
-        if (spec["endpointSelector"]["matchLabels"] != {"app.kubernetes.io/name": name}
-                or spec["ingressDeny"] != [{"fromEntities": ["all"]}]):
-            raise ValueError(f"wrong network selector or ingress rule for {name}")
+            or https["toPorts"] != [{"ports": [{"port": "443", "protocol": "TCP"}]}]):
+        raise ValueError("matting provisioning egress must be pinned DNS/HTTPS")
+    if (download["endpointSelector"]["matchLabels"] != {"app.kubernetes.io/name": "studio-matting-provision"}
+            or download["ingressDeny"] != [{"fromEntities": ["all"]}]):
+        raise ValueError("wrong network selector or ingress rule for studio-matting-provision")
 
     jobs = {}
     weight_path = f"data/studio/jobs/{allocation}/weights"
@@ -250,6 +248,9 @@ def check_matting(path, flux):
         raise ValueError("the smoke Job must run the serving defaults with writable private scratch")
     check_matting_mounts(container(smoke), pod, weight_path, "scratch", memory)
 
+    quality = render(pending / "quality")
+    check_matting_quality(quality, pending / "quality/trial.py", smoke, image, weight_path, memory)
+
     stage = render(pending / "activation")
     worker = resource(stage, "Deployment", "studio-worker")
     worker_pod = worker["spec"]["template"]["spec"]
@@ -284,6 +285,15 @@ def check_matting(path, flux):
             raise ValueError(f"offline render {overlay} must limit CPU to {cores} and memory to 32Gi")
 
 
+def check_matting_deny_all(spec, name):
+    if spec != {
+        "endpointSelector": {"matchLabels": {"app.kubernetes.io/name": name}},
+        "ingressDeny": [{"fromEntities": ["all"]}],
+        "egressDeny": [{"toEntities": ["all"]}],
+    }:
+        raise ValueError(f"{name} needs a dedicated deny-all network policy")
+
+
 def check_matting_container(spec, image):
     settings = {entry["name"]: entry.get("value") for entry in spec["env"]}
     security = spec["securityContext"]
@@ -310,6 +320,69 @@ def check_matting_mounts(spec, pod, subpath, scratch_name, memory):
             or spec["resources"]["requests"]["memory"] != request):
         raise ValueError(f"matting needs 2 CPUs, {request} requested and {limit} limit, a private emptyDir "
                          "and read-only pinned weights")
+
+
+def check_matting_quality(documents, script, smoke, image, weight_path, memory):
+    if len(documents) != 1:
+        raise ValueError("matting quality must create exactly one Job and carry its script inline")
+    job = resource(documents, "Job", "studio-matting-quality-template")
+    spec = job["spec"]
+    expected_spec = {key: value for key, value in smoke["spec"].items() if key != "template"}
+    expected_spec["ttlSecondsAfterFinished"] = 3600
+    if (job["apiVersion"] != "batch/v1" or job["metadata"].get("namespace") != "ai"
+            or {key: value for key, value in spec.items() if key != "template"} != expected_spec):
+        raise ValueError("matting quality needs a bounded Job envelope with a one-hour TTL")
+    pod = spec["template"]["spec"]
+    smoke_pod = smoke["spec"]["template"]["spec"]
+    fields = {"containers", "initContainers", "volumes"}
+    expected_pod = {key: value for key, value in smoke_pod.items() if key not in fields}
+    expected_pod["securityContext"] = {
+        **smoke_pod["securityContext"], "supplementalGroups": [1000],
+    }
+    if (spec["template"]["metadata"] != {"labels": {"app.kubernetes.io/name": "studio-matting-quality"}}
+            or {key: value for key, value in pod.items() if key not in fields} != expected_pod):
+        raise ValueError("matting quality needs its own deny-all network label and UID 10001 with group 1000")
+
+    sandbox = container(smoke)["securityContext"]
+    if pod.get("initContainers") != [{
+        "name": "reserve-output",
+        "image": image,
+        "command": ["python", "-B", "-c"],
+        "args": [script.with_name("reserve.py").read_text(encoding="utf-8")],
+        "resources": {"requests": {"cpu": "10m", "memory": "16Mi"},
+                      "limits": {"cpu": "100m", "memory": "64Mi"}},
+        "securityContext": {**sandbox, "runAsUser": 1000, "runAsGroup": 1000},
+        "volumeMounts": [{"name": "jobs", "mountPath": "/jobs", "subPath": "data/studio/jobs"}],
+    }]:
+        raise ValueError("matting quality needs exactly one UID/GID 1000 init container for the output reservation")
+    workload = container(job)
+    check_matting_container(workload, image)
+    if (set(workload) != {"name", "image", "command", "args", "env", "resources", "securityContext",
+                         "volumeMounts"} or workload["name"] != "matting"
+            or workload["securityContext"] != sandbox
+            or workload["env"] != [{"name": "STUDIO_MATTING_IMAGE", "value": image}]
+            or workload["command"] != ["python", "-B", "-c"]
+            or workload["args"] != [script.read_text(encoding="utf-8")]
+            or workload["resources"] != {
+                "requests": {"cpu": "2", "memory": memory[0]},
+                "limits": {"cpu": "2", "memory": memory[1]},
+            }):
+        raise ValueError("matting quality must run the reviewed script and pinned CPU/memory profile")
+
+    scratch, weights = smoke_pod["volumes"]
+    share = {"server": "gasha01.haynesnetwork", "path": "/hdd-nfs-repl"}
+    if workload["volumeMounts"] != [
+        {"name": "scratch", "mountPath": "/matting"},
+        {"name": "weights", "mountPath": "/weights", "subPath": weight_path, "readOnly": True},
+        {"name": "input", "mountPath": "/input", "readOnly": True,
+         "subPath": "private-input-directory-replaced-by-runbook"},
+        {"name": "jobs", "mountPath": "/output",
+         "subPath": "data/studio/jobs/output-directory-replaced-by-runbook"},
+    ] or weights["nfs"] != {**share, "readOnly": True} or pod["volumes"] != [
+        scratch, weights, {"name": "input", "nfs": weights["nfs"]}, {"name": "jobs", "nfs": share},
+    ]:
+        raise ValueError("matting quality needs pinned read-only weights, one read-only input and only "
+                         "one writable output subPath")
 
 
 def check_upscaling_container(spec, image, command):
@@ -515,7 +588,6 @@ def check(path):
     release = yaml.safe_load((path / "release.yaml").read_text(encoding="utf-8"))
     flux = list(yaml.safe_load_all((path / "ks.yaml").read_text(encoding="utf-8")))
     check_matting(path, flux)
-    check_upscaling(path, flux)
     app = render(path / "app")
     api = resource(app, "Deployment", "studio-api")
     mcp = resource(app, "Deployment", "studio-mcp")
@@ -561,6 +633,7 @@ def check(path):
         raise ValueError("studio-worker provenance digest must match its image")
 
     check_packaged_register(app + media, ((api, "api"), (worker, None), (voice, None), (image, None)))
+    check_upscaling(path, flux)
     print(f"Studio release pins and Job health gates agree for {revision} ({digest})")
 
 

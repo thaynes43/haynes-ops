@@ -212,7 +212,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Check Studio release pins and Flux Job gates
+      - name: Test Studio Flux Job gates
         run: |
           python3 -m venv "$RUNNER_TEMP/studio-release-venv"
           "$RUNNER_TEMP/studio-release-venv/bin/python" -I -m pip install \
@@ -227,9 +227,42 @@ jobs:
             tar -xzf kustomize_v5.8.3_linux_amd64.tar.gz
           )
           "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_matting_provision.py
-          export PATH="$RUNNER_TEMP/studio-kustomize:$PATH"
-          "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_upscaling.py
-          "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/check.py
+          PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
+            "$RUNNER_TEMP/studio-release-venv/bin/python" -B scripts/tests/studio-release/test_matting_quality.py
+          PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
+            "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_upscaling.py
+      - name: Check out the Studio matting source for the synthetic trial
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: thaynes43/haynes-studio
+          # Build revision of the pinned OP459 matting image.
+          ref: f217cd21ed7899ab7d2b633d19813c536b1c2a14
+          path: studio-trial-source
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.10"
+      - name: Test and dry-run the trial with a synthetic cast still
+        env:
+          STUDIO_THREADS: "2"
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "1"
+          UV_CONCURRENT_DOWNLOADS: "2"
+          UV_CONCURRENT_INSTALLS: "2"
+          UV_CONCURRENT_BUILDS: "1"
+        run: |
+          uv sync --project studio-trial-source --locked --python 3.12
+          PYTHONPATH="$GITHUB_WORKSPACE/studio-trial-source" \
+            studio-trial-source/.venv/bin/python -B scripts/tests/studio-release/test_matting_trial.py
+      - name: Verify Studio release pins
+        run: |
+          PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
+            "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/check.py
 
   success:
     if: ${{ always() }}
