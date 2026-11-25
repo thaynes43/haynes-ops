@@ -1,4 +1,9 @@
 - op: add
+  path: /spec/upgrade
+  value:
+    # The operator gates the rollout separately from the Helm action.
+    disableWait: true
+- op: add
   path: /spec/values/controllers/wan-video/containers/api/env/WAN_LOCAL_MODEL_ENABLED
   value: "1"
 - op: add

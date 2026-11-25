@@ -90,8 +90,9 @@ class ManifestTests(unittest.TestCase):
         self.assertNotIn("healthChecks", flux)
         names = {doc["metadata"]["name"] for doc in self.ai}
         self.assertFalse(names & {
-            "wan-local-model-download-policy", "wan-local-model-weights", self.diagnostic["metadata"]["name"],
+            "wan-local-model-download-policy", "wan-local-model-weights",
         })
+        self.assertFalse(any(name.startswith(self.diagnostic["metadata"]["generateName"]) for name in names))
         self.assertFalse({doc["kind"] for doc in self.activation} & {"Job", "CiliumNetworkPolicy"})
         dormant_pvc = resource(self.dormant, "PersistentVolumeClaim", "wan-video")
         active_pvc = resource(self.activation, "PersistentVolumeClaim", "wan-video")
@@ -108,6 +109,13 @@ class ManifestTests(unittest.TestCase):
         self.assertFalse({doc["kind"] for doc in self.dormant} & {"Job", "CiliumNetworkPolicy"})
         self.assertNotIn("wan-local-model-profile", {doc["metadata"]["name"] for doc in self.dormant})
         self.assertEqual({c["name"] for c in self.dormant_pod["containers"]}, {"app", "api", "foley"})
+
+    def test_helm_upgrade_wait_is_disabled_only_on_activation(self):
+        active = resource(self.activation, "HelmRelease", "wan-video")["spec"]
+        dormant = resource(self.dormant, "HelmRelease", "wan-video")["spec"]
+        self.assertEqual(active["upgrade"], {"disableWait": True})
+        self.assertNotIn("upgrade", dormant)
+        self.assertEqual(active["postRenderers"], dormant["postRenderers"])
 
     def test_only_required_workspace_paths_are_mounted_in_local_model(self):
         active = {c["name"]: c for c in self.active_pod["containers"] + self.active_pod["initContainers"]}
@@ -162,9 +170,12 @@ class ManifestTests(unittest.TestCase):
             self.assertNotIn("WAN_LOCAL_MODEL_ENABLED", {entry["name"] for entry in container["env"]})
 
     def test_diagnostic_matches_runtime_and_has_only_read_only_wan_subpaths(self):
+        self.assertEqual(self.diagnostic["metadata"]["generateName"], "wan-local-model-start-check-")
+        self.assertNotIn("name", self.diagnostic["metadata"])
         spec = self.diagnostic["spec"]
         self.assertEqual(spec["backoffLimit"], 0)
-        self.assertEqual(spec["activeDeadlineSeconds"], 120)
+        self.assertEqual(spec["activeDeadlineSeconds"], 600)
+        self.assertEqual(spec["ttlSecondsAfterFinished"], 86400)
         pod = spec["template"]["spec"]
         self.assertEqual(pod["restartPolicy"], "Never")
         for field in ("nodeSelector", "securityContext", "runtimeClassName", "automountServiceAccountToken"):
@@ -179,6 +190,8 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(diagnostic["command"], [
             "python3", "-m", "startup_check", "--driver-lock", "/lease/compute.lock",
         ])
+        self.assertEqual(diagnostic["args"], ["--profile-json", "pending-approved-profile"])
+        self.assertFalse(any("configMap" in volume for volume in pod["volumes"]))
         self.assertEqual(workspace_mounts(diagnostic), {
             ("/workspace/local-model-weights", "local-model-weights", True),
             ("/lease/compute.lock", "compute.lock", True),

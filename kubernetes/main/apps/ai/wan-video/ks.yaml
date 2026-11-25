@@ -17,8 +17,8 @@ spec:
     kind: GitRepository
     name: haynes-ops
     namespace: flux-system
-  # Keep workload readiness in the operator gate on both paths. Waiting here
-  # can hold a Git revert behind a failing deployment.
+  # The operator verifies workload readiness on both paths. The activation
+  # overlay also disables Helm's upgrade wait so a bad rollout can be reverted.
   wait: false
   interval: 30m
   timeout: 5m
