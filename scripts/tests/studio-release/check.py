@@ -14,6 +14,7 @@ import yaml
 STUDIO_PATH = Path("kubernetes/main/apps/ai/studio")
 API_IMAGE = "ghcr.io/thaynes43/haynes-studio"
 MATTING_IMAGE = f"{API_IMAGE}-matting"
+UPSCALING_IMAGE = f"{API_IMAGE}-upscaling"
 STALE_MATTING_DIGESTS = {
     "sha256:dd726f79d25eecc15231ad7b9f0ca53c31ae2504666b9abe233ad1cc457a3e6f",
     "sha256:5c431978f3bfe7a48deb062c6b2854ca8b086d1a5d9c600e2db4b1e26d702d72",
@@ -85,40 +86,50 @@ def check_packaged_register(app, deployments):
             raise ValueError(f"{deployment['metadata']['name']} must use the packaged licence register")
 
 
-def published_matting_memory(digest):
-    """Read the profile resource contract from the exact published image config."""
-    repository = MATTING_IMAGE.removeprefix("ghcr.io/")
+def published_labels(image, digest):
+    """Read and verify the registry manifest and image config at an exact digest."""
+    repository = image.removeprefix("ghcr.io/")
     base = f"https://ghcr.io/v2/{repository}"
 
     def fetch(endpoint, expected, accept="application/json"):
         if not re.fullmatch(r"sha256:[a-f0-9]{64}", expected):
-            raise ValueError("invalid OCI digest in matting image")
+            raise ValueError("invalid OCI image digest")
         request = Request(f"{base}/{endpoint}/{expected}", headers={"Accept": accept})
         request.add_unredirected_header("Authorization", "Bearer " + token)
         with urlopen(request, timeout=15) as response:
             data = response.read(1024 * 1024 + 1)
         if len(data) > 1024 * 1024 or "sha256:" + sha256(data).hexdigest() != expected:
-            raise ValueError("matting image manifest or config SHA-256 differs from its pin")
+            raise ValueError("image manifest or config SHA-256 differs from its pin")
         return json.loads(data)
 
+    with urlopen(f"https://ghcr.io/token?service=ghcr.io&scope=repository:{repository}:pull", timeout=15) as response:
+        token = json.loads(response.read(65536))["token"]
+    manifest = fetch("manifests", digest, "application/vnd.docker.distribution.manifest.v2+json, "
+                                        "application/vnd.oci.image.manifest.v1+json")
+    config = fetch("blobs", manifest["config"]["digest"])
+    labels = config["config"]["Labels"]
+    if ((config["os"], config["architecture"]) != ("linux", "amd64")
+            or labels["org.opencontainers.image.source"] != "https://github.com/thaynes43/haynes-studio"):
+        raise ValueError("expected a Linux amd64 Studio image")
+    return labels
+
+
+def gibibytes(resources):
+    request, limit = resources["request_gib"], resources["limit_gib"]
+    if type(request) is not int or type(limit) is not int or not 0 < request <= limit:
+        raise ValueError("invalid memory request or limit")
+    return f"{request}Gi", f"{limit}Gi"
+
+
+def published_matting_memory(digest):
     try:
-        with urlopen(f"https://ghcr.io/token?service=ghcr.io&scope=repository:{repository}:pull", timeout=15) as response:
-            token = json.loads(response.read(65536))["token"]
-        manifest = fetch("manifests", digest, "application/vnd.docker.distribution.manifest.v2+json, "
-                                            "application/vnd.oci.image.manifest.v1+json")
-        config = fetch("blobs", manifest["config"]["digest"])
-        label = config["config"]["Labels"]["io.haynes-studio.matting.resources"]
-        memory = json.loads(label)
-        request, limit = memory["request_gib"], memory["limit_gib"]
-        if (memory["schema"] != "studio.matting-resources/v1"
-                or type(request) is not int or type(limit) is not int or not 0 < request <= limit
-                or (config["os"], config["architecture"]) != ("linux", "amd64")
-                or config["config"]["Labels"]["org.opencontainers.image.source"]
-                != "https://github.com/thaynes43/haynes-studio"):
+        memory = json.loads(published_labels(MATTING_IMAGE, digest)["io.haynes-studio.matting.resources"])
+        if memory["schema"] != "studio.matting-resources/v1":
             raise ValueError("invalid matting profile resource contract")
+        return gibibytes(memory)
     except (KeyError, OSError, TypeError, ValueError) as error:
         raise ValueError("published matting image must carry the Studio profile resource contract") from error
-    return f"{request}Gi", f"{limit}Gi"
+
 
 
 # Cilium's default label filter leaves these out of a pod's security identity,
@@ -136,13 +147,14 @@ def check_policy_selectors(documents):
         yield from (selector.get("matchLabels") or {})
         yield from (item["key"] for item in selector.get("matchExpressions") or [])
 
-    for policy in (doc for doc in documents if doc["kind"] == "NetworkPolicy"):
+    for policy in (doc for doc in documents if doc["kind"] in {"NetworkPolicy", "CiliumNetworkPolicy"}):
         spec = policy["spec"]
-        selectors = [spec.get("podSelector")]
+        selectors = [spec.get("podSelector"), spec.get("endpointSelector")]
         for rule in [*(spec.get("ingress") or []), *(spec.get("egress") or [])]:
+            selectors += [*(rule.get("toEndpoints") or []), *(rule.get("fromEndpoints") or [])]
             for peer in [*(rule.get("to") or []), *(rule.get("from") or [])]:
                 selectors += [peer.get("podSelector"), peer.get("namespaceSelector")]
-        used = {key for selector in selectors for key in keys(selector)}
+        used = {key.removeprefix("k8s:") for selector in selectors for key in keys(selector)}
         if bad := sorted(used.intersection(IDENTITY_EXCLUDED_LABELS)):
             raise ValueError(f"{policy['metadata']['name']} selects by {bad[0]}, which Cilium leaves "
                              "out of pod identities; the rule would never match")
@@ -373,6 +385,205 @@ def check_matting_quality(documents, script, smoke, image, weight_path, memory):
                          "one writable output subPath")
 
 
+def check_upscaling_container(spec, image, command):
+    settings = {entry["name"]: entry.get("value") for entry in spec["env"]}
+    if (spec["image"] != image or settings.get("STUDIO_UPSCALING_IMAGE") != image
+            or any(entry.get("valueFrom") for entry in spec["env"])
+            or any(spec.get(key) for key in ("envFrom", "ports", "volumeDevices"))
+            or spec["command"] != command
+            or any("gpu" in name for name in spec["resources"]["limits"])):
+        raise ValueError("upscaling must use the release image and named CPU command without credentials or ports")
+    security = spec["securityContext"]
+    if (security.get("privileged") or security["allowPrivilegeEscalation"]
+            or not security["readOnlyRootFilesystem"] or security["capabilities"] != {"drop": ["ALL"]}):
+        raise ValueError("upscaling containers must be unprivileged with read-only roots")
+
+
+def check_upscaling_mounts(spec, pod, mounts, nfs_modes):
+    actual_mounts = {item["name"]: item for item in spec["volumeMounts"]}
+    volumes = {item["name"]: item for item in pod["volumes"]}
+    if actual_mounts != mounts:
+        raise ValueError("upscaling mount paths or access modes differ from the release")
+    for name, read_only in nfs_modes.items():
+        nfs = volumes[name]["nfs"]
+        if (nfs["server"] != "gasha01.haynesnetwork" or nfs["path"] != "/hdd-nfs-repl"
+                or nfs.get("readOnly", False) != read_only):
+            raise ValueError("upscaling must use the Studio NFS export with the declared access mode")
+    if "scratch" in mounts and volumes["scratch"].get("emptyDir") != {"sizeLimit": "256Mi"}:
+        raise ValueError("upscaling scratch needs a 256Mi emptyDir")
+
+
+def check_upscaling_jobs(stage, image, allocation, measuring, policies):
+    suffix = allocation.rsplit("-", 1)[1]
+    weights_path = f"data/studio/jobs/{allocation}/weights"
+    weights = {"name": "weights", "mountPath": "/weights", "subPath": weights_path, "readOnly": True}
+    scratch = {"name": "scratch", "mountPath": "/upscaling"}
+    jobs_mount = {"name": "jobs", "mountPath": "/jobs", "subPath": "data/studio/jobs"}
+    provision_docs = render(stage / "provision")
+    for role, uid, command, args, mounts, nfs in (
+        ("provision", 1000, ["python", "-B", "/config/provision.py"], None,
+         {"media": {**jobs_mount, "name": "media"}, "config": {"name": "config", "mountPath": "/config", "readOnly": True}},
+         {"media": False}),
+        ("smoke", 10001, ["studio-upscaling", "smoke"], ["--allocator", "compare"],
+         {"scratch": scratch, "weights": weights}, {"weights": True}),
+        ("compare", 10001, ["studio-upscaling", "compare"],
+         ["--input", "input-required", "--input-sha256", "sha256-required"],
+         {"scratch": scratch, "weights": weights,
+          "jobs": {"name": "jobs", "mountPath": "/output",
+                   "subPath": "data/studio/jobs/output-directory-replaced-by-runbook"},
+          "source": {"name": "source", "mountPath": "/input",
+                     "subPath": "private-input-directory-replaced-by-runbook", "readOnly": True}},
+         {"weights": True, "jobs": False, "source": True}),
+    ):
+        name = f"studio-upscaling-{role}"
+        comparing = role == "compare"
+        job_name = name if comparing else f"{name}-{suffix}"
+        documents = provision_docs if role == "provision" else render(stage / role)
+        job = resource(documents, "Job", job_name)
+        spec = job["spec"]
+        pod = spec["template"]["spec"]
+        label = {"app.kubernetes.io/name": name}
+        if (job["metadata"]["namespace"] != "ai" or spec["activeDeadlineSeconds"] != 300
+                or spec["backoffLimit"] != 0 or spec["ttlSecondsAfterFinished"] != (3600 if comparing else 86400)
+                or spec["template"]["metadata"]["labels"] != label
+                or pod["restartPolicy"] != "Never" or pod["automountServiceAccountToken"]
+                or pod["enableServiceLinks"] or pod.get("serviceAccountName")
+                or (not comparing and pod.get("initContainers"))
+                or pod.get("hostNetwork") or pod.get("hostPID") or pod.get("hostIPC")
+                or pod["nodeSelector"] != {"kubernetes.io/hostname": "talosw01"}
+                or pod["priorityClassName"] != "dev-env-agent"):
+            raise ValueError(f"unsafe {name} Job envelope")
+        security = pod["securityContext"]
+        if (not security["runAsNonRoot"] or (security["runAsUser"], security["runAsGroup"]) != (uid, uid)
+                or security["seccompProfile"] != {"type": "RuntimeDefault"}):
+            raise ValueError(f"unsafe {name} Job identity")
+        c = container(job)
+        check_upscaling_container(c, image, command)
+        check_upscaling_mounts(c, pod, mounts, nfs)
+        if comparing:
+            sandbox = {"allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True,
+                       "capabilities": {"drop": ["ALL"]}}
+            if (security != {"runAsNonRoot": True, "runAsUser": 10001, "runAsGroup": 10001,
+                             "fsGroup": 10001, "supplementalGroups": [1000],
+                             "seccompProfile": {"type": "RuntimeDefault"}}
+                    or c["securityContext"] != sandbox or len(pod["containers"]) != 1):
+                raise ValueError("comparison must run only UID/GID 10001 with supplemental group 1000")
+            if pod.get("initContainers") != [{
+                "name": "reserve-output",
+                "image": image,
+                "command": ["python", "-B", "-c"],
+                "args": [(stage / "compare/reserve.py").read_text(encoding="utf-8")],
+                "resources": {"requests": {"cpu": "10m", "memory": "16Mi"},
+                              "limits": {"cpu": "100m", "memory": "64Mi"}},
+                "securityContext": {**sandbox, "runAsUser": 1000, "runAsGroup": 1000},
+                "volumeMounts": [jobs_mount],
+            }]:
+                raise ValueError("comparison requires one UID/GID 1000 init container for output reservation")
+            if (len(documents) != 1 or len(c["volumeMounts"]) != len(mounts)
+                    or len(pod["volumes"]) != len(mounts)):
+                raise ValueError("comparison requires one Job and only the declared volumes and mounts")
+        if c.get("args") != args or {volume["name"] for volume in pod["volumes"]} != set(mounts):
+            raise ValueError(f"unexpected {name} arguments or volumes")
+        request, limit = measuring
+        resources = c["resources"]
+        if role == "provision":
+            config_name = resource(policies, "ConfigMap")["metadata"]["name"]
+            if (resources["limits"] != {"cpu": "500m", "memory": "1Gi"}
+                    or env(job)["STUDIO_UPSCALING_ALLOCATION"] != allocation
+                    or next(v for v in pod["volumes"] if v["name"] == "config")["configMap"]["name"] != config_name):
+                raise ValueError("upscaling provisioning must use the Flux script and the 1Gi write bound")
+        elif resources["limits"] != {"cpu": "2", "memory": limit} or resources["requests"]["memory"] != request:
+            raise ValueError("upscaling Jobs must match the measuring memory and two-CPU ceiling")
+
+
+def check_upscaling(path, flux):
+    stage = path / "upscaling-pending"
+    if not stage.exists():
+        return
+    pin = yaml.safe_load((stage / "release/release.yaml").read_text())["data"]
+    image, allocation = pin["image"], pin["allocation"]
+    if not re.fullmatch(r"upscaling-op461-fsrcnn-x2-v1-[0-9]{2}", allocation):
+        raise ValueError("invalid create-only upscaling weights allocation")
+    policy_stage = resource(flux, "Kustomization", "studio-upscaling-policy")
+    if (policy_stage["spec"]["path"] != f"./{STUDIO_PATH}/upscaling-pending/policy"
+            or not policy_stage["spec"]["prune"] or any(
+                "upscaling-pending" in item["spec"]["path"] and item is not policy_stage
+                for item in flux if item["kind"] == "Kustomization"
+            )):
+        raise ValueError("only the upscaling policy stage belongs in Flux")
+    policies = render(stage / "policy")
+    check_policy_selectors(policies)
+    if sorted(doc["kind"] for doc in policies) != ["CiliumNetworkPolicy"] * 3 + ["ConfigMap"]:
+        raise ValueError("upscaling policy stage must contain only targeted policies and the provisioner script")
+    for role in ("provision", "smoke", "compare"):
+        name = f"studio-upscaling-{role}"
+        policy = resource(policies, "CiliumNetworkPolicy", name)["spec"]
+        expected = {"endpointSelector": {"matchLabels": {"app.kubernetes.io/name": name}},
+                    "ingressDeny": [{"fromEntities": ["all"]}]}
+        if role == "provision":
+            host = [{"matchName": "raw.githubusercontent.com"}]
+            expected["egress"] = [
+                {"toEndpoints": [{"matchLabels": {"k8s:io.kubernetes.pod.namespace": "kube-system",
+                                                  "k8s:app.kubernetes.io/instance": "coredns"}}],
+                 "toPorts": [{"ports": [{"port": "53", "protocol": "ANY"}], "rules": {"dns": host}}]},
+                {"toFQDNs": host, "toPorts": [{"ports": [{"port": "443", "protocol": "TCP"}]}]},
+            ]
+        else:
+            expected["egressDeny"] = [{"toEntities": ["all"]}]
+        if policy != expected:
+            raise ValueError(f"unexpected traffic or identity labels for {name}")
+
+    measuring = pin["memoryRequest"], pin["memoryLimit"]
+    serving = pin["servingMemoryRequest"], pin["servingMemoryLimit"]
+    check_upscaling_jobs(stage, image, allocation, measuring, policies)
+    activation = render(stage / "activation")
+    check_policy_selectors(activation)
+    worker = resource(activation, "Deployment", "studio-worker")
+    pod = worker["spec"]["template"]["spec"]
+    sidecar = container(worker, "upscaling")
+    check_upscaling_container(sidecar, image, ["studio-upscaling", "serve"])
+    scratch = {"name": "upscale-scratch", "mountPath": "/upscaling"}
+    check_upscaling_mounts(sidecar, pod, {
+        "upscale-scratch": scratch,
+        "weights": {"name": "weights", "mountPath": "/weights",
+                    "subPath": f"data/studio/jobs/{allocation}/weights", "readOnly": True},
+    }, {"weights": True})
+    if (pod["securityContext"]["fsGroup"] != 10001 or pod["automountServiceAccountToken"]
+            or (sidecar["securityContext"]["runAsUser"], sidecar["securityContext"]["runAsGroup"]) != (10001, 10001)
+            or scratch not in container(worker, "worker")["volumeMounts"]
+            or resource_volume(pod, "upscale-scratch").get("emptyDir") != {"sizeLimit": "256Mi"}
+            or sidecar["resources"]["limits"] != {"cpu": "2", "memory": serving[1]}
+            or sidecar["resources"]["requests"]["memory"] != serving[0]
+            or any(sidecar[key]["exec"]["command"] != ["studio-upscaling", "ready"]
+                   for key in ("startupProbe", "readinessProbe", "livenessProbe"))):
+        raise ValueError("dormant upscaling sidecar must share bounded scratch and only use local readiness")
+    render_worker = resource(render(path.parent / "studio-render/upscaling-pending"), "HelmRelease", "studio-render")
+    limits = render_worker["spec"]["values"]["controllers"]["studio-render"]["containers"]["app"]["resources"]["limits"]
+    if limits != {"cpu": "18", "memory": "32Gi"}:
+        raise ValueError("the dormant upscaling render split must reserve two of the 20 offline CPUs")
+
+    match = re.fullmatch(rf"{re.escape(UPSCALING_IMAGE)}@(sha256:[0-9a-f]{{64}})", image)
+    if not match or match[1] == "sha256:" + "0" * 64:
+        raise ValueError("set upscaling-pending/release/release.yaml data.image to the published Studio main digest")
+    try:
+        published = published_labels(UPSCALING_IMAGE, match[1])
+        memory = json.loads(published["io.haynes-studio.upscaling.resources"])
+        if (memory["schema"] != "studio.upscaling-resources/v1"
+                or type(memory["quality_peak_gib"]) is not int or memory["quality_peak_gib"] <= 0
+                or not re.fullmatch(r"[a-f0-9]{40}", published["org.opencontainers.image.revision"])):
+            raise ValueError("invalid upscaling profile resource contract")
+        measured_serving = (("measured-request-required", "measured-limit-required")
+                            if memory["serving"] is None else gibibytes(memory["serving"]))
+        if measuring != gibibytes(memory["measuring"]) or serving != measured_serving:
+            raise ValueError("upscaling release memory differs from the pinned image contract")
+    except (KeyError, OSError, TypeError, ValueError) as error:
+        raise ValueError(f"published upscaling image resource contract failed verification: {error}") from error
+
+
+def resource_volume(pod, name):
+    return next(volume for volume in pod["volumes"] if volume["name"] == name)
+
+
 def check(path):
     release = yaml.safe_load((path / "release.yaml").read_text(encoding="utf-8"))
     flux = list(yaml.safe_load_all((path / "ks.yaml").read_text(encoding="utf-8")))
@@ -422,6 +633,7 @@ def check(path):
         raise ValueError("studio-worker provenance digest must match its image")
 
     check_packaged_register(app + media, ((api, "api"), (worker, None), (voice, None), (image, None)))
+    check_upscaling(path, flux)
     print(f"Studio release pins and Job health gates agree for {revision} ({digest})")
 
 

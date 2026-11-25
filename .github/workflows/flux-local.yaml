@@ -212,7 +212,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Check Studio release pins and Flux Job gates
+      - name: Test Studio Flux Job gates
         run: |
           python3 -m venv "$RUNNER_TEMP/studio-release-venv"
           "$RUNNER_TEMP/studio-release-venv/bin/python" -I -m pip install \
@@ -230,7 +230,7 @@ jobs:
           PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
             "$RUNNER_TEMP/studio-release-venv/bin/python" -B scripts/tests/studio-release/test_matting_quality.py
           PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
-            "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/check.py
+            "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_upscaling.py
       - name: Check out the Studio matting source for the synthetic trial
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -259,6 +259,10 @@ jobs:
           uv sync --project studio-trial-source --locked --python 3.12
           PYTHONPATH="$GITHUB_WORKSPACE/studio-trial-source" \
             studio-trial-source/.venv/bin/python -B scripts/tests/studio-release/test_matting_trial.py
+      - name: Verify Studio release pins
+        run: |
+          PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
+            "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/check.py
 
   success:
     if: ${{ always() }}
