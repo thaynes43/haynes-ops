@@ -25,6 +25,17 @@ spec:
       ports:
         - port: 8000
           protocol: TCP
+    # Port 8002 accepts only media-worker POST routes. Keep these callers
+    # off the public API listener on port 8000.
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [studio-voice-worker, studio-image-worker]
+      ports:
+        - port: 8002
+          protocol: TCP
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
