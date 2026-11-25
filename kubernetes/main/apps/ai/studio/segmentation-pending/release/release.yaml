@@ -5,8 +5,8 @@ metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
 data:
-  # Smoke 05 image from Studio main 5ba75d2. Replace with the published image for the new verdict before merging.
-  image: ghcr.io/thaynes43/haynes-studio-segmentation@sha256:644c34c52905c00bb6044c1d0f0479eb1b150d9979f6508eea8631e796b45d0e
+  # Serving image whose smoke judges pass maxima, from Studio main 9a6fde8.
+  image: ghcr.io/thaynes43/haynes-studio-segmentation@sha256:f41c8dd4a167ccb79dca561c32fbba6c907b1e3c9e07a1552b5bd8ea61d227f1
   allocation: segmentation-op460-dino-sam-v1-06
   servingRequest: 4Gi
   servingLimit: 5Gi
