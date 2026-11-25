@@ -5,9 +5,9 @@ metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
 data:
-  # Serving image with the pass-level memory verdict, from Studio main 5ba75d2.
+  # Smoke 05 image from Studio main 5ba75d2. Replace with the published image for the new verdict before merging.
   image: ghcr.io/thaynes43/haynes-studio-segmentation@sha256:644c34c52905c00bb6044c1d0f0479eb1b150d9979f6508eea8631e796b45d0e
-  allocation: segmentation-op460-dino-sam-v1-05
+  allocation: segmentation-op460-dino-sam-v1-06
   servingRequest: 4Gi
   servingLimit: 5Gi
   renderMemoryLimit: 32Gi
