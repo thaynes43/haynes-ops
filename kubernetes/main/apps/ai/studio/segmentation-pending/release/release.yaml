@@ -5,9 +5,9 @@ metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
 data:
-  # Measuring image. Replace with the CR-51 digest from the Studio main publish.
-  image: ghcr.io/thaynes43/haynes-studio-segmentation@sha256:05de65b703506a4591887e3063dde04a03aa142f28bacde5b3101a495b6a53c0
-  allocation: segmentation-op460-dino-sam-v1-03
+  # Serving image with the three-pass smoke, from Studio main 035ff2c.
+  image: ghcr.io/thaynes43/haynes-studio-segmentation@sha256:3261efedf5d52baa4c53aa0ce6fc8f538b40cb0675fc2dc7a0c2ca74fd8184be
+  allocation: segmentation-op460-dino-sam-v1-04
   servingRequest: 4Gi
   servingLimit: 5Gi
   renderMemoryLimit: 32Gi
