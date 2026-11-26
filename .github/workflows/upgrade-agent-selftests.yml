@@ -94,7 +94,7 @@ jobs:
       - name: History of every attempt, rotation and backfill (story 593)
         run: nice -n 19 node scripts/upgrade-agent/lane-history-selftest.mjs
       - name: The read-only verifier of each merge (story 553)
-        run: nice -n 19 node scripts/upgrade-agent/lane-verify-selftest.mjs
+        run: nice -n 19 node scripts/upgrade-agent/lane-verify-selftest.mjs && nice -n 19 node scripts/upgrade-agent/unifi-gate-selftest.mjs
       - name: Who handles a regression, the lane's claim, triage and the gate (story 554)
         run: nice -n 19 node scripts/upgrade-agent/lane-claim-selftest.mjs
       - name: The morning summary (story 554)
