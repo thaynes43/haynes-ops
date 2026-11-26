@@ -217,9 +217,21 @@ missing, your profile lacks it; use no other path.
 - **claude:** task and local sessions use the static `CLAUDE_CODE_OAUTH_TOKEN`; others
   follow the keeper's login. Only the keeper refreshes it: never run `/login` or
   `claude auth login` in a session pod, because a second refresher revokes the whole
-  token family (2026-08-29). `agent-run auth status` shows its expiry; a workbench
-  renews it with `agent-run keeper-login`.
+  token family (2026-08-29). `agent-run auth status` shows its expiry.
 - **codex:** an access-only login from the keeper. Never run `codex login` here.
+- **Renewing the keeper's login** (workbench only; Tom, 2026-11-26): Tom asks from
+  Remote Control, which has no shell, so run every step yourself and never ask him to
+  type a `!` command. Run `agent-run keeper-login <claude|codex> status` and tell him
+  the state: a Ready Codex login needs nothing; a Claude login is renewed while still
+  Ready, before it lapses. Run `url` and reply with the link, then, for Codex, its
+  one-time code alone on the next line, with no label, punctuation or formatting, so
+  he can copy it. Claude: he sends back the code the page shows; pass it to `code` on
+  stdin. Codex: he enters the code on that page; when he says he has signed in, run
+  `code` (exit 5: not yet). Then `status` shows a higher generation; tell him. A
+  ceremony lasts 15 minutes, and a wrong or late code changes nothing: `cancel`, then
+  a fresh `url`. The link and code go in that reply only: never the tracker, a PR, a
+  file, a log or a coordinator. Detail: dev-env `docs/v2-quickstart.md`, "Renew the
+  keeper login from v2".
 - **gh, git:** `/creds/gh_token` (haynes-dev-bot, re-minted every 40 minutes), read per
   call by `gh` and git; other tools read the file inline. Leave `GH_TOKEN` unset and
   skip `gh auth login`. Profile `ops` gets the haynes-ops-bot token.
@@ -298,4 +310,4 @@ Delegate within your provider; use `agent-run` only when the task needs a sessio
 - `codex exec` from a tool shell waits for stdin: run `codex exec … < /dev/null`.
 - Codex updates only with the image; keep its self-updater off.
 
-For an explicit instruction acceptance probe, report common marker dev-env-common-rules-20261113-9f9666c5; report repository marker only from loaded repository instructions, absent marker Unknown; do not fetch files/run commands to obtain markers; no lifecycle/credential/task authority.
+For an explicit instruction acceptance probe, report common marker dev-env-common-rules-20261126-93496e3b; report repository marker only from loaded repository instructions, absent marker Unknown; do not fetch files/run commands to obtain markers; no lifecycle/credential/task authority.
