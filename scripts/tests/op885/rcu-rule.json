@@ -1,0 +1,18 @@
+{
+  "groups": [
+    {
+      "name": "talosm03-kernel-stall",
+      "interval": "1m",
+      "rules": [
+        {
+          "alert": "TalosKernelRCUStall",
+          "expr": "sum by (cluster, node) (count_over_time({cluster=\"main\",node=\"talosm03\",source=\"talos\",talos_service=\"kernel\"} |~ \"rcu: INFO: rcu_preempt (self-detected stall on CPU|detected (expedited )?stalls on CPUs/tasks)\" [5m])) > 0",
+          "annotations": {
+            "summary": "{{ $labels.node }} reported an RCU CPU stall",
+            "description": "Check recent Talos kernel lines for the CPU, stack and recurrence. Check this node's RBD in-flight I/O, read/write completions and service checks. Kubernetes Ready may still be true. Firing clears on evaluation after the last matching event ages out of the five-minute window. If telemetry stops, node health is unknown. Confirm recovery from independent I/O and service evidence."
+          }
+        }
+      ]
+    }
+  ]
+}
