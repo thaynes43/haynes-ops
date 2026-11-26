@@ -1,0 +1,66 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: upgrade-unifi
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: upgrade-unifi
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: mcp-unifi.observability.svc.cluster.local
+              - matchName: kube-prometheus-stack-prometheus.observability.svc.cluster.local
+              - matchName: plex.media.svc.cluster.local
+              - matchName: plexops.media.svc.cluster.local
+              - matchName: haynestower.haynesnetwork
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: mcp-unifi
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+            operator.prometheus.io/name: kube-prometheus-stack
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: media
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values: [plex, plexops]
+      toPorts:
+        - ports:
+            - port: "32400"
+              protocol: TCP
+    - toFQDNs:
+        - matchName: haynestower.haynesnetwork
+      toPorts:
+        - ports:
+            - port: "32400"
+              protocol: TCP

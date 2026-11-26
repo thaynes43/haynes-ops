@@ -26,6 +26,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - kubernetes/main/apps/upgrade-agent/app/**
       - kubernetes/main/apps/upgrade-agent/shepherd/app/**
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/coordination-lib.sh
       - kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
@@ -39,6 +40,7 @@ on:
   push:
     branches: [main]
     paths:
+      - kubernetes/main/apps/upgrade-agent/app/**
       - kubernetes/main/apps/upgrade-agent/shepherd/app/**
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/coordination-lib.sh
       - kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
@@ -93,8 +95,11 @@ jobs:
         run: nice -n 19 node scripts/upgrade-agent/lane-pr-records-selftest.mjs
       - name: History of every attempt, rotation and backfill (story 593)
         run: nice -n 19 node scripts/upgrade-agent/lane-history-selftest.mjs
-      - name: The read-only verifier of each merge (story 553)
-        run: nice -n 19 node scripts/upgrade-agent/lane-verify-selftest.mjs && nice -n 19 node scripts/upgrade-agent/unifi-gate-selftest.mjs
+      - name: The read-only verifier of each merge (story 553) and UniFi gate and runner
+        run: |
+          nice -n 19 node scripts/upgrade-agent/lane-verify-selftest.mjs
+          nice -n 19 node scripts/upgrade-agent/unifi-gate-selftest.mjs
+          nice -n 19 node scripts/upgrade-agent/unifi-runner-selftest.mjs
       - name: Who handles a regression, the lane's claim, triage and the gate (story 554)
         run: nice -n 19 node scripts/upgrade-agent/lane-claim-selftest.mjs
       - name: The morning summary (story 554)
