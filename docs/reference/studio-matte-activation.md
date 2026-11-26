@@ -135,8 +135,10 @@ TTL before probing the port.
 | ComfyUI TCP 8188 | The app-template 5.3.0 render gives the `comfyui` StatefulSet a governing Service named `comfyui` with TCP 8188. The `comfyui-0.comfyui.ai.svc.cluster.local.` name selects that Ready pod endpoint. The Service VIP can resolve during a backend outage. The StatefulSet uses Kubernetes' default container readiness. An unrestricted render-pod connect checks the listener separately. |
 | Loki TCP 3100 | The Loki 7.7.0 single-binary render gives `loki-headless.observability.svc.cluster.local.` a headless Service without `publishNotReadyAddresses`. Its sole backend uses an HTTP `/ready` readiness probe on TCP 3100. |
 
-The manifests give neither destination a matching ingress policy. The
-unrestricted render pod in `ai` verifies that it can connect to both pod
+The manifests give neither destination a matching ingress policy. Preflight
+and postflight use both Ready control pods and their Cilium endpoint identities
+to reject any installed ingress policy selecting either pod, including
+namespaced policy in `observability`. The unrestricted render pod in `ai` verifies that it can connect to both pod
 endpoints. The matte policy allows only CoreDNS on TCP/UDP 53 and the Studio
 worker listener on TCP 8002, so it drops both control connections. Studio
 API TCP 8000 cannot serve as a control because its own ingress policy admits

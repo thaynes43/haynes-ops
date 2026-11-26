@@ -944,10 +944,11 @@ def cilium_labels(pod, namespace_labels, cluster_name):
 
 
 def selected_policies(documents, pod, endpoint_labels):
+    namespace = pod["metadata"].get("namespace", "ai")
     pod_labels = pod["metadata"]["labels"]
     for document in documents:
         kind = document["kind"]
-        if kind in NAMESPACE_POLICY_KINDS and document["metadata"].get("namespace") != "ai":
+        if kind in NAMESPACE_POLICY_KINDS and document["metadata"].get("namespace") != namespace:
             continue
         if kind == "NetworkPolicy":
             spec = document["spec"]
@@ -1022,13 +1023,51 @@ def check_additive_matte_ingress(previous, candidate):
         raise ValueError("API ingress may only add the matte peer on TCP 8002")
 
 
+def installed_identity(pod, endpoint):
+    name = pod["metadata"]["name"]
+    if not any(ref["kind"] == "Pod" and ref["uid"] == pod["metadata"]["uid"]
+               for ref in endpoint.get("metadata", {}).get("ownerReferences", [])):
+        raise ValueError(f"missing installed Cilium endpoint for pod {name}")
+    labels = endpoint["status"]["identity"]["labels"]
+    if not labels:
+        raise ValueError(f"missing installed Cilium identity labels for pod {name}")
+    exact = {}
+    for label in labels:
+        key, _, value = label.partition("=")
+        exact[key] = value
+    generic = {key.split(":", 1)[1]: value for key, value in exact.items() if ":" in key}
+    return {**generic, **{f"any:{key}": value for key, value in generic.items()}, **exact}
+
+
+def check_control_ingress(policies, snapshot, namespace, name):
+    pod = resource(snapshot["items"], "Pod", name)
+    endpoint = resource(snapshot["items"], "CiliumEndpoint", name)
+    if (any(obj["metadata"]["namespace"] != namespace or obj["metadata"].get("deletionTimestamp")
+            for obj in (pod, endpoint))
+            or not any(c["type"] == "Ready" and c["status"] == "True" for c in pod["status"]["conditions"])):
+        raise ValueError(f"expected one Ready isolation control pod {namespace}/{name}")
+    for document, spec in selected_policies(policies, pod, installed_identity(pod, endpoint)):
+        if document["kind"] == "NetworkPolicy":
+            has_ingress = "Ingress" in (spec.get("policyTypes") or ["Ingress"])
+        else:
+            has_ingress = ("ingress" in spec or "ingressDeny" in spec
+                           or (spec.get("enableDefaultDeny") or {}).get("ingress") is True)
+        if has_ingress:
+            raise ValueError(f"ingress policy {document['metadata']['name']} selects isolation control "
+                             f"{namespace}/{name}")
+    print(f"Isolation control {namespace}/{name} is Ready without a matching ingress policy")
+
+
 def check_installed_policies(data, *, stage_repo=None):
-    namespaced, clusterwide, cilium, *workloads = data
+    namespaced, clusterwide, cilium, comfyui, loki, *workloads = data
     config = cilium["data"]
     if config["enable-policy"] not in {"default", "always"}:
         raise ValueError("installed Cilium does not enforce network policy")
     if (config.get("policy-deny-response"), config.get("service-no-backend-response")) != ("none", "reject"):
         raise ValueError("installed Cilium must silently deny policy traffic and reject empty Services")
+    installed = namespaced["items"] + clusterwide["items"]
+    check_control_ingress(installed, comfyui, "ai", "comfyui-0")
+    check_control_ingress(installed, loki, "observability", "loki-0")
     policies = [doc for doc in namespaced["items"] if doc["metadata"]["namespace"] == "ai"]
     policies.extend(clusterwide["items"])
     if stage_repo is not None:
@@ -1063,18 +1102,7 @@ def check_installed_policies(data, *, stage_repo=None):
     for pod in api["items"] + matte["items"]:
         name = pod["metadata"]["name"]
         endpoint = endpoint_by_name.get(name, {})
-        if not any(ref["kind"] == "Pod" and ref["uid"] == pod["metadata"]["uid"]
-                   for ref in endpoint.get("metadata", {}).get("ownerReferences", [])):
-            raise ValueError(f"missing installed Cilium endpoint for pod {name}")
-        labels = endpoint["status"]["identity"]["labels"]
-        if not labels:
-            raise ValueError(f"missing installed Cilium identity labels for pod {name}")
-        exact = {}
-        for label in labels:
-            key, _, value = label.partition("=")
-            exact[key] = value
-        generic = {key.split(":", 1)[1]: value for key, value in exact.items() if ":" in key}
-        identity = {**generic, **{f"any:{key}": value for key, value in generic.items()}, **exact}
+        identity = installed_identity(pod, endpoint)
         identities[name] = identity
         matches = sorted({f"{doc['kind']}/{doc['metadata']['name']}"
                           for doc, _ in selected_policies(policies, pod, identity)})

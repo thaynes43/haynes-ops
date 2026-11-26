@@ -968,7 +968,7 @@ PAYLOADS = {
     "scripts/studio-release/op967-catalogue.sql": "02d023f1d17ba4a1bae60e72ea8565f8769171542138235181da05a8da9f4607",
     "scripts/studio-release/op967-routes.py": "26ad97c7ec6b4934505599da4da09248d7180c168eeed404c99be9f01b62c964",
     "scripts/studio-release/op970-log.py": "f1e62ead9aff791a9390fcbd9fa2c9ef90aa86df74c8ad15c47a0dc9a0994340",
-    "scripts/tests/studio-release/check.py": "255adc53adf9f14a084c886718d52a924853e8f32bee59617f85264b2e7e3cd1",
+    "scripts/tests/studio-release/check.py": "e6d552515fea01c8040ccfbf2005fac2732261f2a1baf2ded2154e70097f9eaa",
 }
 
 
@@ -1051,7 +1051,12 @@ class StartupTest(unittest.TestCase):
             case "kubectl":
                 args = argv
                 if args[:1] == ["-n"]:
-                    self.assertIn(args[1], {"ai", "database", "flux-system", "kube-system"}, detail)
+                    if args[1] == "observability":
+                        self.assertEqual(args[2:], [
+                            "get", "pod/loki-0", "ciliumendpoints.cilium.io/loki-0", "-o", "json",
+                        ], detail)
+                    else:
+                        self.assertIn(args[1], {"ai", "database", "flux-system", "kube-system"}, detail)
                     args = args[2:]
                 if args[:1] == ["exec"]:
                     fingerprint = hashlib.sha256("\0".join(argv).encode()).hexdigest()

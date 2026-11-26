@@ -19,18 +19,20 @@ policy_snapshot() {
 }
 
 installed_policies() {
-  local namespaced clusterwide cilium namespace endpoints api_pods matte_pods
+  local namespaced clusterwide cilium comfyui loki namespace endpoints api_pods matte_pods
   namespaced=$(kubectl get networkpolicies.networking.k8s.io,ciliumnetworkpolicies.cilium.io -A -o json) || return 1
   clusterwide=$(kubectl get ciliumclusterwidenetworkpolicies.cilium.io -o json) || return 1
   cilium=$(kubectl -n kube-system get configmap cilium-config -o json) || return 1
+  comfyui=$(kubectl -n ai get pod/comfyui-0 ciliumendpoints.cilium.io/comfyui-0 -o json) || return 1
+  loki=$(kubectl -n observability get pod/loki-0 ciliumendpoints.cilium.io/loki-0 -o json) || return 1
   if [[ $1 == preflight ]]; then
     namespace=$(kubectl get namespace ai -o json) || return 1
-    printf '%s\n' "$namespaced" "$clusterwide" "$cilium" "$namespace"
+    printf '%s\n' "$namespaced" "$clusterwide" "$cilium" "$comfyui" "$loki" "$namespace"
   else
     endpoints=$(kubectl -n ai get ciliumendpoints.cilium.io -o json) || return 1
     api_pods=$(kubectl -n ai get pods -l app.kubernetes.io/name=studio-api -o json) || return 1
     matte_pods=$(kubectl -n ai get pods -l "$selector" -o json) || return 1
-    printf '%s\n' "$namespaced" "$clusterwide" "$cilium" "$endpoints" "$api_pods" "$matte_pods"
+    printf '%s\n' "$namespaced" "$clusterwide" "$cilium" "$comfyui" "$loki" "$endpoints" "$api_pods" "$matte_pods"
   fi | jq -s . | python3 -B scripts/tests/studio-release/check.py --installed-policies "$1"
 }
 

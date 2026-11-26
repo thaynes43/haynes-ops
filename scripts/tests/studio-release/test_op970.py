@@ -361,14 +361,36 @@ class ProjectedPolicyTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "only add the matte peer"):
                     check_additive_matte_ingress(self.current["spec"], changed)
 
-    def test_projected_policy_rejects_additional_native_and_cilium_rules(self):
-        snapshot = [
-            {"items": [self.current, self.policy]},
-            {"items": []},
+    @staticmethod
+    def control(namespace, name, label):
+        uid = f"{name}-uid"
+        return {"items": [
+            {"kind": "Pod", "metadata": {"namespace": namespace, "name": name, "uid": uid,
+                                          "labels": {"app.kubernetes.io/name": label}},
+             "status": {"conditions": [{"type": "Ready", "status": "True"}]}},
+            {"kind": "CiliumEndpoint", "metadata": {"namespace": namespace, "name": name,
+                                                    "ownerReferences": [{"kind": "Pod", "uid": uid}]},
+             "status": {"identity": {"labels": [f"k8s:app.kubernetes.io/name={label}",
+                                               f"k8s:io.kubernetes.pod.namespace={namespace}"]}}},
+        ]}
+
+    def installed_snapshot(self):
+        return [
+            {"items": [self.current, self.policy]}, {"items": []},
             {"data": {"enable-policy": "default", "cluster-name": "haynes-ops",
                       "policy-deny-response": "none", "service-no-backend-response": "reject"}},
+            self.control("ai", "comfyui-0", "comfyui"), self.control("observability", "loki-0", "loki"),
             {"metadata": {"labels": {"kubernetes.io/metadata.name": "ai"}}},
         ]
+
+    def test_projected_policy_rejects_additional_native_and_cilium_rules(self):
+        snapshot = self.installed_snapshot()
+        # An egress-only policy on a control does not explain a refused ingress probe.
+        snapshot[0]["items"].append({
+            "kind": "NetworkPolicy", "metadata": {"name": "loki-egress", "namespace": "observability"},
+            "spec": {"podSelector": {"matchLabels": {"app.kubernetes.io/name": "loki"}},
+                     "policyTypes": ["Egress"], "egress": []},
+        })
         with (
             patch("check.studio_inventory", return_value=(None, None, None, {"studio": "api", MATTE_POLICY: "matte"})),
             patch("check.flux_build", side_effect=lambda _, stage: self.app if stage == "api" else self.stage),
@@ -403,6 +425,40 @@ class ProjectedPolicyTest(unittest.TestCase):
                     changed[2]["data"][key] = changed_value
                     with self.assertRaisesRegex(ValueError, "must silently deny"):
                         check_installed_policies(changed, stage_repo=Path.cwd())
+
+
+    def test_ingress_on_either_control_refuses_the_installed_policy_audit(self):
+        for kind, namespace, label, name in (
+            ("NetworkPolicy", "ai", "comfyui", "comfyui-0"),
+            ("NetworkPolicy", "observability", "loki", "loki-0"),
+            ("CiliumNetworkPolicy", "observability", "loki", "loki-0"),
+            ("CiliumClusterwideNetworkPolicy", None, "loki", "loki-0"),
+        ):
+            with self.subTest(kind=kind, pod=name), redirect_stdout(io.StringIO()):
+                snapshot = self.installed_snapshot()
+                pod_labels = {"matchLabels": {"app.kubernetes.io/name": label}}
+                if kind == "NetworkPolicy":
+                    rules = {"podSelector": pod_labels, "policyTypes": ["Ingress"], "ingress": []}
+                else:
+                    rules = {"endpointSelector": pod_labels, "ingressDeny": [{"fromEntities": ["all"]}]}
+                document = {"kind": kind, "metadata": {"name": "unexpected-control-ingress"}, "spec": rules}
+                if namespace:
+                    document["metadata"]["namespace"] = namespace
+                snapshot[int(namespace is None)]["items"].append(document)
+                with self.assertRaisesRegex(ValueError, f"ingress policy .* selects isolation control .+/{name}"):
+                    check_installed_policies(snapshot, stage_repo=Path.cwd())
+
+    def test_control_requires_ready_pod_and_cilium_endpoint_for_its_uid(self):
+        for damage in ("readiness", "uid"):
+            with self.subTest(damage=damage), redirect_stdout(io.StringIO()):
+                snapshot = self.installed_snapshot()
+                pod, endpoint = snapshot[4]["items"]
+                if damage == "readiness":
+                    pod["status"]["conditions"][0]["status"] = "False"
+                else:
+                    endpoint["metadata"]["ownerReferences"][0]["uid"] = "replaced-pod"
+                with self.assertRaisesRegex(ValueError, "Ready isolation control pod|missing installed Cilium endpoint"):
+                    check_installed_policies(snapshot, stage_repo=Path.cwd())
 
 
 class ProofLogTest(unittest.TestCase):
