@@ -81,6 +81,8 @@ jobs:
           node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/night-claim.mjs
           node --check kubernetes/main/apps/upgrade-agent/shepherd/app/resources/night-summary.mjs
           jq -e . kubernetes/main/apps/upgrade-agent/shepherd/app/resources/upgrade-rules.json > /dev/null
+      - name: Z-Wave policy planner (OP644, no device adapter)
+        run: nice -n 19 node --test scripts/upgrade-agent/zwave/plan.test.mjs
       - name: Classifier, rules and check-map drift
         run: nice -n 19 node scripts/upgrade-agent/lane-classify-selftest.mjs
       - name: Dry-run tick against stubs
