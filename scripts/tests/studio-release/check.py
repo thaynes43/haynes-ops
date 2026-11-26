@@ -39,6 +39,7 @@ RENDER_EXPORT = (
     "uv", "export", "--locked", "--no-default-groups", "--no-emit-project",
     "--no-annotate", "--no-header", "--no-hashes", "--python", "3.12",
 )
+RENDER_INPUTS = ("pyproject.toml", "uv.lock")
 MEDIA_ROUTES = ("claim", "heartbeat", "publish", "complete", "fail")
 PREDECESSOR_LISTENER = "studio-media-worker-routes-cbf48cht27"
 PREDECESSOR_LISTENER_SHA256 = "f8b500a868d689f51ee5a0239a6208580d25790a36511b1a2b3069c973b736f1"
@@ -137,13 +138,25 @@ def studio_image_digest(image, revision):
     return digest
 
 
-def studio_source(revision, name):
-    url = f"https://raw.githubusercontent.com/thaynes43/haynes-studio/{revision}/src/haynes_studio/{name}"
+@cache
+def published_studio_file(revision, name):
+    url = f"https://raw.githubusercontent.com/thaynes43/haynes-studio/{revision}/{name}"
     with urlopen(url, timeout=15) as response:
-        data = response.read(256 * 1024 + 1)
-    if len(data) > 256 * 1024:
+        data = response.read(4 * 1024 * 1024 + 1)
+    if len(data) > 4 * 1024 * 1024:
         raise ValueError(f"published Studio source is too large: {name}")
     return data
+
+
+def studio_source(revision, name):
+    return published_studio_file(revision, f"src/haynes_studio/{name}")
+
+
+def same_render_inputs(previous, revision):
+    return previous == revision or all(
+        published_studio_file(previous, name) == published_studio_file(revision, name)
+        for name in RENDER_INPUTS
+    )
 
 
 def check_release_migration(revision):
@@ -206,11 +219,9 @@ def check_listener_auth(routes, auth):
 
 def export_render_requirements(revision):
     """Export the offline worker requirements from the selected Studio lock."""
-    source = f"https://raw.githubusercontent.com/thaynes43/haynes-studio/{revision}"
     with TemporaryDirectory(prefix="studio-render-lock-") as directory:
-        for name in ("pyproject.toml", "uv.lock"):
-            with urlopen(f"{source}/{name}", timeout=15) as response:
-                Path(directory, name).write_bytes(response.read(4 * 1024 * 1024 + 1))
+        for name in RENDER_INPUTS:
+            Path(directory, name).write_bytes(published_studio_file(revision, name))
         requirements = subprocess.check_output(RENDER_EXPORT, cwd=directory, text=True)
         uv = subprocess.check_output(["uv", "--version"], text=True).split()[1]
     return (
@@ -251,7 +262,8 @@ def repin(path, revision, publish_run):
         f'# Successful "Studio images" publish from haynes-studio main, run {publish_run}.\n'
         f"revision: {revision}\napiDigest: {api}\nwebDigest: {web}\n"
     )
-    updates[path.with_name("studio-render") / "app/requirements.txt"] = export_render_requirements(revision)
+    if not same_render_inputs(previous["revision"], revision):
+        updates[path.with_name("studio-render") / "app/requirements.txt"] = export_render_requirements(revision)
     for file, content in updates.items():
         file.write_text(content, encoding="utf-8")
 
@@ -1377,6 +1389,10 @@ def check(path):
     check_listener_auth(studio_source(release["revision"], "api/run_routes.py"),
                         studio_source(release["revision"], "api/auth.py"))
 
+    if any(entry["name"] == "STUDIO_PAUSED_RECONCILE"
+           for spec in api_pod["containers"] + api_pod.get("initContainers", [])
+           for entry in spec.get("env", [])):
+        raise ValueError("STUDIO_PAUSED_RECONCILE must be unset in the rendered API Deployment")
     api_env = env(api, "api")
     worker_env = env(worker)
     revision = f"git:{release['revision']}"
@@ -1389,8 +1405,9 @@ def check(path):
 
     offline_lock = (path.with_name("studio-render") / "app/requirements.txt").read_text()
     requirements = offline_lock.splitlines()
+    provenance = re.search(r"(?m)^# ([0-9a-f]{40}) \(Python 3\.12, linux x86_64\)\.$", offline_lock)
     if ([line for line in requirements if line.startswith("av==")] != ["av==18.1.1"]
-            or f"# {release['revision']} (Python 3.12, linux x86_64)." not in requirements):
+            or not provenance or not same_render_inputs(provenance[1], release["revision"])):
         raise ValueError("offline render must export PyAV 18.1.1 from the same Studio release lock")
     check_render_turnover(path, offline_lock)
     check_packaged_register(app + media, ((api, "api"), (worker, None), (voice, None), (image, None)))

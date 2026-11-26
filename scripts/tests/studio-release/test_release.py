@@ -5,11 +5,13 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import unittest
 from contextlib import ExitStack, redirect_stdout
 from hashlib import sha256
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import yaml
@@ -67,6 +69,7 @@ class ReleaseFixture:
             "db/migrations/versions/0013_matte_jobs.py": REVIEWED_MIGRATION,
         }
         self.enterContext(patch.object(guard, "studio_source", side_effect=lambda _, path: sources[path]))
+        self.enterContext(patch.object(guard, "published_studio_file", side_effect=lambda _, name: name.encode()))
         self.enterContext(patch.object(guard, "MIGRATION_0013_SHA256", sha256(REVIEWED_MIGRATION).hexdigest()))
         configs = {}
         for backend, contract in contracts.items():
@@ -173,6 +176,32 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
         with (
             patch.object(guard, "render", side_effect=lambda path: changed if path == stage else render(path)),
             self.assertRaisesRegex(ValueError, expected),
+        ):
+            guard.check(STUDIO)
+
+    def test_rendered_api_refuses_the_paused_lane_switch_even_when_set_to_zero(self):
+        def add_switch(documents):
+            api = guard.resource(documents, "Deployment", "studio-api")
+            guard.container(api, "api")["env"].append({"name": "STUDIO_PAUSED_RECONCILE", "value": "0"})
+
+        self.check_refuses_rendered_mutation(STUDIO / "app", add_switch, "STUDIO_PAUSED_RECONCILE must be unset")
+
+    def test_render_lock_provenance_refuses_a_different_target_lock(self):
+        lock = (STUDIO.with_name("studio-render") / "app/requirements.txt").read_text()
+        revision = yaml.safe_load((STUDIO / "release.yaml").read_text())["revision"]
+        other_revision = "a" * 40
+        altered = re.sub(r"(?m)^# [0-9a-f]{40} ", f"# {other_revision} ", lock, count=1)
+
+        def files(commit, name):
+            if name == "uv.lock" and commit == revision:
+                return b"different target lock"
+            return name.encode()
+
+        requirements = STUDIO.with_name("studio-render") / "app/requirements.txt"
+        with (
+            self.override_source(requirements, altered),
+            patch.object(guard, "published_studio_file", side_effect=files),
+            self.assertRaisesRegex(ValueError, "must export PyAV 18.1.1 from the same Studio release lock"),
         ):
             guard.check(STUDIO)
 
@@ -317,6 +346,39 @@ def change(document, keys, value):
                     if isinstance(document, list) and isinstance(key, str) else document[key])
     key = keys[-1]
     document[key] = value(document[key]) if callable(value) else value
+
+
+class RepinTest(unittest.TestCase):
+    def test_repin_preserves_the_export_only_when_both_inputs_are_unchanged(self):
+        new_revision = "b" * 40
+        with TemporaryDirectory(prefix="studio-pin-test-") as directory:
+            root = Path(directory)
+            path = root / "studio"
+            offline = root / "studio-render/app/requirements.txt"
+            offline.parent.mkdir(parents=True)
+            for changed in (None, "pyproject.toml", "uv.lock"):
+                with self.subTest(changed=changed):
+                    for name in (*guard.PIN_FILES, "release.yaml"):
+                        (path / name).parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(STUDIO / name, path / name)
+                    offline.write_text("existing rendered export\n")
+
+                    def published_file(revision, name):
+                        return b"changed" if (revision, name) == (new_revision, changed) else name.encode()
+
+                    with (
+                        patch.object(guard, "published_studio_file", side_effect=published_file),
+                        patch.object(guard, "studio_image_digest", side_effect=("sha256:" + "b" * 64, "sha256:" + "c" * 64)),
+                        patch.object(guard, "export_render_requirements", return_value="new export\n") as export,
+                    ):
+                        guard.repin(path, new_revision, "1")
+                    self.assertEqual(yaml.safe_load((path / "release.yaml").read_text())["revision"], new_revision)
+                    if changed:
+                        export.assert_called_once_with(new_revision)
+                        self.assertEqual(offline.read_text(), "new export\n")
+                    else:
+                        export.assert_not_called()
+                        self.assertEqual(offline.read_text(), "existing rendered export\n")
 
 
 class IdleGateTest(unittest.TestCase):

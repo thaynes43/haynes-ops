@@ -1,6 +1,7 @@
-"""Run each OP967 runbook block with no cluster access and errexit suppressed."""
+"""Run the Studio release blocks with no cluster access and errexit suppressed."""
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -11,12 +12,24 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
 
 STUDIO = Path("kubernetes/main/apps/ai/studio")
-RELEASE = yaml.safe_load((STUDIO / "release.yaml").read_text())
+SOURCE_PIN = yaml.safe_load((STUDIO / "release.yaml").read_text())
+FIFTH = {
+    "revision": "eeeb2a40105ae1e64325063b0aa93c890fdefa43",
+    "apiDigest": "sha256:1614b3f8355cd062402646720586a62c252007adb028bf6ba2239d94e4cd6115",
+    "webDigest": "sha256:e53e2d1fc7d2dbb916a58fe1ec6c3822a7eacc7074623cc9f547a51591a46122",
+}
+RELEASE = {
+    "revision": "470a90af73a2201e6542b5d867853dce6facad04",
+    "apiDigest": "sha256:c13c8ad74dfb4a4fe14bd9ed037bae8eacccaa05925e8b45453825ff84580f5a",
+    "webDigest": "sha256:da1ffb93df2ada155de20600142c4dc2368ec642dcf37aff979d22521142b7df",
+}
+PIN_KEYS = ("revision", "apiDigest", "webDigest")
 OLD = ("80975a9e958d0bed78ab530c2b20f1279bf7ebe6",
        "sha256:08ac310f246cdc43225478e9496e480af6430b53751f4ae93f3e34206714c3e7",
        "sha256:497e020b8846f09cdeab6d822aa1536dfeb325edd26205cd6e28f0061bb6d9ca")
@@ -119,7 +132,8 @@ def pods(workload):
             for name, digest in names.items()
         }
         result.append({
-            "metadata": {"name": pod, "uid": pod, "labels": {"app.kubernetes.io/name": "studio-" + workload}},
+            "metadata": {"name": pod, "uid": data.get("render_uid", pod) if workload == "render" else pod,
+                         "labels": {"app.kubernetes.io/name": "studio-" + workload}},
             "spec": {
                 "nodeName": "talosw01" if workload in {"worker", "render"} else f"other-{index}",
                 "containers": [
@@ -336,7 +350,7 @@ elif cmd == "kubectl":
             print("diagnostic before JSON")
             emit({"irrelevant": "first JSON object"})
             if container == "migrate":
-                if job.endswith(old_job_suffix):
+                if job.endswith(old_job_suffix) and data["old_schema"] == "0012_release_constraints":
                     print("Alembic revision: 0012_release_constraints")
                 else:
                     emit({"revision": "0013_matte_jobs", "user": "studio_migrator", "database": "studio",
@@ -351,22 +365,27 @@ elif cmd == "kubectl":
                 emit({"worker_id": "studio-" + result})
         case ["exec", *options]:
             if options[:2] == ["-i", "deploy/studio-mcp"]:
-                program = options[-2]
+                program = sys.stdin.read()
                 if not all(expected in program for expected in (
-                    "traefik-internal.network.svc.cluster.local", "server_hostname=host",
-                    'host = "studio.haynesops.com"', "GET {path}", "Host: {host}",
+                    "traefik-internal.network.svc.cluster.local", "server_hostname=HOST",
+                    'HOST = "studio.haynesops.com"', "GET {path}", "Host: {HOST}",
                 )):
                     sys.exit(88)
-                print("401" if options[-1] == "/v1/me" else "200")
+                if options[-1] == "format":
+                    if data.get("missing_format"):
+                        sys.exit(1)
+                    print("HTTP 200 /assets/index-test.js: matched Format markers")
+                else:
+                    print("401" if options[-1] == "/v1/me" else "200")
             elif options[:2] == ["-i", "postgres16-primary"]:
                 if "default_transaction_read_only=on" not in " ".join(options):
                     sys.exit(89)
-                print(data.get("catalogue", "0012_release_constraints"))
+                print(data.get("catalogue", data["old_schema"]))
             elif "/v1/ready" in options[-1]:
                 emit({"ready": True, "active_video_job": None, "active_foley_job": data.get("active_foley")})
             elif options[-1].endswith("/queue"):
                 emit({"queue_running": [], "queue_pending": []})
-            elif options[-2] in {"preflight", "retry-preflight", "retry-preflight-0013",
+            elif options[-2] in {"preflight", "preflight-0013", "retry-preflight", "retry-preflight-0013",
                                 "postflight", "rollback-baseline", "compare"}:
                 mode, expected_build = options[-2:]
                 if expected_build != revision or options[1] not in {"api-0", "api-1"}:
@@ -381,14 +400,16 @@ elif cmd == "kubectl":
                 emit({"wrong": "first JSON object"})
                 emit(data["snapshot"])
             elif any("Idle render venv complete" in arg for arg in options):
-                if "Idle render venv complete" in options[-2]:
-                    version = data.get("render_version", "18.1.0")
-                    if (data.get("render_busy") or version not in {"18.1.0", "18.1.1"}
-                            or (version == "18.1.1" and options[-1] != "retry")):
-                        sys.exit(1)
-                    print(f"Idle render venv complete (PyAV {version})")
+                version = data["render_version"]
+                if data.get("render_busy") or version not in options[options.index("-c", 4) + 2:]:
+                    sys.exit(1)
+                print(f"Idle render venv complete (PyAV {version})")
+            elif any('STUDIO_PAUSED_RECONCILE=' in arg for arg in options):
+                if options[0] == data.get("paused_reconcile_pod"):
+                    sys.exit(1)
             elif any("av.library_versions" in arg for arg in options):
-                emit({"pyav": "18.1.0" if options[0] == data.get("stale_encoder") else "18.1.1", "libraries": {f"libav{name}": [1, 2, 3] for name in (
+                emit({"pyav": "18.1.0" if options[0] == data.get("stale_encoder") else "18.1.1",
+                      "libraries": {f"libav{name}": data.get("encoder_libraries", [1, 2, 3]) for name in (
                     "codec", "format", "filter", "util", "device", "video", "audio"
                 )}})
         case _:
@@ -398,13 +419,20 @@ else:
 '''
 
 
-class PhaseTest(unittest.TestCase):
+class ReleasePhases(unittest.TestCase):
+    profile = "op967"
+    page = "fourth"
+    release = RELEASE
+    predecessor = OLD
+    old_schema = "0012_release_constraints"
+    old_encoder = "18.1.0"
+
     @classmethod
     def setUpClass(cls):
-        page = Path("docs/reference/studio-fourth-release.md").read_text()
+        page = Path(f"docs/reference/studio-{cls.page}-release.md").read_text()
         cls.blocks = {}
         for block in re.findall(r"(?ms)^```bash\n(.*?)^```$", page):
-            phase = re.search(r"bash scripts/studio-release/op967\.sh ([\w-]+)", block)
+            phase = re.search(r"bash scripts/studio-release/op967\.sh (?:op978 )?([\w-]+)", block)
             if phase:
                 cls.blocks[phase[1]] = block
 
@@ -417,6 +445,8 @@ class PhaseTest(unittest.TestCase):
         self.checkout = self.root / "checkout"
         self.checkout.mkdir()
         shutil.copytree(STUDIO, self.checkout / STUDIO)
+        if self.release != SOURCE_PIN:
+            self.replace_pin(SOURCE_PIN, self.release)
         bootstrap = Path("kubernetes/main/flux/config/cluster.yaml")
         (self.checkout / bootstrap.parent).mkdir(parents=True)
         (self.checkout / bootstrap).write_text(bootstrap.read_text())
@@ -436,9 +466,20 @@ class PhaseTest(unittest.TestCase):
             "paths": {stage: f"./kubernetes/main/apps/ai/studio/{stage}" for stage in STAGES}
             | {"studio": "./kubernetes/main/apps/ai/studio/app"},
             "edited": EDITED, "rewired": REWIRED,
-            "new": [RELEASE[key] for key in ("revision", "apiDigest", "webDigest")],
-            "old": OLD, "workloads": "old", "snapshot": SNAPSHOT,
+            "new": [self.release[key] for key in PIN_KEYS],
+            "old": self.predecessor, "workloads": "old", "snapshot": SNAPSHOT,
+            "old_schema": self.old_schema, "render_version": self.old_encoder,
         }
+
+    def replace_pin(self, old, new):
+        # Exercise both pinned workload pairs on either side of an Ops revert.
+        for manifest in (self.checkout / STUDIO).rglob("*.yaml"):
+            original = source = manifest.read_text()
+            for key in PIN_KEYS:
+                source = source.replace(old[key], new[key])
+            source = source.replace(old["apiDigest"][7:19], new["apiDigest"][7:19])
+            if source != original:
+                manifest.write_text(source)
 
     def admit(self, **changes):
         data = {
@@ -461,14 +502,15 @@ class PhaseTest(unittest.TestCase):
             "PATH": f"{self.root}:{Path(sys.executable).parent}:{os.environ['PATH']}",
             "FIXTURE": json.dumps({**self.data, **changes}),
             "COMMAND_LOG": str(self.log), "CLOCK_FILE": str(clock),
-            "STUDIO_OP967_RECEIPT": str(self.receipt),
-            "STUDIO_OP967_BASELINE": str(self.baseline), "MERGED_OPS_REVISION": selected,
-            "STUDIO_OP967_ROLLBACK_BASELINE": str(self.rollback_baseline),
+            f"STUDIO_{self.profile.upper()}_RECEIPT": str(self.receipt),
+            f"STUDIO_{self.profile.upper()}_BASELINE": str(self.baseline), "MERGED_OPS_REVISION": selected,
+            f"STUDIO_{self.profile.upper()}_ROLLBACK_BASELINE": str(self.rollback_baseline),
             "ROLLBACK_OPS_REVISION": ROLLBACK if phase == "compare" else "", **(extra_env or {}),
         }
         # The documented if ! bash ... suppresses errexit throughout the sourced
         # phase. This exercises the explicit gates in the same shell context.
-        block = (f'if ! bash scripts/studio-release/op967.sh admit-merge {mode}; then exit 1; fi'
+        flag = "op978 " if self.profile == "op978" else ""
+        block = (f'if ! bash scripts/studio-release/op967.sh {flag}admit-merge {mode}; then exit 1; fi'
                  if phase == "admit-merge" else self.blocks[phase])
         runner = 'set -e\nbash() { ( source "$@" ); }\n' + block
         result = subprocess.run(
@@ -478,6 +520,32 @@ class PhaseTest(unittest.TestCase):
         self.assertEqual(result.returncode, expected, result.stderr)
         return result, [json.loads(line) for line in self.log.read_text().splitlines()]
 
+    def prepare_retry(self):
+        failed_merge_time = NOW - 7200
+        self.run_phase("preflight", head=REVIEWED_HEAD, tree=FAILED_TREE, now=failed_merge_time - 100)
+        first_receipt = self.receipt
+        first_baseline = self.baseline
+        paths = (STUDIO / "migration/job.yaml", STUDIO / "ks.yaml")
+        previous_source = {str(path): (self.checkout / path).read_text() for path in paths}
+        old_job = next(doc["metadata"]["name"] for doc in yaml.safe_load_all(previous_source[str(paths[0])])
+                       if doc["kind"] == "Job")
+        for path in paths:
+            (self.checkout / path).write_text(previous_source[str(path)].replace(f"name: {old_job}", f"name: {old_job}-r1"))
+        self.data.update(
+            terminal_job=old_job, predecessor_pruned=True, previous_source=previous_source,
+            known_merges={FAILED_HEAD: failed_merge_time},
+            ancestry=[[FAILED_HEAD, HEAD], [FAILED_HEAD, RETRY_HEAD]],
+            known_trees={REVIEWED_HEAD: FAILED_TREE, FAILED_HEAD: FAILED_TREE, HEAD: TREE, RETRY_HEAD: TREE},
+        )
+        self.receipt = self.root / "retry-receipt"
+        self.baseline = self.root / "retry-baseline"
+        prefix = f"STUDIO_{self.profile.upper()}"
+        return first_receipt, first_baseline, {
+            f"{prefix}_FAILED_OPS_REVISION": FAILED_HEAD, f"{prefix}_PREVIOUS_RECEIPT": str(first_receipt),
+        }
+
+
+class PhaseTest(ReleasePhases):
     def test_preflight_records_checks_baseline_and_four_old_job_logs(self):
         self.run_phase("preflight", head=REVIEWED_HEAD)
         receipt = json.loads(self.receipt.read_text())
@@ -819,29 +887,6 @@ class PhaseTest(unittest.TestCase):
                 self.assertIn("FAIL selected fourth-pin Ops revision on main", result.stderr)
                 self.assertFalse(any(call[0] == "kubectl" for call in calls))
 
-    def prepare_retry(self):
-        failed_merge_time = NOW - 7200
-        self.run_phase("preflight", head=REVIEWED_HEAD, tree=FAILED_TREE, now=failed_merge_time - 100)
-        first_receipt = self.receipt
-        first_baseline = self.baseline
-        paths = (STUDIO / "migration/job.yaml", STUDIO / "ks.yaml")
-        previous_source = {str(path): (self.checkout / path).read_text() for path in paths}
-        old_job = next(doc["metadata"]["name"] for doc in yaml.safe_load_all(previous_source[str(paths[0])])
-                       if doc["kind"] == "Job")
-        for path in paths:
-            (self.checkout / path).write_text(previous_source[str(path)].replace(f"name: {old_job}", f"name: {old_job}-r1"))
-        self.data.update(
-            terminal_job=old_job, predecessor_pruned=True, previous_source=previous_source,
-            known_merges={FAILED_HEAD: failed_merge_time},
-            ancestry=[[FAILED_HEAD, HEAD], [FAILED_HEAD, RETRY_HEAD]],
-            known_trees={REVIEWED_HEAD: FAILED_TREE, FAILED_HEAD: FAILED_TREE, HEAD: TREE, RETRY_HEAD: TREE},
-        )
-        self.receipt = self.root / "retry-receipt"
-        self.baseline = self.root / "retry-baseline"
-        return first_receipt, first_baseline, {
-            "STUDIO_OP967_FAILED_OPS_REVISION": FAILED_HEAD, "STUDIO_OP967_PREVIOUS_RECEIPT": str(first_receipt),
-        }
-
     def test_retry_preflight_uses_archives_and_accepts_either_idle_render_environment(self):
         first_receipt, first_baseline, env = self.prepare_retry()
         for version, state, snapshot_phase in (
@@ -911,19 +956,119 @@ class PhaseTest(unittest.TestCase):
                         path.write_text(clean_source)
 
 
+class FifthPinPhaseTest(ReleasePhases):
+    profile = "op978"
+    page = "fifth"
+    release = FIFTH
+    predecessor = tuple(RELEASE[key] for key in PIN_KEYS)
+    old_schema = "0013_matte_jobs"
+    old_encoder = "18.1.1"
+
+    def test_preflight_and_postflight_preserve_the_render_and_read_the_format_bundle(self):
+        _, calls = self.run_phase("preflight", head=REVIEWED_HEAD)
+        baseline = json.loads(self.baseline.read_text())
+        self.assertEqual(baseline["render_uid"], "render-0")
+        self.assertEqual(baseline["encoder"]["pyav"], "18.1.1")
+        self.assertEqual(json.loads(self.receipt.read_text())["schema"], "studio-op978/v3")
+        self.assertTrue(any("preflight-0013" in call for call in calls))
+        self.assertIn(self.old_schema, (self.receipt.with_suffix(".json.jobs") / "migrate.log").read_text())
+        self.run_phase("wait", workloads="new")
+        result, calls = self.run_phase("postflight", workloads="new")
+        for evidence in ("offline render pod UID unchanged",
+                         "encoder build and libraries unchanged at all six locations",
+                         "served web entry bundle contains the Format control"):
+            self.assertIn(f"PASS {evidence}", result.stderr)
+        checked_pods = {call[4] for call in calls if any("STUDIO_PAUSED_RECONCILE=" in arg for arg in call)}
+        self.assertEqual(checked_pods, {"api-0", "api-1"})
+        self.assertTrue(any(call[-1] == "format" for call in calls))
+
+    def test_postflight_refuses_drift_and_missing_evidence(self):
+        self.run_phase("preflight", head=REVIEWED_HEAD)
+        for label, changes in (
+            ("offline render pod UID unchanged", {"render_uid": "replaced"}),
+            ("encoder build and libraries unchanged", {"encoder_libraries": [1, 2, 4]}),
+            ("one PyAV 18.1.1 encoder", {"stale_encoder": "render-0"}),
+            ("paused-lane reconcile unset on both API pods", {"paused_reconcile_pod": "api-1"}),
+            ("served web entry bundle contains the Format control", {"missing_format": True}),
+            ("offline render pod UID unchanged", {"extra_env": {"STUDIO_OP978_BASELINE": ""}}),
+        ):
+            with self.subTest(label=label, changes=changes):
+                result, calls = self.run_phase("postflight", expected=1, workloads="new", **changes)
+                self.assertIn(f"FAIL {label}", result.stderr)
+                self.assertEqual(PhaseTest.route_calls(calls), [])
+
+    def test_preflight_and_retry_require_the_existing_0013_catalogue(self):
+        result, _ = self.run_phase("preflight", expected=1, catalogue="0012_release_constraints")
+        self.assertIn("FAIL catalogue is verified 0013_matte_jobs", result.stderr)
+        self.receipt.unlink()
+        _, original_baseline, env = self.prepare_retry()
+        result, _ = self.run_phase("retry-preflight", expected=1, extra_env=env, catalogue="0012_release_constraints")
+        self.assertIn("FAIL catalogue is verified 0013_matte_jobs", result.stderr)
+        self.receipt.unlink()
+        self.run_phase("retry-preflight", extra_env=env)
+        self.assertEqual(self.baseline.read_bytes(), original_baseline.read_bytes())
+
+    def test_rollback_preflight_on_reverted_pins_and_compare_from_forward_merge(self):
+        forward = {str(path): (self.checkout / path).read_text()
+                   for path in (STUDIO / "release.yaml", STUDIO / "migration/job.yaml")}
+        self.replace_pin(FIFTH, RELEASE)
+        self.run_phase("rollback-preflight", head=REVIEWED_HEAD, workloads="new", previous_source=forward)
+        self.rollback_baseline.write_bytes(self.baseline.read_bytes())
+        self.replace_pin(RELEASE, FIFTH)
+        self.run_phase("compare", artifact=ROLLBACK)
+
+
+class IngressProbeTest(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("studio_ingress", "scripts/studio-release/op967-ingress.py")
+        self.probe = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.probe)
+
+    def test_format_probe_follows_the_same_origin_entry_module(self):
+        page = (
+            200, "text/html", b'<script type="module" crossorigin src="/assets/index-V1_ab.js"></script>',
+        )
+        bundle = (200, "application/javascript", b'story-format-section "Format version" "Format settings saved."')
+        with patch.object(self.probe, "get", side_effect=(page, bundle)) as get:
+            self.probe.check_format()
+        self.assertEqual([call.args[0] for call in get.call_args_list], ["/", "/assets/index-V1_ab.js"])
+
+    def test_format_probe_refuses_wrong_assets_and_incomplete_markers(self):
+        entry = b'<script type="module" src="/assets/index-local.js"></script>'
+        for page, bundle, error in (
+            (entry.replace(b'src="/', b'src="//example.test/'), None, "expected one Vite entry"),
+            (entry * 2, None, "expected one Vite entry"),
+            (entry, (200, "text/html", entry), "expected JavaScript"),
+            (entry, (301, "application/javascript", b""), "expected JavaScript"),
+            (entry, (200, "application/javascript", b"story-format-section Format version"), "missing Format markers"),
+        ):
+            with (
+                self.subTest(error=error, page=page),
+                patch.object(self.probe, "get", side_effect=((200, "text/html", page), bundle)),
+                self.assertRaisesRegex(ValueError, error),
+            ):
+                self.probe.check_format()
+
+
 class StartupTest(unittest.TestCase):
+    PAGES = (
+        Path("docs/reference/studio-fourth-release.md"),
+        Path("docs/reference/studio-fifth-release.md"),
+    )
+
     def test_runbook_and_entrypoint_parse_as_bash(self):
         subprocess.run(["bash", "-n", "scripts/studio-release/op967.sh"], check=True, capture_output=True)
-        page = Path("docs/reference/studio-fourth-release.md").read_text()
-        for block in re.findall(r"(?ms)^```bash\n(.*?)^```$", page):
-            subprocess.run(["bash", "-n"], input=block, text=True, check=True, capture_output=True)
+        for page in self.PAGES:
+            for block in re.findall(r"(?ms)^```bash\n(.*?)^```$", page.read_text()):
+                subprocess.run(["bash", "-n"], input=block, text=True, check=True, capture_output=True)
 
     # Each exec fingerprint includes its argv, inline payload and stdin path.
     READ_ONLY_EXEC = {
         "5ea47b89e3acb3c5705d891b641eecc557b7fd48553acf844c692ce38befdc92": "primary catalogue",
         "54f3c38253799b5510413b52393d6e2404be9ed542bf6930a557c00b981b42cf": "dependency HTTP GET",
-        "6bfee002bd87f6b4df61c5ea4143d527ae66e28315da4ccb6954a25f476c0408": "idle render venv",
-        "fe7b2a92d56c9af4d76fbdb0a7226d5207d5baaa83685ee51e124e492e29cb75": "anonymous ingress GET",
+        "2342d8f12de147341a4671b93c7e88528180bcf64cbe6c11574fc4d2a2fddf48": "idle render venv",
+        "a5e12311285fdbdb2d2810670d69283cdfce55f8a30cce1b99a4bce710bd832f": "anonymous ingress GETs",
+        "dd775112b83e3dfbfd1083a118303675445e49567a3a6bbdccb47eddc8c871aa": "API process switch presence",
         "f5cb0a67b4ece341568593db5ceb79ac603a55cbf33fb310850ba43bf401a5a1": "data snapshot",
         "20594027b779a9b6497fc7796dbd64f1e2124b2ec52f46a678769b0a236ec712": "encoder version",
         "b23bd15302a967ce2823defe1ada2ea092df7d685920bd4ebe53aa5411ebebf7": "worker engine reachability",
@@ -1002,7 +1147,7 @@ class StartupTest(unittest.TestCase):
             case "read_endpoint":
                 self.assertIn(argv, self.DEPENDENCY_READS, detail)
             case "bash":
-                self.assertRegex(" ".join(argv), r"^scripts/studio-release/op967\.sh "
+                self.assertRegex(" ".join(argv), r"^scripts/studio-release/op967\.sh (?:op978 )?"
                                  r"(?:preflight|retry-preflight|rollback-preflight|wait|postflight|verify|compare"
                                  r"|admit-merge(?: retry| rollback)?)$")
             case _:
@@ -1045,13 +1190,14 @@ class StartupTest(unittest.TestCase):
 
     def test_runbook_and_entrypoint_have_no_cluster_writes(self):
         script = Path("scripts/studio-release/op967.sh").read_text()
-        page = Path("docs/reference/studio-fourth-release.md").read_text()
-        blocks = re.findall(r"(?ms)^```[^\n]*\n(.*?)^```$", page)
+        blocks = [block for page in self.PAGES
+                  for block in re.findall(r"(?ms)^```[^\n]*\n(.*?)^```$", page.read_text())]
         seen = set().union(*(self.audit_commands(source) for source in [script, *blocks]))
         self.assertEqual(seen, self.READ_ONLY_EXEC.keys())
         for name, checksum in (
             ("op967-data.py", "631cf55975dd6a955b3024380f3d30d2b79bb0b704e6006a4f5804b76fc27bc8"),
             ("op967-catalogue.sql", "d0fc7dcf3a6bb140578b3ce0e4dd39f6d8515068f54c1fd07fef2caaf5750aa6"),
+            ("op967-ingress.py", "48c1a73a51b29a10d2f0f07a25bb84cfe4f57878abde0d4de51448d8d597818a"),
             ("op967-routes.py", "c88b91bc1d995f937de076b6a31bba5012cc28ec17cb8130779a0a8b00379359"),
         ):
             self.assertEqual(hashlib.sha256(Path("scripts/studio-release", name).read_bytes()).hexdigest(),
