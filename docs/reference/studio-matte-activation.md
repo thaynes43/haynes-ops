@@ -234,3 +234,21 @@ postflight after merging the reviewed retry.
 bash scripts/studio-release/op970.sh retry-preflight &&
   bash scripts/studio-release/op970.sh admit-merge retry
 ```
+
+### Retire listener ConfigMap protection (Expected)
+
+The generator's prune exclusion protects the current listener ConfigMap when
+rollback replaces it. It also applies to future hashes while the option remains
+in Git. After postflight and once the coordinator closes this rollback window,
+remove the generator's `options.annotations` entry from
+`studio/app/kustomization.yaml` in a reviewed PR before changing the listener
+routes again. In the same PR remove the prune annotation from
+`studio/app/media-worker-routes-op964.yaml` while keeping that file and its
+resource entry. Update the release guard's two listener retention expectations
+and keep its route and mount checks. Wait for Flux to clear both live
+annotations.
+
+When no API pod mounts the five-route ConfigMap, remove
+`studio/app/media-worker-routes-op964.yaml` and its resource entry in a second
+reviewed PR. Flux can then prune that ConfigMap and resume normal pruning of
+future generated listener hashes. Both changes use reviewed GitOps PRs.
