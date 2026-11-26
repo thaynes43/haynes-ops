@@ -33,7 +33,7 @@ spec:
               - secretRef:
                   name: appdaemon-secret
             probes:
-              liveness: &probes
+              liveness:
                 enabled: true
                 custom: true
                 spec:
@@ -43,8 +43,18 @@ spec:
                   initialDelaySeconds: 5
                   periodSeconds: 10
                   timeoutSeconds: 3
+                  failureThreshold: 18
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/appdaemon
+                    port: *port
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                  timeoutSeconds: 3
                   failureThreshold: 3
-              readiness: *probes
               startup:
                 enabled: true
                 custom: true
