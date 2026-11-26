@@ -13,6 +13,7 @@ configMapGenerator:
   - name: alert-responder-scripts
     files:
       - resources/respond.sh
+      - resources/rescue-incident.sh
       - resources/prom-query.sh
       - resources/loki-query.sh
 generatorOptions:
