@@ -26,7 +26,6 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - kubernetes/main/apps/upgrade-agent/app/**
       - kubernetes/main/apps/upgrade-agent/shepherd/app/**
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/coordination-lib.sh
       - kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
@@ -40,7 +39,6 @@ on:
   push:
     branches: [main]
     paths:
-      - kubernetes/main/apps/upgrade-agent/app/**
       - kubernetes/main/apps/upgrade-agent/shepherd/app/**
       - kubernetes/main/apps/upgrade-agent/health-gate/app/resources/coordination-lib.sh
       - kubernetes/main/apps/upgrade-agent/alert-responder/app/resources/respond.sh
