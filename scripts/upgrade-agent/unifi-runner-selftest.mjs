@@ -7,10 +7,10 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { plexIdle, unifiClient } from '../../kubernetes/main/apps/upgrade-agent/app/resources/unifi-job.mjs';
-import { executeOne, inWindow, makeReport, parseApprovals, readDevices } from '../../kubernetes/main/apps/upgrade-agent/app/resources/unifi-runner.mjs';
+import { plexIdle, unifiClient } from '../../kubernetes/main/apps/upgrade-agent/unifi/app/resources/unifi-job.mjs';
+import { executeOne, inWindow, makeReport, parseApprovals, readDevices } from '../../kubernetes/main/apps/upgrade-agent/unifi/app/resources/unifi-runner.mjs';
 
-const app = new URL('../../kubernetes/main/apps/upgrade-agent/app/', import.meta.url);
+const app = new URL('../../kubernetes/main/apps/upgrade-agent/unifi/app/', import.meta.url);
 const exec = promisify(execFile);
 const now = Date.parse('2026-11-27T08:15:00Z');
 const iso = (time) => new Date(time).toISOString();

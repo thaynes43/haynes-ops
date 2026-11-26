@@ -25,7 +25,7 @@ reports their approvals for the operator and selects only unattended devices.
 
 ## Approvals
 
-Edit `kubernetes/main/apps/upgrade-agent/app/unifi-approvals.yaml` through a PR
+Edit `kubernetes/main/apps/upgrade-agent/unifi/app/unifi-approvals.yaml` through a PR
 after Tom approves the named device for a specific night. The file uses the JSON
 subset of YAML so the runner can parse it without a dependency. Use the exact
 device name and installed version from the inventory, the ID of Tom's tracker

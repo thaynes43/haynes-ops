@@ -12,7 +12,7 @@ spec:
       namespace: external-secrets
     - name: mcp-unifi
       namespace: observability
-  path: ./kubernetes/main/apps/upgrade-agent/app
+  path: ./kubernetes/main/apps/upgrade-agent/unifi/app
   prune: true
   sourceRef:
     kind: GitRepository
