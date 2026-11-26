@@ -6,3 +6,5 @@ metadata:
   annotations:
     # Flux seeds the ConfigMap. The Job owns its inventory and live-attempt data.
     kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+    # A pending or stopped live attempt must survive removal from the Flux inventory.
+    kustomize.toolkit.fluxcd.io/prune: disabled

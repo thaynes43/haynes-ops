@@ -52,11 +52,18 @@ attempt. With `UNIFI_LIVE_MODE: "false"`, successful pre-checks end with
 `would upgrade <device>`. The committed approvals list is empty.
 
 Tom's separate approval on OP657 is required before setting `UNIFI_LIVE_MODE` to
-`"true"` in `app/cronjob.yaml` through GitOps. Live mode checks the offer and Plex
-again and records a pending attempt before confirmation. The gate polls up to
+`"true"` in `app/cronjob.yaml` through GitOps. Activation also requires confirming
+that the MCP server's controller credential has firmware-upgrade permission. The
+read-only controller role documented for the shared MCP server can serve inventory
+and dry runs. Any change to that credential or a separate write-capable MCP endpoint
+belongs to the OP657 activation decision.
+
+Live mode checks the offer and Plex again and records a pending attempt before
+confirmation. The gate polls up to
 15 minutes for an AP or 30 for a switch, measured from baseline capture. The
 CronJob has no Job retries. A pending or stopped live attempt blocks later live
-runs until the operator resolves it. Read `last-run.json` for the latest result
+runs until the operator resolves it. Flux retains the inventory ConfigMap if it
+leaves the Kustomization's inventory. Read `last-run.json` for the latest result
 and `live-attempts.json` for the blocked or already used approvals.
 
 The Job uses the existing UniFi MCP bearer field and Plex session credentials
