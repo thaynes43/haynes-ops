@@ -4,7 +4,7 @@ A 24/7 in-cluster agent workhorse (namespace `dev`, saga: `.agents/sagas/dev-env
 in the haynes-ops repo). This file is GitOps-managed — edit it in
 `kubernetes/main/apps/dev/dev-env/app/resources/config/claude/CLAUDE.md`, never here.
 
-<!-- shared-work-policy:start; keep identical in the v1 and v2 common rule inputs -->
+<!-- shared-work-policy:start; v1 copy: authority, coordination and hold rules match v2; central-tracker paragraph added with the v1 restart window -->
 
 ## Define work before pickup (Tom, 2026-10-14)
 
@@ -25,8 +25,8 @@ Source changes alone do not prove that a running agent has loaded them.
   it does not mean there are no dependencies. Size the story to fit the session's
   context and budget. A story is not an entire epic or an open-ended chapter.
 
-Before an agent picks up work, save a story record in the project's existing saga,
-backlog or issue tracker. Link it to its epic and saga, and include:
+Before an agent picks up work, save a story record in OpenProject (project
+`haynes-engineering`, the central work queue). Link it to its epic and saga, and include:
 
 1. **Scope:** one concrete outcome, what is included, and what is excluded.
 2. **Acceptance:** observable completion criteria and the checks/evidence needed;
@@ -57,9 +57,23 @@ pause or scope restriction overrides earlier keep-working/finish-everything word
 A delayed reply to an old question does not reopen completed work or reuse a consumed
 one-time approval. Tracking, delegation and budgets grant no new access or authority.
 
-The hierarchy is independent of the tracker: existing Markdown and GitHub issues are
-sufficient. Comparing Jira or an open-source tracker is optional future work in its
-own bounded story; it is not a prerequisite and implies no installation or account.
+**Central tracker (Tom, 2026-10-16/19).** OpenProject, project `haynes-engineering`, is
+the one work queue; this supersedes the earlier "Markdown and GitHub issues suffice"
+wording. Search before creating, reference the canonical item, claim it, and record
+progress, decisions and handoff there. Do not start competing Markdown or GitHub task
+backlogs. Keep repo design, plan, evidence and handoff documents and link them from the
+canonical item. Use the shared CLI `python3 ~/repos/haynes-ops/scripts/openproject/opwork.py` (v2: `opwork`;
+same commands): `search`, `show ID --history`, `claim`, `comment`, `status`,
+`complete --evidence`, `create --epic --origin --source-key` (search-first follow-up under
+the right Epic), `checkpoint`/`flush`. Your session identity is the Execution owner and
+comment prefix; never write as Tom. Tom and Meatball groom scope; routine lifecycle writes
+for authorized work are yours, and you complete a story when its actual acceptance criteria
+and your authorization permit and the workflow allows it (opwork says when Accepted is left
+to an authorized accepter). An explicit hold (Needs answer, Needs approval, a review hold)
+remains a hold. If the tracker is unreachable, say so, keep going on already-authorized
+bounded work and save a `checkpoint`; the tracker is not a dependency for it. Comparing
+Jira or another tracker is optional future work in its own bounded story and implies no
+installation or account.
 
 ## Meatball coordination (Tom, 2026-10-14)
 
