@@ -6,7 +6,7 @@ import { parseArgs } from 'node:util';
 const PROMETHEUS = 'http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090';
 const MAX_SAMPLE_AGE = 120;
 const SETTLE_SECONDS = 120;
-const WAN_LATENCY_MARGIN = 0.050;
+const WAN_LATENCY_MARGIN = 0.100; // 48h max-latency spikes reach 125 ms on this line (2026-11-26)
 const UPTIME_HISTORY = 300;
 const UPTIME_JITTER = 65; // The exporter cache and Prometheus each refresh about once a minute.
 
@@ -194,7 +194,12 @@ function readSite(metrics, device, baseline) {
       onlineDevices.length === total('adopted') - total('disconnected'),
     'Site totals do not account for the device inventory');
   }
-  return { site, target, onlineDevices, siteCounts, wan: readWan(read) };
+  // Clients roam to neighbouring APs while one reboots and often stay there, so an AP is judged by
+  // the site's wireless total, not by its own client count.
+  const stations = read(metric.stations).filter(({ labels }) =>
+    labels.type === 'uap' && ['user', 'guest'].includes(labels.station_type));
+  const wifiClients = stations.length ? stations.reduce((sum, { value }) => sum + value, 0) : null;
+  return { site, target, onlineDevices, siteCounts, wifiClients, wan: readWan(read) };
 }
 
 function assertBaseline(baseline) {
@@ -245,15 +250,21 @@ function assess(baseline, current, history, capturedAt, at, deadline, clientDrop
   const { target } = current;
   const lostPeers = baseline.onlineDevices.filter((name) =>
     name !== baseline.target.name && !current.onlineDevices.includes(name));
-  if (lostPeers.length) stops.push(`Previously online devices unavailable: ${lostPeers.join(', ')}`);
+  // Devices downstream of a rebooting switch drop with it. Count a lost peer as a stop only once the
+  // target is back on new firmware and settled; until then it waits, bounded by the deadline.
+  const targetBack = target?.uptimeSeconds >= SETTLE_SECONDS && target.version !== baseline.target.version;
+  if (lostPeers.length) {
+    (targetBack ? stops : waiting).push(`Previously online devices unavailable: ${lostPeers.join(', ')}`);
+  }
 
-  // Site counts can include the rebooting target. Check them once the target returns.
-  if (target?.uptimeSeconds > 0) {
+  // Site counts include the target while it downloads, flashes and reboots, and its old uptime
+  // series can stay positive throughout. Check them only once it reports the new firmware.
+  if (target?.uptimeSeconds > 0 && target.version !== baseline.target.version) {
     for (const kind of siteMetrics) {
       for (const [subsystem, before] of Object.entries(baseline.siteCounts[kind])) {
         const after = current.siteCounts[kind][subsystem];
         if (!Number.isSafeInteger(after) || (kind === 'adopted' ? after < before : after > before)) {
-          stops.push(`Site ${kind} count regressed for ${subsystem}`);
+          waiting.push(`Site ${kind} count regressed for ${subsystem}`);
         }
       }
     }
@@ -283,16 +294,19 @@ function assess(baseline, current, history, capturedAt, at, deadline, clientDrop
     } else if (target.uptimeSeconds < SETTLE_SECONDS) {
       waiting.push(`Target has not settled for ${SETTLE_SECONDS} seconds since reboot`);
     } else if (target.type === 'uap') {
-      const threshold = Math.ceil(baseline.target.clients * (1 - clientDropMax) - Number.EPSILON *
-        baseline.target.clients);
-      if (target.clients === null || target.clients < threshold) {
-        stops.push(`AP client count ${target.clients ?? 'missing'} is below the required ${threshold}`);
+      // Shortfalls wait until the deadline: clients and links can take minutes to return.
+      const siteWide = Number.isSafeInteger(baseline.wifiClients);
+      const before = siteWide ? baseline.wifiClients : baseline.target.clients;
+      const after = siteWide ? current.wifiClients : target.clients;
+      const threshold = Math.ceil(before * (1 - clientDropMax) - Number.EPSILON * before);
+      if (after === null || after === undefined || after < threshold) {
+        waiting.push(`${siteWide ? 'Site wireless' : 'AP'} client count ${after ?? 'missing'} is below the required ${threshold}`);
       }
     } else if (target.type === 'usw') {
       const lostLinks = baseline.target.linkPorts.filter((port) => !target.linkPorts.includes(port));
       const lostPower = baseline.target.poePorts.filter((port) => !target.poePorts.includes(port));
-      if (lostLinks.length) stops.push(`Switch port links missing: ${lostLinks.join(', ')}`);
-      if (lostPower.length) stops.push(`Switch PoE power missing: ${lostPower.join(', ')}`);
+      if (lostLinks.length) waiting.push(`Switch port links missing: ${lostLinks.join(', ')}`);
+      if (lostPower.length) waiting.push(`Switch PoE power missing: ${lostPower.join(', ')}`);
     }
   }
   if (Date.now() / 1000 >= deadline) stops.push('Recovery deadline reached before GREEN');
