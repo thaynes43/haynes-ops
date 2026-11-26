@@ -39,7 +39,7 @@ spec:
             image: &image
               repository: ghcr.io/thaynes43/comfyui
               # <ComfyUI version>-<image revision>; built by .github/workflows/comfyui-build.yml
-              tag: 0.39.0-2@sha256:991867f5dafc1eddc9ed70b307d8bf1d2d91c50f53a428a6315e8fd7dbe1a61b
+              tag: 0.42.1-1@sha256:f5a6ca590d8509af23e7aacf3f2868adbf1c7359b99f2b14f3b935ae14b3c050
             args:
               - provision
               - --workflows-dir
