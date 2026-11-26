@@ -4,18 +4,52 @@ set -uo pipefail
 
 root=kubernetes/main/apps/ai/studio
 script_dir=scripts/studio-release
-old_revision=80975a9e958d0bed78ab530c2b20f1279bf7ebe6
-old_digest=sha256:08ac310f246cdc43225478e9496e480af6430b53751f4ae93f3e34206714c3e7
-old_web=sha256:497e020b8846f09cdeab6d822aa1536dfeb325edd26205cd6e28f0061bb6d9ca
+profile=op967
+case ${1:-} in
+  op967|op978) profile=$1; shift ;;
+esac
+parameters=$(jq -er --arg profile "$profile" '
+  .[$profile] | [.target_revision, .predecessor_revision, .predecessor_api, .predecessor_web,
+    .predecessor_schema, .target_schema, .predecessor_encoder, .target_encoder,
+    .render_turnover, .format_control, .predecessor_name, .target_name] | @tsv
+' "$script_dir/op967-releases.json") || exit 1
+IFS=$'\t' read -r target_revision old_revision old_digest old_web old_schema target_schema \
+  old_encoder target_encoder render_turnover format_control predecessor_name target_name <<< "$parameters"
+release_id=${profile^^}
+receipt_schema="studio-$profile/v3"
 revision=$(yq -er '.revision' "$root/release.yaml") || exit 1
 api=$(yq -er '.apiDigest' "$root/release.yaml") || exit 1
 web=$(yq -er '.webDigest' "$root/release.yaml") || exit 1
 phase=${1:-}
 failed=0
 results=()
-receipt=${STUDIO_OP967_RECEIPT:-}
-baseline=${STUDIO_OP967_BASELINE:-}
+prefix="STUDIO_$release_id"
+receipt_var="${prefix}_RECEIPT" baseline_var="${prefix}_BASELINE"
+rollback_var="${prefix}_ROLLBACK_BASELINE" failed_var="${prefix}_FAILED_OPS_REVISION"
+previous_var="${prefix}_PREVIOUS_RECEIPT"
+receipt=${!receipt_var:-} baseline=${!baseline_var:-} rollback_baseline=${!rollback_var:-}
+failed_release=${!failed_var:-} previous_receipt=${!previous_var:-}
+
+# The same-schema rollback PR restores the full predecessor pin.
+expected_revision=$target_revision
+if [[ $old_schema == "$target_schema" && ( $phase == rollback-preflight ||
+      ( $phase == admit-merge && ${2:-} == rollback ) ) ]]; then
+  expected_revision=$old_revision
+fi
+if [[ $revision != "$expected_revision" ]]; then
+  printf 'FAIL %s %s requires Studio pin %s, found %s\n' "$release_id" "$phase" "$expected_revision" "$revision" >&2
+  exit 1
+fi
+
 job_archive=
+render_pod_uid=
+encoder_version=
+forward_job=
+predecessor_check="$predecessor_name workload set"
+selected_check="selected $target_name Ops revision on main"
+encoder_check="one PyAV $target_encoder encoder and bundled libraries"
+catalogue_check="catalogue is complete ${old_schema%%_*} or verified ${target_schema%%_*}"
+if [[ $old_schema == "$target_schema" ]]; then catalogue_check="catalogue is verified $target_schema"; fi
 admission_window_seconds=3600
 predecessor_jobs=(migrate register-worker register-voice-worker register-image-worker)
 preflight_checks=(
@@ -29,7 +63,7 @@ preflight_checks=(
   'studio-worker pod image, placement and restart counts'
   'studio-voice-worker pod image, placement and restart counts'
   'studio-image-worker pod image, placement and restart counts'
-  'third-pin workload set'
+  "$predecessor_check"
   'old API endpoints'
   'talosw01 capacity'
   'talosw01 CPU <=10%, memory <=25%'
@@ -43,12 +77,11 @@ preflight_checks=(
 retry_checks=(
   'original baseline and archived predecessor Job logs verified'
   'replacement migration Job and Flux health check match the terminal failure'
-  'catalogue is complete 0012 or verified 0013'
 )
 rollback_checks=(
   'new private receipt and baseline paths supplied'
   'reviewed Ops checkout has a clean tracked tree'
-  'selected fourth-pin Ops revision on main'
+  "$selected_check"
   'three postgres16 instances Ready'
   'offline render app idle and admitted venv complete'
   'LAN root available'
@@ -56,6 +89,15 @@ rollback_checks=(
   'Flux stages and workload images on the selected release sequence'
   'snapshots before a workload rollback'
 )
+if [[ $old_schema == "$target_schema" ]]; then
+  preflight_checks+=("$catalogue_check")
+else
+  retry_checks+=("$catalogue_check")
+fi
+if [[ $render_turnover == false ]]; then
+  preflight_checks+=('offline render pod UID recorded' "$encoder_check")
+fi
+if [[ $format_control == true ]]; then preflight_checks+=('paused-lane reconcile unset on both API pods'); fi
 
 check() {
   local label=$1
@@ -72,10 +114,10 @@ check() {
 
 finish() {
   if ((failed)); then
-    printf 'FAIL OP967 %s\n' "$phase" >&2
+    printf 'FAIL %s %s\n' "$release_id" "$phase" >&2
     exit 1
   fi
-  printf 'PASS OP967 %s\n' "$phase" >&2
+  printf 'PASS %s %s\n' "$release_id" "$phase" >&2
 }
 
 checkout() {
@@ -104,10 +146,10 @@ write_receipt() {
   fi
   (umask 077; set -o noclobber
     printf '%s\n' "${results[@]}" |
-      jq -Rn --arg mode "$mode" --arg head "$head" --arg tree "$tree" --argjson started "$started" \
+      jq -Rn --arg schema "$receipt_schema" --arg mode "$mode" --arg head "$head" --arg tree "$tree" --argjson started "$started" \
         --argjson finished "$finished" --arg utc "$utc" --argjson failed "$failed" \
         --arg baseline "$baseline" --arg snapshot "$snapshot" --arg archive "$job_archive" --arg archived "$archived" '
-        {schema: "studio-op967/v3", mode:$mode, ops_revision:$head, ops_tree:$tree,
+        {schema: $schema, mode:$mode, ops_revision:$head, ops_tree:$tree,
          started_epoch:$started, finished_epoch:$finished, finished_utc:$utc, passed:($failed == 0),
          baseline_path:$baseline, baseline_sha256:$snapshot, jobs_path:$archive, jobs_sha256:$archived,
          checks:[inputs | {label:.[5:], result:.[0:4]}]}' > "$receipt"
@@ -173,10 +215,10 @@ merge_admitted() {
   esac
   if [[ $mode != rollback ]]; then verified_archive "$receipt" || return 1; fi
   labels=$(printf '%s\n' "${required_checks[@]}" | jq -Rn '[inputs]') || return 1
-  jq -e --arg mode "$mode" --arg head "$head" --arg tree "$tree" --arg baseline "$baseline" \
+  jq -e --arg schema "$receipt_schema" --arg mode "$mode" --arg head "$head" --arg tree "$tree" --arg baseline "$baseline" \
     --arg hash "$(file_digest "$baseline")" --argjson now "$now" \
     --argjson window "$admission_window_seconds" --argjson labels "$labels" '
-    .schema == "studio-op967/v3" and .mode == $mode and .ops_revision == $head and .ops_tree == $tree and
+    .schema == $schema and .mode == $mode and .ops_revision == $head and .ops_tree == $tree and
     .passed == true and .baseline_path == $baseline and
     ($hash | test("^[a-f0-9]{64}$")) and .baseline_sha256 == $hash and
     all(.started_epoch, .finished_epoch; type == "number" and . == floor and . >= 0) and
@@ -187,12 +229,12 @@ merge_admitted() {
 }
 
 retry_evidence() {
-  local previous=${STUDIO_OP967_FAILED_OPS_REVISION:-} previous_receipt=${STUDIO_OP967_PREVIOUS_RECEIPT:-}
+  local previous=$failed_release
   fetch_main || return 1
   [[ $previous != "$head" && -f $previous_receipt ]] && on_main "$previous" || return 1
   git merge-base --is-ancestor "$previous" "$head" || return 1
-  jq -e --arg tree "$(git rev-parse --verify "$previous^{tree}")" '
-    .ops_tree == $tree and .passed and (.mode == "release" or .mode == "retry")
+  jq -e --arg schema "$receipt_schema" --arg tree "$(git rev-parse --verify "$previous^{tree}")" '
+    .schema == $schema and .ops_tree == $tree and .passed and (.mode == "release" or .mode == "retry")
   ' "$previous_receipt" >/dev/null || return 1
   prior_baseline=$(jq -er '.baseline_path' "$previous_receipt") || return 1
   [[ $(file_digest "$prior_baseline") == "$(jq -er '.baseline_sha256' "$previous_receipt")" ]] || return 1
@@ -243,11 +285,11 @@ retry_catalogue() {
   local state
   state=$(migration_catalogue) || return 1
   printf 'Migration catalogue: %s\n' "$state"
-  case $state in
-    0012_release_constraints) ;;
-    0013_matte_jobs) snapshot_phase=retry-preflight-0013 ;;
-    *) return 1 ;;
-  esac
+  if [[ $state == "$target_schema" ]]; then
+    snapshot_phase=retry-preflight-0013
+  else
+    [[ $state == "$old_schema" ]]
+  fi
 }
 
 flux_state() {
@@ -304,13 +346,25 @@ release_sequence() {
 }
 
 rollback_source() {
-  local forward=${MERGED_OPS_REVISION:-} release
+  local forward=${MERGED_OPS_REVISION:-} release manifest
   fetch_main && on_main "$forward" && [[ $forward != "$head" ]] &&
     git merge-base --is-ancestor "$forward" "$head" || return 1
   release=$(git show "$forward:$root/release.yaml") || return 1
-  [[ $revision == "$(yq -er '.revision' - <<< "$release")" &&
-     $api == "$(yq -er '.apiDigest' - <<< "$release")" &&
-     $web == "$(yq -er '.webDigest' - <<< "$release")" ]]
+  if [[ $old_schema == "$target_schema" ]]; then
+    [[ $api == "$old_digest" && $web == "$old_web" ]] || return 1
+    revision=$(yq -er '.revision' - <<< "$release") || return 1
+    api=$(yq -er '.apiDigest' - <<< "$release") || return 1
+    web=$(yq -er '.webDigest' - <<< "$release") || return 1
+    [[ $revision == "$target_revision" && $api =~ ^sha256:[0-9a-f]{64}$ &&
+       $web =~ ^sha256:[0-9a-f]{64}$ && $api != "$old_digest" && $web != "$old_web" ]] || return 1
+    manifest=$(git show "$forward:$root/migration/job.yaml") || return 1
+    forward_job=$(yq -er 'select(.kind == "Job") | .metadata.name' - <<< "$manifest") || return 1
+    [[ $forward_job =~ ^studio-migrate-${api:7:12}(-r[1-9][0-9]*)?$ ]]
+  else
+    [[ $revision == "$(yq -er '.revision' - <<< "$release")" &&
+       $api == "$(yq -er '.apiDigest' - <<< "$release")" &&
+       $web == "$(yq -er '.webDigest' - <<< "$release")" ]]
+  fi
 }
 
 rollback_sequence() {
@@ -320,16 +374,17 @@ rollback_sequence() {
 }
 
 rollback_migration() {
-  local job installed state health_count
-  job=$(yq -er 'select(.kind == "Job") | .metadata.name' "$root/migration/job.yaml") || return 1
+  local job=$forward_job installed state health_count
+  if [[ -z $job ]]; then job=$(migration_job) || return 1; fi
   installed=$(kubectl -n ai get "job/$job" -o json) || return 1
   if ! is_terminal_migration <<< "$installed"; then
-    migration
+    migration "$job"
     return
   fi
   state=$(migration_catalogue) || return 1
   printf 'Terminal migration Job %s, catalogue: %s\n' "$job" "$state"
-  [[ $state == 0013_matte_jobs ]] || return 1
+  [[ $state == "$target_schema" ]] || return 1
+  if [[ $old_schema == "$target_schema" ]]; then return 0; fi
   health_count=$(yq -er 'select(.kind == "Kustomization" and .metadata.name == "studio-migration") |
     .spec.healthChecks | length' "$root/ks.yaml") || return 1
   if [[ $health_count != 0 ]]; then
@@ -383,9 +438,12 @@ save_predecessor_logs() {
     successful_job_logs "studio-$name-${old_digest:7:12}" "$container" \
       > "$dir/$name.log" || return 1
     if [[ $container == migrate ]]; then
-      # 0012's migration reports the revision as text.
-      awk '$0 == "Alembic revision: 0012_release_constraints" { found=1 } END { exit !found }' \
-        "$dir/$name.log" || return 1
+      if [[ $old_schema == 0012_release_constraints ]]; then
+        awk -v revision="$old_schema" '$0 == "Alembic revision: " revision { found=1 } END { exit !found }' \
+          "$dir/$name.log" || return 1
+      else
+        migration_report "$old_schema" < "$dir/$name.log" >/dev/null || return 1
+      fi
     else
       registration_status "studio-${name#register-}" '[200,201]' < "$dir/$name.log" >/dev/null || return 1
     fi
@@ -472,6 +530,8 @@ node_capacity() {
 
 render_idle() {
   local mode=$1 load
+  local admitted_versions=("$old_encoder")
+  if [[ $mode == retry && $render_turnover == true ]]; then admitted_versions+=("$target_encoder"); fi
   load=$(kubectl -n ai top pod --containers -l app.kubernetes.io/name=studio-render --no-headers) || return 1
   printf '%s\n' "$load"
   awk '$2 == "app" { seen++; if ($3 ~ /^[0-9]+m$/ && $3+0 <= 250) good++ }
@@ -488,34 +548,24 @@ pid_one = Path("/proc/1/cmdline").read_bytes()
 other = [path for path in Path("/proc").iterdir()
          if path.name.isdecimal() and int(path.name) not in (1, os.getpid())]
 assert Path("/tmp/venv/.complete").is_file()
+assert av.__version__ in sys.argv[1:]
 if av.__version__ == "18.1.0":
     assert pid_one == idle and not other
 else:
-    assert sys.argv[1] == "retry" and av.__version__ == "18.1.1"
     assert pid_one.startswith(init) and len(other) == 1
     assert (other[0] / "cmdline").read_bytes() == idle
     assert "PPid:\t1" in (other[0] / "status").read_text().splitlines()
 print("Idle render venv complete (PyAV", av.__version__ + ")")
-' "$mode"
+' "${admitted_versions[@]}"
+}
+
+ingress_get() {
+  kubectl -n ai exec -i deploy/studio-mcp -c mcp -- python -I -B - "$1" < "$script_dir/op967-ingress.py"
 }
 
 lan() {
   local path=$1 expected=$2 result
-  result=$(kubectl -n ai exec -i deploy/studio-mcp -c mcp -- python -I -B -c '
-import http.client
-import socket
-import ssl
-import sys
-
-host = "studio.haynesops.com"
-path = sys.argv[1]
-with socket.create_connection(("traefik-internal.network.svc.cluster.local", 443), timeout=10) as connection:
-    with ssl.create_default_context().wrap_socket(connection, server_hostname=host) as tls:
-        tls.sendall(f"GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n".encode("ascii"))
-        with http.client.HTTPResponse(tls) as response:
-            response.begin()
-            print(response.status)
-  ' "/$path") || return 1
+  result=$(ingress_get "/$path") || return 1
   printf 'HTTP %s /%s\n' "$result" "$path"
   [[ $result == "$expected" ]]
 }
@@ -553,12 +603,20 @@ data_probe() {
   report=$(last_report <<< "$output") || return 1
   jq -e 'has("store") and has("runs") and has("deliveries") and has("delivery media") and has("media jobs")' <<< "$report" \
     >/dev/null || return 1
+  if [[ $render_turnover == false ]]; then
+    case $mode in
+      preflight-0013|retry-preflight-0013|postflight)
+        report=$(jq -ce --arg uid "$render_pod_uid" --argjson encoder "$encoder_version" '
+          . + {render_uid: $uid, encoder: $encoder}
+        ' <<< "$report") || return 1 ;;
+    esac
+  fi
   printf '%s\n' "$report"
   case $mode in
     retry-preflight|retry-preflight-0013)
       jq -es 'length == 2 and .[0] == .[1]' "$prior_baseline" - <<< "$report" >/dev/null || return 1
       (umask 077; set -o noclobber; printf '%s\n' "$report" > "$baseline") ;;
-    preflight|rollback-baseline)
+    preflight|preflight-0013|rollback-baseline)
       (umask 077; set -o noclobber; printf '%s\n' "$report" > "$baseline") ;;
     postflight|compare)
       if [[ $phase != verify || -n $baseline ]]; then
@@ -643,34 +701,81 @@ registration_audits() {
   check 'image worker registration reused its token' registration image-worker '[200]'
 }
 
-migration() {
-  local job logs report
-  job=$(yq -er 'select(.kind == "Job") | .metadata.name' "$root/migration/job.yaml") || return 1
-  logs=$(successful_job_logs "$job" migrate) || return 1
-  report=$(last_report <<< "$logs") || return 1
-  jq -e 'select(.revision == "0013_matte_jobs" and .user == "studio_migrator" and
+migration_job() {
+  yq -er 'select(.kind == "Job") | .metadata.name' "$root/migration/job.yaml"
+}
+
+migration_report() {
+  local schema=$1 report
+  report=$(last_report) || return 1
+  jq -e --arg schema "$schema" 'select(.revision == $schema and .user == "studio_migrator" and
     .database == "studio" and .tls == true and .hba_rejected == ["other database", "plaintext"])' \
     <<< "$report"
 }
 
+migration() {
+  local job=${1:-} logs
+  if [[ -z $job ]]; then job=$(migration_job) || return 1; fi
+  logs=$(successful_job_logs "$job" migrate) || return 1
+  migration_report "$target_schema" <<< "$logs"
+}
+
+same_schema() {
+  local actual
+  actual=$(migration_catalogue) || return 1
+  printf 'Migration catalogue: %s\n' "$actual"
+  [[ $actual == "$target_schema" ]]
+}
+
 render_pin() {
   ready helmrelease/studio-render || return 1
-  kubectl -n ai get pods -l app.kubernetes.io/name=studio-render -o json |
-    jq -e '
-      .items as $p | ($p | length) == 1 and
-      ($p[0] | .metadata.deletionTimestamp == null and .spec.nodeName == "talosw01" and
-       any(.status.conditions[]?; .type == "Ready" and .status == "True") and
-       any(.spec.containers[]; .name == "app" and .resources.limits.cpu == "20" and
-         .command == ["/usr/local/bin/python","-B","/config/render-init.py"]) and
-       any(.status.containerStatuses[]; .name == "app" and .ready and .restartCount == 0))' >/dev/null
+  render_pod_uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=studio-render -o json |
+    jq -er '
+      .items | select(length == 1) | .[0] |
+      select(.metadata.deletionTimestamp == null and .spec.nodeName == "talosw01" and
+        any(.status.conditions[]?; .type == "Ready" and .status == "True") and
+        any(.spec.containers[]; .name == "app" and .resources.limits.cpu == "20" and
+          .command == ["/usr/local/bin/python","-B","/config/render-init.py"]) and
+        any(.status.containerStatuses[]; .name == "app" and .ready and .restartCount == 0)) |
+      .metadata.uid | select(type == "string" and length > 0)') || return 1
+  printf 'Offline render pod UID: %s\n' "$render_pod_uid"
+}
+
+render_unchanged() {
+  jq -e --arg uid "$render_pod_uid" '.render_uid == $uid and ($uid | length > 0)' "$baseline" >/dev/null
+}
+
+encoder_unchanged() {
+  jq -e --argjson encoder "$encoder_version" '.encoder == $encoder' "$baseline" >/dev/null
+}
+
+paused_reconcile_unset() {
+  local digest=$1 names pod
+  names=$(kubectl -n ai get pods -l app.kubernetes.io/name=studio-api -o json |
+    jq -er --arg digest "$digest" '
+      .items | select(length == 2 and all(.[]; .metadata.deletionTimestamp == null and
+        any(.status.containerStatuses[]?; .name == "api" and .ready and (.imageID | endswith($digest))))) |
+      .[].metadata.name') || return 1
+  while IFS= read -r pod; do
+    kubectl -n ai exec "$pod" -c api -- python -I -B -c '
+from pathlib import Path
+settings = Path("/proc/1/environ").read_bytes().split(b"\0")
+if any(item.startswith(b"STUDIO_PAUSED_RECONCILE=") for item in settings):
+    raise SystemExit("STUDIO_PAUSED_RECONCILE is set")
+' || return 1
+    printf '%s STUDIO_PAUSED_RECONCILE unset\n' "$pod"
+  done <<< "$names"
 }
 
 encoders() {
-  local version reference= workload pod container interpreter names
+  local expected=$1 version reference= workload pod container interpreter names replicas
   for workload in api worker voice-worker image-worker render; do
+    replicas=1
+    if [[ $workload == api ]]; then replicas=2; fi
     names=$(kubectl -n ai get pods -l "app.kubernetes.io/name=studio-$workload" -o json |
-      jq -er '[.items[] | select(.metadata.deletionTimestamp == null) | .metadata.name] |
-        select(length > 0) | .[]') || return 1
+      jq -er --argjson replicas "$replicas" '
+        [.items[] | select(.metadata.deletionTimestamp == null) | .metadata.name] |
+        select(length == $replicas) | .[]') || return 1
     while IFS= read -r pod; do
       container=worker
       interpreter=python
@@ -684,13 +789,14 @@ import json
 print(json.dumps({"pyav": av.__version__, "libraries": av.library_versions}, sort_keys=True))
 ') || return 1
       printf '%s %s\n' "$pod" "$version"
-      jq -e '.pyav == "18.1.1" and (.libraries | length >= 7) and
+      jq -e --arg expected "$expected" '.pyav == $expected and (.libraries | length >= 7) and
         (.libraries.libavcodec | type == "array") and (.libraries.libavformat | type == "array")' \
         <<< "$version" >/dev/null || return 1
       if [[ -z $reference ]]; then reference=$version; fi
       [[ $version == "$reference" ]] || return 1
     done <<< "$names"
   done
+  encoder_version=$reference
 }
 
 worker_engine() {
@@ -736,7 +842,7 @@ worker_routes() {
 
 case $phase in
   wait|postflight|verify|compare)
-    check 'selected fourth-pin Ops revision on main' selected_checkout
+    check "$selected_check" selected_checkout
     if ((failed)); then finish; fi ;;
 esac
 
@@ -764,8 +870,11 @@ case $phase in
         check 'replacement migration Job and Flux health check match the terminal failure' retry_job
       fi
       if (( ! failed )); then
-        check 'catalogue is complete 0012 or verified 0013' retry_catalogue
+        check "$catalogue_check" retry_catalogue
       fi
+    elif [[ $old_schema == "$target_schema" ]]; then
+      snapshot_phase=preflight-0013
+      check "$catalogue_check" same_schema
     fi
     check 'three postgres16 instances Ready' postgres_ready
     check 'installed dependencies and predecessor credential projections Ready' ready \
@@ -774,11 +883,18 @@ case $phase in
       externalsecret/studio-runtime-db externalsecret/studio-migrator-db \
       externalsecret/studio-oidc-client externalsecret/studio-worker-token \
       externalsecret/studio-image-worker-token externalsecret/studio-voice-worker-token
-    check 'third-pin workload set' pins "$old_digest" "$old_web"
+    check "$predecessor_check" pins "$old_digest" "$old_web"
     check 'old API endpoints' api_endpoints "$old_digest"
+    if [[ $format_control == true ]]; then
+      check 'paused-lane reconcile unset on both API pods' paused_reconcile_unset "$old_digest"
+    fi
     check 'talosw01 capacity' node_capacity
     check 'talosw01 CPU <=10%, memory <=25%' node_idle
     check 'offline render app idle and admitted venv complete' render_idle "$render_mode"
+    if [[ $render_turnover == false ]]; then
+      check 'offline render pod UID recorded' render_pin
+      check "$encoder_check" encoders "$old_encoder"
+    fi
     check 'Wan ready and both active jobs null' wan_idle
     check 'shared ComfyUI queue empty' images_idle
     check 'LAN root available' lan '' 200
@@ -801,13 +917,21 @@ case $phase in
   postflight|verify)
     check 'Flux stages Ready at the selected release or a matching descendant' flux_state "$head"
     if ((failed)); then finish; fi
-    check 'migration Job completed at 0013 with correct identity' migration
+    check "migration Job completed at ${target_schema%%_*} with correct identity" migration
     registration_audits
-    check 'fourth-pin workload set' pins "$api" "$web"
+    check "$target_name workload set" pins "$api" "$web"
     check 'both selected API endpoints Ready' api_endpoints
     check 'offline render app at 20 CPUs with forwarding init' render_pin
     worker_engines
-    check 'one PyAV 18.1.1 encoder and bundled libraries' encoders
+    check "$encoder_check" encoders "$target_encoder"
+    if [[ $render_turnover == false && ( $phase == postflight || -n $baseline ) ]]; then
+      check 'offline render pod UID unchanged' render_unchanged
+      check 'encoder build and libraries unchanged at all six locations' encoder_unchanged
+    fi
+    if [[ $format_control == true ]]; then
+      check 'paused-lane reconcile unset on both API pods' paused_reconcile_unset "$api"
+      check 'served web entry bundle contains the Format control' ingress_get format
+    fi
     check 'LAN root available' lan '' 200
     check 'LAN API still refuses anonymous access' lan v1/me 401
     snapshot_check='all queues idle, grants present and archived data and store identical'
@@ -823,7 +947,7 @@ case $phase in
   rollback-preflight)
     check 'new private receipt and baseline paths supplied' receipt_paths
     check 'reviewed Ops checkout has a clean tracked tree' checkout
-    check 'selected fourth-pin Ops revision on main' rollback_source
+    check "$selected_check" rollback_source
     if ((failed)); then finish; fi
     started=$(date -u +%s) || exit 1
     check 'Flux stages and workload images on the selected release sequence' rollback_sequence
@@ -840,16 +964,19 @@ case $phase in
     fi
     ;;
   compare)
-    baseline=${STUDIO_OP967_ROLLBACK_BASELINE:-}
+    baseline=$rollback_baseline
     check 'Flux stages Ready on the selected rollback sequence' flux_state "${ROLLBACK_OPS_REVISION:-}"
     if ((failed)); then finish; fi
-    check 'third-pin workload set' pins "$old_digest" "$old_web"
+    check "$predecessor_check" pins "$old_digest" "$old_web"
     check 'old API endpoints' api_endpoints "$old_digest"
     worker_engines
     check 'LAN root available on previous build' lan '' 200
     check 'LAN API still refuses anonymous access' lan v1/me 401
-    check '0013 retained and archived data and store identical' data_probe compare "$old_revision" "$old_digest"
+    if [[ $old_schema == "$target_schema" ]]; then
+      check "$catalogue_check" same_schema
+    fi
+    check "${target_schema%%_*} retained and archived data and store identical" data_probe compare "$old_revision" "$old_digest"
     ;;
-  *) printf 'Usage: bash %s {preflight|retry-preflight|rollback-preflight|admit-merge [release|retry|rollback]|wait|postflight|verify|compare}\n' "$0" >&2; exit 2 ;;
+  *) printf 'Usage: bash %s [op967|op978] {preflight|retry-preflight|rollback-preflight|admit-merge [release|retry|rollback]|wait|postflight|verify|compare}\n' "$0" >&2; exit 2 ;;
 esac
 finish

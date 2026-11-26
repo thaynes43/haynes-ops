@@ -20,7 +20,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-migrate-c13c8ad74dfb
+      name: studio-migrate-1614b3f8355c
       namespace: ai
   interval: 30m
   retryInterval: 1m
@@ -72,7 +72,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-worker-c13c8ad74dfb
+      name: studio-register-worker-1614b3f8355c
       namespace: ai
     # studio-render's Kustomization applies the HelmRelease but does not wait
     # for Helm. Wait here for the offline render app to turn over.
@@ -157,11 +157,11 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-voice-worker-c13c8ad74dfb
+      name: studio-register-voice-worker-1614b3f8355c
       namespace: ai
     - apiVersion: batch/v1
       kind: Job
-      name: studio-register-image-worker-c13c8ad74dfb
+      name: studio-register-image-worker-1614b3f8355c
       namespace: ai
   interval: 30m
   retryInterval: 1m
