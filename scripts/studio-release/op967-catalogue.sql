@@ -25,8 +25,9 @@ WITH revision AS (
         $$CHECK ((((kind = 'asset_candidate'::text) AND (board_id IS NULL) AND (story_id IS NULL)) OR ((kind <> 'asset_candidate'::text) AND (board_id IS NOT NULL) AND (story_id IS NOT NULL) AND (production_id IS NOT NULL))))$$,
         $$CHECK ((((kind = ANY (ARRAY['asset_candidate'::text, 'matte'::text])) AND (board_id IS NULL) AND (story_id IS NULL)) OR ((NOT (kind = ANY (ARRAY['asset_candidate'::text, 'matte'::text]))) AND (board_id IS NOT NULL) AND (story_id IS NOT NULL) AND (production_id IS NOT NULL))))$$)
 ), definitions AS (
-    SELECT bool_and(COALESCE(c.convalidated AND pg_get_constraintdef(c.oid) = v12, false)) AS complete_0012,
-           bool_and(COALESCE(c.convalidated AND pg_get_constraintdef(c.oid) = COALESCE(v13, v12), false)) AS complete_0013
+    -- pg_get_constraintdef includes NOT VALID for an unvalidated check.
+    SELECT bool_and(COALESCE(pg_get_constraintdef(c.oid) = v12, false)) AS complete_0012,
+           bool_and(COALESCE(pg_get_constraintdef(c.oid) = COALESCE(v13, v12), false)) AS complete_0013
     FROM expected
     LEFT JOIN pg_constraint AS c ON c.conrelid = relation AND c.conname = name
 ), release_column AS (

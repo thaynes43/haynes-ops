@@ -7,8 +7,12 @@ resources:
   - mcp.yaml
   - ingressroute.yaml
   - networkpolicy.yaml
+  - media-worker-routes-op964.yaml
 configMapGenerator:
   - name: studio-media-worker-routes
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/prune: disabled
     files:
       - nginx.conf=media-worker-routes.conf
 components:

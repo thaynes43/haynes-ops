@@ -84,7 +84,7 @@ def database_snapshot(conn, phase, results):
         WHERE document->>'status' IN ('queued', 'running', 'held') GROUP BY 1, 2
     """).fetchall()
     media_lanes = {row[0] for row in conn.execute("SELECT lane FROM studio.media_job_lanes")}
-    rollback = phase in {"rollback-baseline", "compare"}
+    rollback = phase in {"rollback-baseline", "compare", "matte-rollback", "matte-removed"}
     predecessor = phase in {"preflight", "retry-preflight"}
     expected_lanes = {"voice", "image"}
     if not predecessor:
@@ -104,11 +104,21 @@ def database_snapshot(conn, phase, results):
     )
     print(f"Active or held runs: {active_runs}. Active or held media jobs: {active_media}.", file=sys.stderr)
 
-    if phase == "postflight":
-        results["matte queue empty (queued, running or held)"] = all(row[0] != "matte" for row in active_media)
-        results["no registered matte worker grant"] = conn.execute("""
-            SELECT NOT EXISTS (SELECT FROM studio.worker_lane_grants WHERE lane = 'matte')
-        """).fetchone() == (True,)
+    if phase == "postflight" or phase.startswith("matte-"):
+        if not rollback:
+            results["matte queue empty (queued, running or held)"] = all(row[0] != "matte" for row in active_media)
+        matte_grants = conn.execute("""
+            SELECT worker_id FROM studio.worker_lane_grants
+            WHERE lane = 'matte' ORDER BY worker_id
+        """).fetchall()
+        if phase in {"postflight", "matte-before"}:
+            results["no registered matte worker grant"] = not matte_grants
+        elif phase == "matte-after":
+            results["dedicated matte worker grant"] = matte_grants == [("studio-matte-worker",)]
+        else:
+            results["matte grant absent or retained for its worker"] = matte_grants in (
+                [], [("studio-matte-worker",)],
+            )
         grants = dict(conn.execute("""
             SELECT worker_id, lane FROM studio.worker_lane_grants WHERE worker_id = ANY(%s)
         """, (list(WORKERS),)).fetchall())

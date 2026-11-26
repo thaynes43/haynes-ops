@@ -7,3 +7,4 @@ resources:
   - voice-job.yaml
   - image-credential.yaml
   - image-job.yaml
+  - matte-credential.yaml

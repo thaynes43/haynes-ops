@@ -22,7 +22,8 @@ jobs:
       changed-files: ${{ steps.changed-files.outputs.changed_files }}
       portal-files: ${{ steps.portal-files.outputs.changed_files }}
       studio-files: ${{ steps.studio-files.outputs.changed_files }}
-      studio-matte-policy-files: ${{ steps.studio-matte-policy-files.outputs.changed_files }}
+      studio-matte-inventory: ${{ steps.studio-matte-policy-files.outputs.inventory }}
+      studio-matte-workloads: ${{ steps.studio-matte-policy-files.outputs.workloads }}
     steps:
       - name: Get Changed Files
         id: changed-files
@@ -48,30 +49,21 @@ jobs:
             kubernetes/main/apps/ai/studio-render/**
             scripts/tests/studio-release/**
             scripts/studio-release/op967*
+            scripts/studio-release/op970*
+            docs/reference/studio-matte-activation.md
             docs/reference/studio-fourth-release.md
             docs/reference/studio-matting-deployment.md
             docs/reference/studio-upscaling-deployment.md
             scripts/studio-segmentation/**
             .github/workflows/flux-local.yaml
 
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
       - name: Get Studio Matte Policy Guard Files
         id: studio-matte-policy-files
-        uses: bjw-s-labs/action-changed-files@147be9638332cf68fd60714a610509d7a9360d60 # v0.7.0
-        with:
-          patterns: |
-            kubernetes/main/flux/**
-            kubernetes/main/apps/kustomization.yaml
-            kubernetes/main/apps/kustomization.yml
-            kubernetes/main/apps/Kustomization
-            kubernetes/main/apps/ai/kustomization.yaml
-            kubernetes/main/apps/ai/kustomization.yml
-            kubernetes/main/apps/ai/Kustomization
-            kubernetes/main/apps/ai/studio*/**
-            kubernetes/shared/components/common/repos/app-template/**
-            scripts/tests/studio-release/check.py
-            scripts/tests/studio-release/install-flux.sh
-            scripts/tests/studio-release/test_matte_policy.py
-            .github/workflows/flux-local.yaml
+        run: python3 -B scripts/tests/studio-release/matte_policy_files.py HEAD^1 HEAD >> "$GITHUB_OUTPUT"
 
   # The `cluster` matrix carries a single entry since the edge cluster was retired
   # (2026-09-22): `kubernetes/edge/` is gone, so there is nothing else to render. It
@@ -229,6 +221,11 @@ jobs:
             --rendered "$RUNNER_TEMP/authentik-rendered.yaml"
 
   studio-release-guard:
+    env:
+      GOMAXPROCS: "2"
+      STUDIO_THREADS: "2"
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "1"
     if: ${{ needs.filter.outputs.studio-files != '[]' }}
     needs: filter
     name: Flux Local - Studio release guard
@@ -276,6 +273,7 @@ jobs:
           PATH="$RUNNER_TEMP/studio-kustomize:$PATH" \
             "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_release.py
           "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/test_op967.py
+          "$RUNNER_TEMP/studio-release-venv/bin/python" -B scripts/tests/studio-release/test_op970.py
       - name: Check out the Studio matting source for the synthetic trial
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -323,19 +321,22 @@ jobs:
             "$RUNNER_TEMP/studio-release-venv/bin/python" -I -B scripts/tests/studio-release/check.py
 
   studio-matte-policy-guard:
-    if: ${{ needs.filter.outputs.studio-matte-policy-files != '[]' }}
+    if: ${{ needs.filter.outputs.studio-matte-inventory == 'true' }}
     needs: filter
     name: Flux Local - Studio matte policy guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 2
           persist-credentials: false
       - name: Install Flux for offline Studio stage rendering
         run: bash scripts/tests/studio-release/install-flux.sh
       - name: Verify the matte policy, inventory and Studio pod selectors
         env:
           GOMAXPROCS: "2"
+          STUDIO_MATTE_POLICY_BASE: HEAD^1
+          STUDIO_MATTE_CHECK_WORKLOADS: ${{ needs.filter.outputs.studio-matte-workloads }}
         run: |
           python3 -m venv "$RUNNER_TEMP/studio-matte-policy-venv"
           "$RUNNER_TEMP/studio-matte-policy-venv/bin/python" -I -m pip install \

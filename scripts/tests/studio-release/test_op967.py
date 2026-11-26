@@ -104,6 +104,8 @@ def emit(value):
     print(json.dumps(value))
 
 def pods(workload):
+    if workload == data.get("empty_encoder_workload"):
+        return []
     names = {
         "api": {"api": api, "media-worker-routes": web},
         "mcp": {"mcp": api}, "web": {"nginx": web}, "worker": {"worker": api},
@@ -165,6 +167,8 @@ def stage(name):
     document = definition(name, data["artifact"])
     document["metadata"]["generation"] = 2
     document["spec"]["force"] = False
+    if name == data.get("deleting_stage"):
+        document["metadata"]["deletionTimestamp"] = "2026-11-25T17:00:00Z"
     if name == "studio":
         document["spec"].update(data.get("live_spec_override", {}))
     document["status"] = {
@@ -268,6 +272,8 @@ elif cmd == "flux":
         print(yaml.safe_dump(definition("cluster-apps", commit)))
     elif name == "cluster-apps":
         print(yaml.safe_dump_all([definition(stage, commit) for stage in data["definitions"]]))
+    elif name == "studio" and commit == data.get("changed_render_revision"):
+        print(yaml.safe_dump({"kind": "ConfigMap", "metadata": {"name": "different-render"}}))
 elif cmd == "kubectl":
     if args[:1] == ["-n"]:
         args = args[2:]
@@ -310,7 +316,10 @@ elif cmd == "kubectl":
             if data.get("predecessor_pruned") and job.endswith(old_job_suffix):
                 sys.exit(1)
             condition = "Failed" if job == data.get("terminal_job") else "Complete"
-            emit({"metadata": {"uid": job}, "status": {"conditions": [{"type": condition,"status": "True"}],
+            conditions = [{"type": condition, "status": "True"}]
+            if condition == "Failed" and data.get("contradictory_job_conditions"):
+                conditions.append({"type": "Complete", "status": "True"})
+            emit({"metadata": {"uid": job}, "status": {"conditions": conditions,
                                                       "active": data.get("terminal_active", 0)},
                   "spec": {"template": {"spec": {"containers": [{"name": "migrate",
                       "image": "ghcr.io/thaynes43/haynes-studio@" + data["new"][1]}]}}}})
@@ -388,9 +397,15 @@ elif cmd == "kubectl":
                         sys.exit(1)
                     print(f"Idle render venv complete (PyAV {version})")
             elif any("av.library_versions" in arg for arg in options):
-                emit({"pyav": "18.1.0" if options[0] == data.get("stale_encoder") else "18.1.1", "libraries": {f"libav{name}": [1, 2, 3] for name in (
+                libraries = {f"libav{name}": [1, 2, 3] for name in (
                     "codec", "format", "filter", "util", "device", "video", "audio"
-                )}})
+                )}
+                if data.get("bad_encoder_shape"):
+                    libraries["libavcodec"] = {"major": 1}
+                if data.get("single_different_encoder") == options[0]:
+                    libraries["libavcodec"] = [4, 5, 6]
+                stale = data.get("old_encoder_fleet") or options[0] == data.get("stale_encoder")
+                emit({"pyav": "18.1.0" if stale else "18.1.1", "libraries": libraries})
         case _:
             sys.exit(99)
 else:
@@ -597,6 +612,10 @@ class PhaseTest(unittest.TestCase):
                 self.assertIn(observed, result.stderr)
                 self.assertFalse(any("logs" in call or "exec" in call for call in calls))
 
+    def test_flux_refuses_different_render_at_descendant_with_same_stage_tree(self):
+        result, _ = self.run_phase("verify", expected=1, artifact=DESCENDANT, changed_render_revision=DESCENDANT)
+        self.assertIn(f"different pin at {DESCENDANT}: studio inputs changed", result.stderr)
+
     def test_flux_requires_the_exact_selected_checkout_and_observed_revision_on_main(self):
         result, calls = self.run_phase("wait", head=DESCENDANT, expected=1)
         self.assertIn("FAIL selected fourth-pin Ops revision on main", result.stderr)
@@ -632,6 +651,14 @@ class PhaseTest(unittest.TestCase):
         result, calls = self.run_phase("wait", expected=1, unready_stage="studio", clock_step=35 * 60)
         self.assertIn("still pending 35 minutes after observing pickup", result.stderr)
         self.assertEqual([call for call in calls if call[0] == "sleep"], [["sleep", "15"]])
+
+    def test_wait_refuses_a_failed_pending_api_sample(self):
+        _, calls = self.run_phase("wait", expected=1, artifact=PREVIOUS, sample_failure=True)
+        self.assertFalse(any(call[0] == "sleep" for call in calls))
+
+    def test_flux_refuses_a_deleting_ready_stage(self):
+        result, _ = self.run_phase("verify", expected=1, deleting_stage="studio")
+        self.assertIn(f"Flux studio: applied main@sha1:{HEAD}, ready at pin False", result.stdout)
 
     def test_flux_requires_applied_pin_and_current_generation(self):
         for changes in (
@@ -720,6 +747,19 @@ class PhaseTest(unittest.TestCase):
         self.assertIn("FAIL one PyAV 18.1.1 encoder and bundled libraries", result.stderr)
         result, _ = self.run_phase("postflight", workloads="new", expected=1, render_cpus="17")
         self.assertIn("FAIL offline render app at 20 CPUs with forwarding init", result.stderr)
+
+    def test_postflight_refuses_same_old_pyav_version_on_the_whole_fleet(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        result, _ = self.run_phase("postflight", workloads="new", expected=1, old_encoder_fleet=True)
+        self.assertIn("FAIL one PyAV 18.1.1 encoder and bundled libraries", result.stderr)
+
+    def test_postflight_checks_library_shape_equality_and_nonempty_worker_selector(self):
+        self.baseline.write_text(json.dumps(SNAPSHOT))
+        for change in ({"bad_encoder_shape": True}, {"single_different_encoder": "image-worker-0"},
+                       {"empty_encoder_workload": "image-worker"}):
+            with self.subTest(change=change):
+                result, _ = self.run_phase("postflight", workloads="new", expected=1, **change)
+                self.assertIn("FAIL one PyAV 18.1.1 encoder and bundled libraries", result.stderr)
 
     @staticmethod
     def route_calls(calls):
@@ -865,6 +905,18 @@ class PhaseTest(unittest.TestCase):
                                  (previous["jobs_path"], previous["jobs_sha256"]))
                 self.assertEqual(self.baseline.read_bytes(), first_baseline.read_bytes())
 
+    def test_retry_refuses_skipped_attempt_suffix_or_a_simultaneously_complete_job(self):
+        _, _, env = self.prepare_retry()
+        result, _ = self.run_phase("retry-preflight", extra_env=env, expected=1, contradictory_job_conditions=True)
+        self.assertIn("FAIL replacement migration Job and Flux health check", result.stderr)
+        self.receipt.unlink()
+        old = self.data["terminal_job"]
+        for path in (STUDIO / "ks.yaml", STUDIO / "migration/job.yaml"):
+            manifest = self.checkout / path
+            manifest.write_text(manifest.read_text().replace(old + "-r1", old + "-r2"))
+        result, _ = self.run_phase("retry-preflight", extra_env=env, expected=1)
+        self.assertIn("FAIL replacement migration Job and Flux health check", result.stderr)
+
     def test_retry_preflight_refuses_missing_or_changed_evidence_and_wrong_live_state(self):
         first_receipt, _, env = self.prepare_retry()
         archive_file = Path(json.loads(first_receipt.read_text())["jobs_path"]) / "migrate.log"
@@ -911,12 +963,26 @@ class PhaseTest(unittest.TestCase):
                         path.write_text(clean_source)
 
 
+PAYLOADS = {
+    "scripts/studio-release/op967-data.py": "6d8d91b3fc2923ba1b2cc3a8870a9069c644629b72d3770526fd52f15572afc6",
+    "scripts/studio-release/op967-catalogue.sql": "02d023f1d17ba4a1bae60e72ea8565f8769171542138235181da05a8da9f4607",
+    "scripts/studio-release/op967-routes.py": "26ad97c7ec6b4934505599da4da09248d7180c168eeed404c99be9f01b62c964",
+    "scripts/studio-release/op970-log.py": "1c6853314e51f4dbb830c48856db87c0145f1e15ce5a972c4c02ac952752e130",
+    "scripts/tests/studio-release/check.py": "d64dfd8fa53897c6b71f67aa68a7bdc167134f73ded88f35b9cce1a76841dc9b",
+}
+
+
 class StartupTest(unittest.TestCase):
     def test_runbook_and_entrypoint_parse_as_bash(self):
-        subprocess.run(["bash", "-n", "scripts/studio-release/op967.sh"], check=True, capture_output=True)
-        page = Path("docs/reference/studio-fourth-release.md").read_text()
-        for block in re.findall(r"(?ms)^```bash\n(.*?)^```$", page):
-            subprocess.run(["bash", "-n"], input=block, text=True, check=True, capture_output=True)
+        for source in self.runbook_sources():
+            subprocess.run(["bash", "-n"], input=source, text=True, check=True, capture_output=True)
+
+    @staticmethod
+    def runbook_sources():
+        for script in ("op967.sh", "op970.sh"):
+            yield Path("scripts/studio-release", script).read_text()
+        for page in ("studio-fourth-release.md", "studio-matte-activation.md"):
+            yield from re.findall(r"(?ms)^```bash\n(.*?)^```$", Path("docs/reference", page).read_text())
 
     # Each exec fingerprint includes its argv, inline payload and stdin path.
     READ_ONLY_EXEC = {
@@ -927,6 +993,10 @@ class StartupTest(unittest.TestCase):
         "f5cb0a67b4ece341568593db5ceb79ac603a55cbf33fb310850ba43bf401a5a1": "data snapshot",
         "20594027b779a9b6497fc7796dbd64f1e2124b2ec52f46a678769b0a236ec712": "encoder version",
         "b23bd15302a967ce2823defe1ada2ea092df7d685920bd4ebe53aa5411ebebf7": "worker engine reachability",
+        "4826f0bbfb7c1ef6107d5245ad324b93450ffe81b13784d945d022215cf69998": "retained allocation read",
+        "7b210d8a7149526d55ba24350b1fe239926c626a6650d531eb144ce0aadc75dd": "DNS metrics reachability",
+        "25b3d7e688a9be6e837d2f3e842f84153eeb5cc9d7c3eee10fc236128e1ff333": "instance-bound matte worker process read",
+        "3860d5c2738c1c081215825263416834d97b16dee4beaa9f80c7ce1e4ff41740": "instance-bound matte listener validation refusals",
         "dabba0cfe9628d2a4f5a30d1e5eebe4fb5ed514c2ddeb89c3b6b99dff2b065d0": "listener validation refusals",
     }
     DEPENDENCY_READS = (
@@ -945,7 +1015,7 @@ class StartupTest(unittest.TestCase):
         tokens = list(lexer)
         separators = re.compile(r"[();|&>\n]+")
         tools = {"kubectl", "flux", "curl", "wget", "http", "https", "xh", "read_endpoint",
-                 "bash", "sh", "eval"}
+                 "bash", "sh", "eval", "source", ".", "python", "python3"}
         seen = set()
         index = 0
         while index < len(tokens):
@@ -954,7 +1024,11 @@ class StartupTest(unittest.TestCase):
             tool = Path(token).name
             if tool == "read_endpoint" and tokens[index:index + 1] == ["()"]:
                 continue
-            if tool in tools:
+            is_dot_command = (tool != "." or index == 1 or separators.fullmatch(tokens[index - 2])
+                              or tokens[index - 2] == "!")
+            if tool in tools and is_dot_command and not re.match(r"^[A-Za-z_]\w*=", token):
+                if tool in {"bash", "source", "python3"}:
+                    self.assertEqual(token, tool, f"unlisted entry point: {token}")
                 start = index
                 while index < len(tokens) and not separators.fullmatch(tokens[index]):
                     index += 1
@@ -977,16 +1051,19 @@ class StartupTest(unittest.TestCase):
             case "kubectl":
                 args = argv
                 if args[:1] == ["-n"]:
-                    self.assertIn(args[1], {"ai", "database", "flux-system"}, detail)
+                    self.assertIn(args[1], {"ai", "database", "flux-system", "kube-system"}, detail)
                     args = args[2:]
                 if args[:1] == ["exec"]:
                     fingerprint = hashlib.sha256("\0".join(argv).encode()).hexdigest()
                     self.assertIn(fingerprint, self.READ_ONLY_EXEC, detail)
                     return {fingerprint}
-                name = r"[\w./$@-]+"
+                name = r"[\w./$@,-]+"
                 self.assertRegex(" ".join(args),
-                                 rf"^(?:get {name}(?: {name})?(?: -l [\w./=$-]+)?(?: -o (?:json|custom-columns=\S+))?"
-                                 rf"|logs {name}(?: -c {name})?"
+                                 rf"^(?:get {name}(?: {name})?(?: -A)?"
+                                 rf"(?: -l [\w./=$-]+)?(?: --field-selector [\w./=$-]+)?"
+                                 rf"(?: --ignore-not-found)?(?: -o (?:json|name|custom-columns=\S+))?"
+                                 rf"|logs {name}(?: -c {name})?(?: --timestamps --since-time=\$started"
+                                 rf"| --since-time=\$created --timestamps)?"
                                  rf"|wait --for=condition=(?:Complete|Ready)(?: --timeout=\d+s)? {name}"
                                  rf"|top node {name} --no-headers|top pod --containers -l [\w./=-]+ --no-headers)$")
             case "flux":
@@ -1002,9 +1079,19 @@ class StartupTest(unittest.TestCase):
             case "read_endpoint":
                 self.assertIn(argv, self.DEPENDENCY_READS, detail)
             case "bash":
-                self.assertRegex(" ".join(argv), r"^scripts/studio-release/op967\.sh "
+                self.assertRegex(" ".join(argv), r"^scripts/studio-release/op(?:967|970)\.sh "
                                  r"(?:preflight|retry-preflight|rollback-preflight|wait|postflight|verify|compare"
                                  r"|admit-merge(?: retry| rollback)?)$")
+            case "source":
+                self.assertEqual(argv, ["scripts/studio-release/op967.sh", "--helpers"], detail)
+            case "python3":
+                self.assertIn(tuple(argv), {
+                    ("-B", "scripts/tests/studio-release/check.py", "--audit-flux", "$expected"),
+                    ("-B", "scripts/tests/studio-release/check.py", "--audit-matte-policy", "$MERGED_OPS_REVISION"),
+                    ("-B", "scripts/tests/studio-release/check.py", "--audit-matte-policy-snapshot", "$1"),
+                    ("-B", "scripts/tests/studio-release/check.py", "--installed-policies", "$1"),
+                    ("-B", "scripts/studio-release/op970-log.py", "$started", "<<<", "$logs"),
+                }, detail)
             case _:
                 self.fail(f"unlisted command: {detail}")
         return set()
@@ -1037,6 +1124,10 @@ class StartupTest(unittest.TestCase):
             "curl --upload-file report.txt https://studio.haynesops.com/v1/example",
             "curl -q --upload-file report.txt https://studio.haynesops.com/v1/example",
             "python -c 'import httpx; httpx.post(url)'",
+            "python3 helper.py",
+            "python3 -B scripts/tests/studio-release/check.py --pin revision 1",
+            "python3 -B scripts/studio-release/op970-log.py --unexpected",
+            "source other.sh",
             "bash -c 'kubectl delete pods'",
             "eval 'kubectl edit deployment studio'",
         ):
@@ -1044,18 +1135,17 @@ class StartupTest(unittest.TestCase):
                 self.audit_commands(command)
 
     def test_runbook_and_entrypoint_have_no_cluster_writes(self):
-        script = Path("scripts/studio-release/op967.sh").read_text()
-        page = Path("docs/reference/studio-fourth-release.md").read_text()
-        blocks = re.findall(r"(?ms)^```[^\n]*\n(.*?)^```$", page)
-        seen = set().union(*(self.audit_commands(source) for source in [script, *blocks]))
+        seen = set().union(*(self.audit_commands(source) for source in self.runbook_sources()))
         self.assertEqual(seen, self.READ_ONLY_EXEC.keys())
-        for name, checksum in (
-            ("op967-data.py", "631cf55975dd6a955b3024380f3d30d2b79bb0b704e6006a4f5804b76fc27bc8"),
-            ("op967-catalogue.sql", "d0fc7dcf3a6bb140578b3ce0e4dd39f6d8515068f54c1fd07fef2caaf5750aa6"),
-            ("op967-routes.py", "c88b91bc1d995f937de076b6a31bba5012cc28ec17cb8130779a0a8b00379359"),
-        ):
-            self.assertEqual(hashlib.sha256(Path("scripts/studio-release", name).read_bytes()).hexdigest(),
-                             checksum, name)
+        # Runtime Python and SQL payloads, including indirect local entry points,
+        # must still match their reviewed source.
+        payloads = PAYLOADS.copy()
+        launcher = STUDIO / "matting-pending/activation/worker/matte-start.py"
+        if launcher.is_file():  # The reviewed rollback removes the launcher.
+            payloads[launcher] = "984e721932f19716176fab95c4e9e55ecac3bf8296030d52dcf98e57cc45b60c"
+        for name, checksum in payloads.items():
+            with self.subTest(payload=name):
+                self.assertEqual(hashlib.sha256(Path(name).read_bytes()).hexdigest(), checksum)
 
     def test_render_startup_keeps_previous_venv_on_failed_install_and_rollback(self):
         app = STUDIO.with_name("studio-render") / "app"

@@ -2,13 +2,14 @@
 
 import os
 import sys
+from pathlib import Path
 
 import httpx
 
 from haynes_studio.queue.worker_tokens import worker_bearer
 
 
-WORKER_LANES = ("voice", "image", "run")
+WORKER_LANES = ("voice", "image", "run", "matte")
 PREFIX = "/internal/v1/work/"
 FORBIDDEN = "work.lane_forbidden"
 WORK_ROUTES = ("heartbeat", "publish", "complete", "fail")
@@ -43,13 +44,23 @@ def probe(client, lane):
         check(client, f"{lane} no lane, extra claim field", "claim", 422 if lane == "run" else 403,
               FORBIDDEN if lane != "run" else None, json={"unexpected": True}),
     ]
-    for other in (*WORKER_LANES, "matte"):
+    for other in WORKER_LANES:
         if other != lane:
             results.append(check(client, f"{lane} wrong lane {other} plus invalid fields", "claim", 403,
                                  FORBIDDEN, json={"lane": other, "unexpected": True}))
 
-    results.append(check(client, f"{lane} settle_only", "claim", 403, FORBIDDEN,
-                         json={"lane": lane, "settle_only": True}))
+    if lane != "matte":
+        results.append(check(client, f"{lane} settle_only", "claim", 403, FORBIDDEN,
+                             json={"lane": lane, "settle_only": True}))
+    else:
+        results += [
+            check(client, "matte claim with invalid field", "claim", 422, "schema.unknown_field",
+                  json={"lane": "matte", "unexpected": True}),
+            check(client, "matte anonymous release", "release-matte", 401, "auth.required",
+                  content=malformed, authenticated=False),
+            check(client, "matte malformed release", "release-matte", 422, content=malformed),
+            check(client, "matte GET release refused", "release-matte", 403, method="GET"),
+        ]
     if lane != "run":
         for route in WORK_ROUTES:
             results.append(check(client, f"{lane} malformed default-run {route}", route, 403, FORBIDDEN,
@@ -62,6 +73,8 @@ def main():
     (lane,) = sys.argv[1:]
     if lane not in WORKER_LANES:
         return 1
+    if lane == "matte":
+        os.environ["STUDIO_WORKER_TOKEN"] = Path("/run/secrets/studio-worker/token").read_text().strip()
     base = os.environ["STUDIO_API_URL"]
     port = 8000 if lane == "run" else 8002
     if base != f"http://studio-api.ai.svc.cluster.local:{port}":

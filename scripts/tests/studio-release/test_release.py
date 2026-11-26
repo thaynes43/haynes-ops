@@ -19,6 +19,8 @@ spec = importlib.util.spec_from_file_location("studio_release_check", Path(__fil
 guard = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guard)
 STUDIO = guard.STUDIO_PATH
+MATTE_ACTIVE = (STUDIO / "matte-worker-registration/job.yaml").is_file()
+RENDER_CPUS = 17 if MATTE_ACTIVE else 20
 AUTH_SOURCE = b"""
 class WorkerRoute(MetadataRoute):
     def get_route_handler(self):
@@ -45,7 +47,7 @@ class WorkRoute(WorkerRoute):
 def worker_router():
     router = APIRouter(prefix="/internal/v1/work", route_class=WorkRoute)
 """ + "\n".join(f"    @router.post('/{route}')\n    def route_{index}(): pass"
-               for index, route in enumerate(guard.MEDIA_ROUTES))).encode()
+               for index, route in enumerate((*guard.MEDIA_ROUTES, "release-matte")))).encode()
 REVIEWED_MIGRATION = b"reviewed 0013 migration bytes"
 
 
@@ -60,6 +62,8 @@ class ReleaseFixture:
             "upscaling": {"measuring": {"request_gib": 2, "limit_gib": 8}, "quality_peak_gib": 1},
         }
         release = yaml.safe_load((STUDIO / "release.yaml").read_text())
+        requirements = (STUDIO.with_name("studio-render") / "app/requirements.txt").read_text()
+        self.enterContext(patch.object(guard, "export_render_requirements", return_value=requirements))
         digests = {guard.API_IMAGE: release["apiDigest"], f"{guard.API_IMAGE}-web": release["webDigest"]}
         self.enterContext(patch.object(guard, "studio_image_digest", side_effect=lambda image, _: digests[image]))
         sources = {
@@ -146,6 +150,15 @@ class EntryPointTest(ReleaseFixture, unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, error):
                     guard.check(STUDIO)
 
+    def test_check_refuses_reviewed_matte_stage_name_with_wrong_path(self):
+        path = STUDIO / "ks.yaml"
+        malformed = path.read_text().replace("/matting-pending/worker-policy", "/matting-pending/smoke")
+        with (
+            self.override_source(path, malformed),
+            self.assertRaisesRegex(ValueError, "matting provisioning, smoke, quality trial"),
+        ):
+            guard.check(STUDIO)
+
     def test_check_refuses_upscaling_store_drift_from_studio_api(self):
         render = guard.render
 
@@ -156,6 +169,10 @@ class EntryPointTest(ReleaseFixture, unittest.TestCase):
                 store_root = guard.env(api, "api")["STUDIO_STORE_ROOT"]
                 mounts = guard.container(api, "api")["volumeMounts"]
                 next(mount for mount in mounts if mount["mountPath"] == store_root)["subPath"] = "data/studio"
+            if MATTE_ACTIVE and path == STUDIO / guard.MATTE_ACTIVATION:
+                matte = guard.resource(documents, "Deployment", guard.MATTE_WORKER)
+                worker_mounts = guard.container(matte, "worker")["volumeMounts"]
+                next(item for item in worker_mounts if item["name"] == "store")["subPath"] = "data/studio"
             return documents
 
         with (
@@ -176,23 +193,30 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
         ):
             guard.check(STUDIO)
 
-    def test_active_flux_inventory_keeps_matte_staged(self):
+    def test_active_flux_inventory_keeps_other_workloads_independent(self):
         repo = Path.cwd()
         _, _, _, stages = guard.studio_inventory(repo)
-        self.assertEqual({name for name in stages if name.startswith("studio-matte-")}, {guard.MATTE_POLICY_STAGE})
-        for name in ("studio", "studio-worker", "studio-media-workers", "studio-media-worker-registration"):
+        expected = {guard.MATTE_POLICY_STAGE}
+        if MATTE_ACTIVE:
+            expected |= {guard.MATTE_WORKER, "studio-matte-worker-registration"}
+            registration = guard.flux_build(repo, stages["studio-matte-worker-registration"])
+            self.assertEqual({doc["kind"] for doc in registration}, {"Job"})
+        self.assertEqual({name for name in stages if name.startswith("studio-matte-")}, expected)
+        for name in ("studio", "studio-worker", "studio-media-workers"):
             with self.subTest(stage=name):
                 active = guard.flux_build(repo, stages[name])
                 self.assertFalse(any("studio-matte-" in doc["metadata"]["name"] for doc in active))
         self.assertEqual(stages["studio-render"]["spec"]["path"], f"./{STUDIO.with_name('studio-render')}/app")
 
-    def test_old_render_pyav_is_refused(self):
+    def test_render_requirements_refuse_drift_in_any_package(self):
         path = STUDIO.with_name("studio-render") / "app/requirements.txt"
-        with (
-            self.override_source(path, path.read_text().replace("av==18.1.1", "av==18.1.0")),
-            self.assertRaisesRegex(ValueError, "offline render must export PyAV 18.1.1"),
-        ):
-            guard.check(STUDIO)
+        for old, new in (("av==18.1.1", "av==18.1.0"), ("attrs==26.1.0", "attrs==999.0")):
+            with (
+                self.subTest(package=old),
+                self.override_source(path, path.read_text().replace(old, new)),
+                self.assertRaisesRegex(ValueError, "complete pinned Studio lock export"),
+            ):
+                guard.check(STUDIO)
 
     def test_registry_digest_cross_check_and_unfixed_migration_refusal(self):
         with (
@@ -260,17 +284,19 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
     def test_listener_keeps_the_existing_routes_and_config_map(self):
         path = STUDIO / "app/media-worker-routes.conf"
         with (
-            self.override_source(path, path.read_text().replace("|fail", "|fail|release-matte")),
-            self.assertRaisesRegex(ValueError, "port 8002 must allow exactly the five existing media POST routes"),
+            self.override_source(path, path.read_text().replace("|fail", "|extra|fail")),
+            self.assertRaisesRegex(ValueError, "port 8002 must allow exactly the reviewed media POST routes"),
         ):
             guard.check(STUDIO)
 
         def change_config(documents):
             guard.resource(documents, "ConfigMap", guard.PREDECESSOR_LISTENER)["data"]["nginx.conf"] += "# changed\n"
 
-        self.check_refuses_rendered_mutation(STUDIO / "app", change_config, "exact existing media listener configuration")
+        message = ("retain both listener configurations" if MATTE_ACTIVE
+                   else "exact existing media listener configuration")
+        self.check_refuses_rendered_mutation(STUDIO / "app", change_config, message)
 
-    def test_render_keeps_20_cpus_and_predecessor_requirements(self):
+    def test_render_keeps_reviewed_cpus_and_predecessor_requirements(self):
         stage = STUDIO.with_name("studio-render") / "app"
 
         def change_cpu(documents):
@@ -281,7 +307,7 @@ class FourthPinMutationTest(ReleaseFixture, unittest.TestCase):
         def change_previous_config(documents):
             guard.resource(documents, "ConfigMap", "studio-render-requirements")["data"]["requirements.txt"] = "bad"
 
-        self.check_refuses_rendered_mutation(stage, change_cpu, "offline render app must limit CPU to 20")
+        self.check_refuses_rendered_mutation(stage, change_cpu, f"offline render app must limit CPU to {RENDER_CPUS}")
         self.check_refuses_rendered_mutation(stage, change_previous_config, "keep the byte-identical offline requirements")
 
     def test_render_turnover_requires_its_config_contents_init_and_recreate(self):

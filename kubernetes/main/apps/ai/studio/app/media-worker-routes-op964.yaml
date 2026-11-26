@@ -1,0 +1,53 @@
+---
+# The old API ReplicaSet still references this identity during a stalled surge.
+# Retain during the OP970 rollout and a reviewed rollback.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: studio-media-worker-routes-cbf48cht27
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+data:
+  nginx.conf: |
+    worker_processes 1;
+    pid /tmp/nginx.pid;
+    error_log /dev/stderr warn;
+
+    events {
+        worker_connections 128;
+    }
+
+    http {
+        access_log off;
+        client_max_body_size 2m;
+        client_body_temp_path /tmp/nginx-client;
+        proxy_temp_path /tmp/nginx-proxy;
+        fastcgi_temp_path /tmp/nginx-fastcgi;
+        uwsgi_temp_path /tmp/nginx-uwsgi;
+        scgi_temp_path /tmp/nginx-scgi;
+
+        server {
+            listen 8002;
+
+            location ~ ^/internal/v1/work/(claim|heartbeat|publish|complete|fail)$ {
+                if ($request_method != POST) { return 403; }
+                # Forward the path matched above, without the original query or URI.
+                proxy_pass http://127.0.0.1:8000$uri;
+                proxy_http_version 1.1;
+                proxy_request_buffering off;
+                proxy_buffering off;
+                proxy_next_upstream off;
+                # uvicorn trusts forwarding headers from loopback. A worker must not
+                # choose the client address or scheme the API sees.
+                proxy_set_header X-Forwarded-For "";
+                proxy_set_header X-Forwarded-Proto "";
+                proxy_set_header X-Forwarded-Host "";
+                proxy_set_header X-Real-IP "";
+                proxy_set_header Forwarded "";
+            }
+
+            location / {
+                return 403;
+            }
+        }
+    }

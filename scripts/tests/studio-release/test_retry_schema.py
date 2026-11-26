@@ -89,6 +89,15 @@ class RetrySchemaTest(unittest.TestCase):
                               "LANGUAGE sql AS 'SELECT true'")
                 self.assertEqual(catalogue(search_path=standby_path), "unverified")
 
+                for table, constraint in (
+                    ("worker_lane_grants", "worker_lane_grants_lane_check"),
+                    ("queue_lane_events", "queue_lane_events_lane_check"),
+                    ("media_jobs", "media_jobs_kind_check"),
+                    ("media_jobs", "media_jobs_check1"),
+                    ("media_jobs", "media_jobs_check2"),
+                ):
+                    with self.subTest(catalogue_constraint=constraint):
+                        replace_constraint(admin, table, constraint)
                 replace_constraint(admin, *lane_check, lambda d: d.replace("'matte'::text", "'matte'::text, 'extra'::text"))
                 replace_constraint(admin, *lane_check, lambda d: d + " NOT VALID")
                 check_partial(admin, "REVOKE UPDATE (matte_releases) ON studio.media_jobs FROM studio_app", grant)
