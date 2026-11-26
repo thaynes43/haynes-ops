@@ -1,0 +1,94 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/batch/cronjob_v1.json
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: upgrade-unifi
+spec:
+  schedule: "15 3 * * *"
+  timeZone: America/New_York
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 2400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: upgrade-unifi
+        spec:
+          restartPolicy: Never
+          serviceAccountName: upgrade-unifi
+          automountServiceAccountToken: true
+          dnsConfig:
+            options:
+              - name: ndots
+                value: "1"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: runner
+              image: ghcr.io/thaynes43/upgrade-shepherd:0.1.0@sha256:00f573827c2506e48ea7b5eb4739b1f9d4496d4b1f413cb2f2bde627181b060f
+              command: ["node", "/opt/unifi/unifi-job.mjs"]
+              env:
+                - name: UNIFI_LIVE_MODE
+                  value: "false"
+                - name: JOB_UID
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.labels['batch.kubernetes.io/controller-uid']
+                - name: MCP_AUTH_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: upgrade-unifi-secret
+                      key: MCP_AUTH_TOKEN
+                - name: PLEX_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: upgrade-unifi-secret
+                      key: PLEX_TOKEN
+                      optional: true
+                - name: PLEXOPS_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: upgrade-unifi-secret
+                      key: PLEXOPS_TOKEN
+                      optional: true
+                - name: HAYNESTOWER_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: upgrade-unifi-secret
+                      key: HAYNESTOWER_TOKEN
+                      optional: true
+                - name: HOME
+                  value: /tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 25m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              volumeMounts:
+                - name: runner
+                  mountPath: /opt/unifi
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: runner
+              configMap:
+                name: upgrade-unifi-runner
+            - name: tmp
+              emptyDir: {}
