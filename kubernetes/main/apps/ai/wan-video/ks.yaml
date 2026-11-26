@@ -11,7 +11,7 @@ spec:
   dependsOn:
     - name: nvidia-device-plugin
       namespace: kube-system
-  path: ./kubernetes/main/apps/ai/wan-video/app
+  path: ./kubernetes/main/apps/ai/wan-video/local-model-pending/activation
   prune: true
   sourceRef:
     kind: GitRepository

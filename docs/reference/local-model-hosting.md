@@ -526,6 +526,31 @@ model library or querying the GPU.
 [NVIDIA status definitions](https://github.com/NVIDIA/nvidia-container-toolkit/blob/v1.19.1/internal/nvsandboxutils/nvsandboxutils.h)
 [Talos extensions issue 940](https://github.com/siderolabs/extensions/issues/940)
 
+**Proven on the node (2026-11-25, 08:40Z).** After PR 5060 the published
+image `b12679-1840480c…-45576973328-1@sha256:33e76e0a…48e6` passed the
+verification above, and the one-shot diagnostic
+`wan-local-model-start-check-bcs5t` ran on talosw01 with Wan dormant and both
+cards idle. Its log shows what the container sees: `NVIDIA_VISIBLE_DEVICES`
+is `void` (the pod spec gives it the card's UUID), `CUDA_VISIBLE_DEVICES` is
+the card's UUID, the driver shows exactly one card and it is the profile's,
+the start-up check's verdict is `ready` with no reason code, the listener is
+ready with no child, and the CUDA library loads. `ERROR: init 250 result=11`
+is printed on this successful run too. **That establishes the cause of the
+first failure:** the old guard compared `NVIDIA_VISIBLE_DEVICES` with the
+card's UUID, and on this node the NVIDIA runtime replaces that variable with
+`void` once it has mounted the card. One limit: the Job had no sibling
+container holding a device-plugin allocation, as the sidecar has in the Wan
+pod. If that changes what the sidecar sees, the result is a served refusal
+with a reason, not an outage. A fresh calibration in the current dormant pod
+at 08:41Z gave 15 readings of 266 MiB and the same ceiling, 270.
+[OP442, comment 10007](https://work.haynesnetwork.com/work_packages/442)
+
+**Expected: the second activation.** This revision moves the Wan
+Kustomization to the activation overlay again. Neither the Kustomization nor
+the overlay's HelmRelease waits on roll-out health, so the gates in
+[Activate and verify the Service](#activate-and-verify-the-service) are the
+proof, and a revert of this one line applies at once.
+
 **Expected after the repair.** The sidecar binds its private socket after a
 profile, pin or weights check fails. `ready` checks the listener and
 `residency` reports that this instance never started a child. Local discovery
@@ -658,6 +683,14 @@ bash -s <<'BASH'
   profile=kubernetes/main/apps/ai/wan-video/local-model-pending/activation/profile.yaml
   awk 'found { sub(/^    /, ""); print } /^  local-model.json: \|$/ { found=1 }' "$profile" |
     jq -e . > "$evidence/c-approved-profile.json"
+  gate_passed
+  # The dormant pod may have been recreated since A saved its UID. The
+  # activation gates compare the new pod with this one.
+  gate='Save the current dormant pod UID'
+  kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |
+    jq -er '.items | select(length == 1) | .[0] |
+      select(([.status.containerStatuses[].name] | sort) == ["api","app","foley"]) | .metadata.uid' \
+    > "$evidence/dormant.uid"
   gate_passed
 BASH
 ```
@@ -812,6 +845,17 @@ bash -s <<'BASH'
   gate='Reconcile activation manifests'
   flux reconcile kustomization cluster-apps -n flux-system --with-source
   flux reconcile kustomization wan-video -n ai
+  gate_passed
+  # The Kustomization does not wait: Flux returns once the HelmRelease object is
+  # applied and Helm patches the Deployment a few seconds later. Reading the
+  # roll-out in that gap reads the old, already complete Deployment.
+  gate='Deployment template has the local-model container'
+  deadline=$((SECONDS + 300))
+  until kubectl -n ai get deploy wan-video -o json |
+      jq -e 'any(.spec.template.spec.containers[]; .name == "local-model")' >/dev/null; do
+    (( SECONDS < deadline ))
+    sleep 3
+  done
   gate_passed
   gate='Deployment rollout'
   kubectl -n ai rollout status deploy/wan-video --timeout=35m
@@ -1187,6 +1231,16 @@ bash -s <<'BASH'
   gate='Reconcile dormant manifests'
   flux reconcile kustomization cluster-apps -n flux-system --with-source
   flux reconcile kustomization wan-video -n ai
+  gate_passed
+  # As in the activation block: wait for Helm to patch the Deployment before
+  # reading the roll-out, or the gate reads the Deployment being replaced.
+  gate='Deployment template no longer has the local-model container'
+  deadline=$((SECONDS + 300))
+  until kubectl -n ai get deploy wan-video -o json |
+      jq -e 'all(.spec.template.spec.containers[]; .name != "local-model")' >/dev/null; do
+    (( SECONDS < deadline ))
+    sleep 3
+  done
   gate_passed
   gate='Dormant Deployment rollout'
   kubectl -n ai rollout status deploy/wan-video --timeout=35m
