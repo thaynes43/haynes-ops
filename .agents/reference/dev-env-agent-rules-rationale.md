@@ -106,6 +106,14 @@ DESIGN-064 8.1).
   while `os.TempDir()` was `/tmp`; with it unset, `/tmp/<Test>.../001`. The image keeps
   the setting, which holds compiler scratch off the capped `/tmp`; a test that binds a
   socket makes its own short directory (dev-env `internal/testsock`, dev-env#1015).
+- **2026-11-26, a shell step handed to the phone.** Asked from Remote Control to renew
+  the Codex login, an agent followed Claude Code's default advice for logins and asked
+  Tom to type `! agent-run keeper-login codex url`, to keep the link off the
+  transcript. Remote Control gives Tom no shell. Tom: "typically an agent gives me the
+  link and I send the code". A correction relayed through Meatball the same day set the
+  format: the link, then the code alone on its own line, so he can copy it. The dev-env
+  quickstart already had the phone flow; the rules only said "a workbench renews it
+  with `agent-run keeper-login`" and nothing for Codex (OpenProject #979).
 
 ## Detail cut from the rules
 
