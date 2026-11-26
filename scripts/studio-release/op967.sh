@@ -11,6 +11,7 @@ revision=$(yq -er '.revision' "$root/release.yaml") || exit 1
 api=$(yq -er '.apiDigest' "$root/release.yaml") || exit 1
 web=$(yq -er '.webDigest' "$root/release.yaml") || exit 1
 phase=${1:-}
+operation=OP967
 failed=0
 results=()
 receipt=${STUDIO_OP967_RECEIPT:-}
@@ -72,10 +73,10 @@ check() {
 
 finish() {
   if ((failed)); then
-    printf 'FAIL OP967 %s\n' "$phase" >&2
+    printf 'FAIL %s %s\n' "$operation" "$phase" >&2
     exit 1
   fi
-  printf 'PASS OP967 %s\n' "$phase" >&2
+  printf 'PASS %s %s\n' "$operation" "$phase" >&2
 }
 
 checkout() {
@@ -98,7 +99,7 @@ write_receipt() {
   utc=$(date -u -d "@$finished" '+%Y-%m-%dT%H:%M:%SZ') || return 1
   if (( ! failed )); then
     snapshot=$(file_digest "$baseline") || return 1
-    if [[ $mode != rollback ]]; then
+    if [[ $mode == release || $mode == retry ]]; then
       archived=$(archive_digest "$job_archive") || return 1
     fi
   fi
@@ -172,7 +173,13 @@ merge_admitted() {
     *) return 1 ;;
   esac
   if [[ $mode != rollback ]]; then verified_archive "$receipt" || return 1; fi
-  labels=$(printf '%s\n' "${required_checks[@]}" | jq -Rn '[inputs]') || return 1
+  verify_receipt "$mode" "$now" "${required_checks[@]}"
+}
+
+verify_receipt() {
+  local mode=$1 now=$2 labels
+  shift 2
+  labels=$(printf '%s\n' "$@" | jq -Rn '[inputs]') || return 1
   jq -e --arg mode "$mode" --arg head "$head" --arg tree "$tree" --arg baseline "$baseline" \
     --arg hash "$(file_digest "$baseline")" --argjson now "$now" \
     --argjson window "$admission_window_seconds" --argjson labels "$labels" '
@@ -201,9 +208,9 @@ retry_evidence() {
 }
 
 retry_job() {
-  local source old_job new_job prefix="studio-migrate-${api:7:12}" old_attempt new_attempt changed health prior_gate
-  source=$(git show "$previous_ops_revision:$root/migration/job.yaml") || return 1
-  old_job=$(yq -er 'select(.kind == "Job") | .metadata.name' - <<< "$source") || return 1
+  local prior_job_manifest old_job new_job prefix="studio-migrate-${api:7:12}" old_attempt new_attempt changed health prior_gate
+  prior_job_manifest=$(git show "$previous_ops_revision:$root/migration/job.yaml") || return 1
+  old_job=$(yq -er 'select(.kind == "Job") | .metadata.name' - <<< "$prior_job_manifest") || return 1
   new_job=$(yq -er 'select(.kind == "Job") | .metadata.name' "$root/migration/job.yaml") || return 1
   [[ $old_job =~ ^$prefix(-r[1-9][0-9]*)?$ && $new_job =~ ^$prefix-r[1-9][0-9]*$ ]] || return 1
   old_attempt=0
@@ -216,7 +223,7 @@ retry_job() {
   changed=$(git diff --name-only refs/remotes/origin/main "$head") || return 1
   [[ $changed == "$root/ks.yaml"$'\n'"$root/migration/job.yaml" ]] || return 1
   prior_gate=$(git show "$previous_ops_revision:$root/ks.yaml") || return 1
-  [[ $(< "$root/migration/job.yaml") == "${source//name: $old_job/name: $new_job}" &&
+  [[ $(< "$root/migration/job.yaml") == "${prior_job_manifest//name: $old_job/name: $new_job}" &&
      $(< "$root/ks.yaml") == "${prior_gate//name: $old_job/name: $new_job}" ]] || return 1
   kubectl -n ai get "job/$old_job" -o json | is_terminal_migration
 }
@@ -251,12 +258,12 @@ retry_catalogue() {
 }
 
 flux_state() {
-  local expected=$1 source inventory stages
-  source=$(kubectl -n flux-system get gitrepository haynes-ops -o json) || return 1
+  local expected=$1 git_source inventory stages
+  git_source=$(kubectl -n flux-system get gitrepository haynes-ops -o json) || return 1
   inventory=$(kubectl -n flux-system get kustomization cluster-apps -o json) || return 1
   stages=$(kubectl -n ai get kustomizations -o json) || return 1
   fetch_main && on_main "$expected" || return 1
-  printf '%s\n' "$source" "$inventory" "$stages" | jq -s . |
+  printf '%s\n' "$git_source" "$inventory" "$stages" | jq -s . |
     python3 -B scripts/tests/studio-release/check.py --audit-flux "$expected"
 }
 
@@ -344,7 +351,7 @@ wait_for_flux() {
   pickup_cutoff=$((pickup_cutoff + 35 * 60))
   while true; do
     state=0
-    if [[ -n ${ROLLBACK_OPS_REVISION:-} ]]; then
+    if [[ $operation == OP970 || -n ${ROLLBACK_OPS_REVISION:-} ]]; then
       flux_state "$expected" || state=$?
     else
       release_sequence "$expected" || state=$?
@@ -365,7 +372,7 @@ wait_for_flux() {
         fi ;;
       *) return 1 ;;
     esac
-    if [[ -z ${ROLLBACK_OPS_REVISION:-} ]]; then
+    if [[ $operation == OP967 && -z ${ROLLBACK_OPS_REVISION:-} ]]; then
       kubectl -n ai get pods -l app.kubernetes.io/name=studio-api \
         -o 'custom-columns=NAME:.metadata.name,IMAGE:.status.containerStatuses[0].imageID' || return 1
       lan '' 200 && lan v1/me 401 || return 1
@@ -558,9 +565,9 @@ data_probe() {
     retry-preflight|retry-preflight-0013)
       jq -es 'length == 2 and .[0] == .[1]' "$prior_baseline" - <<< "$report" >/dev/null || return 1
       (umask 077; set -o noclobber; printf '%s\n' "$report" > "$baseline") ;;
-    preflight|rollback-baseline)
+    preflight|rollback-baseline|matte-before|matte-retry|matte-rollback)
       (umask 077; set -o noclobber; printf '%s\n' "$report" > "$baseline") ;;
-    postflight|compare)
+    postflight|compare|matte-after|matte-removed)
       if [[ $phase != verify || -n $baseline ]]; then
         jq -es 'length == 2 and .[0] == .[1]' "$baseline" - <<< "$report" >/dev/null
       fi ;;
@@ -592,9 +599,10 @@ pins() {
 }
 
 pods() {
-  local workload=$1 containers=$2 replicas=$3 placement=$4
+  local workload=$1 containers=$2 replicas=$3 placement=$4 allow_restarts=${5:-false}
   kubectl -n ai get pods -l "app.kubernetes.io/name=studio-$workload" -o json |
-    jq -er --argjson containers "$containers" --argjson replicas "$replicas" --arg placement "$placement" '
+    jq -er --argjson containers "$containers" --argjson replicas "$replicas" --arg placement "$placement" \
+      --argjson allow_restarts "$allow_restarts" '
       .items | select(length == $replicas and
         ([.[].spec.nodeName] | unique | length) == $replicas and
         all(.[]; .metadata.deletionTimestamp == null and .spec.nodeName != null and
@@ -605,7 +613,8 @@ pods() {
           (.status.containerStatuses | length) == ($containers | length) and
           all(.status.containerStatuses[]; . as $c |
             ($containers[$c.name] // "" | split("@") | .[1]) as $digest |
-            $digest != null and .ready and .restartCount == 0 and (.imageID | endswith($digest))))) |
+            $digest != null and .ready and ($allow_restarts or .restartCount == 0) and
+            (.imageID | endswith($digest))))) |
       .[] | [.metadata.name, .spec.nodeName, (.status.containerStatuses[].imageID)] | @tsv'
 }
 
@@ -628,6 +637,7 @@ registration() {
   local job manifest
   case $lane in
     worker) manifest=worker-registration/job.yaml ;;
+    matte-worker) manifest=matte-worker-registration/job.yaml ;;
     *) manifest="media-worker-registration/${lane%-worker}-job.yaml" ;;
   esac
   job=$(yq -er 'select(.kind == "Job") | .metadata.name' "$root/$manifest") || return 1
@@ -654,13 +664,14 @@ migration() {
 }
 
 render_pin() {
+  local cpu=${1:-20}
   ready helmrelease/studio-render || return 1
   kubectl -n ai get pods -l app.kubernetes.io/name=studio-render -o json |
-    jq -e '
+    jq -e --arg cpu "$cpu" '
       .items as $p | ($p | length) == 1 and
       ($p[0] | .metadata.deletionTimestamp == null and .spec.nodeName == "talosw01" and
        any(.status.conditions[]?; .type == "Ready" and .status == "True") and
-       any(.spec.containers[]; .name == "app" and .resources.limits.cpu == "20" and
+       any(.spec.containers[]; .name == "app" and .resources.limits.cpu == $cpu and
          .command == ["/usr/local/bin/python","-B","/config/render-init.py"]) and
        any(.status.containerStatuses[]; .name == "app" and .ready and .restartCount == 0))' >/dev/null
 }
@@ -733,6 +744,9 @@ worker_routes() {
       -c worker -- python -I -B - "${detail#*:}" < "$script_dir/op967-routes.py"
   done
 }
+
+# The activation script imports helpers before running its own phase.
+if [[ ${BASH_SOURCE[0]} != "$0" && $phase == --helpers ]]; then return; fi
 
 case $phase in
   wait|postflight|verify|compare)

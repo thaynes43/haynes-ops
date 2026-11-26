@@ -21,6 +21,10 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 STUDIO = ROOT / "kubernetes/main/apps/ai/studio"
+MATTE_ACTIVE = (STUDIO / "matte-worker-registration/job.yaml").is_file()
+MATTING_CPUS = 17 if MATTE_ACTIVE else 18
+SEGMENTATION_MEMORY = 56 if MATTE_ACTIVE else 55
+MATTING_MEMORY = 51 if MATTE_ACTIVE else 50
 PENDING = STUDIO / "segmentation-pending"
 ALLOCATION = "segmentation-op460-dino-sam-v1-01"
 
@@ -262,7 +266,7 @@ class ReleaseTests(unittest.TestCase):
                 values["controllers"]["studio-render"]["containers"]["app"]["resources"]["limits"][resource] = excess
                 with patch.object(guard, "render",
                                   side_effect=lambda path: mutated if path == stage else render(path)):
-                    with self.assertRaisesRegex(ValueError, "matting with segmentation exceeds.*24 CPU or 55 GiB"):
+                    with self.assertRaisesRegex(ValueError, rf"matting with segmentation exceeds.*24 CPU or {SEGMENTATION_MEMORY} GiB"):
                         guard.check_segmentation_stage(STUDIO, self.flux)
 
     def test_activation_checks_matting_alone_and_accepts_equivalent_quantities(self):
@@ -270,9 +274,9 @@ class ReleaseTests(unittest.TestCase):
         render = guard.render
         documents = render(stage)
         for cpu, memory, refusal in (
-            ("18000m", "32768Mi", None),
-            ("19", "32Gi", "matting alone exceeds.*24 CPU or 50 GiB"),
-            ("18", "33Gi", "matting alone exceeds.*24 CPU or 50 GiB"),
+            (f"{MATTING_CPUS}000m", "32768Mi", None),
+            (str(MATTING_CPUS + 1), "32Gi", rf"matting alone exceeds.*24 CPU or {MATTING_MEMORY} GiB"),
+            (str(MATTING_CPUS), "33Gi", rf"matting alone exceeds.*24 CPU or {MATTING_MEMORY} GiB"),
             ("500m", "32Gi", "offline render must keep 32 GiB"),
             ("18mcpu", "32Gi", "invalid Kubernetes CPU limit"),
             ("18", "32GB", "invalid Kubernetes memory limit"),

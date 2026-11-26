@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: studio-worker
+  name: studio-matte-worker
 spec:
   template:
     spec:
@@ -16,10 +16,12 @@ spec:
           command: [studio-matting, serve]
           env:
             - {name: STUDIO_MATTING_IMAGE, value: image-replaced-by-release}
+            - {name: STUDIO_MATTING_PROFILE_SHA256, value: profile-replaced-by-release}
           resources:
             requests: {cpu: 250m, memory: replaced-by-release}
             limits: {cpu: "2", memory: replaced-by-release}
           securityContext:
+            runAsNonRoot: true
             runAsUser: 10001
             runAsGroup: 10001
             allowPrivilegeEscalation: false
@@ -30,8 +32,22 @@ spec:
             periodSeconds: 5
             failureThreshold: 26
             timeoutSeconds: 3
+          lifecycle:
+            preStop:
+              sleep: {seconds: 5}
           readinessProbe:
-            exec: {command: [studio-matting, ready]}
+            exec:
+              command:
+                - python
+                - -B
+                - -c
+                - |
+                  import os
+                  from pathlib import Path
+                  from haynes_studio.matting.service import local_call
+                  code, ready = local_call(Path("/matting/matte.sock"), "GET", "/v1/ready", timeout=2)
+                  raise SystemExit(int(code != 200 or ready.get("profile_sha256") !=
+                                       os.environ["STUDIO_MATTING_PROFILE_SHA256"]))
             periodSeconds: 5
             timeoutSeconds: 3
           livenessProbe:

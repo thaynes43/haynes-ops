@@ -8,11 +8,13 @@ import re
 import subprocess
 import sys
 import tarfile
+from datetime import datetime
 from fractions import Fraction
 from functools import cache
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from urllib.request import Request, urlopen
 
 import yaml
@@ -49,6 +51,13 @@ FLUX_ROOT = Path("kubernetes/main/flux/config/cluster.yaml")
 FLUX_SPEC_DEFAULTS = {"force": False}
 MATTE_POLICY_STAGE = "studio-matte-policy"
 MATTE_POLICY = "studio-matte-worker"
+MATTE_WORKER = MATTE_POLICY
+MATTE_ACTIVATION = "matting-pending/activation"
+MATTE_COMMAND = ["python", "-B", "/etc/studio/matte-start.py"]
+MATTE_PROGRESS = "/run/studio/worker-progress"
+MATTE_TOKEN_MOUNT = "/run/secrets/studio-worker"
+NAMESPACE_POLICY_KINDS = {"NetworkPolicy", "CiliumNetworkPolicy"}
+CLUSTER_POLICY_KIND = "CiliumClusterwideNetworkPolicy"
 MATTE_POLICY_PATH = f"./{STUDIO_PATH}/matting-pending/worker-policy"
 FLUX_PRUNE_ANNOTATION = "kustomize.toolkit.fluxcd.io/prune"
 STALE_MATTING_DIGESTS = {
@@ -152,7 +161,7 @@ def check_release_migration(revision):
         raise ValueError("OP967 must repin to published Studio main images carrying the reviewed 0013 lock fix")
 
 
-def check_listener_auth(routes, auth):
+def check_listener_auth(routes, auth, names=MEDIA_ROUTES):
     route_module = ast.parse(routes)
     auth_module = ast.parse(auth)
 
@@ -190,7 +199,7 @@ def check_listener_auth(routes, auth):
                        for node in route_module.body)
             or options.get("route_class") != "WorkRoute"
             or options.get("prefix") != "'/internal/v1/work'"
-            or any(mounted.count(f"/{path}") != 1 for path in MEDIA_ROUTES)
+            or any(mounted.count(f"/{path}") != 1 for path in names)
             or [ast.unparse(node) for node in authenticated.body] != [
                 "await run_in_threadpool(worker_access, request)", "return await handler(request)",
             ]
@@ -272,7 +281,7 @@ def render(path):
     return list(yaml.safe_load_all(output))
 
 
-def flux_build(repo, stage):
+def flux_build_bytes(repo, stage):
     with TemporaryDirectory(prefix="studio-flux-stage-") as directory:
         manifest = Path(directory) / "stage.yaml"
         manifest.write_text(yaml.safe_dump(stage))
@@ -281,9 +290,14 @@ def flux_build(repo, stage):
              "--namespace", stage["metadata"]["namespace"],
              "--path", stage["spec"]["path"], "--kustomization-file", str(manifest),
              "--dry-run", "--in-memory-build"],
-            cwd=repo, env={**os.environ, "GOMAXPROCS": "2"}, text=True,
+            cwd=repo, env={**os.environ, "GOMAXPROCS": "2"},
         )
-    return [doc for doc in yaml.load_all(output, Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)) if doc]
+    return output
+
+
+def flux_build(repo, stage):
+    return [doc for doc in yaml.load_all(flux_build_bytes(repo, stage),
+                                         Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)) if doc]
 
 
 def studio_inventory(repo):
@@ -329,7 +343,7 @@ def check_live_flux_spec(name, live, reviewed):
     compare(live, {**implicit, **reviewed}, "spec")
 
 
-def audit_matte_policy(repo, revision, snapshot):
+def audit_matte_policy(repo, revision, snapshot, *, require_empty=True):
     """Read back the policy stage independently of the other Studio stages."""
     live_stage, live_policy, pods = snapshot
     _, _, _, stages = studio_inventory(repo)
@@ -354,9 +368,9 @@ def audit_matte_policy(repo, revision, snapshot):
     # The Kubernetes API omits the empty ingress list from its response.
     if {"ingress": [], **live_policy["spec"]} != reviewed_policy["spec"]:
         raise ValueError(f"{MATTE_POLICY} live spec differs from the reviewed render")
-    if pods["items"]:
+    if require_empty and pods["items"]:
         raise ValueError(f"{MATTE_POLICY} selects an existing pod")
-    print(f"{MATTE_POLICY_STAGE} Ready at {revision}, reviewed policy retained, zero matching pods")
+    print(f"{MATTE_POLICY_STAGE} Ready at {revision}, reviewed policy retained, {len(pods['items'])} matching pods")
 
 
 def audit_flux(expected, snapshot):
@@ -587,21 +601,24 @@ def check_policy_selectors(documents, *, app_labels_only=False):
         yield from (item["key"] for item in selector.get("matchExpressions") or [])
 
     for policy in documents:
-        spec = policy["spec"] if policy["kind"] in {"NetworkPolicy", "CiliumNetworkPolicy"} else None
-        if spec is None:
+        kind = policy["kind"]
+        if kind not in NAMESPACE_POLICY_KINDS | {CLUSTER_POLICY_KIND}:
             continue
         selectors = []
-        if policy["kind"] == "NetworkPolicy":
-            selectors.append(spec.get("podSelector"))
-            for rule in [*(spec.get("ingress") or []), *(spec.get("egress") or [])]:
-                for peer in [*(rule.get("to") or []), *(rule.get("from") or [])]:
-                    selectors += [peer.get("podSelector"), peer.get("namespaceSelector")]
-        else:
-            selectors.append(spec.get("endpointSelector"))
-            for direction, peers in (("ingress", "fromEndpoints"), ("egress", "toEndpoints")):
-                for rule in [*spec.get(direction, []), *spec.get(direction + "Deny", [])]:
-                    selectors.extend(rule.get(peers, []))
-        used = {key.removeprefix("k8s:") for selector in selectors for key in keys(selector)}
+        for spec in [policy.get("spec"), *(policy.get("specs") or [])]:
+            if not spec:
+                continue
+            if kind == "NetworkPolicy":
+                selectors.append(spec.get("podSelector"))
+                for rule in [*(spec.get("ingress") or []), *(spec.get("egress") or [])]:
+                    for peer in [*(rule.get("to") or []), *(rule.get("from") or [])]:
+                        selectors += [peer.get("podSelector"), peer.get("namespaceSelector")]
+            else:
+                selectors.append(spec.get("endpointSelector"))
+                for direction, peers in (("ingress", "fromEndpoints"), ("egress", "toEndpoints")):
+                    for rule in [*spec.get(direction, []), *spec.get(direction + "Deny", [])]:
+                        selectors.extend(rule.get(peers, []))
+        used = {key.split(":", 1)[-1] for selector in selectors for key in keys(selector)}
         if bad := sorted(used.intersection(IDENTITY_EXCLUDED_LABELS)):
             raise ValueError(f"{policy['metadata']['name']} selects by {bad[0]}, which Cilium leaves "
                              "out of pod identities; the rule would never match")
@@ -631,7 +648,8 @@ def check_matting(path, flux):
     policy_path = f"./{STUDIO_PATH}/matting-pending/policy"
     if policy_stage["spec"]["path"] != policy_path or not policy_stage["spec"]["prune"]:
         raise ValueError("the Studio matting provisioning policy must use its policy path and prune")
-    policy_paths = {"studio-matting-policy": policy_path, MATTE_POLICY_STAGE: MATTE_POLICY_PATH}
+    policy_paths = {"studio-matting-policy": policy_path, MATTE_POLICY_STAGE: MATTE_POLICY_PATH,
+                    MATTE_WORKER: f"./{STUDIO_PATH}/{MATTE_ACTIVATION}"}
     if any(
         "matting-pending" in stage["spec"]["path"]
         and policy_paths.get(stage["metadata"]["name"]) != stage["spec"]["path"]
@@ -704,6 +722,20 @@ def check_matting(path, flux):
     quality = render(pending / "quality")
     check_matting_quality(quality, pending / "quality/trial.py", smoke, image, weight_path, memory)
 
+    active = any(stage["metadata"]["name"] == MATTE_WORKER for stage in flux)
+    if not active:
+        check_dormant_matte_overlay(path, pending, image, weight_path, memory)
+
+    render_path = path.with_name("studio-render")
+    for overlay, cores in (("app", 17 if active else 20), ("matting-pending", 17 if active else 18)):
+        release = resource(render(render_path / overlay), "HelmRelease", "studio-render")
+        render_app = release["spec"]["values"]["controllers"]["studio-render"]["containers"]["app"]
+        if resource_limits(render_app) != (cores * 1000, 32 * GIB):
+            raise ValueError(f"offline render {overlay} must limit CPU to {cores} and memory to 32Gi")
+    return pin, memory
+
+
+def check_dormant_matte_overlay(path, pending, image, weight_path, memory):
     stage = render(pending / "activation")
     worker = resource(stage, "Deployment", "studio-worker")
     worker_pod = worker["spec"]["template"]["spec"]
@@ -730,12 +762,330 @@ def check_matting(path, flux):
         if sidecar[probe]["exec"]["command"] != ["studio-matting", "ready"]:
             raise ValueError("the matting sidecar probes must use Unix HTTP readiness")
 
-    render_path = path.with_name("studio-render")
-    for overlay, cores in (("app", "20"), ("matting-pending", "18")):
-        release = resource(render(render_path / overlay), "HelmRelease", "studio-render")
-        render_app = release["spec"]["values"]["controllers"]["studio-render"]["containers"]["app"]
-        if resource_limits(render_app) != (int(cores) * 1000, 32 * GIB):
-            raise ValueError(f"offline render {overlay} must limit CPU to {cores} and memory to 32Gi")
+
+def check_matte_token(stage, pod, worker, sidecar):
+    token_name = f"{MATTE_WORKER}-token"
+    if ([item for item in worker["volumeMounts"] if item["name"] == "worker-token"] != [
+            {"name": "worker-token", "mountPath": MATTE_TOKEN_MOUNT, "readOnly": True},
+        ] or [volume for volume in pod["volumes"] if volume.get("secret") or volume.get("projected")] != [{
+            "name": "worker-token",
+            "secret": {"secretName": token_name, "defaultMode": 0o440,
+                       "items": [{"key": "STUDIO_WORKER_TOKEN", "path": "token"}]},
+        }]
+            or any(item["name"] == "STUDIO_WORKER_TOKEN" or item.get("valueFrom", {}).get("secretKeyRef")
+                   for item in worker["env"])
+            or worker.get("envFrom")
+            or any(item["name"] == "worker-token" for item in sidecar["volumeMounts"])
+            or {item["name"] for item in sidecar["env"]} != {
+                "STUDIO_MATTING_IMAGE", "STUDIO_MATTING_PROFILE_SHA256",
+            }
+            or pod.get("automountServiceAccountToken") is not False
+            or pod.get("serviceAccountName") != MATTE_WORKER
+            or resource(stage, "ServiceAccount", MATTE_WORKER).get("automountServiceAccountToken") is not False
+            or any(pod.get(key) for key in ("shareProcessNamespace", "hostPID", "initContainers", "ephemeralContainers"))):
+        raise ValueError("matte token must be mounted only in the worker with separate PID and no service-account token")
+    pod_identity = pod["securityContext"]
+    worker_identity = worker["securityContext"]
+    for field in ("runAsUser", "runAsGroup"):
+        if pod_identity.get(field) != 1000 or worker_identity.get(field, 1000) != 1000:
+            raise ValueError("matte worker must run as UID and GID 1000")
+
+
+def check_matte_readiness(sidecar, profile):
+    command = sidecar["readinessProbe"]["exec"]["command"]
+    message = "matting readiness must check the exact profile hash on the shared Unix socket"
+    if (len(command) != 4 or command[:3] != ["python", "-B", "-c"]
+            or next((item.get("value") for item in sidecar["env"]
+                     if item["name"] == "STUDIO_MATTING_PROFILE_SHA256"), None) != profile):
+        raise ValueError(message)
+    # Evaluate only the final Boolean expression. Require the reviewed imports,
+    # socket call and permitted comparison terms before evaluating anything.
+    statements = ast.parse(command[3]).body
+    setup = [
+        "import os",
+        "from pathlib import Path",
+        "from haynes_studio.matting.service import local_call",
+        "code, ready = local_call(Path('/matting/matte.sock'), 'GET', '/v1/ready', timeout=2)",
+    ]
+    if len(statements) != 5 or [ast.unparse(item) for item in statements[:4]] != setup:
+        raise ValueError(message)
+    ending = statements[-1]
+    if (not isinstance(ending, ast.Raise) or not isinstance(ending.exc, ast.Call)
+            or ast.unparse(ending.exc.func) != "SystemExit" or len(ending.exc.args) != 1
+            or ending.exc.keywords or ending.cause):
+        raise ValueError(message)
+    convert = ending.exc.args[0]
+    if (not isinstance(convert, ast.Call) or ast.unparse(convert.func) != "int"
+            or len(convert.args) != 1 or convert.keywords):
+        raise ValueError(message)
+    expression = convert.args[0]
+    if not isinstance(expression, ast.BoolOp) or {ast.unparse(term) for term in expression.values} != {
+        "code != 200", "ready.get('profile_sha256') != os.environ['STUDIO_MATTING_PROFILE_SHA256']",
+    }:
+        raise ValueError(message)
+    predicate = compile(ast.Expression(expression), "<matting readiness probe>", "eval")
+    os_stub = SimpleNamespace(environ={"STUDIO_MATTING_PROFILE_SHA256": profile})
+    for code, observed, refused in ((200, profile, False), (200, "wrong", True), (503, profile, True)):
+        inputs = {"code": code, "ready": {"profile_sha256": observed}, "os": os_stub}
+        if eval(predicate, {"__builtins__": {}}, inputs) != refused:
+            raise ValueError(message)
+
+
+def check_matte_registration(path, flux, digest):
+    matte_registration = resource(flux, "Kustomization", f"{MATTE_WORKER}-registration")
+    if (matte_registration["spec"]["dependsOn"] != [{"name": "studio-migration"}, {"name": MATTE_WORKER}]
+            or matte_registration["spec"]["path"] != f"./{STUDIO_PATH}/matte-worker-registration"):
+        raise ValueError("matte registration must wait for the schema and exact sidecar readiness")
+    matte_jobs = check_jobs(render(path / "matte-worker-registration"), matte_registration,
+                            ("studio-register-matte-worker",), digest)
+    register = container(matte_jobs[0])
+    register_pod = matte_jobs[0]["spec"]["template"]["spec"]
+    if (register["command"] != ["studio-api-admin"] or register["args"] != [
+        "worker-token", "register", "--worker-id", MATTE_WORKER, "--lane", "matte",
+        "--token-file", "/run/studio-credentials/token",
+    ] or resource_volume(register_pod, "token")["secret"] != {
+        "secretName": f"{MATTE_WORKER}-token", "defaultMode": 0o440,
+        "items": [{"key": "STUDIO_WORKER_TOKEN", "path": "token"}],
+    } or {"name": "token", "mountPath": "/run/studio-credentials", "readOnly": True} not in register["volumeMounts"]
+            or register_pod["automountServiceAccountToken"] is not False
+            or register_pod["serviceAccountName"] != "studio-media-worker-registration"):
+        raise ValueError("matte registration must bind its projected token to the matte lane")
+    credentials = render(path / "media-worker-registration")
+    secret_name = f"{MATTE_WORKER}-token"
+    password_source = resource(credentials, "Password", secret_name)
+    projection_source = resource(credentials, "ExternalSecret", secret_name)
+    for document in (password_source, projection_source):
+        if document["metadata"].get("annotations", {}).get(FLUX_PRUNE_ANNOTATION) != "disabled":
+            raise ValueError("retain matte credentials to support retry with the same grant")
+    password, projection = password_source["spec"], projection_source["spec"]
+    if (password["length"] != 64 or password["symbols"] != 0 or password["secretKeys"] != ["STUDIO_WORKER_TOKEN"]
+            or projection["refreshPolicy"] != "CreatedOnce"
+            or projection["target"] != {"name": secret_name, "creationPolicy": "Orphan"}
+            or projection["dataFrom"] != [{"sourceRef": {"generatorRef": {
+                "apiVersion": "generators.external-secrets.io/v1alpha1", "kind": "Password", "name": secret_name,
+            }}}]):
+        raise ValueError("matte worker needs its own stable generated token")
+    return matte_jobs
+
+
+def check_matte_worker(stage, api, run, pin, memory):
+    worker = resource(stage, "Deployment", MATTE_WORKER)
+    pod = worker["spec"]["template"]["spec"]
+    if (len(run["spec"]["template"]["spec"]["containers"]) != 1
+            or {item["name"] for item in pod["containers"]} != {"worker", "matting"}
+            or len(pod["containers"]) != 2):
+        raise ValueError("the matting sidecar belongs only on the matte worker pod")
+    worker_spec = container(worker, "worker")
+    sidecar = container(worker, "matting")
+    settings = env(worker, "worker")
+    check_matte_token(stage, pod, worker_spec, sidecar)
+    if (worker_spec["command"] != MATTE_COMMAND or worker_spec["args"] != ["studio-worker", "--lane", "matte"]
+            or settings["STUDIO_API_URL"] != "http://studio-api.ai.svc.cluster.local:8002"
+            or settings["STUDIO_WORKER_PROGRESS_FILE"] != MATTE_PROGRESS
+            or {key: settings[f"STUDIO_MATTING_{key}"] for key in ("IMAGE", "REVISION", "PROFILE_SHA256")}
+            != {"IMAGE": pin["image"], "REVISION": pin["revision"], "PROFILE_SHA256": pin["profileSha256"]}):
+        raise ValueError("matte worker must use its lane, worker listener and the admitted sidecar pins")
+    probes = ("startupProbe", "livenessProbe")
+    for probe in probes:
+        if worker_spec[probe]["exec"]["command"] != [
+            "studio-worker", "--progress-file", MATTE_PROGRESS, "--check-progress", "300",
+        ]:
+            raise ValueError("matte worker probes must check the 300-second progress marker")
+    api_root = env(api, "api")["STUDIO_STORE_ROOT"]
+    api_store = next(m for m in container(api, "api")["volumeMounts"] if m["mountPath"] == api_root)
+    mounts = {item["name"]: item for item in worker_spec["volumeMounts"]}
+    if (mounts["matte-scratch"] != {"name": "matte-scratch", "mountPath": "/matting"}
+            or mounts["store"] != {"name": "store", "mountPath": api_root, "subPath": api_store["subPath"]}
+            or settings["STUDIO_STORE_ROOT"] != api_root or "weights" in mounts
+            or resource_volume(pod, "store")["nfs"] != resource_volume(
+                api["spec"]["template"]["spec"], api_store["name"])["nfs"]
+            or pod["securityContext"]["fsGroup"] != 10001
+            or pod.get("hostNetwork")
+            or pod["nodeSelector"] != {"kubernetes.io/hostname": "talosw01"}
+            or resource_limits(worker_spec) != (1000, GIB)
+            or worker["spec"]["replicas"] != 1 or worker["spec"]["strategy"]["type"] != "Recreate"):
+        raise ValueError("matte worker must share only scratch with matting and write to the API store")
+    check_matting_container(sidecar, pin["image"])
+    check_matting_mounts(sidecar, pod, f"data/studio/jobs/{pin['allocation']}/weights", "matte-scratch", memory)
+    if (sidecar["command"] != ["studio-matting", "serve"]
+            or sidecar["securityContext"]["runAsUser"] != 10001
+            or sidecar["securityContext"]["runAsGroup"] != 10001):
+        raise ValueError("the matting sidecar must serve as 10001:10001")
+    for probe in probes:
+        if sidecar[probe]["exec"]["command"] != ["studio-matting", "ready"]:
+            raise ValueError("matting health probes must use Unix HTTP readiness")
+    check_matte_readiness(sidecar, pin["profileSha256"])
+    return worker
+
+
+def selector_matches(selector, labels):
+    if any(labels.get(key) != value
+           for key, value in selector.get("matchLabels", {}).items()):
+        return False
+    for expression in selector.get("matchExpressions", []):
+        key, op = expression["key"], expression["operator"]
+        values = expression.get("values", [])
+        if not {
+            "In": labels.get(key) in values, "NotIn": labels.get(key) not in values,
+            "Exists": key in labels, "DoesNotExist": key not in labels,
+        }.get(op, False):
+            return False
+    return True
+
+
+def cilium_labels(pod, namespace_labels, cluster_name):
+    labels = {key: value for key, value in pod["metadata"]["labels"].items()
+              if key not in IDENTITY_EXCLUDED_LABELS}
+    labels["io.kubernetes.pod.namespace"] = "ai"
+    labels["io.cilium.k8s.policy.serviceaccount"] = pod["spec"].get("serviceAccountName", "default")
+    labels["io.cilium.k8s.policy.cluster"] = cluster_name
+    labels.update({f"io.cilium.k8s.namespace.labels.{key}": value for key, value in namespace_labels.items()})
+    return {f"{source}{key}": value for key, value in labels.items() for source in ("", "k8s:", "any:")}
+
+
+def selected_policies(documents, pod, endpoint_labels):
+    pod_labels = pod["metadata"]["labels"]
+    for document in documents:
+        kind = document["kind"]
+        if kind in NAMESPACE_POLICY_KINDS and document["metadata"].get("namespace") != "ai":
+            continue
+        if kind == "NetworkPolicy":
+            spec = document["spec"]
+            if selector_matches(spec["podSelector"], pod_labels):
+                yield document, spec
+        elif kind in {"CiliumNetworkPolicy", CLUSTER_POLICY_KIND}:
+            for spec in [document.get("spec"), *(document.get("specs") or [])]:
+                if spec and "endpointSelector" in spec and selector_matches(spec["endpointSelector"], endpoint_labels):
+                    yield document, spec
+
+
+def check_matte_policies(documents, api, matte, api_identity, matte_identity):
+    def policy_rules(workload, identity, policy_name, direction):
+        expected_selected = False
+        rules = []
+        for document, spec in selected_policies(documents, workload, identity):
+            name = document["metadata"]["name"]
+            if document["kind"] == "NetworkPolicy":
+                # Kubernetes defaults both an omitted and an empty policyTypes list.
+                types = spec.get("policyTypes") or ["Ingress", *(["Egress"] if spec.get("egress") else [])]
+                if direction.capitalize() in types:
+                    expected_selected = expected_selected or name == policy_name
+                    rules.extend(spec.get(direction) or [])
+            elif spec.get(direction) or spec.get(direction + "Deny"):
+                # The reviewed allowlist is expressed entirely in NetworkPolicy.
+                # A matching Cilium rule can add to it or override it with a deny.
+                raise ValueError(f"unexpected Cilium policy {name} for {policy_name} {direction}")
+        if not expected_selected:
+            raise ValueError(f"{policy_name} {direction} selector must cover the rendered pod labels")
+        return {json.dumps(rule, sort_keys=True) for rule in rules}
+
+    def peer(**match):
+        return {"podSelector": {"matchLabels": match}}
+
+    def rule(direction, peers, ports):
+        return {direction: peers, "ports": [{"port": port, "protocol": protocol} for port, protocol in ports]}
+
+    def expect_rules(workload, identity, name, direction, expected, message):
+        if policy_rules(workload, identity, name, direction) != {json.dumps(item, sort_keys=True) for item in expected}:
+            raise ValueError(message)
+
+    app_label = "app.kubernetes.io/name"
+    media_names = ["studio-voice-worker", "studio-image-worker", MATTE_WORKER]
+    dns = {**peer(**{"k8s-app": "kube-dns"}),
+           "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}}}
+    listener = peer(**{app_label: "studio-api"})
+    expect_rules(matte, matte_identity, MATTE_WORKER, "egress", [
+        rule("to", [dns], [(53, "UDP"), (53, "TCP")]),
+        rule("to", [listener], [(8002, "TCP")]),
+    ], "matte worker effective egress must be DNS and the Studio port-8002 listener only")
+    expect_rules(matte, matte_identity, MATTE_WORKER, "ingress", [], "matte worker must refuse pod ingress")
+    traefik = {**peer(**{"app.kubernetes.io/instance": "traefik-internal-network"}),
+               "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "network"}}}
+    media = {"podSelector": {"matchExpressions": [{"key": app_label, "operator": "In", "values": media_names}]}}
+    expect_rules(api, api_identity, "studio-api-ingress", "ingress", [
+        rule("from", [traefik, peer(**{app_label: "studio-mcp"}), peer(**{app_label: "studio-worker"})], [(8000, "TCP")]),
+        rule("from", [media], [(8002, "TCP")]),
+    ], "Studio API effective ingress must admit only its reviewed callers and the three media worker labels")
+
+
+def check_additive_matte_ingress(previous, candidate):
+    remaining = json.loads(json.dumps(candidate))
+    rules = [rule for rule in remaining["ingress"] if rule.get("ports") == [{"port": 8002, "protocol": "TCP"}]]
+    if len(rules) == 1:
+        for peer in rules[0].get("from", []):
+            for expr in peer.get("podSelector", {}).get("matchExpressions", []):
+                if expr["key"] == "app.kubernetes.io/name" and expr["operator"] == "In":
+                    values = expr["values"]
+                    if values.count(MATTE_WORKER) == 1:
+                        values.remove(MATTE_WORKER)
+    if remaining != previous or remaining == candidate:
+        raise ValueError("API ingress may only add the matte peer on TCP 8002")
+
+
+def check_installed_policies(data, *, stage_repo=None):
+    namespaced, clusterwide, cilium, *workloads = data
+    if cilium["data"]["enable-policy"] not in {"default", "always"}:
+        raise ValueError("installed Cilium does not enforce network policy")
+    policies = [doc for doc in namespaced["items"] if doc["metadata"]["namespace"] == "ai"]
+    policies.extend(clusterwide["items"])
+    if stage_repo is not None:
+        (namespace,) = workloads
+        _, _, _, stages = studio_inventory(stage_repo)
+        api_stage = flux_build(stage_repo, stages["studio"])
+        matte_stage = flux_build(stage_repo, stages[MATTE_WORKER])
+        api = resource(api_stage, "Deployment", "studio-api")["spec"]["template"]
+        matte = resource(matte_stage, "Deployment", MATTE_WORKER)["spec"]["template"]
+        projected_ingress = resource(api_stage, "NetworkPolicy", "studio-api-ingress")
+        current_ingress = resource(policies, "NetworkPolicy", "studio-api-ingress")
+        check_additive_matte_ingress(current_ingress["spec"], projected_ingress["spec"])
+        policies.remove(current_ingress)
+        policies.append(projected_ingress)
+        labels = namespace["metadata"]["labels"]
+        cluster = cilium["data"]["cluster-name"]
+        api_identity = cilium_labels(api, labels, cluster)
+        matte_identity = cilium_labels(matte, labels, cluster)
+        check_policy_selectors(policies)
+        for name, pod, identity in (("studio-api", api, api_identity), (MATTE_WORKER, matte, matte_identity)):
+            matches = sorted({f"{doc['kind']}/{doc['metadata']['name']}"
+                              for doc, _ in selected_policies(policies, pod, identity)})
+            print(f"Projected {name} matching policies: {', '.join(matches)}")
+        check_matte_policies(policies, api, matte, api_identity, matte_identity)
+        return
+    endpoints, api, matte = workloads
+    if len(api["items"]) != 2 or len(matte["items"]) != 1:
+        raise ValueError("expected two installed API pods and one matte worker pod for the policy read")
+    check_policy_selectors(policies)
+    endpoint_by_name = {ep["metadata"]["name"]: ep for ep in endpoints["items"]}
+    identities = {}
+    for pod in api["items"] + matte["items"]:
+        name = pod["metadata"]["name"]
+        endpoint = endpoint_by_name.get(name, {})
+        if not any(ref["kind"] == "Pod" and ref["uid"] == pod["metadata"]["uid"]
+                   for ref in endpoint.get("metadata", {}).get("ownerReferences", [])):
+            raise ValueError(f"missing installed Cilium endpoint for pod {name}")
+        labels = endpoint["status"]["identity"]["labels"]
+        if not labels:
+            raise ValueError(f"missing installed Cilium identity labels for pod {name}")
+        exact = {}
+        for label in labels:
+            key, _, value = label.partition("=")
+            exact[key] = value
+        generic = {key.split(":", 1)[1]: value for key, value in exact.items() if ":" in key}
+        identity = {**generic, **{f"any:{key}": value for key, value in generic.items()}, **exact}
+        identities[name] = identity
+        matches = sorted({f"{doc['kind']}/{doc['metadata']['name']}"
+                          for doc, _ in selected_policies(policies, pod, identity)})
+        print(f"{name} matching policies: {', '.join(matches)}")
+    matte_pod = matte["items"][0]
+    matte_policy = resource(policies, "NetworkPolicy", MATTE_WORKER)
+    created = datetime.fromisoformat(matte_policy["metadata"]["creationTimestamp"])
+    started = datetime.fromisoformat(matte_pod["status"]["startTime"])
+    if created >= started:
+        raise ValueError(f"{MATTE_WORKER} NetworkPolicy creation must precede the matte pod start")
+    print(f"{MATTE_WORKER} NetworkPolicy created {created.isoformat()}, pod started {started.isoformat()}")
+    for pod in api["items"]:
+        check_matte_policies(policies, pod, matte_pod, identities[pod["metadata"]["name"]],
+                             identities[matte_pod["metadata"]["name"]])
 
 
 def check_matting_deny_all(spec, name):
@@ -984,16 +1334,26 @@ def _check_segmentation_activation(path, pending, pin, image, digest, allocation
     controller = values["controllers"]["studio-render"]
     matting_containers = matting["controllers"]["studio-render"]["containers"]
     stage = render(path / "matting-pending/activation")
-    worker_pod = resource(stage, "Deployment", "studio-worker")["spec"]["template"]["spec"]
-    workers = worker_pod["containers"]
+    has_dedicated_matte = any(item["kind"] == "Deployment" and item["metadata"]["name"] == MATTE_WORKER
+                              for item in stage)
+    name = MATTE_WORKER if has_dedicated_matte else "studio-worker"
+    workers = resource(stage, "Deployment", name)["spec"]["template"]["spec"]["containers"]
     if {spec["name"] for spec in workers} != {"worker", "matting"} or len(workers) != 2:
         raise ValueError("segmentation requires the staged matting queue companion")
-    _check_render_budget("matting alone", [*matting_containers.values(), *workers], 50)
-    _check_render_budget("matting with segmentation", [*controller["containers"].values(), *workers], 55)
+    extra_memory = 0
+    matting_cores, composed_cores = 18, 16
+    if has_dedicated_matte:
+        workers.append(container(resource(render(path / "worker"), "Deployment", "studio-worker")))
+        extra_memory = 1
+        matting_cores, composed_cores = 17, 15
+    _check_render_budget("matting alone", [*matting_containers.values(), *workers], 50 + extra_memory)
+    _check_render_budget("matting with segmentation", [*controller["containers"].values(), *workers], 55 + extra_memory)
     matting_app = matting_containers["app"]
     render_app = controller["containers"]["app"]
-    if resource_limits(matting_app) != (18000, 32 * GIB) or resource_limits(render_app) != (16000, 32 * GIB):
-        raise ValueError("offline render must keep 32 GiB with 18 CPUs for matting and 16 for both companions")
+    if (resource_limits(matting_app) != (matting_cores * 1000, 32 * GIB)
+            or resource_limits(render_app) != (composed_cores * 1000, 32 * GIB)):
+        raise ValueError(f"offline render must keep 32 GiB with {matting_cores} CPUs for matting "
+                         f"and {composed_cores} for both companions")
     if controller["pod"].pop("terminationGracePeriodSeconds", None) != 150:
         raise ValueError("segmentation activation needs a 150 s pod grace period for drain and recovery")
     sidecar = controller["containers"].pop("segmentation")
@@ -1317,7 +1677,8 @@ def check_render_turnover(path, requirements):
 def check(path):
     release = yaml.safe_load((path / "release.yaml").read_text(encoding="utf-8"))
     flux = list(yaml.safe_load_all((path / "ks.yaml").read_text(encoding="utf-8")))
-    check_matting(path, flux)
+    pin, memory = check_matting(path, flux)
+    matte_active = any(item['metadata']['name'] == MATTE_WORKER for item in flux)
     app = render(path / "app")
     api = resource(app, "Deployment", "studio-api")
     mcp = resource(app, "Deployment", "studio-mcp")
@@ -1343,6 +1704,17 @@ def check(path):
                     resource(flux, "Kustomization", "studio-media-worker-registration"),
                     ("studio-register-voice-worker", "studio-register-image-worker"), digest),
     ]
+    if matte_active:
+        stage = resource(flux, "Kustomization", MATTE_WORKER)["spec"]
+        if (not stage.get("wait") or not stage.get("prune") or stage["dependsOn"] != [
+            {"name": name} for name in ("studio", "studio-worker-registration",
+                                       MATTE_POLICY_STAGE, "studio-media-worker-registration")
+        ]):
+            raise ValueError("matte worker must wait for the API, render turnover, policy and token")
+        matte = check_matte_worker(render(path / MATTE_ACTIVATION), api, worker, pin, memory)
+        if image_digest(matte, API_IMAGE, name="worker") != digest:
+            raise ValueError("matte worker must use the installed Studio API digest")
+        jobs.extend(check_matte_registration(path, flux, digest))
     for workload in (mcp, worker, voice, image, *jobs):
         if image_digest(workload, API_IMAGE) != digest:
             raise ValueError(f"{workload['metadata']['name']} must use the Studio release digest {digest}")
@@ -1353,13 +1725,14 @@ def check(path):
         if spec["command"] != ["studio-worker"] or spec.get("args", []) != args:
             raise ValueError(f"{workload['metadata']['name']} must consume its assigned queue lane")
     routes = (path / "app/media-worker-routes.conf").read_text()
+    route_names = (*MEDIA_ROUTES, "release-matte") if matte_active else MEDIA_ROUTES
     locations = re.findall(r"(?m)^\s*location\s+([^\n{]+?)\s*\{", routes)
-    allowlist = "~ ^/internal/v1/work/(" + "|".join(MEDIA_ROUTES) + ")$"
+    allowlist = "~ ^/internal/v1/work/(" + "|".join(route_names) + ")$"
     if (locations != [allowlist, "/"]
             or "if ($request_method != POST) { return 403; }" not in routes
             or "proxy_pass http://127.0.0.1:8000$uri;" not in routes
             or not re.search(r"location / \{\s*return 403;\s*\}", routes)):
-        raise ValueError("port 8002 must allow exactly the five existing media POST routes")
+        raise ValueError("port 8002 must allow exactly the reviewed media POST routes")
     for header in ("X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host", "X-Real-IP", "Forwarded"):
         if f'proxy_set_header {header} "";' not in routes:
             raise ValueError(f"The API media-worker listener must clear {header} before the loopback API")
@@ -1367,15 +1740,27 @@ def check(path):
     api_pod = api["spec"]["template"]["spec"]
     listener_config = resource_volume(api_pod, "media-worker-routes")["configMap"]["name"]
     listener = container(api, "media-worker-routes")
-    if (listener_config != PREDECESSOR_LISTENER
-            or resource(app, "ConfigMap", listener_config)["data"]["nginx.conf"] != routes
-            or sha256(routes.encode()).hexdigest() != PREDECESSOR_LISTENER_SHA256
+    previous_routes = routes.replace("|release-matte", "")
+    listener_error = "the API must keep and mount the exact existing media listener configuration"
+    try:
+        candidate = resource(app, "ConfigMap", listener_config)
+    except ValueError as error:
+        raise ValueError(listener_error) from error
+    if matte_active:
+        predecessor = resource(app, "ConfigMap", PREDECESSOR_LISTENER)
+        if (candidate["metadata"].get("annotations", {}).get(FLUX_PRUNE_ANNOTATION) != "disabled"
+                or predecessor["metadata"].get("annotations", {}).get(FLUX_PRUNE_ANNOTATION) != "disabled"
+                or predecessor["data"] != {"nginx.conf": previous_routes}):
+            raise ValueError("retain both listener configurations through rollout and revert")
+    if ((listener_config == PREDECESSOR_LISTENER) == matte_active
+            or candidate["data"]["nginx.conf"] != routes
+            or sha256(previous_routes.encode()).hexdigest() != PREDECESSOR_LISTENER_SHA256
             or {"name": "media-worker-routes", "mountPath": "/etc/studio-worker-routes", "readOnly": True}
             not in listener["volumeMounts"]
             or listener["args"] != ["-c", "/etc/studio-worker-routes/nginx.conf", "-g", "daemon off;"]):
-        raise ValueError("the API must keep and mount the exact existing media listener configuration")
+        raise ValueError(listener_error)
     check_listener_auth(studio_source(release["revision"], "api/run_routes.py"),
-                        studio_source(release["revision"], "api/auth.py"))
+                        studio_source(release["revision"], "api/auth.py"), route_names)
 
     api_env = env(api, "api")
     worker_env = env(worker)
@@ -1388,10 +1773,13 @@ def check(path):
         raise ValueError("studio-worker provenance digest must match its image")
 
     offline_lock = (path.with_name("studio-render") / "app/requirements.txt").read_text()
-    requirements = offline_lock.splitlines()
-    if ([line for line in requirements if line.startswith("av==")] != ["av==18.1.1"]
-            or f"# {release['revision']} (Python 3.12, linux x86_64)." not in requirements):
-        raise ValueError("offline render must export PyAV 18.1.1 from the same Studio release lock")
+    exported = export_render_requirements(release["revision"])
+    def packages(requirements):
+        return [line for line in requirements.splitlines() if line and not line.startswith("#")]
+
+    if (packages(offline_lock) != packages(exported) or "av==18.1.1" not in packages(exported)
+            or f"# {release['revision']} (Python 3.12, linux x86_64)." not in offline_lock.splitlines()):
+        raise ValueError("offline render requirements must match the complete pinned Studio lock export")
     check_render_turnover(path, offline_lock)
     check_packaged_register(app + media, ((api, "api"), (worker, None), (voice, None), (image, None)))
     check_drain(((api, ("api", "media-worker-routes")), (mcp, ("mcp",)), (web, ("nginx",))))
@@ -1411,6 +1799,10 @@ def main():
                         help="verify the published image pair and update all release references")
     parser.add_argument("--audit-flux", metavar="OPS_REVISION",
                         help="compare applied Flux inputs against the selected merge")
+    parser.add_argument("--installed-policies", choices=("preflight", "postflight"),
+                        help="audit all live network policies against the reviewed or installed pods")
+    parser.add_argument("--audit-matte-policy-snapshot", choices=("empty", "active"),
+                        help="read back the policy at the applied revision already checked by the release script")
     parser.add_argument("--audit-matte-policy", metavar="OPS_REVISION",
                         help="compare the live matte policy and its Flux stage against the merged checkout")
     args = parser.parse_args()
@@ -1419,6 +1811,18 @@ def main():
             if not re.fullmatch(r"[0-9a-f]{40}", args.audit_flux):
                 raise ValueError("Flux comparison requires the full selected Ops merge SHA")
             raise SystemExit(audit_flux(args.audit_flux, json.load(sys.stdin)))
+        if args.installed_policies:
+            check_installed_policies(json.load(sys.stdin),
+                                     stage_repo=Path.cwd() if args.installed_policies == "preflight" else None)
+            return
+        if args.audit_matte_policy_snapshot:
+            snapshot = json.load(sys.stdin)
+            revision = re.fullmatch(r"main@sha1:([0-9a-f]{40})", snapshot[0]["status"]["lastAppliedRevision"])
+            if not revision:
+                raise ValueError("policy snapshot requires a full applied revision")
+            audit_matte_policy(Path.cwd(), revision[1], snapshot,
+                               require_empty=args.audit_matte_policy_snapshot == "empty")
+            return
         if args.audit_matte_policy:
             revision = args.audit_matte_policy
             if (not re.fullmatch(r"[0-9a-f]{40}", revision)

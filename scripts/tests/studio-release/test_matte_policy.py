@@ -1,13 +1,16 @@
 """Verify the standalone matte policy through the rendered Flux inventory."""
 
 import copy
+import io
+import os
 import shutil
 import subprocess
+import tarfile
 import unittest
-from fnmatch import fnmatchcase
 from functools import cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import yaml
 
@@ -18,9 +21,14 @@ from check import (
     STUDIO_PATH,
     audit_matte_policy,
     flux_build,
+    flux_build_bytes,
+    main as cli,
     resource,
     studio_inventory,
 )
+
+
+from matte_policy_files import checks
 
 
 REPO = Path.cwd()
@@ -148,7 +156,21 @@ class MattePolicyTest(unittest.TestCase):
             "spec": POLICY_SPEC,
         }])
 
-    def test_selector_matches_no_rendered_studio_workload(self):
+    def test_policy_render_byte_identical_to_main(self):
+        base = os.getenv("STUDIO_MATTE_POLICY_BASE", "origin/main")
+        path = STUDIO_PATH / "matting-pending/worker-policy"
+        pinned = subprocess.check_output(["git", "show", f"{base}:{STUDIO_PATH}/ks.yaml"], text=True)
+        reviewed = resource(yaml.safe_load_all(pinned), "Kustomization", MATTE_POLICY_STAGE)
+        archive = subprocess.check_output(["git", "archive", base, str(path)])
+        with TemporaryDirectory(prefix="studio-matte-base-") as directory:
+            with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+                tar.extractall(directory, filter="data")
+            previous = flux_build_bytes(Path(directory), reviewed)
+        self.assertEqual(flux_build_bytes(REPO, stage_definitions(REPO)[MATTE_POLICY_STAGE]), previous)
+
+    @unittest.skipUnless(os.getenv("STUDIO_MATTE_CHECK_WORKLOADS", "true") == "true",
+                         "inventory-only change needs no chart pull")
+    def test_selector_matches_only_the_matte_workload(self):
         selector = policy_render(REPO)[0]["spec"]["podSelector"]["matchLabels"]
         names = set()
         for workload in workload_documents():
@@ -158,7 +180,8 @@ class MattePolicyTest(unittest.TestCase):
             name = workload["metadata"]["name"]
             names.add(name)
             with self.subTest(kind=workload["kind"], workload=name):
-                self.assertFalse(selector.items() <= labels.items())
+                self.assertEqual(selector.items() <= labels.items(), name == MATTE_POLICY and
+                                 workload["kind"] == "Deployment")
         self.assertIn("studio-api", names)
         self.assertIn("studio-render", names)
         print(f"Checked the matte selector against {len(names)} distinct Studio workload names")
@@ -193,27 +216,98 @@ class MattePolicyTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "cluster-apps inventory is missing ai/studio-matte-policy"):
                 stage_definitions(repo)
 
-    def test_required_aggregate_runs_the_guard_for_parent_inventory_files(self):
-        workflow = yaml.safe_load((REPO / ".github/workflows/flux-local.yaml").read_text())
-        jobs = workflow["jobs"]
-        filter_key = "studio-matte-policy-files"
-        step = next(step for step in jobs["filter"]["steps"] if step["id"] == filter_key)
-        patterns = step["with"]["patterns"].splitlines()
-        inventories = [FLUX_APPS_INVENTORY, *(
-            directory / filename
-            for directory in (AI_INVENTORY.parent, AI_INVENTORY.parent.parent)
-            for filename in KUSTOMIZATION_FILES
-        )]
-        for inventory in inventories:
-            with self.subTest(inventory=inventory):
-                self.assertTrue(any(fnmatchcase(str(inventory), pattern) for pattern in patterns))
-        self.assertFalse(any(fnmatchcase("kubernetes/main/apps/ai/wan-video/ks.yaml", pattern)
-                             for pattern in patterns))
-        self.assertEqual(jobs["filter"]["outputs"][filter_key],
-                         "${{ steps.studio-matte-policy-files.outputs.changed_files }}")
-        self.assertEqual(jobs["studio-matte-policy-guard"]["if"],
-                         "${{ needs.filter.outputs.studio-matte-policy-files != '[]' }}")
+    def test_required_aggregate_and_conditional_helm_check(self):
+        jobs = yaml.safe_load((REPO / ".github/workflows/flux-local.yaml").read_text())["jobs"]
+        for key in ("inventory", "workloads"):
+            with self.subTest(key=key):
+                self.assertEqual(jobs["filter"]["outputs"][f"studio-matte-{key}"],
+                                 "${{ steps.studio-matte-policy-files.outputs." + key + " }}")
+        guard = jobs["studio-matte-policy-guard"]
+        self.assertEqual(guard["if"], "${{ needs.filter.outputs.studio-matte-inventory == 'true' }}")
+        selector_step = next(step for step in guard["steps"] if "STUDIO_MATTE_CHECK_WORKLOADS" in step.get("env", {}))
+        self.assertEqual(selector_step["env"]["STUDIO_MATTE_CHECK_WORKLOADS"],
+                         "${{ needs.filter.outputs.studio-matte-workloads }}")
         self.assertIn("studio-matte-policy-guard", jobs["success"]["needs"])
+        failure = next(step for step in jobs["success"]["steps"] if step["run"] == "exit 1")
+        self.assertEqual(failure["if"], "${{ needs.filter.result != 'success' || "
+                         "contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}")
+
+    def test_filter_paths_and_inventory_only_does_not_need_helm(self):
+        scenarios = {
+            **{str(directory / filename): (True, False)
+               for directory in (AI_INVENTORY.parent, AI_INVENTORY.parent.parent)
+               for filename in KUSTOMIZATION_FILES},
+            str(FLUX_APPS_INVENTORY): (True, False),
+            f"{STUDIO_PATH}/app/api.yaml": (True, True),
+            f"{STUDIO_PATH}-render/app/helmrelease.yaml": (True, True),
+            "kubernetes/shared/components/common/repos/app-template/ocirepository.yaml": (True, True),
+            "scripts/tests/studio-release/check.py": (True, True),
+            "scripts/tests/studio-release/install-flux.sh": (True, True),
+            "scripts/tests/studio-release/test_matte_policy.py": (True, True),
+            "scripts/tests/studio-release/matte_policy_files.py": (True, True),
+            ".github/workflows/flux-local.yaml": (True, True),
+            "kubernetes/main/apps/ai/wan-video/ks.yaml": (False, False),
+        }
+        for path, expected in scenarios.items():
+            with self.subTest(path=path), patch("matte_policy_files.subprocess.check_output",
+                                               return_value=os.fsencode(path) + b"\0"):
+                self.assertEqual(checks("base", "head"), expected)
+
+    def test_filter_includes_deleted_inventory_and_both_rename_paths(self):
+        with TemporaryDirectory(prefix="studio-matte-filter-") as directory:
+            def git(*args):
+                subprocess.run(["git", "-C", directory, *args], check=True, capture_output=True)
+
+            git("init", "--quiet")
+            path = Path(directory) / FLUX_APPS_INVENTORY
+            path.parent.mkdir(parents=True)
+            path.write_text("tracked inventory")
+            git("add", ".")
+            git("-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "base")
+            output = subprocess.check_output
+            with patch("matte_policy_files.subprocess.check_output",
+                       side_effect=lambda argv: output(["git", "-C", directory, *argv[1:]])):
+                for destination in (None, "elsewhere.yaml"):
+                    with self.subTest(destination=destination):
+                        if destination:
+                            git("mv", str(FLUX_APPS_INVENTORY), destination)
+                        else:
+                            git("rm", str(FLUX_APPS_INVENTORY))
+                        git("-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid",
+                            "commit", "-qm", "edited")
+                        self.assertEqual(checks("HEAD^", "HEAD"), (True, False))
+                        if destination:
+                            self.assertEqual(checks("HEAD", "HEAD^"), (True, False))
+                        git("reset", "--hard", "HEAD^")
+
+    def test_helm_selector_refuses_unaudited_values_or_post_renderers(self):
+        release = {"metadata": {"name": "studio-render", "namespace": "ai"}, "spec": {}}
+        for key in ("valuesFrom", "postRenderers"):
+            with self.subTest(key=key):
+                candidate = copy.deepcopy(release)
+                candidate["spec"][key] = [{}]
+                with self.assertRaisesRegex(ValueError, "include all effective Helm values"):
+                    helm_documents([], candidate)
+
+    def test_read_back_cli_requires_full_sha_and_clean_selected_checkout(self):
+        revision = "a" * 40
+        for selected, head, changes in (
+            (revision[:8], revision, ""),
+            (revision, "b" * 40, ""),
+            (revision, revision, " M some-file"),
+        ):
+            with (
+                self.subTest(selected=selected, head=head, changes=changes),
+                patch("sys.argv", ["check.py", "--audit-matte-policy", selected]),
+                patch("check.subprocess.check_output", side_effect=[head, changes]),
+                patch("check.audit_matte_policy") as audit,
+                patch("sys.stderr", new_callable=io.StringIO) as stderr,
+                self.assertRaises(SystemExit) as raised,
+            ):
+                cli()
+            self.assertEqual(raised.exception.code, 1)
+            self.assertIn("clean checkout at the full Ops merge SHA", stderr.getvalue())
+            audit.assert_not_called()
 
     def test_read_back_checks_revision_retention_spec_and_pod_absence(self):
         revision = "a" * 40
@@ -233,9 +327,18 @@ class MattePolicyTest(unittest.TestCase):
         snapshot = [stage, policy, {"items": []}]
         audit_matte_policy(REPO, revision, snapshot)
         for index, keys, value, message in (
+            (0, ("metadata", "deletionTimestamp"), "2026-11-25T00:00:00Z", "must be Ready at"),
+            (0, ("status", "lastAttemptedRevision"), "main@sha1:" + "b" * 40, "must be Ready at"),
+            (0, ("status", "inventory", "entries"), [], "must own only"),
+            (0, ("status", "conditions", 0, "type"), "Reconciling", "must be Ready at"),
+            (0, ("status", "conditions", 0, "status"), "False", "must be Ready at"),
+            (0, ("status", "conditions", 0, "observedGeneration"), 0, "must be Ready at"),
             (0, ("status", "lastAppliedRevision"), "main@sha1:" + "b" * 40, "must be Ready at"),
             (0, ("status", "observedGeneration"), 0, "must be Ready at"),
             (0, ("spec", "deletionPolicy"), "MirrorPrune", "spec.deletionPolicy"),
+            (1, ("metadata", "deletionTimestamp"), "2026-11-25T00:00:00Z", "being deleted"),
+            (1, ("metadata", "labels", "kustomize.toolkit.fluxcd.io/name"), "other", "Flux owner"),
+            (1, ("metadata", "labels", "kustomize.toolkit.fluxcd.io/namespace"), "other", "Flux owner"),
             (1, ("metadata", "annotations"), {}, "prune protection"),
             (1, ("spec", "ingress"), [{}], "live spec differs"),
             (1, ("spec", "egress"), [{}], "live spec differs"),

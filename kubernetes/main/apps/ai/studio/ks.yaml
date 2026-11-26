@@ -222,3 +222,55 @@ spec:
   interval: 30m
   retryInterval: 1m
   timeout: 2m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: studio-matte-worker
+  namespace: ai
+spec:
+  targetNamespace: ai
+  dependsOn:
+    - name: studio
+    # Its Helm health gate waits for the 17-CPU render pod to roll.
+    - name: studio-worker-registration
+    - name: studio-matte-policy
+    # Projects the matte token and provides the registration ServiceAccount.
+    - name: studio-media-worker-registration
+  path: ./kubernetes/main/apps/ai/studio/matting-pending/activation
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  prune: true
+  # The Deployment is Ready only when the sidecar reports the exact profile.
+  # The worker maintains its progress marker while it waits for registration.
+  wait: true
+  interval: 30m
+  retryInterval: 1m
+  timeout: 5m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: studio-matte-worker-registration
+  namespace: ai
+spec:
+  targetNamespace: ai
+  dependsOn:
+    - name: studio-migration
+    - name: studio-matte-worker
+  path: ./kubernetes/main/apps/ai/studio/matte-worker-registration
+  sourceRef:
+    kind: GitRepository
+    name: haynes-ops
+    namespace: flux-system
+  prune: true
+  healthChecks:
+    - apiVersion: batch/v1
+      kind: Job
+      name: studio-register-matte-worker-c13c8ad74dfb
+      namespace: ai
+  interval: 30m
+  retryInterval: 1m
+  timeout: 6m
