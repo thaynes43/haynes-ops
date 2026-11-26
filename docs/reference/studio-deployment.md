@@ -2426,6 +2426,28 @@ ingress through `studio-mcp`.
 **Expected.** The migration retry and workload rollback remain unexercised.
 Matte worker activation is tracked in [story 970](https://work.haynesnetwork.com/work_packages/970).
 
+## OP978 fifth release
+
+**Proven (2026-11-26).** Haynes-ops merged
+`6597e708564aeb452049c00c3d05854afa3c25c0` at 08:25:32Z. The six
+Deployments run Studio `eeeb2a40105ae1e64325063b0aa93c890fdefa43`.
+Alembic stayed at `0013_matte_jobs`, all six encoder locations still
+report PyAV 18.1.1, and the offline render pod stayed in place. The served
+Editor bundle contains the Format control, and `STUDIO_PAUSED_RECONCILE`
+is unset. The coordinator's `wait` passed at 08:38:08Z and `postflight`
+logged **79 PASS, 0 FAIL** at 08:38:31Z. The independent `verify` logged
+**77 PASS, 0 FAIL** at 08:41:39Z. The coordinator's baseline comparison
+confirmed that both archived runs, their deliveries and media indexes,
+and the store were unchanged.
+[Story 978, comment 10409](https://work.haynesnetwork.com/work_packages/978/activity#comment-10409)
+· [Fifth-release evidence](studio-fifth-release.md#installed-evidence).
+
+**Changed.** Flux fetched the merge on its 30-minute poll at 08:35:24Z,
+9 minutes 52 seconds after the merge. The blocks ran from session pods
+and read ingress through `studio-mcp`.
+
+**Expected.** The migration retry and workload rollback remain unexercised.
+
 ## OP437 one API pod recovery
 
 **Proven (2026-11-25), with two changes.** Run once against the third pin,
