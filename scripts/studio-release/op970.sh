@@ -139,34 +139,39 @@ matte_pods() {
   pods matte-worker "$containers" 1 talosw01 true
 }
 
-launcher_exec() {
+worker_started() {
   [[ -n ${matte_instance:-} ]] || return 1
-  kubectl -n ai exec -i "$matte_pod" -c worker -- python -I -B -c '
+  kubectl -n ai exec "$matte_pod" -c worker -- python -I -B -c '
 import runpy
 import sys
-
-expected, *args = sys.argv[1:]
-current = runpy.run_path("/etc/studio/matte-start.py")["launcher_instance"]
-if current() != expected:
-    raise SystemExit("FAIL exec reached a different matte launcher instance")
-sys.argv = ["-", *args]
-exec(compile(sys.stdin.buffer.read(), "<matte postflight>", "exec"),
-     {"__name__": "__main__"})
-' "$matte_instance" "$@"
-}
-
-worker_started() {
-  launcher_exec <<'PYTHON'
 from pathlib import Path
 from haynes_studio.queue.progress import ProgressFile
 
+current = runpy.run_path("/etc/studio/matte-start.py")["launcher_instance"]
+if current() != sys.argv[1]:
+    raise SystemExit("FAIL exec reached a different matte launcher instance")
 children = Path("/proc/1/task/1/children").read_text().split()
 assert len(children) == 1 and children[0].isdecimal()
 args = Path("/proc", children[0], "cmdline").read_bytes().strip(b"\0").split(b"\0")
 assert b"studio-worker" in [part.rsplit(b"/", 1)[-1] for part in args]
 assert args[-2:] == [b"--lane", b"matte"]
 assert ProgressFile("/run/studio/worker-progress").fresh(300)
-PYTHON
+' "$matte_instance"
+}
+
+matte_routes() {
+  [[ -n ${matte_instance:-} ]] || return 1
+  kubectl -n ai exec -i "$matte_pod" -c worker -- python -I -B -c '
+import runpy
+import sys
+
+current = runpy.run_path("/etc/studio/matte-start.py")["launcher_instance"]
+if current() != sys.argv[1]:
+    raise SystemExit("FAIL exec reached a different matte launcher instance")
+sys.argv = ["-", "matte"]
+exec(compile(sys.stdin.buffer.read(), "<matte listener audit>", "exec"),
+     {"__name__": "__main__"})
+' "$matte_instance" < "$script_dir/op967-routes.py"
 }
 
 matte_removed() {
@@ -322,8 +327,7 @@ run_activation_check() {
             check 'offline renderer at 17 CPUs' bound_matte_check render_pin 17
             check 'dedicated matte grant, idle queues, archives and store unchanged' bound_matte_check data_probe matte-after "$revision" "$api"
             if (( ! failed )); then
-              check 'matte listener refuses invalid claims and releases' bound_matte_check launcher_exec matte \
-                < "$script_dir/op967-routes.py"
+              check 'matte listener refuses invalid claims and releases' bound_matte_check matte_routes
             fi
           else
             check 'retained policy and no matching pods' policy_snapshot empty

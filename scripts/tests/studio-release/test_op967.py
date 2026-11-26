@@ -967,8 +967,8 @@ PAYLOADS = {
     "scripts/studio-release/op967-data.py": "6d8d91b3fc2923ba1b2cc3a8870a9069c644629b72d3770526fd52f15572afc6",
     "scripts/studio-release/op967-catalogue.sql": "02d023f1d17ba4a1bae60e72ea8565f8769171542138235181da05a8da9f4607",
     "scripts/studio-release/op967-routes.py": "26ad97c7ec6b4934505599da4da09248d7180c168eeed404c99be9f01b62c964",
-    "scripts/studio-release/op970-log.py": "f1e62ead9aff791a9390fcbd9fa2c9ef90aa86df74c8ad15c47a0dc9a0994340",
-    "scripts/tests/studio-release/check.py": "e6d552515fea01c8040ccfbf2005fac2732261f2a1baf2ded2154e70097f9eaa",
+    "scripts/studio-release/op970-log.py": "1c6853314e51f4dbb830c48856db87c0145f1e15ce5a972c4c02ac952752e130",
+    "scripts/tests/studio-release/check.py": "d64dfd8fa53897c6b71f67aa68a7bdc167134f73ded88f35b9cce1a76841dc9b",
 }
 
 
@@ -994,9 +994,9 @@ class StartupTest(unittest.TestCase):
         "20594027b779a9b6497fc7796dbd64f1e2124b2ec52f46a678769b0a236ec712": "encoder version",
         "b23bd15302a967ce2823defe1ada2ea092df7d685920bd4ebe53aa5411ebebf7": "worker engine reachability",
         "4826f0bbfb7c1ef6107d5245ad324b93450ffe81b13784d945d022215cf69998": "retained allocation read",
-        "726d728213f87c007a366bd58887cc3ee7b341762e74dcdef62bb1772efee338": "forbidden destination controls",
-        "7dcd1b7eacf382d28d680129e6609361a0a7f37224a9f7f1b655cf7c00fb9b06": "matte worker process read",
-        "c142436de00cb05c013f6515fd6f673cde7bf399adc10a8cb8fb1fb68581846a": "matte listener validation refusals",
+        "7b210d8a7149526d55ba24350b1fe239926c626a6650d531eb144ce0aadc75dd": "DNS metrics reachability",
+        "25b3d7e688a9be6e837d2f3e842f84153eeb5cc9d7c3eee10fc236128e1ff333": "instance-bound matte worker process read",
+        "3860d5c2738c1c081215825263416834d97b16dee4beaa9f80c7ce1e4ff41740": "instance-bound matte listener validation refusals",
         "dabba0cfe9628d2a4f5a30d1e5eebe4fb5ed514c2ddeb89c3b6b99dff2b065d0": "listener validation refusals",
     }
     DEPENDENCY_READS = (
@@ -1051,12 +1051,7 @@ class StartupTest(unittest.TestCase):
             case "kubectl":
                 args = argv
                 if args[:1] == ["-n"]:
-                    if args[1] == "observability":
-                        self.assertEqual(args[2:], [
-                            "get", "pod/loki-0", "ciliumendpoints.cilium.io/loki-0", "-o", "json",
-                        ], detail)
-                    else:
-                        self.assertIn(args[1], {"ai", "database", "flux-system", "kube-system"}, detail)
+                    self.assertIn(args[1], {"ai", "database", "flux-system", "kube-system"}, detail)
                     args = args[2:]
                 if args[:1] == ["exec"]:
                     fingerprint = hashlib.sha256("\0".join(argv).encode()).hexdigest()
@@ -1144,7 +1139,11 @@ class StartupTest(unittest.TestCase):
         self.assertEqual(seen, self.READ_ONLY_EXEC.keys())
         # Runtime Python and SQL payloads, including indirect local entry points,
         # must still match their reviewed source.
-        for name, checksum in PAYLOADS.items():
+        payloads = PAYLOADS.copy()
+        launcher = STUDIO / "matting-pending/activation/worker/matte-start.py"
+        if launcher.is_file():  # The reviewed rollback removes the launcher.
+            payloads[launcher] = "984e721932f19716176fab95c4e9e55ecac3bf8296030d52dcf98e57cc45b60c"
+        for name, checksum in payloads.items():
             with self.subTest(payload=name):
                 self.assertEqual(hashlib.sha256(Path(name).read_bytes()).hexdigest(), checksum)
 

@@ -712,25 +712,36 @@ kubectl() {
       else
         printf '%s\n' "$MATTE_LOGS"
       fi ;;
-    '-n ai exec -i matte-fixture -c worker -- python -I -B -c '*)
-      shift 12
-      check=process
-      if [[ ${3:-} == matte ]]; then check=listener; fi
+    '-n ai exec matte-fixture -c worker -- python -I -B -c '*|'-n ai exec -i matte-fixture -c worker -- python -I -B -c '*)
+      if [[ $4 == -i ]]; then
+        check=listener
+        shift 12
+      else
+        check=process
+        shift 11
+      fi
       if [[ $DAMAGE == restart-during-$check ]]; then restart; fi
       runtime_instance=$INSTANCE
       if [[ $DAMAGE == unpublished-restart-$check ]]; then runtime_instance=$REPLACEMENT_INSTANCE; fi
-      # Execute the real exec wrapper, replacing only the remote procfs lookup
-      # and the body that would inspect the worker or send listener requests.
-      RUNTIME_INSTANCE=$runtime_instance python3 -B -c '
+      # Execute the real wrappers with local procfs, progress and stdin fixtures.
+      RUNTIME_INSTANCE=$runtime_instance CHECK=$check python3 -B -c '
 import os
+import pathlib
 import runpy
 import sys
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 wrapper, *args = sys.argv[1:]
 runpy.run_path = lambda _: {"launcher_instance": lambda: os.environ["RUNTIME_INSTANCE"]}
+pathlib.Path = Mock()
+pathlib.Path.return_value.read_text.return_value = "2"
+pathlib.Path.return_value.read_bytes.return_value = b"studio-worker\0--lane\0matte\0"
+sys.modules["haynes_studio.queue.progress"] = SimpleNamespace(ProgressFile=Mock())
 sys.argv = ["-c", *args]
 exec(wrapper, {"__name__": "__main__"})
-' "$@" <<< "print('matte worker $check checked')" ;;
+print("matte worker", os.environ["CHECK"], "checked")
+' "$@" <<< "pass" ;;
     *) return 3 ;;
   esac
 }
