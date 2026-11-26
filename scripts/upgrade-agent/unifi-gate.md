@@ -23,8 +23,8 @@ deny list so the operator can see them before proceeding.
 
 Recovery shortfalls WAIT until the deadline and only then STOP: a peer that went
 offline (devices behind a rebooting switch, or powered by its PoE, drop with it),
-site counts, the site's wireless client total, and switch links and PoE. A peer still
-offline once the target is back on new firmware and settled is a STOP at once. Site
+site counts, the site's wireless client total, and switch links and PoE. Nothing else is
+touched while the gate waits. Site
 counts are read only after the target reports its new firmware, because the
 controller counts it as disconnected while it is updating. Learned on the first live
 rollout, 2026-11-26 (OP657): AP clients roam to neighbouring APs during a reboot and
@@ -40,7 +40,7 @@ ID, and WAN monitor target labels.
 
 | Evidence | Prometheus metrics and policy |
 | --- | --- |
-| Exporter and site | `up{job="unpoller"}` must be 1. Current queries use a two-minute lookback. `unpoller_device_info` and positive `unpoller_device_uptime_seconds` identify online devices at the target site. Snapshot reconciles that inventory with `unpoller_site_adopted` and `unpoller_site_disconnected`. A baseline peer going offline triggers STOP even during the target reboot. After the target returns, adopted counts must be at least their baseline values, and disconnected and pending counts must be at most their baseline values in each subsystem. |
+| Exporter and site | `up{job="unpoller"}` must be 1. Current queries use a two-minute lookback. `unpoller_device_info` and positive `unpoller_device_uptime_seconds` identify online devices at the target site. Snapshot reconciles that inventory with `unpoller_site_adopted` and `unpoller_site_disconnected`. A baseline peer that goes offline WAITs until the deadline. After the target returns, adopted counts must be at least their baseline values, and disconnected and pending counts must be at most their baseline values in each subsystem. |
 | Target | Firmware must change and `unpoller_device_upgradable` must read 0. The last two raw uptime samples must be fresh and increasing and place the reboot after baseline capture. The inferred boot times may differ by up to 65 seconds to account for the one-minute exporter and scrape cadence. The target settles for 120 seconds of reported uptime before the AP or switch test. |
 | AP | Sum the `user` and `guest` buckets of `unpoller_device_stations` over every AP of the site. At least 70% of the baseline site total must be back by default. A baseline without the site total falls back to the target AP's own count. |
 | Switch | Positive `unpoller_device_port_port_speed_bps` shows a negotiated link. Positive `unpoller_device_port_poe_watts` shows PoE draw. Check each baseline port number with either condition for the corresponding link or draw after settle. Unpoller can omit inactive port series. |

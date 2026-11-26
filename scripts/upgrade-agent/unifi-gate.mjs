@@ -250,12 +250,9 @@ function assess(baseline, current, history, capturedAt, at, deadline, clientDrop
   const { target } = current;
   const lostPeers = baseline.onlineDevices.filter((name) =>
     name !== baseline.target.name && !current.onlineDevices.includes(name));
-  // Devices downstream of a rebooting switch drop with it. Count a lost peer as a stop only once the
-  // target is back on new firmware and settled; until then it waits, bounded by the deadline.
-  const targetBack = target?.uptimeSeconds >= SETTLE_SECONDS && target.version !== baseline.target.version;
-  if (lostPeers.length) {
-    (targetBack ? stops : waiting).push(`Previously online devices unavailable: ${lostPeers.join(', ')}`);
-  }
+  // Devices downstream of a rebooting switch, or powered by its PoE, drop with it and can report back
+  // minutes after it. A lost peer waits, bounded by the deadline; nothing else is touched meanwhile.
+  if (lostPeers.length) waiting.push(`Previously online devices unavailable: ${lostPeers.join(', ')}`);
 
   // Site counts include the target while it downloads, flashes and reboots, and its old uptime
   // series can stay positive throughout. Check them only once it reports the new firmware.
