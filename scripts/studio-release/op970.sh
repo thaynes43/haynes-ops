@@ -19,21 +19,24 @@ policy_snapshot() {
 }
 
 installed_policies() {
-  local namespaced clusterwide cilium comfyui loki namespace endpoints api_pods matte_pods
+  local namespaced clusterwide cilium dns_pods dns_endpoints namespace endpoints api_pods matte_pods
   namespaced=$(kubectl get networkpolicies.networking.k8s.io,ciliumnetworkpolicies.cilium.io -A -o json) || return 1
   clusterwide=$(kubectl get ciliumclusterwidenetworkpolicies.cilium.io -o json) || return 1
   cilium=$(kubectl -n kube-system get configmap cilium-config -o json) || return 1
-  comfyui=$(kubectl -n ai get pod/comfyui-0 ciliumendpoints.cilium.io/comfyui-0 -o json) || return 1
-  loki=$(kubectl -n observability get pod/loki-0 ciliumendpoints.cilium.io/loki-0 -o json) || return 1
-  if [[ $1 == preflight ]]; then
-    namespace=$(kubectl get namespace ai -o json) || return 1
-    printf '%s\n' "$namespaced" "$clusterwide" "$cilium" "$comfyui" "$loki" "$namespace"
-  else
-    endpoints=$(kubectl -n ai get ciliumendpoints.cilium.io -o json) || return 1
-    api_pods=$(kubectl -n ai get pods -l app.kubernetes.io/name=studio-api -o json) || return 1
-    matte_pods=$(kubectl -n ai get pods -l "$selector" -o json) || return 1
-    printf '%s\n' "$namespaced" "$clusterwide" "$cilium" "$comfyui" "$loki" "$endpoints" "$api_pods" "$matte_pods"
-  fi | jq -s . | python3 -B scripts/tests/studio-release/check.py --installed-policies "$1"
+  dns_pods=$(kubectl -n kube-system get pods -l k8s-app=kube-dns -o json) || return 1
+  dns_endpoints=$(kubectl -n kube-system get ciliumendpoints.cilium.io -o json) || return 1
+  {
+    if [[ $1 == preflight ]]; then
+      namespace=$(kubectl get namespace ai -o json) || return 1
+      printf '%s\n' "$namespaced" "$clusterwide" "$cilium" "$dns_pods" "$dns_endpoints" "$namespace"
+    else
+      endpoints=$(kubectl -n ai get ciliumendpoints.cilium.io -o json) || return 1
+      api_pods=$(kubectl -n ai get pods -l app.kubernetes.io/name=studio-api -o json) || return 1
+      matte_pods=$(kubectl -n ai get pods -l "$selector" -o json) || return 1
+      printf '%s\n' "$namespaced" "$clusterwide" "$cilium" "$dns_pods" "$dns_endpoints" "$endpoints" "$api_pods" "$matte_pods"
+    fi
+  } | jq -s . | python3 -B scripts/tests/studio-release/check.py --installed-policies "$1" || return 1
+  control_connections "$dns_pods"
 }
 
 allocation_present() {
@@ -59,13 +62,17 @@ print(allocation, profile)
 }
 
 control_connections() {
+  local addresses
+  addresses=$(jq -ce '[.items[].status.podIP]' <<< "$1") || return 1
   kubectl -n ai exec deploy/studio-render -c app -- python -I -B -c '
+import json
 import socket
-for target in (("comfyui-0.comfyui.ai.svc.cluster.local.", 8188),
-               ("loki-headless.observability.svc.cluster.local.", 3100)):
-    with socket.create_connection(target, timeout=2):
-        print(target[0], target[1], "reachable from unrestricted render pod")
-'
+import sys
+
+for address in json.loads(sys.argv[1]):
+    with socket.create_connection((address, 9153), timeout=2):
+        print(address, 9153, "reachable from unrestricted render pod")
+' "$addresses"
 }
 
 matte_identity() {
@@ -101,14 +108,19 @@ bound_matte_check() {
 }
 
 proof_logs() {
-  local started=$matte_started logs deadline status
+  local started=$matte_started logs evidence deadline status
   deadline=$((SECONDS + 90))
   while true; do
     same_matte_container || return 1
     logs=$(kubectl -n ai logs "$matte_pod" -c worker --timestamps --since-time="$started") || return 1
     same_matte_container || return 1
     status=0
-    python3 -B scripts/studio-release/op970-log.py "$started" <<< "$logs" || status=$?
+    evidence=$(python3 -B scripts/studio-release/op970-log.py "$started" <<< "$logs") || status=$?
+    if ((status == 0)); then
+      matte_instance=${evidence##*$'\n'}
+      printf '%s\n' "${evidence%$'\n'*}"
+      return 0
+    fi
     if ((status != 2)); then return "$status"; fi
     if ((SECONDS >= deadline)); then
       printf 'FAIL no matte isolation recheck within 90 seconds\n' >&2
@@ -127,8 +139,24 @@ matte_pods() {
   pods matte-worker "$containers" 1 talosw01 true
 }
 
+launcher_exec() {
+  [[ -n ${matte_instance:-} ]] || return 1
+  kubectl -n ai exec -i "$matte_pod" -c worker -- python -I -B -c '
+import runpy
+import sys
+
+expected, *args = sys.argv[1:]
+current = runpy.run_path("/etc/studio/matte-start.py")["launcher_instance"]
+if current() != expected:
+    raise SystemExit("FAIL exec reached a different matte launcher instance")
+sys.argv = ["-", *args]
+exec(compile(sys.stdin.buffer.read(), "<matte postflight>", "exec"),
+     {"__name__": "__main__"})
+' "$matte_instance" "$@"
+}
+
 worker_started() {
-  kubectl -n ai exec "$matte_pod" -c worker -- python -I -B -c '
+  launcher_exec <<'PYTHON'
 from pathlib import Path
 from haynes_studio.queue.progress import ProgressFile
 
@@ -138,7 +166,7 @@ args = Path("/proc", children[0], "cmdline").read_bytes().strip(b"\0").split(b"\
 assert b"studio-worker" in [part.rsplit(b"/", 1)[-1] for part in args]
 assert args[-2:] == [b"--lane", b"matte"]
 assert ProgressFile("/run/studio/worker-progress").fresh(300)
-'
+PYTHON
 }
 
 matte_removed() {
@@ -201,11 +229,10 @@ collect_preflight() {
   else
     receipt_check 'fourth pin and part A installed' flux_state "$policy_merge"
     receipt_check 'part A policy retained and no matte pods' policy_snapshot empty
-    receipt_check 'API and worker policies projected from all installed inputs' installed_policies preflight
+    receipt_check 'API and worker policy projection, DNS ingress and metrics reachability' installed_policies preflight
     receipt_check 'installed API endpoints on the fourth pin' api_endpoints
     receipt_check 'offline renderer at 20 CPUs' render_pin 20
     receipt_check 'retained matting allocation and profile present' allocation_present
-    receipt_check 'both forbidden destinations reachable from the unrestricted pod' control_connections
     receipt_check 'Wan and Foley idle' wan_idle
     receipt_check 'ComfyUI idle' images_idle
   fi
@@ -237,7 +264,7 @@ rollback_candidate() {
 run_activation_check() {
   phase=${1:-}
   local mode=matte-before
-  local required=() matte_binding matte_pod matte_uid matte_container matte_started
+  local required=() matte_binding matte_pod matte_uid matte_container matte_started matte_instance
   case $phase in
     retry-preflight) mode=matte-retry ;;
     rollback-preflight) mode=matte-rollback ;;
@@ -283,19 +310,20 @@ run_activation_check() {
             check 'single running matte worker container selected' select_matte_container
             if ((failed)); then finish; fi
             check 'retained policy selects the current worker' bound_matte_check policy_snapshot active
-            check 'installed API and matte policy coverage' bound_matte_check installed_policies postflight
+            check 'installed API and matte policy coverage, DNS ingress and metrics reachability' bound_matte_check installed_policies postflight
             check 'matte worker and matting sidecar each Ready on the pinned images' bound_matte_check matte_pods
-            check 'both forbidden destinations still reachable from the unrestricted pod' bound_matte_check control_connections
             if (( ! failed )); then
               check 'fresh startup and recurring isolation proof' bound_matte_check proof_logs
             fi
             check 'matte registration Job completed' bound_matte_check registration matte-worker '[201,200]'
-            check 'registered matte worker polling with a fresh progress marker' bound_matte_check worker_started
+            if (( ! failed )); then
+              check 'registered matte worker polling with a fresh progress marker' bound_matte_check worker_started
+            fi
             check 'offline renderer at 17 CPUs' bound_matte_check render_pin 17
             check 'dedicated matte grant, idle queues, archives and store unchanged' bound_matte_check data_probe matte-after "$revision" "$api"
             if (( ! failed )); then
-              check 'matte listener refuses invalid claims and releases' bound_matte_check kubectl -n ai exec -i "$matte_pod" \
-                -c worker -- python -I -B - matte < "$script_dir/op967-routes.py"
+              check 'matte listener refuses invalid claims and releases' bound_matte_check launcher_exec matte \
+                < "$script_dir/op967-routes.py"
             fi
           else
             check 'retained policy and no matching pods' policy_snapshot empty

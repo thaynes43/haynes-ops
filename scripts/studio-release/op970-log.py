@@ -1,12 +1,14 @@
 """Select fresh isolation evidence from timestamped Kubernetes container logs."""
 
 import json
+import re
 import sys
 from datetime import datetime, timezone
 
 
 def audit(started, lines, now):
     proof = {}
+    instance = None
     for line in lines:
         timestamp, _, payload = line.partition(" ")
         if not payload.startswith("{"):
@@ -27,6 +29,11 @@ def audit(started, lines, now):
         if (phase == "startup" and proof) or (phase == "recheck" and "startup" not in proof):
             print("FAIL isolation logs out of order for the worker container", file=sys.stderr)
             return 1
+        logged = event.get("instance")
+        if not isinstance(logged, str) or not re.fullmatch(r"[0-9a-f]{32}", logged) or instance not in (None, logged):
+            print("FAIL isolation logs disagree on the launcher instance", file=sys.stderr)
+            return 1
+        instance = logged
         proof[phase] = (recorded, line.rstrip())
     if "startup" not in proof:
         print("FAIL no startup isolation proof newer than the worker container start", file=sys.stderr)
@@ -39,6 +46,7 @@ def audit(started, lines, now):
         return 1
     print(initial[1])
     print(recent[1])
+    print(instance)
     return 0
 
 

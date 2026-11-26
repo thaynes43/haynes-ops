@@ -118,64 +118,96 @@ namespace. Only the worker container mounts its token and the Studio store.
 The sidecar receives the read-only allocation and the shared Unix socket
 directory. Each startup or recurring check requires a single DNS address for
 the Studio worker listener and a successful TCP connection to it on port 8002.
-The launcher then queries CoreDNS over the allowed TCP 53 path for each
-control. It requires one A record in the pod subnet with a positive TTL, then
-connects directly to that pod IP. CoreDNS uses Ready EndpointSlice entries for
-these names. Its cache can serve an expired record with TTL zero. The launcher
-allows one refresh attempt on the same DNS connection and requires a positive
-TTL before probing the port.
-[CoreDNS settings](../../kubernetes/main/apps/kube-system/coredns/app/helm-values.yaml) ·
-[Pod subnet](../../kubernetes/main/bootstrap/omni/cluster-template.yaml#L36-L43) ·
-[Endpoint DNS](https://github.com/coredns/coredns/blob/v1.13.1/plugin/kubernetes/kubernetes.go#L487-L516) ·
-[Ready filtering](https://github.com/coredns/coredns/blob/v1.13.1/plugin/kubernetes/object/endpoint.go#L85-L98) ·
-[Stale cache TTL](https://github.com/coredns/coredns/blob/v1.13.1/plugin/cache/README.md#L59-L67)
+The launcher then opens an IPv4 TCP connection to the `kube-dns` Service
+at `10.43.0.10:53`. It looks up the open socket by inode in
+`/proc/self/net/tcp` and requires exactly one established row for a peer on
+port 53 in the cluster pod subnet, distinct from the Service IP. On that
+connection it queries the Service's stable A record, tries TCP 9153 directly
+at the peer IP, then queries again on the same open socket. The replies
+confirm the connection is live. Endpoint DNS records and their TTLs play
+no role in choosing the peer. Only a two-second connect timeout on 9153
+completes the sample. A successful connect, refusal, reset, unreachable
+error, unreadable or ambiguous socket table, or failed DNS reply fails the
+check. At most 12 fresh TCP connections can supply the two distinct
+backends required per pass. Duplicate peers count once.
+[CoreDNS settings](../../kubernetes/main/apps/kube-system/coredns/app/helm-values.yaml#L2-L30) ·
+[Pod and Service subnets](../../kubernetes/main/bootstrap/omni/cluster-template.yaml#L36-L43) ·
+[Matte egress policy](../../kubernetes/main/apps/ai/studio/matting-pending/worker-policy/networkpolicy.yaml#L12-L30)
 
-| Control | Evidence available inside the matte pod |
-| --- | --- |
-| ComfyUI TCP 8188 | The app-template 5.3.0 render gives the `comfyui` StatefulSet a governing Service named `comfyui` with TCP 8188. The `comfyui-0.comfyui.ai.svc.cluster.local.` name selects that Ready pod endpoint. The Service VIP can resolve during a backend outage. The StatefulSet uses Kubernetes' default container readiness. An unrestricted render-pod connect checks the listener separately. |
-| Loki TCP 3100 | The Loki 7.7.0 single-binary render gives `loki-headless.observability.svc.cluster.local.` a headless Service without `publishNotReadyAddresses`. Its sole backend uses an HTTP `/ready` readiness probe on TCP 3100. |
+The peer identification relies on these configuration and kernel paths.
 
-The manifests give neither destination a matching ingress policy. Preflight
-and postflight use both Ready control pods and their Cilium endpoint identities
-to reject any installed ingress policy selecting either pod, including
-namespaced policy in `observability`. The unrestricted render pod in `ai` verifies that it can connect to both pod
-endpoints. The matte policy allows only CoreDNS on TCP/UDP 53 and the Studio
-worker listener on TCP 8002, so it drops both control connections. Studio
-API TCP 8000 cannot serve as a control because its own ingress policy admits
-the matte label only on TCP 8002. The Kubernetes API Service's DNS name
-gives a VIP without a Ready backend witness and was removed from the proof.
-[ComfyUI values](../../kubernetes/main/apps/ai/stable-diffusion/comfyui/helmrelease.yaml) ·
-[Loki values](../../kubernetes/main/apps/observability/loki/app/helmrelease.yaml) ·
-[Loki headless Service template](https://github.com/grafana/loki/blob/helm-loki-7.7.0/production/helm/loki/templates/single-binary/service-headless.yaml#L25-L34) ·
-[Kubernetes pod DNS](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pods) ·
-[Matte policy](../../kubernetes/main/apps/ai/studio/matting-pending/worker-policy/networkpolicy.yaml#L12-L30) ·
-[API ingress](../../kubernetes/main/apps/ai/studio/app/networkpolicy.yaml#L10-L38)
+- The rendered IPv4 Service uses pod backends in `kube-system`, selects
+  the three CoreDNS replicas, and uses Kubernetes' default session affinity
+  of `None`. The candidate expects these backends to be directly addressed
+  over native routing, without a DNS proxy or local redirect replacing the
+  Service backends. The pinned Cilium agent selects a random slot for each
+  TCP connect without affinity. Two distinct peers can be observed only
+  when the Service is offering more than one. Failure to observe them
+  within the attempt limit leaves the worker stopped. CoreDNS's default
+  TCP idle timeout is 10 seconds, which accommodates the two-second probe
+  between DNS queries.
+  [CoreDNS chart pin](../../kubernetes/main/apps/kube-system/coredns/app/ocirepository.yaml#L9-L14) ·
+  [CoreDNS Service template](https://github.com/coredns/helm/blob/coredns-1.46.2/charts/coredns/templates/service.yaml#L15-L37) ·
+  [CoreDNS TCP idle timeout](https://github.com/coredns/coredns/blob/v1.13.1/core/dnsserver/server.go#L61-L72) ·
+  [Kubernetes session affinity](https://kubernetes.io/docs/reference/networking/virtual-ips/#session-affinity) ·
+  [Native routing values](../../kubernetes/main/apps/kube-system/cilium/app/helm-values.yaml#L21-L32) ·
+  [Routing mode](../../kubernetes/main/apps/kube-system/cilium/app/helm-values.yaml#L61-L62) ·
+  [Cilium random slot](https://github.com/cilium/cilium/blob/v1.20.5/bpf/bpf_sock.c#L122-L127) ·
+  [Backend and affinity selection](https://github.com/cilium/cilium/blob/v1.20.5/bpf/bpf_sock.c#L400-L446)
+- The Cilium v1.20.5 values enable kube-proxy replacement, which forces
+  socket load balancing on in the agent. The chart leaves the host-only
+  socket flag unset with these values. The installed audit checks kube-proxy
+  replacement and rejects host-only socket load balancing. The cgroup
+  connect hook rewrites the destination before Linux stores the socket
+  address. The optional getpeername hook can present the Service IP to
+  userspace. Linux's per-network-namespace IPv4 TCP table instead prints the
+  socket's `inet_daddr`, port, state and inode. The worker needs readable
+  procfs and the socket translation in its pod namespace. A translation
+  that happens only below the socket, such as on the veth, leaves the
+  Service IP in this table and fails the proof.
+  [Cilium pin](../../kubernetes/main/apps/kube-system/cilium/app/ocirepository.yaml#L9-L14) ·
+  [Ops Helm values](../../kubernetes/main/apps/kube-system/cilium/app/helm-values.yaml#L2-L8) ·
+  [Kube-proxy replacement setting](../../kubernetes/main/apps/kube-system/cilium/app/helm-values.yaml#L27-L39) ·
+  [Agent option precedence](https://github.com/cilium/cilium/blob/v1.20.5/pkg/kpr/kpr.go#L40-L51) ·
+  [Chart host-only flag](https://github.com/cilium/cilium/blob/v1.20.5/install/kubernetes/cilium/templates/cilium-configmap.yaml#L848-L871) ·
+  [Pod namespace guard](https://github.com/cilium/cilium/blob/v1.20.5/bpf/bpf_sock.c#L298-L323) ·
+  [Connect hook](https://github.com/cilium/cilium/blob/v1.20.5/bpf/bpf_sock.c#L448-L482) ·
+  [Getpeername hook](https://github.com/cilium/cilium/blob/v1.20.5/bpf/bpf_sock.c#L618-L629) ·
+  [Reverse translation entry point](https://github.com/cilium/cilium/blob/v1.20.5/bpf/bpf_sock.c#L655-L662) ·
+  [Talos pin](../../kubernetes/main/bootstrap/omni/cluster-template.yaml#L4-L7) ·
+  [Talos kernel version](https://github.com/siderolabs/talos/releases/tag/v1.13.9) ·
+  [Linux connect hook](https://github.com/gregkh/linux/blob/v6.18.44/net/ipv4/tcp_ipv4.c#L206-L219) ·
+  [Stored TCP destination](https://github.com/gregkh/linux/blob/v6.18.44/net/ipv4/tcp_ipv4.c#L290-L294) ·
+  [TCP table address](https://github.com/gregkh/linux/blob/v6.18.44/net/ipv4/tcp_ipv4.c#L2911-L2924) ·
+  [TCP table fields and inode](https://github.com/gregkh/linux/blob/v6.18.44/net/ipv4/tcp_ipv4.c#L2954-L2966) ·
+  [Per-namespace TCP table](https://github.com/gregkh/linux/blob/v6.18.44/net/ipv4/tcp_ipv4.c#L3455-L3478)
+- The same CoreDNS process is configured to listen on TCP 9153 at its
+  pod IP. The source declares no destination ingress restriction on that
+  port. Preflight and postflight check every selected DNS pod and its
+  UID-owned Cilium endpoint, reject any installed ingress policy selecting
+  them, and connect directly to TCP 9153 from the unrestricted renderer.
+  The per-pod probe assumes normal reachability of the metrics listener
+  between those audits. Cilium's installed `policy-deny-response` must
+  be `none` and its `service-no-backend-response` must be `reject`.
+  The forbidden probe targets the pod IP directly, so it does not rely
+  on Service no-backend handling.
+  [CoreDNS metrics configuration](../../kubernetes/main/apps/kube-system/coredns/app/helm-values.yaml#L25-L26) ·
+  [CoreDNS metrics bind](https://github.com/coredns/coredns/blob/v1.13.1/plugin/metrics/metrics.go#L86-L114) ·
+  [Cilium response defaults](https://github.com/cilium/cilium/blob/v1.20.5/install/kubernetes/cilium/values.yaml#L3179-L3188) ·
+  [Cilium policy deny path](https://github.com/cilium/cilium/blob/v1.20.5/bpf/bpf_lxc.c#L1528-L1540)
 
-Only a two-second TCP connect timeout on a witnessed control counts as a
-silent drop. A success, refusal, reset, unreachable or other socket error
-fails the proof, as does missing or ambiguous DNS. The repository pins
-Cilium v1.20.5 with kube-proxy replacement enabled and inherits Helm's
-`policy-deny-response: none` and `service-no-backend-response: reject`.
-The installed-policy check verifies both settings. The deny path drops
-without a reply by default. The IPv4 Service no-backend rejection sends an
-ICMP port-unreachable response.
-[Cilium pin](../../kubernetes/main/apps/kube-system/cilium/app/ocirepository.yaml#L9-L14) ·
-[Ops Helm values](../../kubernetes/main/apps/kube-system/cilium/app/helm-values.yaml#L28-L40) ·
-[Helm defaults](https://github.com/cilium/cilium/blob/v1.20.5/install/kubernetes/cilium/values.yaml#L3179-L3188) ·
-[ConfigMap mapping](https://github.com/cilium/cilium/blob/v1.20.5/install/kubernetes/cilium/templates/cilium-configmap.yaml#L535-L541) ·
-[IPv4 policy-deny path](https://github.com/cilium/cilium/blob/v1.20.5/bpf/bpf_lxc.c#L1528-L1540) ·
-[IPv4 no-backend path](https://github.com/cilium/cilium/blob/v1.20.5/bpf/bpf_lxc.c#L228-L243) ·
-[ICMP response](https://github.com/cilium/cilium/blob/v1.20.5/bpf/lib/lb.h#L2456-L2480)
+Each successful sample shows that TCP 53 answers on a live destination on
+both sides of a silent TCP 9153 drop from this matte pod. A port-specific
+failure elsewhere on the path could also cause a timeout. The unrestricted
+reads and installed ingress audit are separate evidence for this control.
+Only TCP 9153 is sampled. The cluster read of installed policies is
+authoritative for the full allowlist.
 
 After the startup proof passes, the launcher reads the token and waits for
 the lane grant using a claim payload that fails validation. The same proof
 runs about once a minute, including during the grant wait. A failed recheck
-stops the worker and its child processes. The cluster read of installed
-policies is authoritative for the contents of the allowlist, including whether
-it admits a third destination. The inside proof is authoritative for
-enforcement at the sampled endpoints. A Ready DNS answer reflects Kubernetes
-readiness as observed by CoreDNS, with the normal DNS and readiness update
-delay. The render pod's independent positive checks bracket activation.
+stops the worker and its child processes. Every proof line carries the random
+ID of the current launcher process.
 
 ### Preflight and merge admission
 
@@ -224,19 +256,29 @@ bash scripts/studio-release/op970.sh postflight
 Postflight checks both API endpoints, the pinned Ready matte pod and profile
 readiness, the completed registration Job and dedicated matte grant, and the
 running matte lane worker. It reads the installed policy and actual pod and
-Cilium endpoint identities for the worker and the API. It requires a successful
-startup isolation line newer than the worker container's running start time
-and a fresh successful recheck from that container. For each log read and each
-subsequent check, postflight compares the same pod UID, worker container ID
-and running start time on both sides of the read. A restart during the pass
-fails it. It targets the selected pod by name for worker and listener reads.
-It reads the forbidden destinations from the unrestricted pod again and checks
-the render limit at 17 CPUs. It compares the idle matte queue, archive and store
-snapshot with the baseline. The final listener probes send uncredentialed,
-wrong-lane or invalid requests and require refusals before claim or release SQL.
-Record the selected merge, preflight and audit output, pod UID, worker
-container ID and running start time, both launcher log lines and any retries.
-Keep the hashes and logs private.
+Cilium endpoint identities for the worker, API and DNS. It checks TCP 9153
+reachability from the unrestricted renderer and the renderer's 17-CPU limit.
+The log audit requires a startup proof newer than the worker container's
+running start and a fresh successful recheck, with a matching launcher ID
+on every proof line. Each log read and subsequent check is bracketed by the
+same pod UID, worker container ID and running start time.
+
+The worker and listener checks exec into that pod and compare the audited
+launcher ID with the anonymous memory file held by the current PID 1.
+Each exec verifies that ID before it reads the worker or calls the listener.
+The worker's private PID namespace and RuntimeDefault profile allow the
+same-UID exec to read the launcher's descriptor. It disappears when that
+launcher exits, including when the runtime is ahead of the API's Pod status.
+The final listener probes send uncredentialed, wrong-lane or invalid requests
+and require refusals before claim or release SQL. Postflight compares the
+idle matte queue, archive and store snapshot with the baseline. Record the
+selected merge, preflight and audit output, pod UID, worker container ID and
+running start time, both launcher log lines and any retries. Keep the hashes
+and logs private.
+[Worker container settings](../../kubernetes/main/apps/ai/studio/matting-pending/activation/worker/deployment.yaml#L19-L35) ·
+[RuntimeDefault syscall profile](https://github.com/containerd/containerd/blob/v2.2.7/contrib/seccomp/seccomp_default.go#L211-L222) ·
+[Kubelet exec resolution](https://github.com/kubernetes/kubernetes/blob/v1.35.5/pkg/kubelet/kubelet_pods.go#L2682-L2717) ·
+[Kubelet status publication](https://github.com/kubernetes/kubernetes/blob/v1.35.5/pkg/kubelet/status/status_manager.go#L1058-L1068)
 
 ### Reviewed rollback and retry
 

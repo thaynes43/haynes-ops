@@ -12,6 +12,7 @@ from datetime import datetime
 from fractions import Fraction
 from functools import cache
 from hashlib import sha256
+from ipaddress import IPv4Address, IPv4Network
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -54,6 +55,8 @@ MATTE_POLICY = "studio-matte-worker"
 MATTE_WORKER = MATTE_POLICY
 MATTE_ACTIVATION = "matting-pending/activation"
 MATTE_COMMAND = ["python", "-B", "/etc/studio/matte-start.py"]
+DNS_NAMESPACE = "kube-system"
+POD_NETWORK = IPv4Network("10.42.0.0/16")
 MATTE_PROGRESS = "/run/studio/worker-progress"
 MATTE_TOKEN_MOUNT = "/run/secrets/studio-worker"
 NAMESPACE_POLICY_KINDS = {"NetworkPolicy", "CiliumNetworkPolicy"}
@@ -1039,35 +1042,46 @@ def installed_identity(pod, endpoint):
     return {**generic, **{f"any:{key}": value for key, value in generic.items()}, **exact}
 
 
-def check_control_ingress(policies, snapshot, namespace, name):
-    pod = resource(snapshot["items"], "Pod", name)
-    endpoint = resource(snapshot["items"], "CiliumEndpoint", name)
-    if (any(obj["metadata"]["namespace"] != namespace or obj["metadata"].get("deletionTimestamp")
-            for obj in (pod, endpoint))
-            or not any(c["type"] == "Ready" and c["status"] == "True" for c in pod["status"]["conditions"])):
-        raise ValueError(f"expected one Ready isolation control pod {namespace}/{name}")
-    for document, spec in selected_policies(policies, pod, installed_identity(pod, endpoint)):
-        if document["kind"] == "NetworkPolicy":
-            has_ingress = "Ingress" in (spec.get("policyTypes") or ["Ingress"])
-        else:
-            has_ingress = ("ingress" in spec or "ingressDeny" in spec
-                           or (spec.get("enableDefaultDeny") or {}).get("ingress") is True)
-        if has_ingress:
-            raise ValueError(f"ingress policy {document['metadata']['name']} selects isolation control "
-                             f"{namespace}/{name}")
-    print(f"Isolation control {namespace}/{name} is Ready without a matching ingress policy")
+def check_dns_ingress(policies, pods, endpoints):
+    endpoint_by_name = {ep["metadata"]["name"]: ep for ep in endpoints["items"]}
+    addresses = set()
+    for pod in pods["items"]:
+        name = pod["metadata"]["name"]
+        endpoint = endpoint_by_name.get(name)
+        if (not endpoint or any(obj["metadata"]["namespace"] != DNS_NAMESPACE
+                                or obj["metadata"].get("deletionTimestamp") for obj in (pod, endpoint))
+                or not any(c["type"] == "Ready" and c["status"] == "True" for c in pod["status"]["conditions"])):
+            raise ValueError(f"expected a Ready DNS pod and Cilium endpoint in {DNS_NAMESPACE}: {name}")
+        address = IPv4Address(pod["status"]["podIP"])
+        if address not in POD_NETWORK or address in addresses:
+            raise ValueError(f"expected a distinct DNS pod address for {name}")
+        addresses.add(address)
+        for document, spec in selected_policies(policies, pod, installed_identity(pod, endpoint)):
+            if document["kind"] == "NetworkPolicy":
+                # Omitted and empty policyTypes both default to include Ingress.
+                has_ingress = "Ingress" in (spec.get("policyTypes") or ["Ingress"])
+            else:
+                has_ingress = ("ingress" in spec or "ingressDeny" in spec
+                               or (spec.get("enableDefaultDeny") or {}).get("ingress") is True)
+            if has_ingress:
+                raise ValueError(f"ingress policy {document['metadata']['name']} selects DNS control "
+                                 f"{DNS_NAMESPACE}/{name}")
+        print(f"DNS control {DNS_NAMESPACE}/{name} at {address} is Ready without a matching ingress policy")
+    if len(addresses) < 2:
+        raise ValueError("expected at least two distinct DNS pod addresses")
 
 
 def check_installed_policies(data, *, stage_repo=None):
-    namespaced, clusterwide, cilium, comfyui, loki, *workloads = data
+    namespaced, clusterwide, cilium, dns_pods, dns_endpoints, *workloads = data
     config = cilium["data"]
     if config["enable-policy"] not in {"default", "always"}:
         raise ValueError("installed Cilium does not enforce network policy")
     if (config.get("policy-deny-response"), config.get("service-no-backend-response")) != ("none", "reject"):
         raise ValueError("installed Cilium must silently deny policy traffic and reject empty Services")
+    if config.get("kube-proxy-replacement") != "true" or config.get("bpf-lb-sock-hostns-only", "false") != "false":
+        raise ValueError("installed Cilium must enable socket load balancing in pod namespaces")
     installed = namespaced["items"] + clusterwide["items"]
-    check_control_ingress(installed, comfyui, "ai", "comfyui-0")
-    check_control_ingress(installed, loki, "observability", "loki-0")
+    check_dns_ingress(installed, dns_pods, dns_endpoints)
     policies = [doc for doc in namespaced["items"] if doc["metadata"]["namespace"] == "ai"]
     policies.extend(clusterwide["items"])
     if stage_repo is not None:
