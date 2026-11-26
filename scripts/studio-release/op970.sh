@@ -59,21 +59,52 @@ print(allocation, profile)
 control_connections() {
   kubectl -n ai exec deploy/studio-render -c app -- python -I -B -c '
 import socket
-for target in (("kubernetes.default.svc.cluster.local.", 443), ("comfyui.ai.svc.cluster.local.", 8188)):
+for target in (("comfyui-0.comfyui.ai.svc.cluster.local.", 8188),
+               ("loki-headless.observability.svc.cluster.local.", 3100)):
     with socket.create_connection(target, timeout=2):
         print(target[0], target[1], "reachable from unrestricted render pod")
 '
 }
 
+matte_identity() {
+  local pods
+  pods=$(kubectl -n ai get pods -l "$selector" -o json) || return 1
+  jq -er '
+    def present: if type == "string" and length > 0 then . else error("incomplete matte identity") end;
+    .items | select(length == 1) | .[0] | select(.metadata.deletionTimestamp == null) |
+    [.status.containerStatuses[] | select(.name == "worker")] as $workers |
+    select(($workers | length) == 1) |
+    [(.metadata.name | present), (.metadata.uid | present),
+     ($workers[0].containerID | present), ($workers[0].state.running.startedAt | present)] | @tsv
+  ' <<< "$pods"
+}
+
+select_matte_container() {
+  matte_binding=$(matte_identity) || return 1
+  IFS=$'\t' read -r matte_pod matte_uid matte_container matte_started <<< "$matte_binding" || return 1
+  printf 'Matte pod %s UID %s, worker container %s started %s\n' \
+    "$matte_pod" "$matte_uid" "$matte_container" "$matte_started"
+}
+
+same_matte_container() {
+  local current
+  if ! current=$(matte_identity) || [[ $current != "$matte_binding" ]]; then
+    printf 'FAIL matte pod or worker container identity changed during postflight\n' >&2
+    return 1
+  fi
+}
+
+bound_matte_check() {
+  same_matte_container && "$@" && same_matte_container
+}
+
 proof_logs() {
-  local pod started logs deadline status
-  pod=$(kubectl -n ai get pods -l "$selector" -o json |
-    jq -cer '.items | select(length == 1) | .[0] | select(.metadata.deletionTimestamp == null)') || return 1
-  started=$(jq -er '.status.startTime' <<< "$pod") || return 1
-  pod=$(jq -er '.metadata.name' <<< "$pod") || return 1
+  local started=$matte_started logs deadline status
   deadline=$((SECONDS + 90))
   while true; do
-    logs=$(kubectl -n ai logs "$pod" -c worker --timestamps --since-time="$started") || return 1
+    same_matte_container || return 1
+    logs=$(kubectl -n ai logs "$matte_pod" -c worker --timestamps --since-time="$started") || return 1
+    same_matte_container || return 1
     status=0
     python3 -B scripts/studio-release/op970-log.py "$started" <<< "$logs" || status=$?
     if ((status != 2)); then return "$status"; fi
@@ -95,7 +126,7 @@ matte_pods() {
 }
 
 worker_started() {
-  kubectl -n ai exec deploy/studio-matte-worker -c worker -- python -I -B -c '
+  kubectl -n ai exec "$matte_pod" -c worker -- python -I -B -c '
 from pathlib import Path
 from haynes_studio.queue.progress import ProgressFile
 
@@ -115,6 +146,37 @@ matte_removed() {
   jobs=$(kubectl -n ai get jobs -l app.kubernetes.io/name=studio-media-worker-registration -o json) || return 1
   jq -e 'all(.items[]; .metadata.name | startswith("studio-register-matte-worker-") | not)' \
     <<< "$jobs" >/dev/null
+}
+
+rollback_render_idle() {
+  local pods state
+  pods=$(kubectl -n ai get pods -l app.kubernetes.io/name=studio-render -o json) || return 1
+  state=$(jq -er '
+    def render_state:
+      .status as $status |
+      [$status.containerStatuses[]? | select(.name == "app")] as $app |
+      if ($status.phase | IN("Pending", "Running", "Succeeded", "Failed") | not) then
+        error("unknown render pod phase")
+      elif any(($status.containerStatuses, $status.initContainerStatuses, $status.ephemeralContainerStatuses)[]?;
+          .state.running != null) then
+        "running"
+      elif $status.phase == "Running" and
+          ($app | length != 1 or all(.[]; .state.waiting == null and .state.terminated == null)) then
+        error("running render pod has no conclusive app container state")
+      else
+        "stopped"
+      end;
+    if (.items | type) != "array" then
+      error("invalid render pod list")
+    else
+      [.items[] | render_state] | if any(.[]; . == "running") then "running" else "stopped" end
+    end
+  ' <<< "$pods") || return 1
+  if [[ $state == running ]]; then
+    render_idle retry
+  else
+    printf 'No running render container in the render pod list\n'
+  fi
 }
 
 # The labels written by preflight and required by admission come from the same call.
@@ -146,7 +208,11 @@ collect_preflight() {
     receipt_check 'ComfyUI idle' images_idle
   fi
   receipt_check 'fourth pin migration at 0013' migration
-  receipt_check 'offline render worker idle' render_idle retry
+  if [[ $mode == matte-rollback ]]; then
+    receipt_check 'offline render worker idle or verified stopped' rollback_render_idle
+  else
+    receipt_check 'offline render worker idle' render_idle retry
+  fi
   if (( ! failed )); then
     receipt_check 'idle queues and baseline for archives, jobs and store' data_probe "$mode" "$revision" "$api"
   fi
@@ -169,7 +235,7 @@ rollback_candidate() {
 run_activation_check() {
   phase=${1:-}
   local mode=matte-before
-  local required=()
+  local required=() matte_binding matte_pod matte_uid matte_container matte_started
   case $phase in
     retry-preflight) mode=matte-retry ;;
     rollback-preflight) mode=matte-rollback ;;
@@ -212,19 +278,21 @@ run_activation_check() {
           check 'API endpoints Ready' api_endpoints
           check 'fourth pin migration at 0013' migration
           if [[ $phase == postflight ]]; then
-            check 'retained policy selects the current worker' policy_snapshot active
-            check 'installed API and matte policy coverage' installed_policies postflight
-            check 'matte worker and matting sidecar each Ready on the pinned images' matte_pods
-            check 'both forbidden destinations still reachable from the unrestricted pod' control_connections
+            check 'single running matte worker container selected' select_matte_container
+            if ((failed)); then finish; fi
+            check 'retained policy selects the current worker' bound_matte_check policy_snapshot active
+            check 'installed API and matte policy coverage' bound_matte_check installed_policies postflight
+            check 'matte worker and matting sidecar each Ready on the pinned images' bound_matte_check matte_pods
+            check 'both forbidden destinations still reachable from the unrestricted pod' bound_matte_check control_connections
             if (( ! failed )); then
-              check 'fresh startup and recurring isolation proof' proof_logs
+              check 'fresh startup and recurring isolation proof' bound_matte_check proof_logs
             fi
-            check 'matte registration Job completed' registration matte-worker '[201,200]'
-            check 'registered matte worker polling with a fresh progress marker' worker_started
-            check 'offline renderer at 17 CPUs' render_pin 17
-            check 'dedicated matte grant, idle queues, archives and store unchanged' data_probe matte-after "$revision" "$api"
+            check 'matte registration Job completed' bound_matte_check registration matte-worker '[201,200]'
+            check 'registered matte worker polling with a fresh progress marker' bound_matte_check worker_started
+            check 'offline renderer at 17 CPUs' bound_matte_check render_pin 17
+            check 'dedicated matte grant, idle queues, archives and store unchanged' bound_matte_check data_probe matte-after "$revision" "$api"
             if (( ! failed )); then
-              check 'matte listener refuses invalid claims and releases' kubectl -n ai exec -i deploy/studio-matte-worker \
+              check 'matte listener refuses invalid claims and releases' bound_matte_check kubectl -n ai exec -i "$matte_pod" \
                 -c worker -- python -I -B - matte < "$script_dir/op967-routes.py"
             fi
           else

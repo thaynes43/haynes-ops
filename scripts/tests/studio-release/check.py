@@ -1024,8 +1024,11 @@ def check_additive_matte_ingress(previous, candidate):
 
 def check_installed_policies(data, *, stage_repo=None):
     namespaced, clusterwide, cilium, *workloads = data
-    if cilium["data"]["enable-policy"] not in {"default", "always"}:
+    config = cilium["data"]
+    if config["enable-policy"] not in {"default", "always"}:
         raise ValueError("installed Cilium does not enforce network policy")
+    if (config.get("policy-deny-response"), config.get("service-no-backend-response")) != ("none", "reject"):
+        raise ValueError("installed Cilium must silently deny policy traffic and reject empty Services")
     policies = [doc for doc in namespaced["items"] if doc["metadata"]["namespace"] == "ai"]
     policies.extend(clusterwide["items"])
     if stage_repo is not None:
@@ -1041,7 +1044,7 @@ def check_installed_policies(data, *, stage_repo=None):
         policies.remove(current_ingress)
         policies.append(projected_ingress)
         labels = namespace["metadata"]["labels"]
-        cluster = cilium["data"]["cluster-name"]
+        cluster = config["cluster-name"]
         api_identity = cilium_labels(api, labels, cluster)
         matte_identity = cilium_labels(matte, labels, cluster)
         check_policy_selectors(policies)

@@ -967,8 +967,8 @@ PAYLOADS = {
     "scripts/studio-release/op967-data.py": "6d8d91b3fc2923ba1b2cc3a8870a9069c644629b72d3770526fd52f15572afc6",
     "scripts/studio-release/op967-catalogue.sql": "02d023f1d17ba4a1bae60e72ea8565f8769171542138235181da05a8da9f4607",
     "scripts/studio-release/op967-routes.py": "26ad97c7ec6b4934505599da4da09248d7180c168eeed404c99be9f01b62c964",
-    "scripts/studio-release/op970-log.py": "dc32e5d747cbdac81e6ff02523a69d590ebe1d73b05c3cf8f3dd55c037ea3708",
-    "scripts/tests/studio-release/check.py": "d27c855c5872376abbf23c084e519579423fb8beff0f841afada68cd2552f4ab",
+    "scripts/studio-release/op970-log.py": "f1e62ead9aff791a9390fcbd9fa2c9ef90aa86df74c8ad15c47a0dc9a0994340",
+    "scripts/tests/studio-release/check.py": "255adc53adf9f14a084c886718d52a924853e8f32bee59617f85264b2e7e3cd1",
 }
 
 
@@ -994,9 +994,9 @@ class StartupTest(unittest.TestCase):
         "20594027b779a9b6497fc7796dbd64f1e2124b2ec52f46a678769b0a236ec712": "encoder version",
         "b23bd15302a967ce2823defe1ada2ea092df7d685920bd4ebe53aa5411ebebf7": "worker engine reachability",
         "4826f0bbfb7c1ef6107d5245ad324b93450ffe81b13784d945d022215cf69998": "retained allocation read",
-        "d41b74915fbb2c825fe71a3a4c73c0545a5397378656731d9126311b29e6808b": "forbidden destination controls",
-        "be6e9c37c11372a1445e9cb50dfc1c501cacd04c2f5181438c1cec7a2907f0b6": "matte worker process read",
-        "44fa26478b4fd9ed445fec8e00978db78ecf7bd9118874c555806181decd962a": "matte listener validation refusals",
+        "726d728213f87c007a366bd58887cc3ee7b341762e74dcdef62bb1772efee338": "forbidden destination controls",
+        "7dcd1b7eacf382d28d680129e6609361a0a7f37224a9f7f1b655cf7c00fb9b06": "matte worker process read",
+        "c142436de00cb05c013f6515fd6f673cde7bf399adc10a8cb8fb1fb68581846a": "matte listener validation refusals",
         "dabba0cfe9628d2a4f5a30d1e5eebe4fb5ed514c2ddeb89c3b6b99dff2b065d0": "listener validation refusals",
     }
     DEPENDENCY_READS = (

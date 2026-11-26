@@ -23,7 +23,17 @@ namespace has its own prune exclusion. [Orphan value](https://github.com/fluxcd/
 [Finalizer decision](https://github.com/fluxcd/kustomize-controller/blob/v1.10.2/internal/controller/kustomization_controller.go#L1245-L1279) ·
 [Namespace manifest](../../kubernetes/main/apps/ai/namespace.yaml)
 
-## Read back the installation (Expected)
+## Part A installation read-back (Proven)
+
+Flux installed haynes-ops `ed212ad0` on 2026-11-25 at 23:55Z. The read-back
+passed at that revision. The policy stage was Ready, the policy matched the
+reviewed spec, both retention protections were present, and its selector matched
+zero pods, including terminating pods. Cilium logged that it received the policy.
+The `studio`, `studio-worker` and `studio-media-workers` stages were mid-reconcile
+at the first read and were Ready about 25 seconds later. All ten existing Studio
+pods were Running with zero restarts.
+[Read-back](https://work.haynesnetwork.com/work_packages/970/activity#comment-10332) ·
+[Stage correction](https://work.haynesnetwork.com/work_packages/970/activity#comment-10333)
 
 Run from a clean checkout of the merged Ops commit after Flux pickup and
 before the worker activation PR. Set `MERGED_OPS_REVISION` to that commit's
@@ -81,7 +91,12 @@ before requesting its grant and keep checking it. [Watcher](https://github.com/c
 2. In a second PR remove the stage and policy source and retire the guard for
    the policy. Confirm Flux deleted both the stage and NetworkPolicy.
 
-## Part B rollout (Expected)
+## Part B rollout (Expected, held)
+
+PR 5096 remains on hold pending Tom's scoped decision and review of the revised
+proof. The steps below apply only after the hold is lifted.
+[PR 5096](https://github.com/thaynes43/haynes-ops/pull/5096) ·
+[Story 970 hold](https://work.haynesnetwork.com/work_packages/970/activity#comment-10371)
 
 After installation, the matte worker claims cutouts submitted in Studio and
 runs them through its local matting sidecar. Before installation, cutouts wait
@@ -101,16 +116,64 @@ render Helm health gate and the token projection stage.
 Under provisional CR-59 and CR-66, the two containers share the pod network
 namespace. Only the worker container mounts its token and the Studio store.
 The sidecar receives the read-only allocation and the shared Unix socket
-directory. The launcher resolves cluster DNS and connects to the API's worker
-listener on TCP 8002. It requires connections to the Kubernetes API Service
-on TCP 443 and ComfyUI on TCP 8188 to fail. Both destinations must be reachable
-from the unrestricted render pod on the same node. These probes open TCP
-connections and send no requests. Studio API port 8000 already has independent
-ingress restrictions. After passing, the launcher reads the token and waits for
-the lane grant using a claim payload that fails validation. It logs one JSON
-line per isolation check and repeats the network checks about once a minute,
-including while it waits for registration. A failed recheck stops the worker
-and its child processes.
+directory. Each startup or recurring check requires a single DNS address for
+the Studio worker listener and a successful TCP connection to it on port 8002.
+The launcher then queries CoreDNS over the allowed TCP 53 path for each
+control. It requires one A record in the pod subnet with a positive TTL, then
+connects directly to that pod IP. CoreDNS uses Ready EndpointSlice entries for
+these names. Its cache can serve an expired record with TTL zero. The launcher
+allows one refresh attempt on the same DNS connection and requires a positive
+TTL before probing the port.
+[CoreDNS settings](../../kubernetes/main/apps/kube-system/coredns/app/helm-values.yaml) ·
+[Pod subnet](../../kubernetes/main/bootstrap/omni/cluster-template.yaml#L36-L43) ·
+[Endpoint DNS](https://github.com/coredns/coredns/blob/v1.13.1/plugin/kubernetes/kubernetes.go#L487-L516) ·
+[Ready filtering](https://github.com/coredns/coredns/blob/v1.13.1/plugin/kubernetes/object/endpoint.go#L85-L98) ·
+[Stale cache TTL](https://github.com/coredns/coredns/blob/v1.13.1/plugin/cache/README.md#L59-L67)
+
+| Control | Evidence available inside the matte pod |
+| --- | --- |
+| ComfyUI TCP 8188 | The app-template 5.3.0 render gives the `comfyui` StatefulSet a governing Service named `comfyui` with TCP 8188. The `comfyui-0.comfyui.ai.svc.cluster.local.` name selects that Ready pod endpoint. The Service VIP can resolve during a backend outage. The StatefulSet uses Kubernetes' default container readiness. An unrestricted render-pod connect checks the listener separately. |
+| Loki TCP 3100 | The Loki 7.7.0 single-binary render gives `loki-headless.observability.svc.cluster.local.` a headless Service without `publishNotReadyAddresses`. Its sole backend uses an HTTP `/ready` readiness probe on TCP 3100. |
+
+The manifests give neither destination a matching ingress policy. The
+unrestricted render pod in `ai` verifies that it can connect to both pod
+endpoints. The matte policy allows only CoreDNS on TCP/UDP 53 and the Studio
+worker listener on TCP 8002, so it drops both control connections. Studio
+API TCP 8000 cannot serve as a control because its own ingress policy admits
+the matte label only on TCP 8002. The Kubernetes API Service's DNS name
+gives a VIP without a Ready backend witness and was removed from the proof.
+[ComfyUI values](../../kubernetes/main/apps/ai/stable-diffusion/comfyui/helmrelease.yaml) ·
+[Loki values](../../kubernetes/main/apps/observability/loki/app/helmrelease.yaml) ·
+[Loki headless Service template](https://github.com/grafana/loki/blob/helm-loki-7.7.0/production/helm/loki/templates/single-binary/service-headless.yaml#L25-L34) ·
+[Kubernetes pod DNS](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pods) ·
+[Matte policy](../../kubernetes/main/apps/ai/studio/matting-pending/worker-policy/networkpolicy.yaml#L12-L30) ·
+[API ingress](../../kubernetes/main/apps/ai/studio/app/networkpolicy.yaml#L10-L38)
+
+Only a two-second TCP connect timeout on a witnessed control counts as a
+silent drop. A success, refusal, reset, unreachable or other socket error
+fails the proof, as does missing or ambiguous DNS. The repository pins
+Cilium v1.20.5 with kube-proxy replacement enabled and inherits Helm's
+`policy-deny-response: none` and `service-no-backend-response: reject`.
+The installed-policy check verifies both settings. The deny path drops
+without a reply by default. The IPv4 Service no-backend rejection sends an
+ICMP port-unreachable response.
+[Cilium pin](../../kubernetes/main/apps/kube-system/cilium/app/ocirepository.yaml#L9-L14) ·
+[Ops Helm values](../../kubernetes/main/apps/kube-system/cilium/app/helm-values.yaml#L28-L40) ·
+[Helm defaults](https://github.com/cilium/cilium/blob/v1.20.5/install/kubernetes/cilium/values.yaml#L3179-L3188) ·
+[ConfigMap mapping](https://github.com/cilium/cilium/blob/v1.20.5/install/kubernetes/cilium/templates/cilium-configmap.yaml#L535-L541) ·
+[IPv4 policy-deny path](https://github.com/cilium/cilium/blob/v1.20.5/bpf/bpf_lxc.c#L1528-L1540) ·
+[IPv4 no-backend path](https://github.com/cilium/cilium/blob/v1.20.5/bpf/bpf_lxc.c#L228-L243) ·
+[ICMP response](https://github.com/cilium/cilium/blob/v1.20.5/bpf/lib/lb.h#L2456-L2480)
+
+After the startup proof passes, the launcher reads the token and waits for
+the lane grant using a claim payload that fails validation. The same proof
+runs about once a minute, including during the grant wait. A failed recheck
+stops the worker and its child processes. The cluster read of installed
+policies is authoritative for the contents of the allowlist, including whether
+it admits a third destination. The inside proof is authoritative for
+enforcement at the sampled endpoints. A Ready DNS answer reflects Kubernetes
+readiness as observed by CoreDNS, with the normal DNS and readiness update
+delay. The render pod's independent positive checks bracket activation.
 
 ### Preflight and merge admission
 
@@ -160,20 +223,28 @@ Postflight checks both API endpoints, the pinned Ready matte pod and profile
 readiness, the completed registration Job and dedicated matte grant, and the
 running matte lane worker. It reads the installed policy and actual pod and
 Cilium endpoint identities for the worker and the API. It requires a successful
-startup isolation line newer than the pod start and a fresh successful recheck
-from the current worker container, including after a restart.
+startup isolation line newer than the worker container's running start time
+and a fresh successful recheck from that container. For each log read and each
+subsequent check, postflight compares the same pod UID, worker container ID
+and running start time on both sides of the read. A restart during the pass
+fails it. It targets the selected pod by name for worker and listener reads.
 It reads the forbidden destinations from the unrestricted pod again and checks
 the render limit at 17 CPUs. It compares the idle matte queue, archive and store
 snapshot with the baseline. The final listener probes send uncredentialed,
 wrong-lane or invalid requests and require refusals before claim or release SQL.
-Record the selected merge, preflight and audit output, pod start time, both
-launcher log lines and any retries. Keep the hashes and logs private.
+Record the selected merge, preflight and audit output, pod UID, worker
+container ID and running start time, both launcher log lines and any retries.
+Keep the hashes and logs private.
 
 ### Reviewed rollback and retry
 
 Keep Studio submissions and the offline renderer idle. A rollback preflight
-requires idle work. If there are queued matte jobs, the snapshot permits them
-only when the current matte pause is recorded. Running or held work fails the
+requires idle work. It accepts a successful render pod list that verifies no
+container is running, including an absent, Pending or crash-looped renderer
+after a failed turnover. It applies the normal idle check when a render
+container is running and fails on an inconclusive pod read. If there are
+queued matte jobs, the snapshot permits them only when the current matte
+pause is recorded. Running or held work fails the
 gate. Retain the pause and the queued rows through the rollback audit.
 
 Open a reviewed revert PR that restores the following Git paths to their part A

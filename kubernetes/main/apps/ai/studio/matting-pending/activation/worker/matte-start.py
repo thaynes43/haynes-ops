@@ -3,57 +3,119 @@
 import errno
 import json
 import os
+import secrets
 import signal
 import socket
+import struct
 import subprocess
 import sys
+from ipaddress import IPv4Address, IPv4Network
 from pathlib import Path
 from time import monotonic, sleep
 
 LISTENER = ("studio-api.ai.svc.cluster.local.", 8002)
+COREDNS = ("10.43.0.10", 53)
+POD_NETWORK = IPv4Network("10.42.0.0/16")
 FORBIDDEN = (
-    ("kubernetes.default.svc.cluster.local.", 443),
-    ("comfyui.ai.svc.cluster.local.", 8188),
+    ("comfyui-0.comfyui.ai.svc.cluster.local.", 8188),
+    ("loki-headless.observability.svc.cluster.local.", 3100),
 )
-BLOCKED = {errno.EACCES, errno.EPERM, errno.ETIMEDOUT, errno.ECONNREFUSED,
-           errno.EHOSTUNREACH, errno.ENETUNREACH, errno.ECONNRESET}
+CONNECT_SECONDS = 2
 RECHECK_SECONDS = 60
 TOKEN = Path("/run/secrets/studio-worker/token")
+DNS_HEADER = struct.Struct("!6H")
+DNS_RECORD = struct.Struct("!HHIH")
+DNS_A_IN = struct.pack("!HH", 1, 1)
 
 
-def connect(target):
-    # Installed services are single-stack with one ClusterIP. Refuse an
-    # ambiguous answer rather than silently testing only one of several IPs.
+def listener_address():
+    # The worker listener is a single-stack Service with one ClusterIP.
     addresses = {(family, address) for family, _, _, _, address in
-                 socket.getaddrinfo(*target, type=socket.SOCK_STREAM)}
+                 socket.getaddrinfo(*LISTENER, type=socket.SOCK_STREAM)}
     if len(addresses) != 1:
-        raise ValueError(f"expected one DNS address for {target[0]}")
-    family, address = addresses.pop()
+        raise ValueError(f"expected one DNS address for {LISTENER[0]}")
+    return addresses.pop()
+
+
+def ready_address(host):
+    # Read the TTL directly over permitted TCP DNS. getaddrinfo hides CoreDNS's
+    # zero TTL for a stale answer, which cannot witness a current Ready endpoint.
+    name = b"".join(bytes([len(label)]) + label.encode("ascii")
+                    for label in host.rstrip(".").split(".")) + b"\0"
+    question = name + DNS_A_IN
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as dns:
+        dns.settimeout(CONNECT_SECONDS)
+        dns.connect(COREDNS)
+        with dns.makefile("rb") as reader:
+            for attempt in range(2):
+                query_id = secrets.randbits(16)
+                request = DNS_HEADER.pack(query_id, 0x0100, 1, 0, 0, 0) + question
+                dns.sendall(struct.pack("!H", len(request)) + request)
+                address, ttl = read_ready_answer(reader, query_id, question, host)
+                if ttl:
+                    return address
+                if attempt == 0:
+                    # serve_stale refreshes asynchronously. Stay on this
+                    # CoreDNS connection for one bounded retry.
+                    sleep(1)
+    raise ValueError(f"no fresh Ready pod address for {host}")
+
+
+def read_ready_answer(reader, query_id, question, host):
+    prefix = reader.read(2)
+    size = int.from_bytes(prefix, "big")
+    if len(prefix) != 2 or not DNS_HEADER.size <= size <= 512:
+        raise ValueError(f"invalid DNS response size for {host}")
+    response = reader.read(size)
+    if len(response) != size:
+        raise ValueError(f"incomplete DNS response for {host}")
+    received_id, flags, questions, answers, authority, extra = DNS_HEADER.unpack_from(response)
+    # Require a complete successful query response and exactly one A record
+    # owned by this question. The owner may be compressed to offset 12.
+    if (received_id != query_id or flags & 0xFA0F != 0x8000
+            or (questions, answers, authority, extra) != (1, 1, 0, 0)
+            or not response[DNS_HEADER.size:].startswith(question)):
+        raise ValueError(f"expected one Ready endpoint DNS answer for {host}")
+    answer = response[DNS_HEADER.size + len(question):]
+    for owner in (b"\xc0\x0c", question[:-4]):
+        if answer.startswith(owner) and len(answer) == len(owner) + DNS_RECORD.size + 4:
+            break
+    else:
+        raise ValueError(f"unexpected DNS answer for {host}")
+    kind, dns_class, ttl, length = DNS_RECORD.unpack_from(answer, len(owner))
+    address = IPv4Address(answer[-4:])
+    if (kind, dns_class, length) != (1, 1, 4) or address not in POD_NETWORK:
+        raise ValueError(f"expected a Ready pod address for {host}")
+    return str(address), ttl
+
+
+def connect(family, address):
     with socket.socket(family, socket.SOCK_STREAM) as client:
-        client.settimeout(2)
+        client.settimeout(CONNECT_SECONDS)
         try:
             client.connect(address)
-        except TimeoutError:
-            return False
         except OSError as error:
-            if error.errno in BLOCKED:
+            # Only a connect timeout witnesses a silent drop. In particular,
+            # Cilium can reject a Service with no backend before egress policy.
+            if error.errno == errno.ETIMEDOUT or (isinstance(error, TimeoutError) and error.errno is None):
                 return False
             raise
     return True
 
 
-def prove_isolation(phase, *, connect_to=connect):
+def prove_isolation(phase):
     reason = ""
+    checking = f"{LISTENER[0]}:{LISTENER[1]}"
     try:
-        if not connect_to(LISTENER):
-            reason = "DNS resolved but the Studio listener did not accept TCP 8002"
-        else:
-            for target in FORBIDDEN:
-                if connect_to(target):
-                    reason = f"forbidden TCP connection succeeded: {target[0]}:{target[1]}"
-                    break
+        if not connect(*listener_address()):
+            raise ValueError("listener did not accept TCP 8002")
+        for host, port in FORBIDDEN:
+            checking = f"{host}:{port}"
+            address = ready_address(host)
+            if connect(socket.AF_INET, (address, port)):
+                raise ValueError("forbidden TCP connection succeeded")
     except (OSError, ValueError) as error:
-        reason = f"could not check isolation: {type(error).__name__}"
+        reason = f"{checking}: {type(error).__name__}: {error}"
     print(json.dumps({"event": "matte_isolation", "phase": phase,
                       "result": "fail" if reason else "pass", "reason": reason}), flush=True)
     return not reason

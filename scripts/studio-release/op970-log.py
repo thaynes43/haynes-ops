@@ -24,9 +24,12 @@ def audit(started, lines, now):
         if phase not in {"startup", "recheck"} or event.get("result") != "pass":
             print(f"FAIL matte isolation: {event.get('reason', 'unrecognized result')}", file=sys.stderr)
             return 1
+        if (phase == "startup" and proof) or (phase == "recheck" and "startup" not in proof):
+            print("FAIL isolation logs out of order for the worker container", file=sys.stderr)
+            return 1
         proof[phase] = (recorded, line.rstrip())
     if "startup" not in proof:
-        print("FAIL no startup isolation proof newer than the pod start", file=sys.stderr)
+        print("FAIL no startup isolation proof newer than the worker container start", file=sys.stderr)
         return 1
     if "recheck" not in proof:
         return 2
