@@ -15,6 +15,13 @@ firmware changes. A failed integration read leaves the previous inventory intact
 The short status line lives in `summary.txt` and the Job log. The existing morning
 digest only consumes the PR lane's summary.
 
+On failure, the Job logs a `STOP` with the failing stage. The inventory stages
+are `configmap-read`, `mcp-connect`, `mcp-list`, `report`, and `configmap-write`.
+After publishing inventory, the runner reads and validates the attempt journal
+(`journal`) and records the current verdict (`last-run-write`). A failure there
+can leave a fresh `observed_at` alongside an older `last-run.json`. Stage
+diagnostics can include a kubectl exit status or a known system error code.
+
 The queue sorts indoor APs, outdoor APs, leaf switches, Pro Max 16/24, Pro Max 48,
 USW Aggregation, Pro Aggregation, the gateway and the cable modem. Within a tier
 it sorts by device name. The model allow list comes from OP658. The four power
