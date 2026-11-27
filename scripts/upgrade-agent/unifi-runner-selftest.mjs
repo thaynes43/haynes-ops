@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { plexIdle, unifiClient } from '../../kubernetes/main/apps/upgrade-agent/unifi/app/resources/unifi-job.mjs';
 import { executeOne, inWindow, makeReport, parseApprovals, readDevices } from '../../kubernetes/main/apps/upgrade-agent/unifi/app/resources/unifi-runner.mjs';
@@ -39,23 +38,133 @@ const approval = (device, overrides = {}) => ({
 });
 const ap = approval('Test room AP');
 const leaf = approval('Test leaf switch');
+const integration = { name: 'Test room AP', model: 'U7 Pro', state: 'ONLINE',
+  firmwareVersion: '1.2.3', supported: true, firmwareUpdatable: true, macAddress: 'fixture-device-id' };
 
 test('the mounted manifest parses and the mounted gate matches OP662', async () => {
   const read = (file) => readFile(new URL(file, app), 'utf8');
-  assert.ok(Array.isArray(parseApprovals(await read('unifi-approvals.yaml'))));
+  assert.deepEqual(parseApprovals(await read('unifi-approvals.yaml')), []);
   assert.equal(await read('resources/unifi-gate.mjs'), await readFile(new URL('unifi-gate.mjs', import.meta.url), 'utf8'));
 });
 
-test('the CLI starts through a ConfigMap-style symlink', async () => {
+async function withJobFixture(t, stage = '') {
   const directory = await mkdtemp(join(tmpdir(), 'unifi-selftest-'));
-  try {
-    const script = join(directory, 'unifi-job.mjs');
-    await symlink(fileURLToPath(new URL('resources/unifi-job.mjs', app)), script);
-    await assert.rejects(exec(process.execPath, [script], { env: {} }), { code: 1 });
-  } finally {
-    await rm(directory, { recursive: true, force: true });
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const mounted = join(directory, 'mount');
+  const snapshot = join(mounted, '..snapshot');
+  await mkdir(snapshot, { recursive: true });
+  await symlink('..snapshot', join(mounted, '..data'));
+  for (const source of ['resources/unifi-job.mjs', 'resources/unifi-runner.mjs', 'unifi-approvals.yaml']) {
+    const name = source.split('/').at(-1);
+    await copyFile(new URL(source, app), join(snapshot, name));
+    await symlink(join('..data', name), join(mounted, name));
   }
+  const script = join(mounted, 'unifi-job.mjs');
+  const preload = join(directory, 'fetch-fixture.mjs');
+  const configmap = join(directory, 'configmap.json');
+  const metadata = { name: 'unifi-inventory', namespace: 'upgrade-agent', resourceVersion: '1',
+    labels: { owner: 'fixture' }, annotations: { policy: 'fixture' } };
+  const seed = { apiVersion: 'v1', kind: 'ConfigMap', metadata };
+  if (stage === 'report') seed.data = { 'inventory.json': '{}' };
+  if (stage === 'journal') seed.data = { 'live-attempts.json': 'malformed fixture content' };
+  await writeFile(configmap, JSON.stringify(seed));
+  await writeFile(join(directory, 'kubectl'), `#!${process.execPath}
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const [timeout, command, raw, uri, ...args] = process.argv.slice(2);
+assert.equal(timeout, '--request-timeout=8s');
+assert.equal(raw, '--raw');
+const reportPath = '/api/v1/namespaces/upgrade-agent/configmaps/unifi-inventory';
+const { FIXTURE_STAGE, FIXTURE_CONFIGMAP } = process.env;
+const previous = JSON.parse(fs.readFileSync(FIXTURE_CONFIGMAP, 'utf8'));
+function fail() {
+  console.error('private kubectl diagnostic');
+  process.exit(7);
+}
+if (command === 'get') {
+  assert.equal(uri, reportPath);
+  assert.deepEqual(args, []);
+  if (FIXTURE_STAGE === 'configmap-read') fail();
+  console.log(JSON.stringify(previous));
+} else {
+  assert.equal(command, 'replace');
+  assert.equal(uri, reportPath + '?fieldManager=kubectl-replace&fieldValidation=Strict');
+  assert.deepEqual(args, ['-f', '-']);
+  const next = JSON.parse(fs.readFileSync(0, 'utf8'));
+  assert.deepEqual(next.metadata, previous.metadata);
+  const secondWrite = Object.hasOwn(next.data, 'last-run.json');
+  if (secondWrite) assert.equal(next.data['inventory.json'], previous.data['inventory.json']);
+  if (FIXTURE_STAGE === (secondWrite ? 'last-run-write' : 'configmap-write')) fail();
+  next.metadata.resourceVersion = String(Number(previous.metadata.resourceVersion) + 1);
+  fs.writeFileSync(FIXTURE_CONFIGMAP, JSON.stringify(next));
+  console.log(JSON.stringify(next));
+}
+`, { mode: 0o700 });
+  await writeFile(preload, `
+import assert from 'node:assert/strict';
+Date.now = () => ${now};
+globalThis.fetch = async (url, { method, body }) => {
+  assert.equal(new URL(url).pathname, '/mcp');
+  assert.equal(method, 'POST');
+  const request = JSON.parse(body);
+  const reply = (result) => Response.json({ jsonrpc: '2.0', id: request.id, result });
+  if (request.method === 'initialize') {
+    if (process.env.FIXTURE_STAGE === 'mcp-connect') {
+      throw new TypeError('private network diagnostic', { cause: { code: 'EAI_AGAIN' } });
+    }
+    return reply({ protocolVersion: '2025-11-25' });
+  }
+  if (request.method === 'notifications/initialized') return new Response(null, { status: 202 });
+  assert.equal(request.method, 'tools/call');
+  assert.equal(request.params.name, 'list_integration_devices');
+  if (process.env.FIXTURE_STAGE === 'mcp-list') {
+    return reply({ isError: true, content: [{ type: 'text', text: 'private MCP diagnostic' }] });
+  }
+  return reply({ structuredContent: { count: 1, totalCount: 1, offset: 0, data: [${JSON.stringify(integration)}] } });
+};
+`);
+  return {
+    run: () => exec(process.execPath, ['--import', preload, script], {
+      env: { PATH: directory, MCP_AUTH_TOKEN: 'fixture', UNIFI_LIVE_MODE: 'false',
+        FIXTURE_STAGE: stage, FIXTURE_CONFIGMAP: configmap },
+    }),
+    read: () => readFile(configmap, 'utf8').then(JSON.parse),
+  };
+}
+
+test('the mounted CLI writes inventory and last run starting from an empty ConfigMap', async (t) => {
+  const fixture = await withJobFixture(t);
+  const { stdout, stderr } = await fixture.run();
+  assert.equal(stderr, '');
+  assert.match(stdout, /SKIP: No current approval for an unattended device/);
+  const { data, metadata } = await fixture.read();
+  assert.equal(metadata.resourceVersion, '3');
+  assert.equal(data.observed_at, iso(now));
+  assert.equal(JSON.parse(data['inventory.json']).length, 1);
+  const lastRun = JSON.parse(data['last-run.json']);
+  assert.equal(lastRun.outcome, 'SKIP');
+  assert.equal(lastRun.live, false);
+  assert.ok(Number.isFinite(Date.parse(lastRun.at)));
 });
+
+for (const [stage, detail, expectedVersion] of [
+  ['configmap-read', ' (kubectl exit 7)', '1'],
+  ['mcp-connect', ' (EAI_AGAIN)', '1'],
+  ['mcp-list', '', '1'],
+  ['report', '', '1'],
+  ['configmap-write', ' (kubectl exit 7)', '1'],
+  ['journal', '', '2'],
+  ['last-run-write', ' (kubectl exit 7)', '2'],
+]) {
+  test(`the mounted CLI reports only the safe ${stage} diagnostic on failure`, async (t) => {
+    const fixture = await withJobFixture(t, stage);
+    await assert.rejects(fixture.run(), { code: 1, stderr: `STOP: ${stage}${detail}\n` });
+    const { data, metadata } = await fixture.read();
+    assert.equal(metadata.resourceVersion, expectedVersion);
+    assert.equal(data?.observed_at, expectedVersion === '2' ? iso(now) : undefined);
+    assert.equal(data?.['last-run.json'], undefined);
+  });
+}
 
 test('ordered queue skips offline and EOL-unknown devices and requires special approvals', () => {
   const regular = ['Test room AP', 'Test outside AP', 'Test leaf switch', 'Test medium switch'];
@@ -233,8 +342,6 @@ test('Plex reads all three session counts and treats errors and invalid counts a
 
 test('MCP transport negotiates session, handles SSE, and requests integration inventory only', async () => {
   const methods = [];
-  const integration = { name: 'Test room AP', model: 'U7 Pro', state: 'ONLINE',
-    firmwareVersion: '1.2.3', supported: true, firmwareUpdatable: true, macAddress: 'fixture-device-id' };
   const client = unifiClient('fixture', async (url, { method, body, headers }) => {
     assert.equal(new URL(url).pathname, '/mcp');
     if (method === 'DELETE') {

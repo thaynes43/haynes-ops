@@ -10,10 +10,13 @@ import { executeOne, inventoryLimit, makeReport, parseApprovals, readDevices, sa
 const exec = promisify(execFile);
 const namespace = 'upgrade-agent';
 const reportName = 'unifi-inventory';
+const reportPath = `/api/v1/namespaces/${namespace}/configmaps/${reportName}`;
+const reportUpdatePath = `${reportPath}?fieldManager=kubectl-replace&fieldValidation=Strict`;
 const site = 'default';
 const gatePath = fileURLToPath(new URL('./unifi-gate.mjs', import.meta.url));
 const approvalsPath = fileURLToPath(new URL('./unifi-approvals.yaml', import.meta.url));
 const mcpUrl = 'http://mcp-unifi.observability.svc.cluster.local:3000/mcp';
+const safeErrorCodes = new Set(['ENOENT', 'EACCES', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET']);
 const plexServers = [
   ['plex', 'http://plex.media.svc.cluster.local:32400', 'PLEX_TOKEN'],
   ['plexops', 'http://plexops.media.svc.cluster.local:32400', 'PLEXOPS_TOKEN'],
@@ -73,9 +76,12 @@ export function unifiClient(token, fetcher = fetch) {
         throw new Error('Invalid MCP reply');
       }
       return reply.result;
-    } catch {
-      // Controller responses can contain hardware IDs and credentials. Never print them.
-      throw new Error(`UniFi MCP ${method} request failed`);
+    } catch (error) {
+      // Preserve only known network codes from fetch, with no response or error text.
+      const code = error?.cause?.code;
+      const failure = new Error(`UniFi MCP ${method} request failed`);
+      if (safeErrorCodes.has(code)) failure.code = code;
+      throw failure;
     }
   }
   async function call(name, args) {
@@ -159,21 +165,40 @@ export async function plexIdle(env, fetcher = fetch, log = console.log) {
   return allIdle;
 }
 
+class KubectlError extends Error {
+  constructor(status) {
+    super('kubectl failed');
+    this.status = status;
+  }
+}
+
+function logStageFailure(stage, error) {
+  let detail = '';
+  if (error instanceof KubectlError && Number.isInteger(error.status)) {
+    detail = ` (kubectl exit ${error.status})`;
+  } else if (safeErrorCodes.has(error?.code)) {
+    detail = ` (${error.code})`;
+  }
+  console.error(`STOP: ${stage}${detail}`);
+}
+
 function reportStore() {
   function kubectl(args, input) {
-    const command = spawnSync('kubectl', ['--request-timeout=8s', '-n', namespace, ...args, '-o', 'json'], {
-      input, encoding: 'utf8', timeout: 10_000,
+    const command = spawnSync('kubectl', ['--request-timeout=8s', ...args], {
+      input, encoding: 'utf8', timeout: 10_000, stdio: ['pipe', 'pipe', 'ignore'],
     });
-    if (command.status !== 0) throw new Error('UniFi inventory ConfigMap read or update failed');
+    if (command.error) throw command.error;
+    if (command.status !== 0) throw new KubectlError(command.status);
     return JSON.parse(command.stdout);
   }
-  let cm = kubectl(['get', 'configmap', reportName]);
+  // A fixed core API resource needs neither API discovery nor its on-disk cache.
+  let cm = kubectl(['get', '--raw', reportPath]);
   return {
     read(key) { return JSON.parse(cm.data?.[key] ?? '[]'); },
     write(data) {
       // Keep resourceVersion on replace. Two pods cannot both reserve the same attempt.
       if (!cm.metadata?.resourceVersion) throw new Error('UniFi inventory ConfigMap has no resource version');
-      cm = kubectl(['replace', '-f', '-'], JSON.stringify({
+      cm = kubectl(['replace', '--raw', reportUpdatePath, '-f', '-'], JSON.stringify({
         apiVersion: 'v1',
         kind: 'ConfigMap',
         metadata: {
@@ -196,7 +221,8 @@ async function runGate(args) {
 }
 
 async function main() {
-  const client = unifiClient(process.env.MCP_AUTH_TOKEN);
+  let stage = 'configmap-read';
+  let client;
   let temp;
   try {
     const store = reportStore();
@@ -208,10 +234,15 @@ async function main() {
     } catch {
       manifestError = true;
     }
+    stage = 'mcp-connect';
+    client = unifiClient(process.env.MCP_AUTH_TOKEN);
     await client.connect();
+    stage = 'mcp-list';
     const devices = await client.listDevices();
+    stage = 'report';
     const now = Date.now();
     const report = makeReport(devices, approvals, previous, now);
+    stage = 'configmap-write';
     store.write({
       'inventory.json': JSON.stringify(report.inventory),
       'inventory.md': report.table,
@@ -221,6 +252,7 @@ async function main() {
     });
     console.log(report.summary);
 
+    stage = 'journal';
     let journal = store.read('live-attempts.json');
     if (!Array.isArray(journal) || journal.some(({ outcome }) => !['PENDING', 'GREEN', 'STOP'].includes(outcome))) {
       throw new Error('UniFi live-attempt journal is invalid');
@@ -268,18 +300,22 @@ async function main() {
     } catch {
       result = { outcome: 'STOP', reason: 'UniFi pre-check or attempt-journal operation failed' };
     }
+    stage = 'last-run-write';
     store.write({ 'last-run.json': JSON.stringify({ ...result, at: new Date().toISOString(), live }) });
     console.log(`${result.outcome}: ${result.reason}`);
     if (result.outcome === 'STOP') process.exitCode = 1;
+  } catch (error) {
+    logStageFailure(stage, error);
+    process.exitCode = 1;
   } finally {
-    await client.close();
+    await client?.close();
     if (temp) await rm(temp, { recursive: true, force: true });
   }
 }
 
 if (import.meta.main) {
   main().catch(() => {
-    console.error('STOP: UniFi inventory or run state could not be recorded');
+    console.error('STOP: UniFi Job cleanup failed');
     process.exitCode = 1;
   });
 }
