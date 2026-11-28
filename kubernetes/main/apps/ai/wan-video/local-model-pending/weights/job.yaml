@@ -29,7 +29,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: provision
-          image: docker.io/library/python:3.12.16-slim-bookworm@sha256:1475c4f5b6bcb7d35e57661d6f5d7429ec4041275633c15f2b49350ac898276d
+          image: docker.io/library/python:3.15.2-slim-bookworm@sha256:1ec2babe71a186a01d1573326faf2ed410f62122dc2e687455b6d48ab8606363
           command: [python3, -B, /config/provision.py]
           securityContext:
             allowPrivilegeEscalation: false
