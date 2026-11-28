@@ -1,0 +1,2185 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentaiton for my home-ops style repository so I can have an idea what past me did when something breaks. Hopefully someone else finds something useful here too!">
+      
+      
+        <meta name="author" content="Tom Haynes">
+      
+      
+        <link rel="canonical" href="https://haynesops.com/reference/local-model-hosting/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Studio local-model hosting - HaynesOps</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#studio-local-model-hosting" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="HaynesOps" class="md-header__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            HaynesOps
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Studio local-model hosting
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1M8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 5-5 5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5M7 15a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="HaynesOps" class="md-nav__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    HaynesOps
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../this-site/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    This Site
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    This Site
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cluster/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cluster Essentials
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cluster Essentials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cluster/rook-ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rook Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheat Sheets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cheat Sheets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/siderolabs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Siderolabs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/kubernetes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kubernetes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#part-2a-dormant-rollout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 2a dormant rollout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-2b-activation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 2b activation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 2b activation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#prepare-evidence-and-verify-the-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prepare evidence and verify the image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-install-only-the-download-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A. Install only the download policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-provision-and-read-back-the-weights" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B. Provision and read back the weights
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-calibrate-activate-and-check-ready" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C. Calibrate, activate and check ready
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="C. Calibrate, activate and check ready">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#run-the-one-shot-startup-diagnostic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run the one-shot startup diagnostic
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#activate-and-verify-the-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Activate and verify the Service
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wan-pod-change-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wan-pod change check
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear-a-local-model-hold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clear a local-model hold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rollback-c-after-a-served-startup-refusal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollback C after a served startup refusal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rollback-c-after-the-sidecar-served" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollback C after the sidecar served
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rollback-c-when-the-sidecar-never-became-ready" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollback C when the sidecar never became Ready
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gitops-revert-and-dormant-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GitOps revert and dormant gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-private-smoke-windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two private smoke windows
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Two private smoke windows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#window-1-cold-load-text-vision-and-s2v" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Window 1. Cold load, text, vision and S2V
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#window-2-five-paired-drift-cycles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Window 2. Five paired drift cycles
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stops-and-evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stops and evidence
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="studio-local-model-hosting">Studio local-model hosting</h1>
+<p><a href="https://work.haynesnetwork.com/work_packages/442">Story 442</a> and
+<a href="https://github.com/thaynes43/haynes-studio/blob/fa52968/docs/reference/local-model-profile.md">profile CR-20</a>
+select Qwen3.5-9B Q5_K_M and its BF16 projector on Card A. The image uses the
+pinned llama.cpp b12679 CUDA 12 libraries and CPython 3.12.16. The loader reads
+both local GGUFs in the child under the Wan lease. It unloads before every Wan
+or Foley handover. The E10 benchmark and Tom's acceptance have separate gates.</p>
+<h2 id="part-2a-dormant-rollout">Part 2a dormant rollout</h2>
+<p><strong>Proven for part 2a.</strong> The <a href="https://github.com/thaynes43/haynes-ops/actions/runs/45545041495">main build</a>
+passed its CPU smoke, published and signed the image, and attached BuildKit
+provenance. The dormant rollout at <code>79fa01b5</code> recreated the Wan pod once.
+See comment 9924 on <a href="https://work.haynesnetwork.com/work_packages/442">story 442</a>
+for the mounted code hashes and health reads. Flux updates
+<code>wan-video-config</code>. The existing Reloader annotation recreates the single Wan
+pod (Deployment strategy <code>Recreate</code>), including the app, Foley and API
+containers and existing provisioning init containers. Those init containers
+recheck their current pinned files and can fetch existing artifacts if they
+are missing. The new local-model Job, Cilium policy, profile and container are
+all under <code>local-model-pending/</code>, outside the applied Flux path. Local-model
+discovery continues to return HTTP 503 <code>local_model_not_installed</code>.</p>
+<p>Run these gates as the coordinator, one Wan change in flight. Quiesce Studio
+queue dispatch and other direct clients. Check for no Wan or Foley job and no
+render hold. Check both Comfy queue lists empty and confirm the expected UUIDs
+and known idle ownership. Confirm the PVC is bound and the current init
+containers are healthy. Collect the previous revision, pod UID and code hashes.
+The Bash verification blocks run in their own shell. Each gate reports its
+result and a failed check stops the block, after collecting failure evidence
+where the block calls for it. Export the <code>OP442_*</code> inputs before running a block.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">set -euo pipefail</span>
+<span class="s">source scripts/wan-video/op442_gate.sh</span>
+<span class="s">wan_exec() { kubectl -n ai exec deploy/wan-video -c api -- "$@"; }</span>
+<span class="s">at_wan() {</span>
+<span class="s">  wan_exec python -c 'import sys, urllib.request</span>
+<span class="s">with urllib.request.urlopen("http://127.0.0.1:" + sys.argv[1], timeout=15) as response:</span>
+<span class="s">    if response.status != 200:</span>
+<span class="s">        raise SystemExit("Expected HTTP 200")</span>
+<span class="s">    print(response.read().decode())' "$1"</span>
+<span class="s">}</span>
+
+<span class="s">gate='Wan health and idle state'</span>
+<span class="s">at_wan 8080/health | jq -e '.accepting_jobs == true and has("active_job") and .active_job == null'</span>
+<span class="s">gate_passed</span>
+<span class="s">gate='Wan product readiness and idle state'</span>
+<span class="s">at_wan 8080/v1/ready | jq -e '.ready == true and has("active_video_job") and has("active_foley_job") and</span>
+<span class="s">  .active_video_job == null and .active_foley_job == null'</span>
+<span class="s">gate_passed</span>
+<span class="s">gate='Foley readiness and idle state'</span>
+<span class="s">at_wan 8189/v1/ready | jq -e 'has("active_job") and .active_job == null'</span>
+<span class="s">gate_passed</span>
+<span class="s">gate='Empty ComfyUI queue'</span>
+<span class="s">at_wan 8188/queue | jq -e '.queue_running == [] and .queue_pending == []'</span>
+<span class="s">gate_passed</span>
+<span class="s">gate='Read rack GPU samples for operator review'</span>
+<span class="s">wan_exec nvidia-smi --query-gpu=uuid,memory.used,utilization.gpu,temperature.gpu --format=csv</span>
+<span class="s">wan_exec nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory --format=csv</span>
+<span class="s">gate_passed</span>
+<span class="s">gate='Read mounted code hashes'</span>
+<span class="s">wan_exec sha256sum /config/video/api.py /config/video/product_local.py \</span>
+<span class="s">  /config/video/local_model_sidecar.py /config/video/openapi.json</span>
+<span class="s">gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<p>Declare disruptive work with
+<code>declare-activity start "Wan dormant admission update" --scope ai,talosw01,wan-video</code>.
+After independent review and while the gates still pass, reconcile the approved
+merge with <code>flux reconcile kustomization wan-video -n ai --with-source</code>. Wait
+for the new pod UID and <code>kubectl -n ai rollout status deploy/wan-video --timeout=35m</code>.
+Confirm the watched revision and new ConfigMap and mounted code hashes. Repeat
+the prechecks plus <code>GET /ready</code>, <code>GET /v1/profiles</code> (I2V, S2V, Foley), a read
+of a known legacy <code>/videos/&lt;id&gt;</code> and <code>GET /v1/local-model/profile</code> (503 and
+<code>local_model_not_installed</code>).
+Check for a single healthy pod and release the activity declaration once settled.
+On failure keep dispatch quiesced, inspect the job/queue/hold and restore the
+previous dormant source through a GitOps revert and the same targeted
+reconciliation. Repeat the full health gate. Keep the PVC and existing ledgers.</p>
+<p>The PR image smoke uses UID 1000 and a read-only filesystem with Docker network
+disabled. It imports the Python module, resolves the C ABI against the exact
+shared libraries, builds the plan and required-tool grammars from the bundled
+Qwen3.5-4B Jinja template and accepts one synthetic <code>record_plan_v1</code> reply
+while rejecting an unexpected function. Production builds its grammars and
+parses replies with the Qwen3.5-9B GGUF's embedded template. The first live smoke
+proves that template, driver compatibility, GPU allocation, visual tokenization
+and model behavior. The Wan CPU suite covers the private protocol, request
+limits, recovery and fake inference. CI also renders the staged manifests and
+validates the projected profile with the production loader.</p>
+<p><strong>Expected for the startup repair.</strong> Its merge updates the same dormant
+ConfigMap and Reloader recreates Wan. Run the prechecks and post-rollout gate
+above, including one Ready Service endpoint on the new pod and the unchanged
+PVC UID. Keep Studio and direct producers paused across that window. The main
+workflow publishes a new signed digest. Leave the activation path staged.</p>
+<h2 id="part-2b-activation">Part 2b activation</h2>
+<p><strong>Expected.</strong> Merge A, B and C in order, after each preceding health gate. A
+installs the download policy. B starts a single CPU-only provisioning Job.
+Both leave the running Wan pod and its PVC unchanged. C retires the two
+temporary Flux Kustomizations and recreates the Wan pod with the sidecar and
+calibrated profile. Flux can pick up a merge on its interval. Do each merge
+with its prechecks complete and the lane quiesced, and reconcile to capture the
+exact revision.</p>
+<p>A and B completed during the first attempt and their Flux references are retired.
+Keep their weights and read-back evidence. For the next C, start from current
+main and verify both temporary references stay absent from
+<code>kubernetes/main/apps/ai/kustomization.yaml</code>. Require checks on the exact
+activation and calibration head.</p>
+<h3 id="prepare-evidence-and-verify-the-image">Prepare evidence and verify the image</h3>
+<p>Run from the PR C checkout throughout. Export <code>OP442_EVIDENCE</code> with the printed
+directory for the commands below. Export <code>OP442_LEGACY_ID</code> with a known
+completed legacy video ID and keep its read private. Keep Studio dispatch and
+other direct producers quiesced from preflight through the smoke or rollback.
+Confirm OP410 and the queue worker are ready and no Studio dispatch is active.</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span>
+<span class="w">  </span><span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+<span class="w">  </span><span class="nb">umask</span><span class="w"> </span><span class="m">077</span>
+<span class="w">  </span>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.local/state/op442"</span>
+<span class="w">  </span>mktemp<span class="w"> </span>-d<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.local/state/op442/rollout.XXXXXXXX"</span>
+<span class="o">)</span>
+</code></pre></div>
+<p>Use installed cosign or the pinned Linux amd64 tool below. The registry checks
+use an anonymous public pull token. They fetch the index, platform descriptors
+and attestation only. The signature binds the index, which binds the platform
+manifest and the provenance descriptor. In the activation patch, replace
+<code>pending-op442-startup-proof</code> with the <code>tag@sha256:...</code> from the signed main
+build. That image line also supplies the diagnostic Job and deployment health
+gate. The check below requires the latest image source revision on main and
+refuses the first activation's digest. Stop if any check fails.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  evidence=${OP442_EVIDENCE:?Set OP442_EVIDENCE to the private rollout directory}</span>
+<span class="s">  rm -f "$evidence/verified-image"</span>
+<span class="s">  base=kubernetes/main/apps/ai/wan-video</span>
+<span class="s">  gate='Image pin matches the current startup source'</span>
+<span class="s">  git fetch origin main</span>
+<span class="s">  image_inputs=(scripts/studio-local-model "$base/app"</span>
+<span class="s">    "$base/local-model-pending/weights/weights.json" .github/workflows/studio-local-model-build.yml)</span>
+<span class="s">  revision=$(git log -1 --format=%H FETCH_HEAD -- "${image_inputs[@]}")</span>
+<span class="s">  git grep -Fq 'STARTUP_LOG = "local-model-listening"' "$revision" -- "$base/app/local_model_sidecar.py"</span>
+<span class="s">  git diff --quiet "$revision" -- "${image_inputs[@]}"</span>
+<span class="s">  pin=$(awk '$1 == "tag:" {print $2}' "$base/local-model-pending/activation/sidecar.yaml")</span>
+<span class="s">  [[ $pin =~ ^b12679-([0-9a-f]{40})-[0-9]+-[0-9]+@sha256:[0-9a-f]{64}$ ]]</span>
+<span class="s">  [[ ${BASH</span>_REMATCH<span class="o">[</span><span class="m">1</span><span class="o">]}</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s2">"</span><span class="nv">$revision</span><span class="s2">"</span><span class="w"> </span><span class="o">]]</span>
+<span class="w">  </span><span class="nv">tag</span><span class="o">=</span><span class="si">${</span><span class="nv">pin</span><span class="p">%@*</span><span class="si">}</span>
+<span class="w">  </span><span class="nv">digest</span><span class="o">=</span><span class="si">${</span><span class="nv">pin</span><span class="p">#*@</span><span class="si">}</span>
+<span class="w">  </span><span class="o">[[</span><span class="w"> </span><span class="nv">$digest</span><span class="w"> </span>!<span class="o">=</span><span class="w"> </span>sha256:e2e9b5e9b71aee89d0b8077ae47be113587b61054957b10f694cb4ab92b93f03<span class="w"> </span><span class="o">]]</span>
+<span class="w">  </span>gate_passed
+<span class="w">  </span><span class="nv">gate</span><span class="o">=</span><span class="s1">'Cosign available'</span>
+<span class="w">  </span><span class="nv">cosign_bin</span><span class="o">=</span><span class="k">$(</span><span class="nb">command</span><span class="w"> </span>-v<span class="w"> </span>cosign<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span><span class="k">)</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">"</span><span class="nv">$cosign_bin</span><span class="s2">"</span><span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="o">[[</span><span class="w"> </span><span class="k">$(</span>uname<span class="w"> </span>-m<span class="k">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span>x86_64<span class="w"> </span><span class="o">]]</span>
+<span class="w">    </span>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.local/bin"</span>
+<span class="w">    </span><span class="nv">cosign_bin</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.local/bin/cosign-op442-v3.1.4"</span>
+<span class="w">    </span><span class="nv">checksum</span><span class="o">=</span>424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span>!<span class="w"> </span>-x<span class="w"> </span><span class="s2">"</span><span class="nv">$cosign_bin</span><span class="s2">"</span><span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">      </span><span class="nv">binary</span><span class="o">=</span><span class="k">$(</span>mktemp<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.local/bin/.cosign-op442.XXXXXXXX"</span><span class="k">)</span>
+<span class="w">      </span>curl<span class="w"> </span>-fsSL<span class="w"> </span>-o<span class="w"> </span><span class="s2">"</span><span class="nv">$binary</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-linux-amd64
+<span class="w">      </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s  %s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$checksum</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$binary</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sha256sum<span class="w"> </span>-c
+<span class="w">      </span>chmod<span class="w"> </span><span class="m">0700</span><span class="w"> </span><span class="s2">"</span><span class="nv">$binary</span><span class="s2">"</span>
+<span class="w">      </span>mv<span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$binary</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$cosign_bin</span><span class="s2">"</span>
+<span class="w">    </span><span class="k">fi</span>
+<span class="w">    </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s  %s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$checksum</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$cosign_bin</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sha256sum<span class="w"> </span>-c
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span>gate_passed
+<span class="w">  </span><span class="nb">export</span><span class="w"> </span><span class="nv">DOCKER_CONFIG</span><span class="o">=</span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/registry-anon"</span>
+<span class="w">  </span>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">"</span><span class="nv">$DOCKER_CONFIG</span><span class="s2">"</span>
+<span class="w">  </span><span class="nb">export</span><span class="w"> </span><span class="nv">GOMAXPROCS</span><span class="o">=</span><span class="m">2</span>
+
+<span class="w">  </span><span class="nv">repo</span><span class="o">=</span>thaynes43/studio-local-model
+<span class="w">  </span><span class="nv">image</span><span class="o">=</span><span class="s2">"ghcr.io/</span><span class="nv">$repo</span><span class="s2">@</span><span class="nv">$digest</span><span class="s2">"</span>
+<span class="w">  </span><span class="nv">gate</span><span class="o">=</span><span class="s1">'Image signature and workflow identity'</span>
+<span class="w">  </span><span class="s2">"</span><span class="nv">$cosign_bin</span><span class="s2">"</span><span class="w"> </span>verify<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--certificate-identity<span class="w"> </span>https://github.com/thaynes43/haynes-ops/.github/workflows/studio-local-model-build.yml@refs/heads/main<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--certificate-oidc-issuer<span class="w"> </span>https://token.actions.githubusercontent.com<span class="w"> </span><span class="s2">"</span><span class="nv">$image</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/signature.json"</span>
+<span class="w">  </span>jq<span class="w"> </span>-e<span class="w"> </span>--arg<span class="w"> </span>digest<span class="w"> </span><span class="s2">"</span><span class="nv">$digest</span><span class="s2">"</span><span class="w"> </span><span class="s1">'any(.[]; .critical.image["docker-manifest-digest"] == $digest)'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/signature.json"</span>
+<span class="w">  </span>gate_passed
+<span class="w">  </span><span class="nv">gate</span><span class="o">=</span><span class="s1">'Tag, signed digest and platform descriptor'</span>
+<span class="w">  </span><span class="nv">token</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-fsS<span class="w"> </span><span class="s2">"https://ghcr.io/token?scope=repository:</span><span class="nv">$repo</span><span class="s2">:pull&amp;service=ghcr.io"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-er<span class="w"> </span>.token<span class="k">)</span>
+<span class="w">  </span>manifest<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span>curl<span class="w"> </span>-fsS<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Authorization: Bearer </span><span class="nv">$token</span><span class="s2">"</span><span class="w"> </span>-H<span class="w"> </span><span class="s2">"Accept: </span><span class="nv">$1</span><span class="s2">"</span><span class="w"> </span><span class="s2">"https://ghcr.io/v2/</span><span class="nv">$repo</span><span class="s2">/manifests/</span><span class="nv">$2</span><span class="s2">"</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>check_digest<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s  %s\n'</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">1</span><span class="p">#sha256:</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$2</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sha256sum<span class="w"> </span>-c
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span>ref<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="s2">"</span><span class="nv">$digest</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$tag</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">    </span>manifest<span class="w"> </span>application/vnd.oci.image.index.v1+json<span class="w"> </span><span class="s2">"</span><span class="nv">$ref</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/index.json"</span>
+<span class="w">    </span>check_digest<span class="w"> </span><span class="s2">"</span><span class="nv">$digest</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/index.json"</span>
+<span class="w">  </span><span class="k">done</span>
+<span class="w">  </span><span class="nv">platform</span><span class="o">=</span><span class="k">$(</span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/index.json"</span><span class="k">)</span>
+<span class="w">  </span><span class="nv">attestation</span><span class="o">=</span><span class="k">$(</span>jq<span class="w"> </span>-er<span class="w"> </span>--arg<span class="w"> </span>platform<span class="w"> </span><span class="s2">"</span><span class="nv">$platform</span><span class="s2">"</span><span class="w"> </span><span class="s1">'.manifests[] |</span>
+<span class="s1">    select(.annotations["vnd.docker.reference.type"] == "attestation-manifest" and</span>
+<span class="s1">           .annotations["vnd.docker.reference.digest"] == $platform) | .digest'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/index.json"</span><span class="k">)</span>
+<span class="w">  </span>gate_passed
+<span class="w">  </span><span class="nv">gate</span><span class="o">=</span><span class="s1">'Attestation digest, image provenance and source revision'</span>
+<span class="w">  </span>manifest<span class="w"> </span>application/vnd.oci.image.manifest.v1+json<span class="w"> </span><span class="s2">"</span><span class="nv">$attestation</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/attestation.json"</span>
+<span class="w">  </span>check_digest<span class="w"> </span><span class="s2">"</span><span class="nv">$attestation</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/attestation.json"</span>
+<span class="w">  </span><span class="nv">layer</span><span class="o">=</span><span class="k">$(</span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'.layers[] | select(.annotations["in-toto.io/predicate-type"] == "https://slsa.dev/provenance/v0.2") | .digest'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/attestation.json"</span><span class="k">)</span>
+<span class="w">  </span>curl<span class="w"> </span>-fsSL<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Authorization: Bearer </span><span class="nv">$token</span><span class="s2">"</span><span class="w"> </span><span class="s2">"https://ghcr.io/v2/</span><span class="nv">$repo</span><span class="s2">/blobs/</span><span class="nv">$layer</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/provenance.json"</span>
+<span class="w">  </span>check_digest<span class="w"> </span><span class="s2">"</span><span class="nv">$layer</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/provenance.json"</span>
+<span class="w">  </span>jq<span class="w"> </span>-e<span class="w"> </span>--arg<span class="w"> </span>platform<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">platform</span><span class="p">#sha256:</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>--arg<span class="w"> </span>revision<span class="w"> </span><span class="s2">"</span><span class="nv">$revision</span><span class="s2">"</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .predicateType == "https://slsa.dev/provenance/v0.2" and</span>
+<span class="s1">    any(.subject[]; .digest.sha256 == $platform) and</span>
+<span class="s1">    (.predicate.metadata["https://mobyproject.org/buildkit@v1#metadata"].vcs |</span>
+<span class="s1">      .source == "https://github.com/thaynes43/haynes-ops" and .revision == $revision)</span>
+<span class="s1">  '</span><span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/provenance.json"</span>
+<span class="w">  </span>gate_passed
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s\n'</span><span class="w"> </span><span class="s2">"ghcr.io/</span><span class="nv">$repo</span><span class="s2">:</span><span class="nv">$pin</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">"</span><span class="nv">$evidence</span><span class="s2">/verified-image"</span>
+BASH
+</code></pre></div>
+<h3 id="a-install-only-the-download-policy">A. Install only the download policy</h3>
+<p>Before merging A, run the dormant gate and save the Wan pod and PVC UIDs. Check
+both idle GPU UUIDs, utilization and process ownership, the bound PVC and node
+Ready. Record a known legacy read with the completed job's ID. After merging A
+reconcile the parent and policy. Require the Cilium policy to match the
+provisioner's label and its DNS and HTTPS allowlists, require no Job or Job
+Kustomization, and check the same Wan pod is still Ready.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  evidence=${OP442_EVIDENCE:?}</span>
+<span class="s">  gate='Dormant Wan, Foley and engine health'</span>
+<span class="s">  python3 -B scripts/wan-video/op442_smoke.py dormant &gt; "$evidence/before-a.health.json"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Record Wan pod UID'</span>
+<span class="s">  kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |</span>
+<span class="s">    jq -er '.items | select(length == 1) | .[0].metadata.uid' &gt; "$evidence/dormant.uid"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Bound PVC and UID'</span>
+<span class="s">  kubectl -n ai get pvc wan-video -o json |</span>
+<span class="s">    jq -er 'select(.status.phase == "Bound") | .metadata.uid' &gt; "$evidence/pvc.uid"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Render node Ready on amd64'</span>
+<span class="s">  kubectl get node talosw01 -o json |</span>
+<span class="s">    jq -e '.status.nodeInfo.architecture == "amd64" and any(.status.conditions[]; .type == "Ready" and .status == "True")'</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Read rack GPU samples for operator review'</span>
+<span class="s">  kubectl -n ai exec deploy/wan-video -c api -- nvidia-smi --query-gpu=uuid,memory.used,utilization.gpu,temperature.gpu --format=csv</span>
+<span class="s">  kubectl -n ai exec deploy/wan-video -c api -- nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory --format=csv</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Known completed legacy video read'</span>
+<span class="s">  id=${OP442_LEGACY_ID:?}</span>
+<span class="s">  [[ $id =~ ^[0-9a-f]{32}$ ]]</span>
+<span class="s">  kubectl -n ai exec deploy/wan-video -c api -- python -B -c '</span>
+<span class="s">import json, sys</span>
+<span class="s">from urllib.request import urlopen</span>
+<span class="s">with urlopen("http://127.0.0.1:8080/videos/" + sys.argv[1], timeout=5) as response:</span>
+<span class="s">    job = json.load(response)</span>
+<span class="s">if job["id"] != sys.argv[1] or job["state"] != "succeeded":</span>
+<span class="s">    raise SystemExit("Expected a completed legacy video")</span>
+<span class="s">print(json.dumps({"id": job["id"], "state": job["state"]}))</span>
+<span class="s">' "$id" &gt; "$evidence/legacy.json"</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  evidence=${OP442_EVIDENCE:?}</span>
+<span class="s">  gate='Reconcile download policy manifests'</span>
+<span class="s">  flux reconcile kustomization cluster-apps -n flux-system --with-source</span>
+<span class="s">  flux reconcile kustomization wan-local-model-download-policy -n ai</span>
+<span class="s">  flux get kustomizations -n ai wan-local-model-download-policy | tee "$evidence/a-flux.txt"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Provisioner policy label and allowed DNS and HTTPS'</span>
+<span class="s">  kubectl -n ai get ciliumnetworkpolicy wan-local-model-provision -o json |</span>
+<span class="s">    jq -e '</span>
+<span class="s">      .spec.endpointSelector.matchLabels["app.kubernetes.io/name"] == "wan-local-model-provision" and</span>
+<span class="s">      (.spec.egress[0].toPorts[0].rules.dns ==</span>
+<span class="s">        [{"matchName":"huggingface.co"},{"matchPattern":"**.cdn.hf.co"}]) and</span>
+<span class="s">      (.spec.egress[1].toFQDNs ==</span>
+<span class="s">        [{"matchName":"huggingface.co"},{"matchPattern":"**.cdn.hf.co"}]) and</span>
+<span class="s">      (.spec.egress[1].toPorts[0].ports == [{"port":"443","protocol":"TCP"}])</span>
+<span class="s">    '</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Provisioning Job and inventory are absent'</span>
+<span class="s">  job=$(kubectl -n ai get job wan-local-model-provision-r2 --ignore-not-found -o name)</span>
+<span class="s">  job_inventory=$(kubectl -n ai get kustomization wan-local-model-weights --ignore-not-found -o name)</span>
+<span class="s">  [[ -z "$job" &amp;&amp; -z "$job_inventory" ]]</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Same Ready Wan pod UID'</span>
+<span class="s">  old=$(cat "$evidence/dormant.uid")</span>
+<span class="s">  uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |</span>
+<span class="s">    jq -er '.items | select(length == 1) | .[0] |</span>
+<span class="s">      select(any(.status.conditions[]; .type == "Ready" and .status == "True")) | .metadata.uid')</span>
+<span class="s">  [[ -n "$old" &amp;&amp; "$uid" == "$old" ]]</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Dormant health and discovery'</span>
+<span class="s">  python3 -B scripts/wan-video/op442_smoke.py dormant</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<p><strong>Rollback A.</strong> Before B, merge a revert of A and reconcile <code>cluster-apps</code>.
+Confirm the policy Kustomization and the Cilium policy disappear through Flux
+inventory pruning, the Job remains absent, and the dormant gate and both UIDs
+still pass. If B was already applied, retire B first. If the dormant gate finds
+a retained local-model journal from a later activation, use the
+<a href="#clear-a-local-model-hold">hold-clearing step</a> before declaring recovery.</p>
+<h3 id="b-provision-and-read-back-the-weights">B. Provision and read back the weights</h3>
+<p>Before merging B, confirm A Ready at the correct revision and repeat the
+dormant and storage checks. Reserve 7,499,546,400 bytes for the files, 1 MiB for
+writes and metadata, and 8 GiB plus 1,024 inodes free. Budget 16 additional
+inodes for staging. Create the PVC subdirectory as the serving UID. If the
+pinned revision already exists, stop and review its provenance.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  gate='Weights capacity, directory permissions and unused revision'</span>
+<span class="s">  kubectl -n ai exec deploy/wan-video -c api -- python -B -c '</span>
+<span class="s">import os</span>
+<span class="s">from pathlib import Path</span>
+
+<span class="s">if os.geteuid() != 1000:</span>
+<span class="s">    raise SystemExit("Expected Wan UID 1000")</span>
+<span class="s">workspace = Path("/workspace")</span>
+<span class="s">space = os.statvfs(workspace)</span>
+<span class="s">if space.f_bavail * space.f_frsize &lt; 7499546400 + 1024**2 + 8 * 1024**3 or space.f_favail &lt; 1040:</span>
+<span class="s">    raise SystemExit("Weights capacity gate failed")</span>
+<span class="s">root = workspace / "local-model-weights"</span>
+<span class="s">root.mkdir(mode=0o750, exist_ok=True)</span>
+<span class="s">if root.is_symlink() or not os.access(root, os.R_OK | os.W_OK | os.X_OK):</span>
+<span class="s">    raise SystemExit("Weights directory must be writable by UID 1000")</span>
+<span class="s">target = root / "qwen3.5-9b-q5_k_m" / "3885219b6810b007914f3a7950a8d1b469d598a5"</span>
+<span class="s">if os.path.lexists(target):</span>
+<span class="s">    raise SystemExit("Pinned revision already exists")</span>
+<span class="s">print({"free_bytes": space.f_bavail * space.f_frsize, "free_inodes": space.f_favail})</span>
+<span class="s">'</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<p>B gives Flux a Job health check. The Job runs on talosw01 with the published
+Linux amd64 Python manifest, one attempt, a 30-minute CPU-only deadline and a
+mount limited to <code>local-model-weights</code>. It starts at the pinned Hub revision
+and records each redirect hostname. It follows only HTTPS redirects under
+<code>**.cdn.hf.co</code>. The first host observed in the preflight metadata was
+<code>us.aws.cdn.hf.co</code>. Byte caps, private staging, hashes and a create-only
+rename govern publication. On <code>unexpected_download_redirect</code> preserve the
+refused hostname and stop. A reviewed GitOps change must add only the
+necessary verified hostname to both the Job's HTTPS redirect allowlist and
+the Cilium DNS and FQDN rules, with the same file SHA-256s and caps. Require a
+new attempt after reviewing space and the refused Job. Keep path, query and
+signature values out of the evidence.</p>
+<p><strong>Changed: the first attempt failed and was retried under a new name.</strong> On
+2026-11-25 at 05:16Z the original provisioning Job (memory limit 256Mi)
+was killed for memory five seconds after it started (<code>OOMKilled</code>, exit 137). It
+had logged the redirect to <code>us.aws.cdn.hf.co</code> and written 570,458,112 bytes of
+the first file to
+<code>/workspace/local-model-weights/qwen3.5-9b-q5_k_m/.quarantine-rgimzg5p/</code>.
+Nothing was published and the Wan pod was not restarted. The downloader wrote
+the file with a single <code>fsync</code> at the end, so its written pages stayed in the
+container's memory account. The retry, <code>wan-local-model-provision-r2</code>, flushes
+and drops the file's cached pages every 64 MiB and has a 1Gi limit. The
+quarantined partial is accounted for as described below and stays until the
+retry has published.</p>
+<p>A failed or interrupted Job can leave one or more quarantined directories.
+After the Job's pod has stopped, list the matching entries under
+<code>/workspace/local-model-weights/qwen3.5-9b-q5_k_m/</code>. Record the Job ID,
+failure code, exact attempt path, allocated bytes (<code>du -s --block-size=1</code>) and
+entry count (<code>find -xdev -printf . | wc -c</code>). Recheck the byte and inode
+reserves before any retry. Keep the attempt while it is needed as evidence.
+For operator cleanup, select one exact <code>.quarantine-*</code> directory, resolve
+and verify its parent and name, and confirm it is a directory and has no
+active Job using it. As the owning UID, run <code>chmod u+w -- "$attempt"</code> if it
+was sealed, then <code>rm -r -- "$attempt"</code> using the verified path. Check that
+the path is gone and record the freed space. Leave the revision directory
+and other attempts in place.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  evidence=${OP442_EVIDENCE:?}</span>
+<span class="s">  gate='Reconcile provisioning manifests'</span>
+<span class="s">  flux reconcile kustomization cluster-apps -n flux-system --with-source</span>
+<span class="s">  if ! flux --timeout=34m reconcile kustomization wan-local-model-weights -n ai; then</span>
+<span class="s">    kubectl -n ai logs job/wan-local-model-provision-r2 &gt; "$evidence/b-provision.log" || true</span>
+<span class="s">    exit 1</span>
+<span class="s">  fi</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Provisioning Job complete and logs saved'</span>
+<span class="s">  kubectl -n ai wait --for=condition=complete job/wan-local-model-provision-r2 --timeout=30s</span>
+<span class="s">  kubectl -n ai logs job/wan-local-model-provision-r2 &gt; "$evidence/b-provision.log"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Successful pod ran the pinned provisioner'</span>
+<span class="s">  provisioner=docker.io/library/python:3.12.16-slim-bookworm@sha256:1475c4f5b6bcb7d35e57661d6f5d7429ec4041275633c15f2b49350ac898276d</span>
+<span class="s">  kubectl -n ai get pods -l batch.kubernetes.io/job-name=wan-local-model-provision-r2 -o json |</span>
+<span class="s">    jq -e --arg provisioner "$provisioner" '.items | select(length == 1) | .[0] |</span>
+<span class="s">      select(.status.phase == "Succeeded" and .spec.containers[0].image == $provisioner) |</span>
+<span class="s">      {uid: .metadata.uid, image: .spec.containers[0].image, imageID: .status.containerStatuses[0].imageID}' \</span>
+<span class="s">      &gt; "$evidence/b-image.json"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Provisioned manifest matches approved pins'</span>
+<span class="s">  weights=/workspace/local-model-weights/qwen3.5-9b-q5_k_m/3885219b6810b007914f3a7950a8d1b469d598a5</span>
+<span class="s">  pins=kubernetes/main/apps/ai/wan-video/local-model-pending/weights/weights.json</span>
+<span class="s">  wan() { kubectl -n ai exec deploy/wan-video -c api -- "$@"; }</span>
+<span class="s">  wan cat "$weights/manifest.json" &gt; "$evidence/b-manifest.json"</span>
+<span class="s">  jq -S . "$pins" &gt; "$evidence/b-pins.sorted.json"</span>
+<span class="s">  jq -S . "$evidence/b-manifest.json" &gt; "$evidence/b-manifest.sorted.json"</span>
+<span class="s">  diff -u "$evidence/b-pins.sorted.json" "$evidence/b-manifest.sorted.json"</span>
+<span class="s">  files=$(jq -er '.files | select(length &gt; 0) | .[] | [.name,.bytes,.sha256] | @tsv' "$pins")</span>
+<span class="s">  gate_passed</span>
+<span class="s">  while IFS=$'\t' read -r name bytes hash; do</span>
+<span class="s">    gate="Weight size and SHA-256 for $name"</span>
+<span class="s">    [[ $(wan stat -c '%s' "$weights/$name") == "$bytes" ]]</span>
+<span class="s">    checksum=$(wan nice -n 19 sha256sum "$weights/$name")</span>
+<span class="s">    read -r actual _ &lt;&lt;&lt; "$checksum"</span>
+<span class="s">    [[ $actual == "$hash" ]]</span>
+<span class="s">    printf '%s %s %s\n' "$name" "$bytes" "$actual"</span>
+<span class="s">    gate_passed</span>
+<span class="s">  done &lt;&lt;&lt; "$files" &gt; "$evidence/b-weights.txt"</span>
+<span class="s">  gate='PVC free byte reserve'</span>
+<span class="s">  wan df -Pk /workspace | tee "$evidence/b-bytes.txt" |</span>
+<span class="s">    awk 'END { exit !(NR &gt;= 2 &amp;&amp; $4 &gt;= 8 * 1024 * 1024) }'</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='PVC free inode reserve'</span>
+<span class="s">  wan df -Pi /workspace | tee "$evidence/b-inodes.txt" |</span>
+<span class="s">    awk 'END { exit !(NR &gt;= 2 &amp;&amp; $4 &gt;= 1024) }'</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Same Wan pod and PVC UIDs'</span>
+<span class="s">  old=$(cat "$evidence/dormant.uid")</span>
+<span class="s">  uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |</span>
+<span class="s">    jq -er '.items | select(length == 1) | .[0].metadata.uid')</span>
+<span class="s">  [[ -n "$old" &amp;&amp; "$uid" == "$old" ]]</span>
+<span class="s">  pvc_uid_matches "$evidence/pvc.uid"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Dormant health and discovery'</span>
+<span class="s">  python3 -B scripts/wan-video/op442_smoke.py dormant &gt; "$evidence/b-health.json"</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<p><strong>Rollback B.</strong> Keep producers paused. Capture the
+<code>wan-local-model-provision-r2</code> Job UID, state and logs. Merge a revert that
+removes the weights Kustomization from the <code>ai</code> inventory, then
+reconcile <code>cluster-apps</code>. Flux prunes the Job and hashed ConfigMap. Check that
+the Job and its pods are gone, the policy is still present, the PVC UID is the
+same and the dormant health gate passes. Use the <a href="#clear-a-local-model-hold">hold-clearing step</a>
+for a retained local-model journal if it blocks that gate. Preserve any published revision and
+account for the exact bytes and inodes of every <code>.quarantine-*</code> attempt.
+Require fresh capacity evidence and a reviewed new Job attempt before retry.
+On success leave the completed Job in desired state through the read-back and
+calibration. C will prune the completed Job, ConfigMap and download policy.</p>
+<h3 id="c-calibrate-activate-and-check-ready">C. Calibrate, activate and check ready</h3>
+<p><strong>Changed: the first activation was reverted.</strong> On 2026-11-25 the calibration
+ran in the dormant pod (15 samples on the model's card, all 266 MiB; ceiling
+270) and PR 5050 was merged at 06:15Z. The Wan pod was recreated with the
+sidecar at 06:17Z. Its three existing containers became Ready; the
+<code>local-model</code> container never did. It exited with status 1 immediately on
+every observed start. The process raised
+<code>Local-model sidecar must be pinned to its configured GPU UUID</code>, so it never
+bound the private socket. The pod had no Ready Service endpoint. The
+coordinator proved the queue and workers idle under the lease and found no
+residency journal. PR 5056 (<code>0a521b75</code>) restored the dormant path. Helm waited
+until the Deployment reached its 30-minute progress deadline. The Flux
+Kustomization health check failed two seconds later on the failed HelmRelease
+and the revert could reconcile. The weights and activation configuration were
+retained.</p>
+<p><strong>Proven on CPU.</strong> Anonymous GHCR extraction of the failed digest selected
+the Linux amd64 manifest <code>sha256:34336c097119df5ebecad0f5d5ba58a1bd0062a07a0c1ecdd89edba217706f1b</code>.
+The three Python modules matched <code>79fa01b5</code> byte for byte. Its CPython
+3.12.16 ran the real <code>serve</code> module with the staged profile. The weights
+fixture used the pinned manifest and sparse regular files of the pinned sizes.
+Startup checks that manifest, file type and size. The provisioning Job verifies
+the actual file hashes. Neither the fixture nor the test loads a model.
+With both process variables set to the profile UUID, <code>ready</code> passed and
+residency reported no child. Setting only <code>NVIDIA_VISIBLE_DEVICES=all</code> or only
+<code>CUDA_VISIBLE_DEVICES=0</code> reproduced the original Python traceback. The
+archived ReplicaSet records the correct named pins, and the failed process
+did not log its effective values. The specific live mismatch remains
+unverified. The Talos NVIDIA runtime has been observed rewriting
+<code>NVIDIA_VISIBLE_DEVICES</code> to <code>void</code> after mounting a pinned card. That could
+explain the failure. The diagnostic below checks the process values and
+driver-visible cards on talosw01. Foley starts without a startup equality
+check. Its leased worker verifies Card A
+through NVML and supplies the exact CUDA pin to its inference subprocess.
+<a href="../../.agents/runbooks/egpu-test-node.md">Talos NVIDIA runtime observation</a>
+<a href="../../scripts/controlfoley/service.py">ControlFoley worker source</a></p>
+<p>The NVIDIA toolkit warning <code>ERROR: init 250 result=11</code> did not occur in the
+extracted image runtime. The archived logs show it in the same pod's healthy
+ComfyUI container, immediately before normal startup output. The
+talosw01 extension version <code>580.178.04-v1.19.1</code> contains
+<code>libnvidia-sandboxutils.so.580.178.04</code>. Its <code>Management::init</code> failure
+branch passes <code>init</code>, line 250 and the driver-initialization result to the
+log formatter. NVIDIA defines result 11 as a missing file path. The exact
+path was absent from the logs. The Python pin guard ran before loading a
+model library or querying the GPU.
+<a href="https://github.com/NVIDIA/nvidia-container-toolkit/blob/v1.19.1/internal/nvsandboxutils/nvsandboxutils.h">NVIDIA status definitions</a>
+<a href="https://github.com/siderolabs/extensions/issues/940">Talos extensions issue 940</a></p>
+<p><strong>Expected after the repair.</strong> The sidecar binds its private socket after a
+profile, pin or weights check fails. <code>ready</code> checks the listener and
+<code>residency</code> reports that this instance never started a child. Local discovery
+and new local requests return HTTP 503 <code>local_model_unavailable</code> with a
+<code>reason_code</code>. The CUDA pin must be the profile UUID and the NVIDIA pin must be
+that UUID or <code>void</code>. The same bounded NVML read used for card status queries
+all visible device UUIDs under the existing compute lease. Exactly one must
+match the profile. If the lease is occupied at startup, the listener reports
+<code>gpu_pin_unproven</code> immediately. The first local request or operator probe
+that passes the already-held lease completes the pin check. Discovery only
+reads the current verdict. A terminal refusal requires a restart after
+correcting the cause. With no older reservation and the lease and queue
+guards satisfied, Wan and Foley can proceed. A retained reservation still
+requires its normal release proof.
+Use the diagnostic below before changing the Wan pod.</p>
+<p>Check the Job succeeded, the read-back and disk/inode reserves pass and Wan
+is still dormant. Check node headroom for an 8 GiB request and 16 GiB limit,
+including other workloads.
+Run the <a href="#wan-pod-change-check">Wan-pod change check</a> before every subsequent
+Wan-pod change. With producers paused, confirm known card ownership, drain
+ordinary ComfyUI cache under the existing lease, and collect Card A readings
+and its engine process baseline. Round the highest drained memory reading up
+to the next integer if needed, add the 4 MiB release allowance, and cap the
+ceiling at 512 MiB. Set the marked <code>unloaded_max_mib</code> line in
+<a href="../../kubernetes/main/apps/ai/wan-video/local-model-pending/activation/profile.yaml">the profile</a>
+to the value printed below before merging PR C. Keep Wan dormant if the
+readings are unstable or their rounded maximum exceeds 512 MiB. The cap can
+leave less than 4 MiB of headroom. Save the unedited calibration JSON with
+the approved profile for rollback.</p>
+<p>Review every Card A PID and process name in <code>calibration.json</code> against the
+engine ownership checks and record its attribution privately. Refuse rows
+with unresolvable process names. The API container's
+<code>nvidia-smi --query-compute-apps</code> can miss processes in other containers.
+An empty process list proves nothing by itself. The release guard is the
+idle card's memory against both the load baseline plus 4 MiB and the
+calibrated ceiling.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  evidence=${OP442_EVIDENCE:?}</span>
+<span class="s">  gate='Leased idle proof, calibration and memory ceiling'</span>
+<span class="s">  kubectl -n ai exec -i deploy/wan-video -c api -- env PYTHONPATH=/config/video python -B - \</span>
+<span class="s">    &gt; "$evidence/calibration.json" &lt;&lt;'PY'</span>
+<span class="s">import json, math, subprocess, time</span>
+<span class="s">from pathlib import Path</span>
+<span class="s">from urllib.request import urlopen</span>
+<span class="s">import api</span>
+
+<span class="s">card = "GPU-6ff9702a-1b2c-6094-5a85-00aa1924c55a"</span>
+
+<span class="s">def compute_apps():</span>
+<span class="s">    return subprocess.check_output(</span>
+<span class="s">        ["nvidia-smi", "--id=" + card, "--query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory",</span>
+<span class="s">         "--format=csv,noheader,nounits"], text=True, timeout=10,</span>
+<span class="s">    )</span>
+
+<span class="s">lease = api.acquire_compute()</span>
+<span class="s">if lease is None:</span>
+<span class="s">    raise SystemExit("Compute is reserved")</span>
+<span class="s">with lease:</span>
+<span class="s">    with urlopen("http://127.0.0.1:8080/health", timeout=5) as response:</span>
+<span class="s">        health = json.load(response)</span>
+<span class="s">    status, foley = api.foley("/v1/ready")</span>
+<span class="s">    if (not health["accepting_jobs"] or health["active_job"] is not None</span>
+<span class="s">            or status != 200 or foley["active_job"] is not None):</span>
+<span class="s">        raise SystemExit("Wan or Foley is busy/unavailable")</span>
+<span class="s">    if api.local.load_profile(api.CONFIG) is not None:</span>
+<span class="s">        raise SystemExit("Expected dormant Wan")</span>
+<span class="s">    try:</span>
+<span class="s">        api.local.state_path(api.ROOT).lstat()</span>
+<span class="s">    except FileNotFoundError:</span>
+<span class="s">        pass</span>
+<span class="s">    else:</span>
+<span class="s">        raise SystemExit("Expected no local-model residency journal")</span>
+<span class="s">    if not api.gpus_idle(api.gpu_sample()):</span>
+<span class="s">        raise SystemExit("Rack GPUs are not idle")</span>
+<span class="s">    api.require_empty_queue()</span>
+<span class="s">    api.engine("/free", {"unload_models": True, "free_memory": True})</span>
+<span class="s">    processes = compute_apps()</span>
+<span class="s">    samples = []</span>
+<span class="s">    for _ in range(15):</span>
+<span class="s">        api.require_empty_queue()</span>
+<span class="s">        sample = api.gpu_sample()</span>
+<span class="s">        if not api.gpus_idle(sample):</span>
+<span class="s">            raise SystemExit("Unexpected GPU activity during calibration")</span>
+<span class="s">        sample_a = next(gpu for gpu in sample["gpus"] if gpu["uuid"] == card)</span>
+<span class="s">        sample_a["gpu_uuid"] = sample_a.pop("uuid")</span>
+<span class="s">        samples.append({"time": sample["time"], **sample_a})</span>
+<span class="s">        time.sleep(1)</span>
+<span class="s">    api.require_empty_queue()</span>
+<span class="s">    if compute_apps() != processes:</span>
+<span class="s">        raise SystemExit("Card A compute processes changed during calibration")</span>
+<span class="s">    rounded = math.ceil(max(sample["memory_mib"] for sample in samples))</span>
+<span class="s">    if rounded &gt; api.local.MAX_UNLOADED_MIB:</span>
+<span class="s">        raise SystemExit("Rounded drained memory exceeds the 512 MiB cap")</span>
+<span class="s">    ceiling = min(api.local.MAX_UNLOADED_MIB, rounded + api.local.RELEASE_DRIFT_MIB)</span>
+<span class="s">    print(json.dumps({"gpu_uuid": card, "samples": samples, "compute_apps_csv": processes,</span>
+<span class="s">                      "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),</span>
+<span class="s">                      "unloaded_max_mib": ceiling}))</span>
+<span class="s">PY</span>
+<span class="s">  jq -r '.samples[].memory_mib' "$evidence/calibration.json"</span>
+<span class="s">  jq -r '.compute_apps_csv' "$evidence/calibration.json"</span>
+<span class="s">  jq -r '"Set unloaded_max_mib to \(.unloaded_max_mib) MiB"' "$evidence/calibration.json"</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<p>C keeps the <code>ai/wan-video</code> Kustomization identity. Its rendered PVC stays the
+same and retains <code>kustomize.toolkit.fluxcd.io/prune: disabled</code>. The two retired
+Kustomizations own only the policy, Job and Job ConfigMap. Misplacing the
+PVC in a retiring inventory could delete the claim and leave Wan Pending.
+The activation initializer preserves the compute-lock inode. The sidecar
+mounts both weights read-only and has no second device allocation.</p>
+<p>Save the profile from the calibrated, checked PR head before merging. The
+hold-clearing command needs that exact profile if the mount has been removed.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  evidence=${OP442_EVIDENCE:?}</span>
+<span class="s">  gate='Save the approved profile JSON'</span>
+<span class="s">  profile=kubernetes/main/apps/ai/wan-video/local-model-pending/activation/profile.yaml</span>
+<span class="s">  awk 'found { sub(/^    /, ""); print } /^  local-model.json: \|$/ { found=1 }' "$profile" |</span>
+<span class="s">    jq -e . &gt; "$evidence/c-approved-profile.json"</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<h4 id="run-the-one-shot-startup-diagnostic">Run the one-shot startup diagnostic</h4>
+<p><strong>Expected.</strong> The coordinator decides whether to run the staged Job. Before
+creating it, run the dormant Wan-pod change check with producers paused.
+Confirm the queue and workers are empty, both GPU owners are known and idle,
+and the existing compute-lock file is present. Keep dispatch paused through
+the check. The Job uses the same container image, GPU environment, runtime
+class and security context as the sidecar. The NVIDIA runtime can expose Card A
+by UUID before the process acquires the lease, even without a device-plugin
+allocation. That gives the exact image a compute-capable device. Under this
+reviewed command, the wrapper writes the approved profile from a Job argument
+to its private <code>emptyDir</code> and calls the same startup function as the
+sidecar. Startup takes the original lease by inode for the read-only NVML
+enumeration. The wrapper checks that the CUDA library can be mapped under
+the same lease. It calls no CUDA initialization or model operation. The
+private workspace has no dispatch lease path, and the Wan PVC is read-only.
+Keep the overlay dormant if idle ownership or the nonblocking flock cannot
+be proved.
+An authorized equivalent is an isolated maintenance test on talosw01 with
+Wan stopped and proven idle, using the same container spec. The CPU smoke
+covers the real PID 1 listener and the <code>void</code> case off the NVIDIA runtime.
+The CPU runner bind-mounts a stand-in for the UUID query and gives only its
+disposable container a fixture PATH. The published image has no stand-in or
+test switch.</p>
+<p>Keep the Job and profile outside Flux. Use only the verified image from the
+step above. One Job create carries the approved profile and gets a unique
+attempt suffix. The 10-minute Job deadline includes scheduling and the
+image pull. Poll for either terminal condition and save the Job, pod
+termination state and logs for each attempt. Kubernetes cleans up the
+finished Job after 24 hours. Repeat the dormant health gate after collecting
+evidence. A failure keeps C on hold.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  evidence=${OP442_EVIDENCE:?}</span>
+<span class="s">  attempt=$(mktemp -d "$evidence/start-check.XXXXXXXX")</span>
+<span class="s">  base=kubernetes/main/apps/ai/wan-video/local-model-pending</span>
+<span class="s">  gate='Verified image and approved profile'</span>
+<span class="s">  pin=$(awk '$1 == "tag:" {print $2}' "$base/activation/sidecar.yaml")</span>
+<span class="s">  image=$(cat "$evidence/verified-image")</span>
+<span class="s">  [[ $image == "ghcr.io/thaynes43/studio-local-model:$pin" ]]</span>
+<span class="s">  profile=$(jq -ce . "$evidence/c-approved-profile.json")</span>
+<span class="s">  card=$(jq -er .gpu_uuid &lt;&lt;&lt; "$profile")</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Existing Wan compute lock'</span>
+<span class="s">  kubectl -n ai exec deploy/wan-video -c api -- test -f /workspace/compute.lock</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Create diagnostic Job'</span>
+<span class="s">  yq -o=json '.' "$base/diagnostic/job.yaml" |</span>
+<span class="s">    jq -e --arg image "$image" --arg profile "$profile" '</span>
+<span class="s">      .spec.template.spec.containers[0] |= (.image = $image | .args[1] = $profile)</span>
+<span class="s">    ' &gt; "$attempt/spec.json"</span>
+<span class="s">  kubectl -n ai create -f "$attempt/spec.json" -o json &gt; "$attempt/created.json"</span>
+<span class="s">  name=$(jq -er '.metadata.name | select(test("^wan-local-model-start-check-[a-z0-9]+$"))' "$attempt/created.json")</span>
+<span class="s">  printf 'Diagnostic evidence directory %s, Job %s\n' "$attempt" "$name"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Read diagnostic Job condition'</span>
+<span class="s">  deadline=$((SECONDS + 660))</span>
+<span class="s">  condition=''</span>
+<span class="s">  while :; do</span>
+<span class="s">    # One failed read must not end the block before the logs are saved: a</span>
+<span class="s">    # re-run would create a second Job. Keep the last good read and poll on.</span>
+<span class="s">    if kubectl -n ai get "job/$name" -o json --request-timeout=10s &gt; "$attempt/job.json.next"; then</span>
+<span class="s">      mv "$attempt/job.json.next" "$attempt/job.json"</span>
+<span class="s">      condition=$(jq -r '[.status.conditions[]? | select(.status == "True") | .type] |</span>
+<span class="s">        if index("Failed") then "Failed" elif index("Complete") then "Complete" else "" end</span>
+<span class="s">      ' "$attempt/job.json")</span>
+<span class="s">    fi</span>
+<span class="s">    if [[ -n $condition ]] || (( SECONDS &gt;= deadline )); then</span>
+<span class="s">      break</span>
+<span class="s">    fi</span>
+<span class="s">    sleep 2</span>
+<span class="s">  done</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Capture pod termination state'</span>
+<span class="s">  kubectl -n ai get pods -l "batch.kubernetes.io/job-name=$name" -o json |</span>
+<span class="s">    jq '{pods: [.items[] | {name: .metadata.name, status: .status}]}' &gt; "$attempt/pods.json"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  result=0</span>
+<span class="s">  gate='Diagnostic Job completed'</span>
+<span class="s">  if [[ $condition == Complete ]]; then</span>
+<span class="s">    gate_passed</span>
+<span class="s">  else</span>
+<span class="s">    printf '%s failed (%s)\n' "$gate" "${condition:-deadline}" &gt;&amp;2</span>
+<span class="s">    result=1</span>
+<span class="s">  fi</span>
+<span class="s">  gate='Capture diagnostic logs'</span>
+<span class="s">  kubectl -n ai logs "job/$name" --pod-running-timeout=5s --request-timeout=15s \</span>
+<span class="s">    &gt; "$attempt/start-check.log" 2&gt; "$attempt/logs.stderr"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Diagnostic startup verdict and listener'</span>
+<span class="s">  if sed -n 's/^[^{]*\({".*}\)$/\1/p' "$attempt/start-check.log" |</span>
+<span class="s">    jq -se --arg card "$card" '</span>
+<span class="s">      any(.[]; .event == "local-model-listening" and .verdict == "ready" and .reason_code == null and</span>
+<span class="s">        .gpu_uuid == $card and (.pins.NVIDIA_VISIBLE_DEVICES == $card or .pins.NVIDIA_VISIBLE_DEVICES == "void") and</span>
+<span class="s">        .pins.CUDA_VISIBLE_DEVICES == $card and .visible_gpu_count == 1 and .visible_gpu_uuids == [$card]) and</span>
+<span class="s">      any(.[]; .ready == true and .residency.resident == false and .residency.receipt == null and</span>
+<span class="s">        (.residency | has("startup_error") | not)) and</span>
+<span class="s">      any(.[]; .cuda_library_loaded == true)</span>
+<span class="s">    '; then</span>
+<span class="s">    gate_passed</span>
+<span class="s">  else</span>
+<span class="s">    printf '%s failed\n' "$gate" &gt;&amp;2</span>
+<span class="s">    result=1</span>
+<span class="s">  fi</span>
+<span class="s">  gate=''</span>
+<span class="s">  exit "$result"</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<h4 id="activate-and-verify-the-service">Activate and verify the Service</h4>
+<p>After the diagnostic and calibrated PR checks pass, declare activity with
+<code>agent-run declare-activity start "Wan local model activation" --scope ai,talosw01,wan-video</code>.
+In the Wan Flux Kustomization, change the path to the reviewed activation
+overlay. Keep <code>wait: false</code>, the 5-minute apply timeout, and the absence of
+<code>healthChecks</code>. The activation overlay sets HelmRelease
+<code>upgrade.disableWait: true</code> so its upgrade can finish applying resources
+while an image pull, init container or listener is still unhealthy. This
+allows the reviewed revert to reconcile without waiting for the Deployment
+progress deadline. Use the Deployment, EndpointSlice and discovery gates
+below as the workload proof. The dormant HelmRelease keeps its existing
+upgrade settings.</p>
+<p>Merge C and reconcile the parent and existing Wan Kustomization. Require four
+Ready containers on the new pod, completed init containers, a Ready Service
+endpoint, and healthy local discovery. The private probe remains Ready in the
+served failure state. Any complete listener outage can briefly remove Wan
+from the Service. While the listener is unavailable, an otherwise admissible
+legacy Wan, typed I2V, S2V or Foley request fails before engine work. Keep
+producers paused until the applicable gate passes. Use the activity ID to end
+the declaration once settled.</p>
+<p>The leased startup proof below resolves <code>gpu_pin_unproven</code> before discovery
+if the sidecar started while the API held the lease. The probe cannot
+dispatch model work.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  evidence=${OP442_EVIDENCE:?}</span>
+<span class="s">  gate='Reconcile activation manifests'</span>
+<span class="s">  flux reconcile kustomization cluster-apps -n flux-system --with-source</span>
+<span class="s">  flux reconcile kustomization wan-video -n ai</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Deployment rollout'</span>
+<span class="s">  kubectl -n ai rollout status deploy/wan-video --timeout=35m</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='New Ready pod, init containers and image'</span>
+<span class="s">  image=$(cat "$evidence/verified-image")</span>
+<span class="s">  old=$(cat "$evidence/dormant.uid")</span>
+<span class="s">  [[ -n $old &amp;&amp; -n $image ]]</span>
+<span class="s">  kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |</span>
+<span class="s">    jq -e --arg old "$old" --arg image "$image" '</span>
+<span class="s">      .items | select(length == 1) | .[0] |</span>
+<span class="s">      select(.metadata.uid != $old and .spec.nodeName == "talosw01") |</span>
+<span class="s">      select(any(.spec.containers[]; .name == "local-model" and .image == $image)) |</span>
+<span class="s">      select(any(.status.initContainerStatuses[]; .name == "prepare-local-model")) |</span>
+<span class="s">      select(([.status.containerStatuses[].name] | sort) == ["api","app","foley","local-model"]) |</span>
+<span class="s">      select(all(.status.containerStatuses[]; .ready and .restartCount == 0)) |</span>
+<span class="s">      select(all(.status.initContainerStatuses[]; .state.terminated.exitCode == 0)) |</span>
+<span class="s">      {uid:.metadata.uid, containers:[.status.containerStatuses[] | {name,image,imageID,ready}]}</span>
+<span class="s">    ' &gt; "$evidence/c-pod.json"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Same nonempty PVC UID'</span>
+<span class="s">  pvc_uid_matches "$evidence/pvc.uid"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='New pod is a Ready Service endpoint'</span>
+<span class="s">  uid=$(jq -er .uid "$evidence/c-pod.json")</span>
+<span class="s">  kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |</span>
+<span class="s">    jq -e --arg uid "$uid" '</span>
+<span class="s">      any(.items[].endpoints[]; .targetRef.uid == $uid and .conditions.ready == true)'</span>
+<span class="s">  gate_passed</span>
+<span class="s">  for name in wan-local-model-weights wan-local-model-download-policy; do</span>
+<span class="s">    gate="Retired inventory $name is absent"</span>
+<span class="s">    retired=$(kubectl -n ai get "kustomization/$name" --ignore-not-found -o name)</span>
+<span class="s">    [[ -z "$retired" ]]</span>
+<span class="s">    gate_passed</span>
+<span class="s">  done</span>
+<span class="s">  gate='Retired provisioning Job, policy and ConfigMap are absent'</span>
+<span class="s">  job=$(kubectl -n ai get job wan-local-model-provision-r2 --ignore-not-found -o name)</span>
+<span class="s">  policy=$(kubectl -n ai get ciliumnetworkpolicy wan-local-model-provision --ignore-not-found -o name)</span>
+<span class="s">  [[ -z "$job" &amp;&amp; -z "$policy" ]]</span>
+<span class="s">  kubectl -n ai get configmaps -o name |</span>
+<span class="s">    awk '/^configmap\/wan-local-model-provision-/ { found=1 } END { exit found }'</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Local-model startup proof under the compute lease'</span>
+<span class="s">  kubectl -n ai exec -i deploy/wan-video -c api -- env PYTHONPATH=/config/video python -B - &lt;&lt;'PY'</span>
+<span class="s">import api</span>
+
+<span class="s">lease = api.acquire_compute()</span>
+<span class="s">if lease is None:</span>
+<span class="s">    raise SystemExit("Compute is reserved")</span>
+<span class="s">with lease:</span>
+<span class="s">    lane = api.local.enabled_lane(api.ROOT, api.CONFIG)</span>
+<span class="s">    if lane is None:</span>
+<span class="s">        raise SystemExit("Expected an active local-model lane")</span>
+<span class="s">    api.local.require_started(lane.status(residency_only=True, allow_unbound=True, lease=lease))</span>
+<span class="s">PY</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Wan, Foley, queue and local discovery health'</span>
+<span class="s">  python3 -B scripts/wan-video/op442_smoke.py active &gt; "$evidence/c-health.json"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Discovery matches the approved ceiling'</span>
+<span class="s">  ceiling=$(jq -er .unloaded_max_mib "$evidence/c-approved-profile.json")</span>
+<span class="s">  jq -e --argjson ceiling "$ceiling" '.discovery.unloaded_max_mib == $ceiling' "$evidence/c-health.json"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Sidecar log proves the GPU pin'</span>
+<span class="s">  kubectl -n ai logs deploy/wan-video -c local-model &gt; "$evidence/c-local-model.log"</span>
+<span class="s">  card=$(jq -er .gpu_uuid "$evidence/c-approved-profile.json")</span>
+<span class="s">  sed -n 's/^[^{]*\({".*}\)$/\1/p' "$evidence/c-local-model.log" |</span>
+<span class="s">    jq -se --arg card "$card" '</span>
+<span class="s">      any(.[]; (.event == "local-model-listening" or .event == "local-model-pin-proof") and</span>
+<span class="s">        .reason_code == null and .gpu_uuid == $card and</span>
+<span class="s">        (.pins.NVIDIA_VISIBLE_DEVICES == $card or .pins.NVIDIA_VISIBLE_DEVICES == "void") and</span>
+<span class="s">        .pins.CUDA_VISIBLE_DEVICES == $card and .visible_gpu_count == 1 and .visible_gpu_uuids == [$card])</span>
+<span class="s">    '</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='GPU plugin allocation remains on ComfyUI'</span>
+<span class="s">  kubectl -n ai get deployment wan-video -o json |</span>
+<span class="s">    jq -e '[.spec.template.spec.containers[] | select(.resources.limits["nvidia.com/gpu"] != null) |</span>
+<span class="s">      {name, limit:.resources.limits["nvidia.com/gpu"]}] == [{"name":"app","limit":"2"}]'</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<h4 id="wan-pod-change-check">Wan-pod change check</h4>
+<p>Before every later Wan-pod change, pause the Studio worker and direct
+producers. Confirm there is one Ready Wan pod, four Ready containers if
+active, and a Ready Service endpoint for that pod. Save the pod UID, image,
+restart counts and listener status. Run the active health command below and
+review the empty queue, cleared residency and idle ownership before
+proceeding. Set <code>OP442_WAN_MODE=dormant</code> to check a dormant deployment.
+Allow for a Service outage in the change window and repeat these checks
+after the replacement pod starts.</p>
+<p><strong>After a recreate of an active pod, prove the pin first.</strong> The API holds
+the compute lease while it recovers, so the sidecar normally starts with
+<code>gpu_pin_unproven</code> and serves a refusal. Local discovery then answers 503 and
+the active health command below fails closed, although nothing is wrong. Run
+the gate "Local-model startup proof under the compute lease" from
+<a href="#activate-and-verify-the-service">Activate and verify the Service</a> on the
+replacement pod before this check. A submit proves the pin as well; discovery
+only reads it. (Found in the delta review of PR 5060.)</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  mode=${OP442_WAN_MODE:-active}</span>
+<span class="s">  case "$mode" in</span>
+<span class="s">    active) containers='["api","app","foley","local-model"]' ;;</span>
+<span class="s">    dormant) containers='["api","app","foley"]' ;;</span>
+<span class="s">    *) printf 'Expected OP442_WAN_MODE=active or dormant\n' &gt;&amp;2; exit 1 ;;</span>
+<span class="s">  esac</span>
+<span class="s">  gate='One Ready Wan pod with the expected containers'</span>
+<span class="s">  uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |</span>
+<span class="s">    jq -er --argjson containers "$containers" '.items | select(length == 1) | .[0] |</span>
+<span class="s">      select(any(.status.conditions[]; .type == "Ready" and .status == "True")) |</span>
+<span class="s">      select(([.status.containerStatuses[].name] | sort) == $containers) |</span>
+<span class="s">      select(all(.status.containerStatuses[]; .ready)) | .metadata.uid')</span>
+<span class="s">  printf 'Wan pod UID %s\n' "$uid"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Wan pod is a Ready Service endpoint'</span>
+<span class="s">  kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |</span>
+<span class="s">    jq -e --arg uid "$uid" 'any(.items[].endpoints[]; .targetRef.uid == $uid and .conditions.ready == true)'</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Read container status and image IDs'</span>
+<span class="s">  kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |</span>
+<span class="s">    jq '.items[].status.containerStatuses[] | {name, imageID, ready, restartCount}'</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Wan, Foley, queue and model health'</span>
+<span class="s">  python3 -B scripts/wan-video/op442_smoke.py "$mode"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Read rack process ownership for operator review'</span>
+<span class="s">  kubectl -n ai exec deploy/wan-video -c api -- nvidia-smi \</span>
+<span class="s">    --query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory --format=csv</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<h4 id="clear-a-local-model-hold">Clear a local-model hold</h4>
+<p>Keep all producers quiesced. Run the reviewed helper in the API container
+when a release latched <code>local_model_held</code>, or when a retained journal blocks
+the dormant path. The guard is three idle Card A memory readings at or below
+both the calibrated ceiling and the recorded memory baseline plus 4 MiB. The
+journal's load baseline takes precedence. For a hold that predates a load
+baseline, use the highest recorded dormant calibration sample.</p>
+<p>With the profile mounted, the helper requires the matching sidecar to report
+no child. With the profile removed, it checks <code>sidecar.sock</code> under the compute
+lease. A live listener, a non-socket path or an inconclusive probe is a
+refusal. If the socket refuses a connection, the helper moves it in the same
+directory to <code>sidecar.stale.&lt;UTC timestamp&gt;-&lt;id&gt;.sock</code>. It records the name in
+the receipt and requires the original path to stay absent through the rest
+of the proof. Keep the moved socket as evidence even if a later check fails.</p>
+<p>The dormant path checks three compute-process lists against the engine PIDs
+and names reviewed in the calibration for that boot, within their recorded
+memory. The API container may miss processes in other containers. An empty
+list proves nothing by itself. A row with an unresolvable process name causes
+refusal. The helper also refuses an occupied lease, a nonempty or unreadable
+queue, an active Wan or Foley job, or a separate render hold. For a Wan render
+hold, use the existing Wan recovery procedure first.</p>
+<p>Use the original reviewed calibration and save the exact approved C profile.
+The helper accepts ceilings from the rounded-up drained maximum through that
+maximum plus 4 MiB, within 1–512 MiB. If the original ceiling was too low,
+calculate the corrected ceiling from the original samples using the same
+formula and review it through GitOps. Keep both profile artifacts. For a mounted profile the helper reads the
+corrected mount and requires the sidecar to match. For dormant recovery, point
+<code>OP442_RECOVERY_PROFILE</code> to the private copy of the reviewed corrected JSON.
+The helper reconstructs the earlier digest from the corrected profile and
+accepts the journal only when a lower ceiling in the same range reproduces
+that digest exactly. It records both digests and the ceiling change. The
+journal's load baseline still applies.</p>
+<p>Keep the receipt and archived journal on the original PVC. Link the receipt
+ID and state hash in the private operator note with the operator, pod UID and
+reason for recovery. The helper writes its proof before renaming <code>state.json</code>
+in place to <code>state.&lt;UTC timestamp&gt;-&lt;id&gt;.json</code>. On refusal, preserve the files
+and resolve the stated proof failure. On interruption, check the receipt,
+archived journal and any moved socket before another attempt. Keep the local
+request receipts and avoid reusing an unresolved request ID. Start new work
+only after the health gate for the resulting active or dormant state.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  evidence=${OP442_EVIDENCE:?}</span>
+<span class="s">  receipt=$(mktemp "$evidence/hold-clear.XXXXXXXX")</span>
+<span class="s">  profile=${OP442_RECOVERY_PROFILE:-"$evidence/c-approved-profile.json"}</span>
+<span class="s">  gate='Leased hold-clear proof and receipt'</span>
+<span class="s">  jq -en --slurpfile calibration "$evidence/calibration.json" \</span>
+<span class="s">    --slurpfile profile "$profile" \</span>
+<span class="s">    '{calibration: $calibration[0], profile: $profile[0]}' |</span>
+<span class="s">    kubectl -n ai exec -i deploy/wan-video -c api -- python -B /config/video/clear_local_model_hold.py |</span>
+<span class="s">    tee "$receipt"</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<h4 id="rollback-c-after-a-served-startup-refusal">Rollback C after a served startup refusal</h4>
+<p>A Ready listener and HTTP 503 with a startup reason trigger this gate.
+Keep producers paused. Under the existing lease, confirm the queue and workers
+are idle, the journal path is absent, and the listener attests to a startup
+refusal with no child. Save that evidence and proceed to the GitOps revert.
+An existing journal or uncertain evidence requires the tracked rollback or
+hold-clearing path and the original release proof.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  evidence=${OP442_EVIDENCE:?}</span>
+<span class="s">  gate='Leased idle proof, no journal and served refusal with no child'</span>
+<span class="s">  kubectl -n ai exec -i deploy/wan-video -c api -- env PYTHONPATH=/config/video python -B - \</span>
+<span class="s">    &gt; "$evidence/start-refusal-rollback.json" &lt;&lt;'PYTHON'</span>
+<span class="s">import json</span>
+<span class="s">import api</span>
+<span class="s">from clear_local_model_hold import check_idle, path_present</span>
+
+<span class="s">lease = api.acquire_compute()</span>
+<span class="s">if lease is None:</span>
+<span class="s">    raise SystemExit("Compute is reserved")</span>
+<span class="s">with lease:</span>
+<span class="s">    check_idle()</span>
+<span class="s">    if path_present(api.local.state_path(api.ROOT)):</span>
+<span class="s">        raise SystemExit("Residency journal exists. Use tracked rollback or hold clearing.")</span>
+<span class="s">    lane = api.local.enabled_lane(api.ROOT, api.CONFIG)</span>
+<span class="s">    if lane is None:</span>
+<span class="s">        raise SystemExit("Expected an active local-model lane")</span>
+<span class="s">    status = lane.status(residency_only=True, allow_unbound=True)</span>
+<span class="s">    if not status.get("startup_error") or status["resident"]:</span>
+<span class="s">        raise SystemExit("The listener did not report a startup refusal with no model child")</span>
+<span class="s">    print(json.dumps(status))</span>
+<span class="s">PYTHON</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<h4 id="rollback-c-after-the-sidecar-served">Rollback C after the sidecar served</h4>
+<p>Quiesce producers and check Wan, Foley, queue and sidecar listener health.
+Restore listener readiness if needed for release inspection. If the lane
+has a local-model hold, run <a href="#clear-a-local-model-hold">hold clearing</a> first.
+If it has ordinary residency, the rollback helper submits the tracked unload,
+validates its receipt and proves no child, reservation or pending operation
+remains under the lease. It drains ordinary ComfyUI cache only after proving
+residency is clear. If release latches a hold, preserve the journal and
+return to hold clearing before continuing to the GitOps revert. If the
+ceiling lacks the calibrated headroom, preserve the original profile and
+review the ceiling-only correction against the original calibration. If the
+listener is unavailable, a stale socket becomes eligible to move only after
+the profile has been removed through the reviewed dormant revert. Follow
+the dormant recovery gate for any retained journal before resuming dispatch.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  gate='Tracked rollback and residency release'</span>
+<span class="s">  python3 -B scripts/wan-video/op442_smoke.py rollback --evidence "${OP442_EVIDENCE:?}"</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<h4 id="rollback-c-when-the-sidecar-never-became-ready">Rollback C when the sidecar never became Ready</h4>
+<p>An image that cannot run or a listener it cannot bind can leave the Service
+without a Ready endpoint. For a served startup refusal, use its leased no-child gate above. If rollout observation from pod creation
+shows the sidecar never became Ready, and the API container confirms
+<code>state.json</code> is absent, proceed directly to the GitOps revert. Every model load
+writes state before it starts a child. This path works without a sidecar
+listener or a local-model request. Current <code>ready: false</code> alone cannot establish
+that readiness was never reached. Cross-check the observed rollout with the
+pod's container states, events, current and previous sidecar logs, and
+EndpointSlices. A previous successful listener, a state file, or uncertain
+history requires the tracked rollback and, if held, the hold-clearing step.
+A stale socket can survive a crash. Use rollout history and journal absence
+for the direct revert and leave the socket in place. If a retained journal
+is found, keep dispatch paused and use the applicable hold-clearing path with
+the original calibration and approved profile or reviewed ceiling correction.</p>
+<p>Keep dispatch paused. Copy the exact failed pod name from the first command
+into <code>OP442_FAILED_POD</code>. A container that never started has no logs. When
+Kubernetes reports an exit, read the previous container logs. Keep these
+records private. Require the inside-container proof to succeed on the same pod.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  gate='Read current Wan pod names'</span>
+<span class="s">  kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o wide</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Read failed sidecar status and pod events'</span>
+<span class="s">  pod=${OP442_FAILED_POD:?Set OP442_FAILED_POD to the failed Wan pod name}</span>
+<span class="s">  kubectl -n ai get pod "$pod" -o json |</span>
+<span class="s">    jq -e '.status.containerStatuses[] | select(.name == "local-model" and .ready == false) |</span>
+<span class="s">      {ready, started, restartCount, state, lastState}'</span>
+<span class="s">  kubectl -n ai describe pod "$pod"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='No Ready Service endpoint'</span>
+<span class="s">  kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |</span>
+<span class="s">    jq -e 'all(.items[].endpoints[]; .conditions.ready != true)'</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Read status and applicable sidecar logs'</span>
+<span class="s">  status=$(kubectl -n ai get pod "$pod" -o json |</span>
+<span class="s">    jq -ce '.status.containerStatuses[] | select(.name == "local-model")')</span>
+<span class="s">  if jq -e '.state.running or .state.terminated' &lt;&lt;&lt; "$status" &gt; /dev/null; then</span>
+<span class="s">    kubectl -n ai logs "$pod" -c local-model --tail=80</span>
+<span class="s">  fi</span>
+<span class="s">  if jq -e '.lastState.terminated' &lt;&lt;&lt; "$status" &gt; /dev/null; then</span>
+<span class="s">    kubectl -n ai logs "$pod" -c local-model --previous --tail=80</span>
+<span class="s">  fi</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  pod=${OP442_FAILED_POD:?}</span>
+<span class="s">  gate='Leased idle proof, activated profile and no residency journal'</span>
+<span class="s">  kubectl -n ai exec -i "$pod" -c api -- env PYTHONPATH=/config/video python -B - &lt;&lt;'PY'</span>
+<span class="s">import api</span>
+<span class="s">from clear_local_model_hold import check_idle, path_present</span>
+
+<span class="s">lease = api.acquire_compute()</span>
+<span class="s">if lease is None:</span>
+<span class="s">    raise SystemExit("Compute is reserved")</span>
+<span class="s">with lease:</span>
+<span class="s">    check_idle()</span>
+<span class="s">    if api.local.load_profile(api.CONFIG) is None:</span>
+<span class="s">        raise SystemExit("Expected the activated profile on the failed pod")</span>
+<span class="s">    if path_present(api.local.state_path(api.ROOT)):</span>
+<span class="s">        raise SystemExit("Residency journal exists. Use the tracked rollback or hold clearing.")</span>
+<span class="s">PY</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<h4 id="gitops-revert-and-dormant-gate">GitOps revert and dormant gate</h4>
+<p>After the applicable rollback proof, merge a reviewed revert of C's activation settings in
+<code>wan-video/ks.yaml</code>. Restore the dormant <code>./kubernetes/main/apps/ai/wan-video/app</code>
+path. Keep the 5-minute timeout and operator readiness gate. Retain the
+Wan app ConfigMap helper and keep both completed provisioning inventories
+retired. Reconcile the parent and existing Wan Kustomization. Set
+<code>OP442_ACTIVE_POD_UID</code> to the UID of the pod being replaced. Require a new
+three-container Ready pod with a Ready Service endpoint, the same PVC UID,
+empty queues, idle workers, and <code>local_model_not_installed</code>. Repeat the private
+legacy read from the dormant gate and verify rack ownership before resuming
+dispatch. If an already-dormant pod still has a journal, run
+<a href="#clear-a-local-model-hold">hold clearing</a> before resuming. Supply the
+original calibration and approved profile or reviewed ceiling correction.
+The dormant helper moves only a refused socket under the lease, then requires
+the memory proof and the remaining gates. End the activity declaration once
+settled.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  evidence=${OP442_EVIDENCE:?}</span>
+<span class="s">  old=${OP442_ACTIVE_POD_UID:?Set OP442_ACTIVE_POD_UID to the pod being replaced}</span>
+<span class="s">  gate='Reconcile dormant manifests'</span>
+<span class="s">  flux reconcile kustomization cluster-apps -n flux-system --with-source</span>
+<span class="s">  flux reconcile kustomization wan-video -n ai</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Dormant Deployment rollout'</span>
+<span class="s">  kubectl -n ai rollout status deploy/wan-video --timeout=35m</span>
+<span class="s">  flux get kustomizations -n ai wan-video &gt; "$evidence/rollback-flux.txt"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='New Ready dormant pod and successful init containers'</span>
+<span class="s">  uid=$(kubectl -n ai get pods -l app.kubernetes.io/name=wan-video -o json |</span>
+<span class="s">    jq -er --arg old "$old" '.items | select(length == 1) | .[0] |</span>
+<span class="s">      select(.metadata.uid != $old) |</span>
+<span class="s">      select(([.status.containerStatuses[].name] | sort) == ["api","app","foley"]) |</span>
+<span class="s">      select(all(.status.containerStatuses[]; .ready)) |</span>
+<span class="s">      select(all(.status.initContainerStatuses[]; .state.terminated.exitCode == 0)) | .metadata.uid')</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Same nonempty PVC UID'</span>
+<span class="s">  pvc_uid_matches "$evidence/pvc.uid"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='New pod is a Ready Service endpoint'</span>
+<span class="s">  kubectl -n ai get endpointslices -l kubernetes.io/service-name=wan-video -o json |</span>
+<span class="s">    jq -e --arg uid "$uid" 'any(.items[].endpoints[]; .targetRef.uid == $uid and .conditions.ready == true)'</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Local-model profile mount is absent'</span>
+<span class="s">  kubectl -n ai exec deploy/wan-video -c api -- test ! -e /config/video/local-model.json</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Dormant health and discovery'</span>
+<span class="s">  python3 -B scripts/wan-video/op442_smoke.py dormant &gt; "$evidence/rollback-health.json"</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<h2 id="two-private-smoke-windows">Two private smoke windows</h2>
+<p><strong>Expected.</strong> Run both windows with the active health gate, known idle
+ownership, the same private evidence directory and all other producers paused.
+The driver stages only synthetic inputs generated by
+<a href="../../scripts/studio-local-model/smoke-inputs.py">smoke-inputs.py</a> before the
+first window. Each admitted operation uses the Wan compute lease. Each
+30-minute clock starts immediately before its first leased load. Keep the
+terminal open through cleanup and hold dispatch paused between windows.</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>-s<span class="w"> </span><span class="s">&lt;&lt;'BASH'</span>
+<span class="s">  set -euo pipefail</span>
+<span class="s">  source scripts/wan-video/op442_gate.sh</span>
+<span class="s">  umask 077</span>
+<span class="s">  evidence=${OP442_EVIDENCE:?}</span>
+<span class="s">  gate='Window 1 cold load, text, vision, handover and final unload'</span>
+<span class="s">  python3 -B scripts/wan-video/op442_smoke.py window-1 --evidence "$evidence"</span>
+<span class="s">  gate_passed</span>
+<span class="s">  gate='Window 2 paired memory drift and final unload'</span>
+<span class="s">  python3 -B scripts/wan-video/op442_smoke.py window-2 --evidence "$evidence"</span>
+<span class="s">  gate_passed</span>
+<span class="s">BASH</span>
+</code></pre></div>
+<h3 id="window-1-cold-load-text-vision-and-s2v">Window 1. Cold load, text, vision and S2V</h3>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Budget and evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cold load</td>
+<td>Up to 120 s with a 60 s target. Record the load ID, baseline and wall time. The PVC cache may already be warm.</td>
+</tr>
+<tr>
+<td>Text and vision</td>
+<td>30 s for one <code>plan_v1</code> answer at 256 tokens and 55 s for one <code>frame_check_v1</code> answer at 512 tokens. Keep the token counts, schema results and all four ordered synthetic frame hashes. Allow 10 s for the model peak check.</td>
+</tr>
+<tr>
+<td>Handover precheck and S2V</td>
+<td>Allow 30 s for the leased readiness and ledger precheck. Submit by 4m 15s elapsed with 1,280 s for the render and admission, and keep 265 s for read-back, reload and final cleanup.</td>
+</tr>
+<tr>
+<td>S2V evidence read-back</td>
+<td>Allow 40 s to verify the internal unload receipt predates engine dispatch, read the empty queue, and save the prompt ID and receipt. Use the per-UUID process samples to confirm S2V ownership.</td>
+</tr>
+<tr>
+<td>Return load</td>
+<td>Up to 120 s with a 60 s target. Record the warm load ID, baseline and wall time.</td>
+</tr>
+<tr>
+<td>Final tracked unload and idle proof</td>
+<td>Reserve 100 s. Verify the unload receipt against its paired baseline, then prove the queue, workers and card idle under the lease. Record the final receipt and idle proof.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="window-2-five-paired-drift-cycles">Window 2. Five paired drift cycles</h3>
+<p>Start only after window 1 writes <code>passed.json</code>. The driver checks the profile
+and unloaded host again. Budget 120 s per load and 25 s for each unload and
+its receipt, for 725 s total. Keep the 100 s final cleanup reserve throughout.
+Each cycle records the load baseline, verified post-exit sample and signed
+difference. Require post-exit memory at or below the calibrated ceiling and
+at most 4 MiB above the corresponding baseline. The fifth tracked unload
+supplies the final release receipt. The driver then verifies idle ownership
+under the lease. A stopped window with a safely unloadable child still uses
+its final cleanup reserve. A failure preserves the receipts and evidence.</p>
+<p>Rely on the 4 MiB allowance for unattended use only after window 2 passes.
+A release exceeding that limit already latches a hold during the pilot.
+Review the evidence before changing any allowance. The absolute profile
+ceiling also applies.</p>
+<p>Keep both windows' GPU and process samples, observed local-model VRAM peaks
+against 12,288 MiB, sidecar cgroup memory peaks against 16 GiB, request IDs
+and timings private. A sampled peak is an observation at the sampling
+interval. The driver retries the exact original PUT at most once, after a
+transport failure and a definitive absent response for that ID. At a polling
+deadline, follow the same original ID through cleanup. If work settles with
+a live child and a known owner, submit the tracked unload within the cleanup
+reserve. A failed or unverified release, unknown owner, access denial or
+unresolved original ID stops further requests. Keep any hold and use the
+recovery route below. A skipped, cut-off or unverified step leaves the
+window incomplete.</p>
+<h2 id="stops-and-evidence">Stops and evidence</h2>
+<table>
+<thead>
+<tr>
+<th>Stop</th>
+<th>Hold state and next action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Release exceeds the load baseline plus 4 MiB or the calibrated ceiling and fails the API's memory proof, or the API reports <code>local_model_held</code></td>
+<td>Save the receipt, journal and memory readings. Use <a href="#clear-a-local-model-hold">hold clearing</a>. If the ceiling was set too low, preserve the original profile and review a ceiling-only correction within the original calibration range.</td>
+</tr>
+<tr>
+<td>Dormant recovery finds a socket, an unresolvable process name or an unavailable process query</td>
+<td>The helper archives a socket only after a refused connection under the lease. A live listener, non-socket, ambiguous probe or process proof failure stops recovery. Keep dispatch paused and preserve any moved socket. An empty process list still requires all three memory readings to pass.</td>
+</tr>
+<tr>
+<td>Release receipt missing, failed or inconsistent without a confirmed hold</td>
+<td>Hold status unknown. Preserve the request and journal, and inspect under the lease. Use <a href="#clear-a-local-model-hold">hold clearing</a> if held, or resume tracked cleanup only after ownership and residency are known.</td>
+</tr>
+<tr>
+<td>Unknown ownership, malformed queue, unsettled request or failed lease proof</td>
+<td>Foreign work or lease contention alone does not latch the local-model hold. A malformed queue may latch a separate render hold or a local-model hold after dispatch. Resolve ownership and any Wan render hold first. Use <a href="#clear-a-local-model-hold">hold clearing</a> for a latched local-model hold.</td>
+</tr>
+<tr>
+<td>Startup refusal, reserve failure or unavailable listener</td>
+<td>The startup refusal creates no hold. With a listening but unavailable process, verify prior residency under the lease before reverting. Use the <a href="#rollback-c-when-the-sidecar-never-became-ready">direct rollback</a> only with evidence of no Ready transition and no state file. With state present, use the tracked rollback and <a href="#clear-a-local-model-hold">hold clearing</a> if held.</td>
+</tr>
+<tr>
+<td>Access denial</td>
+<td>The denial does not itself latch a hold. The state of any earlier request may be unknown. Stop without retrying through another route. An authorized operator can inspect and follow <a href="#clear-a-local-model-hold">hold clearing</a> if held.</td>
+</tr>
+<tr>
+<td>Output check, cap or budget failure</td>
+<td>No hold from the stop itself. Finish verified cleanup within the reserve if safe. If the API latches a hold during release, use <a href="#clear-a-local-model-hold">hold clearing</a>.</td>
+</tr>
+</tbody>
+</table>
+<p>Keep dispatch paused through verified cleanup or recovery. Resume once the
+applicable Service, health, queue, rack and residency gates pass. Preserve
+failed attempts, weights and journals. Publish only IDs, states, hashes,
+measured times and memory samples to the tracker. Keep service logs, full
+model outputs, prompts, staged media and engine ledgers in the private
+evidence directory. Record source, built image, tested checks, installation,
+usable smoke and Tom's acceptance separately. The E10 model quality verdict
+comes from its own benchmark.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024-2025 Thomas Haynes
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.path", "navigation.indexes", "search.suggest"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

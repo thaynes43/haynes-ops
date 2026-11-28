@@ -1,0 +1,1256 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentaiton for my home-ops style repository so I can have an idea what past me did when something breaks. Hopefully someone else finds something useful here too!">
+      
+      
+        <meta name="author" content="Tom Haynes">
+      
+      
+        <link rel="canonical" href="https://haynesops.com/reference/studio-matting-deployment/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Stage Studio still matting - HaynesOps</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#stage-studio-still-matting" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="HaynesOps" class="md-header__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            HaynesOps
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Stage Studio still matting
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1M8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 5-5 5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5M7 15a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="HaynesOps" class="md-nav__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    HaynesOps
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../this-site/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    This Site
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    This Site
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cluster/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cluster Essentials
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cluster Essentials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cluster/rook-ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rook Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheat Sheets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cheat Sheets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/siderolabs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Siderolabs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/kubernetes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kubernetes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#pin-and-admit-the-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pin and admit the release
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#provision-and-read-back-the-weight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provision and read back the weight
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-the-install-smoke" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run the install smoke
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-the-private-cast-quality-trial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run the private cast quality trial
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#activation-retries-and-rollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Activation, retries and rollback
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="stage-studio-still-matting">Stage Studio still matting</h1>
+<p>CR-33 selects BiRefNet Lite FP32 on ONNX Runtime CPU. The baseline and
+CPU-arena retest ran on 2026-11-25. CR-43 stages the new serving profile,
+with the CPU arena off, in a fresh immutable allocation. Flux owns the
+targeted policies and provisioner ConfigMap. The Jobs, worker sidecar
+and render CPU split stay staged. Launch each Job individually after
+its checks pass. <a href="https://work.haynesnetwork.com/work_packages/459">OP459</a></p>
+<p>OP459 authorizes a one-shot exception to Flux ownership for these two
+unprivileged Job objects. The saga coordinator runs the reviewed Git
+templates and waits at each health gate. Flux owns the targeted policies and provisioner
+ConfigMap. The provisioner leaves a verified, create-only allocation on
+the private Studio share, and both Job objects expire after 24 hours.
+<a href="https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/matting-backend-profile.md">Matting profile</a>
+· <a href="../studio-deployment/">Studio deployment</a></p>
+<h2 id="pin-and-admit-the-release">Pin and admit the release</h2>
+<ol>
+<li>Merge the Studio source PR. In its successful <strong>Studio images</strong> run on
+   <code>main</code>, use <strong>Publish tested Studio images</strong> to read
+   <code>ghcr.io/thaynes43/haynes-studio-matting@sha256:&lt;digest&gt;</code> for that full
+   commit. The synthetic build smoke proves the runtime and artifact path.</li>
+<li>Set that full reference as <code>data.image</code> in
+   <a href="../../kubernetes/main/apps/ai/studio/matting-pending/release/release.yaml">release.yaml</a>.
+   It feeds the image and profile identity of both Jobs and the staged
+   sidecar. The release check refuses both previously installed digests and
+   reads the resource profile from the pinned image's OCI config. Both
+   the rendered smoke and sidecar must match its request and limit.
+   Merge the Ops PR after its check passes. Run the following blocks
+   from that checked-out Ops revision.</li>
+<li>Reconcile and check the policy stage and the two existing workloads.
+   The download pod can reach only DNS and HTTPS for <code>huggingface.co</code>
+   and <code>us.aws.cdn.hf.co</code>. The smoke pod has no permitted traffic.</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="o">(</span>
+<span class="w">  </span><span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+<span class="w">  </span>flux<span class="w"> </span>reconcile<span class="w"> </span>kustomization<span class="w"> </span>cluster-apps<span class="w"> </span>-n<span class="w"> </span>flux-system<span class="w"> </span>--with-source
+<span class="w">  </span>flux<span class="w"> </span>reconcile<span class="w"> </span>kustomization<span class="w"> </span>studio-matting-policy<span class="w"> </span>-n<span class="w"> </span>ai
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">wait</span><span class="w"> </span>--for<span class="o">=</span><span class="nv">condition</span><span class="o">=</span>ready<span class="w"> </span>kustomization/studio-matting-policy<span class="w"> </span>--timeout<span class="o">=</span>2m
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span>ciliumnetworkpolicy<span class="w"> </span>studio-matting-provision<span class="w"> </span>studio-matting-smoke
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span>deploy<span class="w"> </span>studio-worker<span class="w"> </span>studio-render<span class="w"> </span>-o<span class="w"> </span>wide
+<span class="o">)</span>
+</code></pre></div>
+<h2 id="provision-and-read-back-the-weight">Provision and read back the weight</h2>
+<p>The image digest and serving settings are part of the immutable profile.
+Provision the same pinned graph into allocation
+<code>matting-op459-birefnet-lite-v1-03</code> for the new image. Preserve both previous
+allocations. Check that the jobs root has at least 33 GiB free. The provisioner
+checks the 1 GiB budget and 32 GiB free reserve before and during writes. CR-33
+accepts a 32-inode allocation here without an NFS free-inode reading. The
+Job writes as 1000:1000, with only <code>data/studio/jobs</code> mounted read-write.
+One atomic <code>mkdir</code> claims a new private allocation. The Job hashes the file
+read back from its staged bytes, syncs its profile, checksum and licence,
+then renames within the exclusively allocated directory. The published
+subpath is read-only in consumers. A failed allocation is retained and
+never reused.</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span>
+<span class="w">  </span><span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+<span class="w">  </span><span class="nv">stage</span><span class="o">=</span>kubernetes/main/apps/ai/studio/matting-pending
+<span class="w">  </span><span class="nv">provision</span><span class="o">=</span><span class="k">$(</span>kustomize<span class="w"> </span>build<span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/provision"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'select(.kind == "Job")'</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">job</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.metadata.name'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$provision</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">config</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.spec.template.spec.volumes[] |</span>
+<span class="s1">    select(.name == "config") | .configMap.name'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$provision</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span><span class="s2">"configmap/</span><span class="nv">$config</span><span class="s2">"</span><span class="w"> </span>-o<span class="w"> </span>name<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>deploy/studio-render<span class="w"> </span>-c<span class="w"> </span>app<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-ec<span class="w"> </span><span class="s1">'</span>
+<span class="s1">    test -d /studio/jobs</span>
+<span class="s1">    df -Pk /studio/jobs | awk "NR == 2 { print; if (\$4 &gt;= 34603008) good = 1 } END { exit !good }"</span>
+<span class="s1">  '</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$provision</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span>!<span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">wait</span><span class="w"> </span>--for<span class="o">=</span><span class="nv">condition</span><span class="o">=</span><span class="nb">complete</span><span class="w"> </span><span class="s2">"job/</span><span class="nv">$job</span><span class="s2">"</span><span class="w"> </span>--timeout<span class="o">=</span>6m<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span><span class="s2">"job/</span><span class="nv">$job</span><span class="s2">"</span><span class="w"> </span>-o<span class="w"> </span>wide
+<span class="w">    </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>logs<span class="w"> </span><span class="s2">"job/</span><span class="nv">$job</span><span class="s2">"</span>
+<span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span><span class="nv">report</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>logs<span class="w"> </span><span class="s2">"job/</span><span class="nv">$job</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="k">)</span>
+<span class="w">  </span>jq<span class="w"> </span>-es<span class="w"> </span><span class="s1">'</span>
+<span class="s1">    length == 1 and (.[0] |</span>
+<span class="s1">      .graph_bytes == 224005088 and</span>
+<span class="s1">      .graph_sha256 == "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333" and</span>
+<span class="s1">      (.profile_sha256 | test("^[0-9a-f]{64}$")))</span>
+<span class="s1">  '</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span>
+<span class="w">  </span><span class="nv">allocation</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span><span class="s1">'.data.allocation'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/release/release.yaml"</span><span class="k">)</span>
+<span class="w">  </span><span class="nv">profile</span><span class="o">=</span><span class="k">$(</span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'.profile_sha256'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="k">)</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-i<span class="w"> </span>deploy/studio-render<span class="w"> </span>-c<span class="w"> </span>app<span class="w"> </span>--<span class="w"> </span>python<span class="w"> </span>-B<span class="w"> </span>-<span class="w"> </span><span class="s2">"</span><span class="nv">$allocation</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$profile</span><span class="s2">"</span><span class="w"> </span><span class="s">&lt;&lt;'PY'</span>
+<span class="s">from hashlib import file_digest</span>
+<span class="s">from pathlib import Path</span>
+<span class="s">import json</span>
+<span class="s">import sys</span>
+
+<span class="s">weights = Path("/studio/jobs") / sys.argv[1] / "weights"</span>
+<span class="s">with (weights / "model.onnx").open("rb") as graph:</span>
+<span class="s">    graph_hash = file_digest(graph, "sha256").hexdigest()</span>
+<span class="s">with (weights / "profile.json").open("rb") as manifest:</span>
+<span class="s">    profile_hash = file_digest(manifest, "sha256").hexdigest()</span>
+<span class="s">checks = {</span>
+<span class="s">    "graph size": (weights / "model.onnx").stat().st_size == 224005088,</span>
+<span class="s">    "graph hash": graph_hash == "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333",</span>
+<span class="s">    "profile hash": profile_hash == sys.argv[2] == (weights / "profile.sha256").read_text().strip(),</span>
+<span class="s">}</span>
+<span class="s">for name, passed in checks.items():</span>
+<span class="s">    print(f"{'PASS' if passed else 'FAIL'} {name}")</span>
+<span class="s">print(json.dumps({"graph_sha256": graph_hash, "profile_sha256": profile_hash}))</span>
+<span class="s">raise SystemExit(not all(checks.values()))</span>
+<span class="s">PY</span>
+<span class="o">)</span>
+</code></pre></div>
+<h2 id="run-the-install-smoke">Run the install smoke</h2>
+<p>Use an exclusive heavy-job window on <code>talosw01</code>. Confirm the window is
+clear of heavy render and Foley work and review node and render pod load
+before running the block. It records fresh readings and gates Job
+creation on Wan's <code>/v1/ready</code> reporting readiness and both video and Foley
+idle, and the image engine's queue being empty. Before 2026-11-25 14:30Z,
+the idle gates read only <code>/health</code>.
+Run <code>studio-matting-smoke-03</code> once after the new pin's read-back. The Job
+uses plain <code>studio-matting smoke</code> with the serving profile. It requests
+8 GiB and limits the container to 2 CPUs and 10 GiB. It has a 300 s deadline,
+no retries, no network, read-only root and weights, and a 256 MiB private
+scratch. It runs as 10001:10001. Capture phase peaks, post-request RSS,
+fixture hash matches and any failure logs.</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span>
+<span class="w">  </span><span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+<span class="w">  </span>check_json<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="nb">local</span><span class="w"> </span><span class="nv">label</span><span class="o">=</span><span class="nv">$1</span><span class="w"> </span><span class="nv">predicate</span><span class="o">=</span><span class="nv">$2</span>
+<span class="w">    </span><span class="nb">shift</span><span class="w"> </span><span class="m">2</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span>jq<span class="w"> </span>-es<span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="w"> </span><span class="s2">"length == 1 and (.[0] | (</span><span class="nv">$predicate</span><span class="s2">))"</span><span class="w"> </span>&gt;/dev/null<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">      </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'PASS %s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$label</span><span class="s2">"</span>
+<span class="w">    </span><span class="k">else</span>
+<span class="w">      </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'FAIL %s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$label</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="k">fi</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>read_endpoint<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="nb">local</span><span class="w"> </span><span class="nv">pod</span><span class="o">=</span><span class="nv">$1</span><span class="w"> </span><span class="nv">container</span><span class="o">=</span><span class="nv">$2</span><span class="w"> </span><span class="nv">url</span><span class="o">=</span><span class="nv">$3</span>
+<span class="w">    </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span><span class="s2">"</span><span class="nv">$pod</span><span class="s2">"</span><span class="w"> </span>-c<span class="w"> </span><span class="s2">"</span><span class="nv">$container</span><span class="s2">"</span><span class="w"> </span>--<span class="w"> </span>python<span class="w"> </span>-B<span class="w"> </span>-c<span class="w"> </span><span class="s1">'</span>
+<span class="s1">import sys</span>
+<span class="s1">from urllib.request import urlopen</span>
+<span class="s1">with urlopen(sys.argv[1], timeout=5) as response:</span>
+<span class="s1">    sys.stdout.buffer.write(response.read())</span>
+<span class="s1">'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$url</span><span class="s2">"</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>wan_idle<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span>read_endpoint<span class="w"> </span>deploy/wan-video<span class="w"> </span>api<span class="w"> </span>http://127.0.0.1:8080/v1/ready<span class="w"> </span><span class="p">|</span>
+<span class="w">      </span>check_json<span class="w"> </span><span class="s1">'Wan idle'</span><span class="w"> </span><span class="s1">'.ready == true and</span>
+<span class="s1">        has("active_video_job") and .active_video_job == null and</span>
+<span class="s1">        has("active_foley_job") and .active_foley_job == null'</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span><span class="nv">stage</span><span class="o">=</span>kubernetes/main/apps/ai/studio/matting-pending
+<span class="w">  </span><span class="nv">allocation</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.data.allocation'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/release/release.yaml"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">provision</span><span class="o">=</span><span class="s2">"studio-matting-provision-</span><span class="si">${</span><span class="nv">allocation</span><span class="p">##*-</span><span class="si">}</span><span class="s2">"</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">wait</span><span class="w"> </span>--for<span class="o">=</span><span class="nv">condition</span><span class="o">=</span><span class="nb">complete</span><span class="w"> </span><span class="s2">"job/</span><span class="nv">$provision</span><span class="s2">"</span><span class="w"> </span>--timeout<span class="o">=</span>5s<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">profile</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>logs<span class="w"> </span><span class="s2">"job/</span><span class="nv">$provision</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="p">|</span>
+<span class="w">    </span>jq<span class="w"> </span>-ers<span class="w"> </span><span class="s1">'select(length == 1) | .[0].profile_sha256 | select(test("^[0-9a-f]{64}$"))'</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">pin</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.data.image'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/release/release.yaml"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>kubectl<span class="w"> </span>top<span class="w"> </span>node<span class="w"> </span>talosw01<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>top<span class="w"> </span>pod<span class="w"> </span>--containers<span class="w"> </span>-l<span class="w"> </span>app.kubernetes.io/name<span class="o">=</span>studio-render<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>wan_idle<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>read_endpoint<span class="w"> </span>comfyui-0<span class="w"> </span>app<span class="w"> </span>http://127.0.0.1:8188/queue<span class="w"> </span><span class="p">|</span>
+<span class="w">    </span>check_json<span class="w"> </span><span class="s1">'Image engine queue empty'</span><span class="w"> </span><span class="s1">'.queue_running == [] and .queue_pending == []'</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">smoke</span><span class="o">=</span><span class="k">$(</span>kustomize<span class="w"> </span>build<span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/smoke"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">job</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.metadata.name'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$smoke</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$smoke</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span>!<span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">wait</span><span class="w"> </span>--for<span class="o">=</span><span class="nv">condition</span><span class="o">=</span><span class="nb">complete</span><span class="w"> </span><span class="s2">"job/</span><span class="nv">$job</span><span class="s2">"</span><span class="w"> </span>--timeout<span class="o">=</span>6m<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span><span class="s2">"job/</span><span class="nv">$job</span><span class="s2">"</span><span class="w"> </span>-o<span class="w"> </span>wide
+<span class="w">    </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>logs<span class="w"> </span><span class="s2">"job/</span><span class="nv">$job</span><span class="s2">"</span>
+<span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span><span class="s2">"job/</span><span class="nv">$job</span><span class="s2">"</span><span class="w"> </span>-o<span class="w"> </span>wide
+<span class="w">  </span><span class="nv">report</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>logs<span class="w"> </span><span class="s2">"job/</span><span class="nv">$job</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="k">)</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span>
+<span class="w">  </span><span class="nv">status</span><span class="o">=</span><span class="m">0</span>
+<span class="w">  </span>check_json<span class="w"> </span><span class="s1">'Pinned serving profile and image'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .pinned_profile_sha256 == $profile and .profile_sha256 == $profile and .image_digest == $digest</span>
+<span class="s1">  '</span><span class="w"> </span>--arg<span class="w"> </span>profile<span class="w"> </span><span class="s2">"</span><span class="nv">$profile</span><span class="s2">"</span><span class="w"> </span>--arg<span class="w"> </span>digest<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">pin</span><span class="p">##*@</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span>check_json<span class="w"> </span><span class="s1">'CPU provider with arena off'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .provider == "CPUExecutionProvider" and .session_settings.cpu_arena == false</span>
+<span class="s1">  '</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span>check_json<span class="w"> </span><span class="s1">'10 GiB memory limit and measured phases'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .memory_limit_bytes == 10737418240 and .verdicts.memory_bounded == true and</span>
+<span class="s1">    .verdicts.memory_phases_measured == true</span>
+<span class="s1">  '</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span>check_json<span class="w"> </span><span class="s1">'Installed source, cutout and mask hashes for every fixture and replay'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">    {source: true, cutout: true, mask: true} as $match |</span>
+<span class="s1">    .verdicts.installed_artifacts_match == true and</span>
+<span class="s1">    .installed_hash_matches == {bust: $match, green_eyes: $match, smaller_bust: $match, replay: $match}</span>
+<span class="s1">  '</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span>check_json<span class="w"> </span><span class="s1">'All smoke verdicts'</span><span class="w"> </span><span class="s1">'.passed == true'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="s2">"</span><span class="nv">$status</span><span class="s2">"</span>
+<span class="o">)</span>
+</code></pre></div>
+<p><strong>Measured</strong> on 2026-11-25. The first Job was OOMKilled after 14 s
+under the unmeasured 6 GiB budget. Retry <code>studio-matting-smoke-01-r2</code>
+peaked at 12,997,890,048 bytes in the worker and 13,150,916,608 bytes
+for the sum of process peaks. Fixture quality and replay passed. The
+retest <code>studio-matting-smoke-02-r3</code> passed all 13 verdicts with the CPU
+arena disabled and byte-identical cutouts and masks. Its worker peaked at
+7,538,561,024 bytes, with a 7,691,853,824-byte bound for the sum of process
+peaks. CR-43 sets the new request and limit from these measurements. The
+plain smoke with the pinned serving profile passed all 13 verdicts in
+48 s with a 7,626,436,608-byte upper bound.
+<a href="https://work.haynesnetwork.com/work_packages/459">OP459, comments 9969, 9985 and 10004</a></p>
+<p>Record the Ops Git revision, both Job names and statuses, published image
+digest, verified graph and profile hashes, smoke JSON and deployed health
+on OP459. Record the private
+allocation in the story handoff. The synthetic result establishes installed
+smoke behavior. <a href="https://work.haynesnetwork.com/work_packages/451">OP451</a>
+owns the private cast quality and serving integration. Tom owns acceptance.</p>
+<h2 id="run-the-private-cast-quality-trial">Run the private cast quality trial</h2>
+<p><strong>Expected.</strong> The saga coordinator chooses one existing cast photo of an
+imported production under CR-46 and uses its read-only path and recorded
+SHA-256. Use the content-addressed store path
+<code>/studio/productions/&lt;prd_id&gt;/sha256/&lt;first-two-hex&gt;/&lt;sha256&gt;.&lt;jpg|png&gt;</code>
+or <code>/studio/library/sha256/&lt;first-two-hex&gt;/&lt;sha256&gt;.&lt;jpg|png&gt;</code> for global
+scope. Choose a representative still with eyes, lashes and hair visible,
+and use the target height for its pinned cast slot. Keep the path, asset
+IDs and output locator private. Mark the iris interiors and visible hair
+before the trial. Run in an exclusive heavy-job window as for the smoke,
+including no concurrent Foley or heavy render. The block checks fresh
+node load, render load, Wan readiness and idleness for video and Foley,
+and the shared image queue.</p>
+<p>The staged template emits one Job with inline scripts. Its dedicated
+<code>studio-matting-quality</code> deny-all policy must be live before admission.
+The init container uses UID/GID 1000 to reserve a new group-writable
+<code>/studio/jobs/&lt;job&gt;</code> directory exclusively. The main container uses the
+smoke's UID/GID 10001, pinned image and read-only weights. Supplemental
+group 1000 allows it to write <code>cutout.png</code>, <code>mask.png</code> and the completed
+<code>report.json</code> under just that directory's writable subPath. The input
+directory has its own read-only subPath. The gate checks the canonical
+path, regular single-link file and SHA-256 match before opening the run
+window. The report identifies the input by SHA-256. The Job spec contains
+the store's hash-based locator and expires one hour after finishing.
+As in the provisioning budget, leave 32 GiB
+free after allowing 1 GiB and 32 filesystem entries. The NFS inode
+reading may be unavailable under CR-33.</p>
+<p>The final log line reports invalid input, a hash mismatch, an existing
+output, unavailable readiness, a service refusal, failed verification or
+a timeout with distinct <code>trial.*</code> codes. Service refusals include the
+backend's <code>adapter.*</code> code. If output reservation fails, the report comes
+from the init container.</p>
+<p>Set <code>STUDIO_TRIAL_INPUT</code> to the absolute Studio-share path,
+<code>STUDIO_TRIAL_SOURCE_SHA256</code> to the pinned byte digest,
+<code>STUDIO_TRIAL_ASSET_VERSION</code> to the <code>asv_</code> ID,
+<code>STUDIO_TRIAL_PRODUCTION</code> to the <code>prd_</code> ID (or <code>-</code> for global scope),
+<code>STUDIO_TRIAL_JOB_ID</code> to the evidence's <code>job_</code> ID and
+<code>STUDIO_TRIAL_TARGET_HEIGHT</code> to the slot height in pixels. Run from
+the checked-out Ops revision.</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span>
+<span class="w">  </span><span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+<span class="w">  </span>:<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">STUDIO_TRIAL_INPUT</span><span class="p">:?Set the private input path</span><span class="si">}</span><span class="s2">"</span>
+<span class="w">  </span>:<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">STUDIO_TRIAL_SOURCE_SHA256</span><span class="p">:?Set the pinned byte digest</span><span class="si">}</span><span class="s2">"</span>
+<span class="w">  </span>:<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">STUDIO_TRIAL_ASSET_VERSION</span><span class="p">:?Set the pinned asset version</span><span class="si">}</span><span class="s2">"</span>
+<span class="w">  </span>:<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">STUDIO_TRIAL_PRODUCTION</span><span class="p">:?Set the production or - for global scope</span><span class="si">}</span><span class="s2">"</span>
+<span class="w">  </span>:<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">STUDIO_TRIAL_JOB_ID</span><span class="p">:?Set the canonical job ID for the receipt</span><span class="si">}</span><span class="s2">"</span>
+<span class="w">  </span>:<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">STUDIO_TRIAL_TARGET_HEIGHT</span><span class="p">:?Set the pinned slot height</span><span class="si">}</span><span class="s2">"</span>
+
+<span class="w">  </span>check<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="nb">local</span><span class="w"> </span><span class="nv">label</span><span class="o">=</span><span class="nv">$1</span>
+<span class="w">    </span><span class="nb">shift</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">      </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'PASS %s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$label</span><span class="s2">"</span>
+<span class="w">    </span><span class="k">else</span>
+<span class="w">      </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'FAIL %s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$label</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="k">fi</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>assert_json<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span>jq<span class="w"> </span>-es<span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="w"> </span>&gt;/dev/null
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>is_sha256<span class="o">()</span><span class="w"> </span><span class="o">{</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span><span class="nv">$1</span><span class="w"> </span><span class="o">=</span>~<span class="w"> </span>^<span class="o">[</span><span class="m">0</span>-9a-f<span class="o">]{</span><span class="m">64</span><span class="o">}</span>$<span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="o">}</span>
+<span class="w">  </span>read_endpoint<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span><span class="s2">"</span><span class="nv">$1</span><span class="s2">"</span><span class="w"> </span>-c<span class="w"> </span><span class="s2">"</span><span class="nv">$2</span><span class="s2">"</span><span class="w"> </span>--<span class="w"> </span>python<span class="w"> </span>-B<span class="w"> </span>-c<span class="w"> </span><span class="s1">'</span>
+<span class="s1">import sys</span>
+<span class="s1">from urllib.request import urlopen</span>
+<span class="s1">with urlopen(sys.argv[1], timeout=5) as response:</span>
+<span class="s1">    sys.stdout.buffer.write(response.read())</span>
+<span class="s1">'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$3</span><span class="s2">"</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>node_idle<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span>kubectl<span class="w"> </span>top<span class="w"> </span>node<span class="w"> </span>talosw01<span class="w"> </span>--no-headers<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">'</span>
+<span class="s1">      {print} $1 == "talosw01" &amp;&amp; $3 ~ /^[0-9]+%$/ &amp;&amp; $5 ~ /^[0-9]+%$/ &amp;&amp;</span>
+<span class="s1">       $3+0 &lt;= 10 &amp;&amp; $5+0 &lt;= 25 {ok=1} END {exit !ok}'</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>render_idle<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>top<span class="w"> </span>pod<span class="w"> </span>--containers<span class="w"> </span>-l<span class="w"> </span>app.kubernetes.io/name<span class="o">=</span>studio-render<span class="w"> </span>--no-headers<span class="w"> </span><span class="p">|</span>
+<span class="w">      </span>awk<span class="w"> </span><span class="s1">'{print} $2 == "app" &amp;&amp; $3 ~ /^[0-9]+m$/ {</span>
+<span class="s1">        seen=1; if ($3+0 &gt; 250) busy=1</span>
+<span class="s1">      } END {exit (!seen || busy)}'</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>room_on_share<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>deploy/studio-render<span class="w"> </span>-c<span class="w"> </span>app<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-ec<span class="w"> </span><span class="s1">'</span>
+<span class="s1">      df -Pk /studio/jobs | awk "NR == 2 { print; if (\$4 &gt;= 34603008) ok=1 } END { exit !ok }"</span>
+<span class="s1">      df -Pi /studio/jobs | awk "NR == 2 { print; if (\$4 == \"-\" || \$4 &gt;= 32) ok=1 } END { exit !ok }"</span>
+<span class="s1">    '</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>input_matches_store_hash<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="nb">local</span><span class="w"> </span><span class="nv">hash</span><span class="o">=</span><span class="nv">$STUDIO_TRIAL_SOURCE_SHA256</span><span class="w"> </span>root<span class="w"> </span>stem
+<span class="w">    </span>is_sha256<span class="w"> </span><span class="s2">"</span><span class="nv">$hash</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span><span class="nv">$STUDIO_TRIAL_PRODUCTION</span><span class="w"> </span><span class="o">==</span><span class="w"> </span>-<span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">      </span><span class="nv">root</span><span class="o">=</span>/studio/library
+<span class="w">    </span><span class="k">else</span>
+<span class="w">      </span><span class="o">[[</span><span class="w"> </span><span class="nv">$STUDIO_TRIAL_PRODUCTION</span><span class="w"> </span><span class="o">=</span>~<span class="w"> </span>^prd_<span class="o">[</span><span class="m">0</span>-7<span class="o">][</span><span class="m">0</span>-9a-hjkmnp-tv-z<span class="o">]{</span><span class="m">25</span><span class="o">}</span>$<span class="w"> </span><span class="o">]]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="w">      </span><span class="nv">root</span><span class="o">=</span><span class="s2">"/studio/productions/</span><span class="nv">$STUDIO_TRIAL_PRODUCTION</span><span class="s2">"</span>
+<span class="w">    </span><span class="k">fi</span>
+<span class="w">    </span><span class="nv">stem</span><span class="o">=</span><span class="s2">"</span><span class="nv">$root</span><span class="s2">/sha256/</span><span class="si">${</span><span class="nv">hash</span><span class="p">:</span><span class="nv">0</span><span class="p">:</span><span class="nv">2</span><span class="si">}</span><span class="s2">/</span><span class="nv">$hash</span><span class="s2">"</span>
+<span class="w">    </span><span class="o">[[</span><span class="w"> </span><span class="nv">$STUDIO_TRIAL_INPUT</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s2">"</span><span class="nv">$stem</span><span class="s2">.jpg"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">$STUDIO_TRIAL_INPUT</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s2">"</span><span class="nv">$stem</span><span class="s2">.png"</span><span class="w"> </span><span class="o">]]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>deploy/studio-render<span class="w"> </span>-c<span class="w"> </span>app<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-ec<span class="w"> </span><span class="s1">'</span>
+<span class="s1">      path=$1</span>
+<span class="s1">      test "$(realpath -e -- "$path")" = "$path"</span>
+<span class="s1">      test -f "$path"</span>
+<span class="s1">      test "$(stat -c %h -- "$path")" = 1</span>
+<span class="s1">      sum=$(sha256sum -- "$path")</span>
+<span class="s1">      test "${sum%% *}" = "$2"</span>
+<span class="s1">    '</span><span class="w"> </span>sh<span class="w"> </span><span class="s2">"</span><span class="nv">$STUDIO_TRIAL_INPUT</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$hash</span><span class="s2">"</span><span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>read_profile<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="nv">profile</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>deploy/studio-render<span class="w"> </span>-c<span class="w"> </span>app<span class="w"> </span>--<span class="w"> </span>cat<span class="w"> </span><span class="se">\</span>
+<span class="w">      </span><span class="s2">"/studio/jobs/</span><span class="nv">$allocation</span><span class="s2">/weights/profile.sha256"</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span>is_sha256<span class="w"> </span><span class="s2">"</span><span class="nv">$profile</span><span class="s2">"</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>deny_all<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span>ciliumnetworkpolicy<span class="w"> </span>studio-matting-quality<span class="w"> </span>-o<span class="w"> </span>json<span class="w"> </span><span class="p">|</span>
+<span class="w">      </span>assert_json<span class="w"> </span><span class="s1">'length == 1 and .[0].spec == {</span>
+<span class="s1">        "endpointSelector":{"matchLabels":{"app.kubernetes.io/name":"studio-matting-quality"}},</span>
+<span class="s1">        "ingressDeny":[{"fromEntities":["all"]}], "egressDeny":[{"toEntities":["all"]}]}'</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>wan_idle<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span>read_endpoint<span class="w"> </span>deploy/wan-video<span class="w"> </span>api<span class="w"> </span>http://127.0.0.1:8080/v1/ready<span class="w"> </span><span class="p">|</span>
+<span class="w">      </span>assert_json<span class="w"> </span><span class="s1">'length == 1 and (.[0] | .ready == true and</span>
+<span class="s1">        has("active_video_job") and .active_video_job == null and</span>
+<span class="s1">        has("active_foley_job") and .active_foley_job == null)'</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>images_idle<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span>read_endpoint<span class="w"> </span>comfyui-0<span class="w"> </span>app<span class="w"> </span>http://127.0.0.1:8188/queue<span class="w"> </span><span class="p">|</span>
+<span class="w">      </span>assert_json<span class="w"> </span><span class="s1">'length == 1 and (.[0] | .queue_running == [] and .queue_pending == [])'</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span><span class="nv">stage</span><span class="o">=</span>kubernetes/main/apps/ai/studio/matting-pending
+<span class="w">  </span><span class="nv">allocation</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.data.allocation'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/release/release.yaml"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">pin</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.data.image'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/release/release.yaml"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Content-addressed regular single-link input matches its SHA-256'</span><span class="w"> </span>input_matches_store_hash<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Installed profile hash present'</span><span class="w"> </span>read_profile<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Share byte and inode budget'</span><span class="w"> </span>room_on_share<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Deny-all network policy'</span><span class="w"> </span>deny_all<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'talosw01 CPU at most 10% and memory at most 25%'</span><span class="w"> </span>node_idle<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Render app CPU at most 250m'</span><span class="w"> </span>render_idle<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Wan idle'</span><span class="w"> </span>wan_idle<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Shared image queue empty'</span><span class="w"> </span>images_idle<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'PASS quality trial admission\n'</span>
+
+<span class="w">  </span><span class="nv">private_path</span><span class="o">=</span><span class="si">${</span><span class="nv">STUDIO_TRIAL_INPUT</span><span class="p">#/studio/</span><span class="si">}</span>
+<span class="w">  </span><span class="nb">export</span><span class="w"> </span><span class="nv">TRIAL_INPUT_DIR</span><span class="o">=</span><span class="s2">"data/studio/</span><span class="si">${</span><span class="nv">private_path</span><span class="p">%/*</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="nv">TRIAL_INPUT_NAME</span><span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">private_path</span><span class="p">##*/</span><span class="si">}</span><span class="s2">"</span>
+<span class="w">  </span><span class="nb">export</span><span class="w"> </span><span class="nv">TRIAL_PROFILE</span><span class="o">=</span><span class="s2">"</span><span class="nv">$profile</span><span class="s2">"</span>
+<span class="w">  </span><span class="nb">export</span><span class="w"> </span>STUDIO_TRIAL_SOURCE_SHA256<span class="w"> </span>STUDIO_TRIAL_ASSET_VERSION<span class="w"> </span>STUDIO_TRIAL_PRODUCTION
+<span class="w">  </span><span class="nb">export</span><span class="w"> </span>STUDIO_TRIAL_JOB_ID<span class="w"> </span>STUDIO_TRIAL_TARGET_HEIGHT
+<span class="w">  </span><span class="nv">suffix</span><span class="o">=</span><span class="k">$(</span>openssl<span class="w"> </span>rand<span class="w"> </span>-hex<span class="w"> </span><span class="m">6</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nb">export</span><span class="w"> </span><span class="nv">TRIAL_OUTPUT</span><span class="o">=</span><span class="s2">"studio-matting-quality-</span><span class="nv">$suffix</span><span class="s2">"</span>
+<span class="w">  </span><span class="nv">manifest</span><span class="o">=</span><span class="k">$(</span>kustomize<span class="w"> </span>build<span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/quality"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .metadata.name = strenv(TRIAL_OUTPUT) |</span>
+<span class="s1">    .spec.template.spec.initContainers[0].args += [strenv(TRIAL_OUTPUT)] |</span>
+<span class="s1">    (.spec.template.spec.containers[0].volumeMounts[] | select(.name == "input").subPath) =</span>
+<span class="s1">      strenv(TRIAL_INPUT_DIR) |</span>
+<span class="s1">    (.spec.template.spec.containers[0].volumeMounts[] | select(.name == "jobs").subPath) =</span>
+<span class="s1">      ("data/studio/jobs/" + strenv(TRIAL_OUTPUT)) |</span>
+<span class="s1">    .spec.template.spec.containers[0].args += [</span>
+<span class="s1">      strenv(TRIAL_INPUT_NAME), strenv(STUDIO_TRIAL_SOURCE_SHA256),</span>
+<span class="s1">      strenv(STUDIO_TRIAL_ASSET_VERSION), strenv(STUDIO_TRIAL_PRODUCTION), strenv(STUDIO_TRIAL_JOB_ID),</span>
+<span class="s1">      strenv(STUDIO_TRIAL_TARGET_HEIGHT), strenv(TRIAL_PROFILE)</span>
+<span class="s1">    ]'</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$manifest</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+
+<span class="w">  </span>wait_terminal<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="nb">local</span><span class="w"> </span>condition<span class="w"> </span><span class="nv">deadline</span><span class="o">=</span><span class="k">$((</span><span class="nv">SECONDS</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="m">330</span><span class="k">))</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="o">((</span><span class="w"> </span>SECONDS<span class="w"> </span>&lt;<span class="w"> </span>deadline<span class="w"> </span><span class="o">))</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">      </span><span class="nv">condition</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>--request-timeout<span class="o">=</span>10s<span class="w"> </span>get<span class="w"> </span><span class="s2">"job/</span><span class="nv">$TRIAL_OUTPUT</span><span class="s2">"</span><span class="w"> </span>-o<span class="w"> </span>json<span class="w"> </span><span class="p">|</span>
+<span class="w">        </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'[.status.conditions[]? | select(.status == "True" and</span>
+<span class="s1">          (.type == "Complete" or .type == "Failed" or .type == "FailureTarget"))][0].type // ""'</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="w">      </span><span class="k">case</span><span class="w"> </span><span class="nv">$condition</span><span class="w"> </span><span class="k">in</span>
+<span class="w">        </span>Complete<span class="o">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="p">;;</span>
+<span class="w">        </span>Failed<span class="p">|</span>FailureTarget<span class="o">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="p">;;</span>
+<span class="w">      </span><span class="k">esac</span>
+<span class="w">      </span>sleep<span class="w"> </span><span class="m">5</span>
+<span class="w">    </span><span class="k">done</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span><span class="nv">gate</span><span class="o">=</span><span class="m">0</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Job completed successfully'</span><span class="w"> </span>wait_terminal<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">gate</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="nv">report</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>--request-timeout<span class="o">=</span>10s<span class="w"> </span>logs<span class="w"> </span><span class="s2">"job/</span><span class="nv">$TRIAL_OUTPUT</span><span class="s2">"</span><span class="w"> </span>-c<span class="w"> </span>matting<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">report</span><span class="o">=</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span>-z<span class="w"> </span><span class="nv">$report</span><span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nv">report</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>--request-timeout<span class="o">=</span>10s<span class="w"> </span>logs<span class="w"> </span><span class="s2">"job/</span><span class="nv">$TRIAL_OUTPUT</span><span class="s2">"</span><span class="w"> </span>-c<span class="w"> </span>reserve-output<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="p">|</span>
+<span class="w">      </span>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">report</span><span class="o">=</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span>final_report<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span>assert_json<span class="w"> </span><span class="s1">'length == 1 and (.[0] | type == "object")'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>report_check<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="nb">local</span><span class="w"> </span><span class="nv">predicate</span><span class="o">=</span><span class="nv">$1</span>
+<span class="w">    </span><span class="nb">shift</span>
+<span class="w">    </span>assert_json<span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="w"> </span><span class="s2">"length == 1 and (.[0] | (</span><span class="nv">$predicate</span><span class="s2">))"</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Final log line is a JSON report'</span><span class="w"> </span>final_report<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">gate</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Expected source, image and profile hashes on CPU with arena off'</span><span class="w"> </span>report_check<span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .source_sha256 == $source and .profile_sha256 == $profile and</span>
+<span class="s1">    .image_digest == $digest and .provider == "CPUExecutionProvider" and .cpu_arena == false</span>
+<span class="s1">  '</span><span class="w"> </span>--arg<span class="w"> </span><span class="nb">source</span><span class="w"> </span><span class="s2">"</span><span class="nv">$STUDIO_TRIAL_SOURCE_SHA256</span><span class="s2">"</span><span class="w"> </span>--arg<span class="w"> </span>profile<span class="w"> </span><span class="s2">"</span><span class="nv">$profile</span><span class="s2">"</span><span class="w"> </span>--arg<span class="w"> </span>digest<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">pin</span><span class="p">##*@</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">gate</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Cold load and request within limits with both memory phases measured'</span><span class="w"> </span>report_check<span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .startup_seconds &gt; 0 and .startup_seconds &lt;= 120 and .request_seconds &gt; 0 and .request_seconds &lt;= 35 and</span>
+<span class="s1">    .worker_memory.session_creation.peak_rss_bytes &gt; 0 and</span>
+<span class="s1">    (.worker_memory.requests | length) == 1 and .worker_memory.requests[0].peak_rss_bytes &gt; 0 and</span>
+<span class="s1">    .peak_rss_upper_bound_bytes &gt; 0 and .peak_rss_upper_bound_bytes &lt;= .memory_limit_bytes and</span>
+<span class="s1">    .memory_limit_bytes == 10737418240'</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">gate</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Verified cutout, mask and size ratio'</span><span class="w"> </span>report_check<span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .passed == true and .shape.alpha_threshold == 128 and</span>
+<span class="s1">    .shape.scale.numerator == $target and .shape.scale.denominator == .shape.bbox_height_px and</span>
+<span class="s1">    ([.artifacts.cutout, .artifacts.mask] |</span>
+<span class="s1">      all((.sha256 | test("^[0-9a-f]{64}$")) and .bytes &gt; 0 and .media_type == "image/png"))</span>
+<span class="s1">  '</span><span class="w"> </span>--argjson<span class="w"> </span>target<span class="w"> </span><span class="s2">"</span><span class="nv">$STUDIO_TRIAL_TARGET_HEIGHT</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">gate</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span>final_report<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">((</span><span class="w"> </span>gate<span class="w"> </span>!<span class="o">=</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">))</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'FAIL quality trial technical checks\n'</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">    </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'PASS quality trial technical checks\n'</span>
+<span class="o">)</span>
+</code></pre></div>
+<p>Within the private Studio workflow, composite the cutout over light and
+dark plates and inspect both at source zoom. Record the per-eye retention,
+both lash lines, at least 8 of 10 premarked visible flyaways, any halo and
+the hand corrections that would be needed. Save the numerical report
+and private locator on <a href="https://work.haynesnetwork.com/work_packages/451">OP451</a>.
+Keep quality acceptance pending until Tom judges the private result.</p>
+<h2 id="activation-retries-and-rollback">Activation, retries and rollback</h2>
+<p>Read-only accounting on 2026-11-25 showed 105.98 GiB allocatable and
+54.29 GiB requested, including Wan (24 GiB requested, 64 GiB limit),
+Foley (12 GiB, 32 GiB) and their API (128 MiB, 512 MiB). Adding the
+dormant local-model sidecar (8 GiB, 16 GiB) and one matting instance
+(8 GiB, 10 GiB) leaves 35.69 GiB unrequested. Existing limits sum
+to 239,904 MiB. At their limits, Wan, local model, the Studio queue
+worker and matting alone consume 98 GiB before offline render, Foley
+or other workloads. The node cannot carry those peaks simultaneously.
+Keep heavy jobs serialized unless measured headroom shows the second
+fits. Follow the Wan, Foley and local-model lease rules.
+<a href="https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/matting-backend-profile.md">Matting profile</a></p>
+<p>Sidecar activation after the smoke is tracked in
+<a href="https://work.haynesnetwork.com/work_packages/970">story 970</a>. The staged
+overlay below predates that story. First move the
+offline worker's Flux path to <code>studio-render/matting-pending</code> and verify its
+1 GiB request and 18-CPU, 32 GiB limit. Cap offline render commands at
+<code>--workers 16</code>. Then stage the queue consumer with
+<code>studio/matting-pending/activation</code>. The worker has 4 CPUs, 2 GiB
+requested and an 8 GiB limit. The matting sidecar has 2 CPUs,
+8 GiB requested and a 10 GiB limit. The two pods total 24 CPUs and 50 GiB.
+The <a href="../studio-segmentation-deployment/#activate-in-a-follow-up">segmentation activation overlay</a>
+builds on this render split and comes after matting. The
+serving command uses the same arena-off profile as the plain smoke. The
+sidecar uses a shared, group-writable <code>/matting</code> emptyDir and the read-only
+<code>/weights</code> mount. Only the worker keeps its API credential and media mounts. Stage
+per-attempt directories with shared GID 10001, permissions 2770, and an
+input readable by that group. Check <code>studio-matting ready</code> in the
+activated pod before sending any dispatch.</p>
+<p>If provisioning fails, preserve the logs and failed allocation. Investigate
+the code before deciding whether a fresh run is appropriate. A reviewed
+change to <code>data.allocation</code> selects the next two-digit suffix for the two
+Job names and their corresponding weights mount. Keep the original
+allocation intact. After a smoke failure, retain the exact model and any
+reported scores and record the coordinator's ruling before a new attempt.</p>
+<p>After both Jobs finish, capture their evidence before the 24-hour Job TTL
+removes their objects and pods. The coordinator can remove the
+<code>studio-matting-policy</code> Flux object and the provision/smoke templates in a
+follow-up GitOps PR. Update their release guard with the removal. Pruning
+removes the ConfigMap and targeted policies. Preserve the immutable
+allocation, selected pin and staged serving overlay.</p>
+<p>To roll back before activation, withdraw the one-shot stage in Git and stop
+launching Jobs. Let an existing Job reach its bound and preserve any data
+it wrote. After activation, disable dispatch first and revert the Studio
+worker's Flux path before restoring the offline 20-CPU path. Preserve the
+weights and artifacts regardless of the rollback. Reconcile and verify the
+previously authorized workloads after the Git changes.</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span>
+<span class="w">  </span><span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+<span class="w">  </span>flux<span class="w"> </span>reconcile<span class="w"> </span>kustomization<span class="w"> </span>cluster-apps<span class="w"> </span>-n<span class="w"> </span>flux-system<span class="w"> </span>--with-source
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span>kustomization<span class="w"> </span>studio-worker<span class="w"> </span>studio-render
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span>deploy<span class="w"> </span>studio-worker<span class="w"> </span>studio-render<span class="w"> </span>-o<span class="w"> </span>wide
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span>deploy<span class="w"> </span>studio-worker<span class="w"> </span>studio-render<span class="w"> </span>-o<span class="w"> </span>json<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .items | length == 2 and all(.[]; .status.availableReplicas &gt;= 1)</span>
+<span class="s1">  '</span>
+<span class="o">)</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024-2025 Thomas Haynes
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.path", "navigation.indexes", "search.suggest"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,1218 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentaiton for my home-ops style repository so I can have an idea what past me did when something breaks. Hopefully someone else finds something useful here too!">
+      
+      
+        <meta name="author" content="Tom Haynes">
+      
+      
+        <link rel="canonical" href="https://haynesops.com/reference/studio-fourth-release/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>OP967 fourth Studio release - HaynesOps</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#op967-fourth-studio-release" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="HaynesOps" class="md-header__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            HaynesOps
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              OP967 fourth Studio release
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1M8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 5-5 5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5M7 15a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="HaynesOps" class="md-nav__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    HaynesOps
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../this-site/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    This Site
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    This Site
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cluster/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cluster Essentials
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cluster Essentials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cluster/rook-ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rook Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheat Sheets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cheat Sheets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/siderolabs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Siderolabs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/kubernetes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kubernetes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#installed-evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installed evidence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#preflight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preflight
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wait-for-automatic-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wait for automatic deployment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migrate-while-the-third-pin-serves" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrate while the third pin serves
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Migrate while the third pin serves">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#retry-a-terminal-migration-with-a-new-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retry a terminal migration with a new PR
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#serving-while-matte-activation-is-pending" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Serving while matte activation is pending
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Serving while matte activation is pending">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#carried-to-story-970" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Carried to story 970
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#postflight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Postflight
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roll-back-workloads-through-a-reviewed-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roll back workloads through a reviewed PR
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="op967-fourth-studio-release">OP967 fourth Studio release</h1>
+<p><strong>Proven (2026-11-25).</strong> Under provisional ruling <strong>CR-65</strong>, this pin updated the
+API, web, MCP and the existing run, voice and image workers, applied migration
+<code>0013_matte_jobs</code>, and updated the offline render venv to PyAV 18.1.1 at 20 CPUs.
+Matte worker activation, including its credential and grant, registration,
+network isolation, listener extension and offline CPU change, is in
+<a href="https://work.haynesnetwork.com/work_packages/970">story 970</a>.</p>
+<p>The rollout started from Studio <code>80975a9</code> with Alembic
+<code>0012_release_constraints</code>. <a href="../studio-deployment/#op964-third-release">Third pin</a></p>
+<p>The <a href="../../kubernetes/main/apps/ai/studio/release.yaml">release record</a> pins
+the amd64 API and web/listener images from Studio <code>470a90af</code>. The guard checks
+their OCI revisions, the reviewed 0013 migration, listener authentication,
+Job names and health gates, and the offline lock export.
+<a href="https://github.com/thaynes43/haynes-studio/actions/runs/45692717257">Studio images run 45692717257</a>
+· <a href="https://github.com/thaynes43/haynes-studio/pull/146">Studio migration fix</a></p>
+<h2 id="installed-evidence">Installed evidence</h2>
+<p>Haynes-ops merged <code>59dc8678cbd7ed70648feccda53b3bdff9a86af4</code> at 22:42:26Z on
+2026-11-25. The installed Studio revision is
+<code>470a90af73a2201e6542b5d867853dce6facad04</code>. The coordinator recorded the rollout
+in story 967, comment 10322. <a href="https://github.com/thaynes43/haynes-ops/pull/5093">Merge PR</a>
+· <a href="https://work.haynesnetwork.com/work_packages/967">Story 967</a></p>
+<table>
+<thead>
+<tr>
+<th>Read or block</th>
+<th>Result (UTC, 2026-11-25)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Migration</td>
+<td><code>studio-migrate-c13c8ad74dfb</code> ran from 22:56:51Z to 22:57:05Z with one succeeded pod and zero failed pods. The audit read <code>0013_matte_jobs</code> under the migrator identity over TLS.</td>
+</tr>
+<tr>
+<td>Workloads</td>
+<td>API replicas started at 22:57:11Z and 22:57:32Z, and the voice and image workers at 22:58:23Z. The run worker started at 23:01:30Z after Helm reported the offline render worker Ready. The render pod started at 22:56:42Z with 20 CPUs and forwarding init. All new pods, including two web and two MCP replicas, were Ready with zero restarts.</td>
+</tr>
+<tr>
+<td><code>wait</code></td>
+<td>Passed at 23:02:12Z. Flux stages were Ready at the selected pin.</td>
+</tr>
+<tr>
+<td><code>postflight</code></td>
+<td><strong>75 PASS, 0 FAIL</strong> at 23:02:39Z. All three registration Jobs reused their tokens, both API endpoints were Ready, and the worker dependency reads passed. The three existing lane grants were present and read-only, the lanes were idle, the matte queue was empty and there was no matte grant. The listener checks passed.</td>
+</tr>
+<tr>
+<td>Gatus <code>internal/studio</code></td>
+<td>All 21 samples between the merge and 23:02Z returned the expected 401. The last six took 2–7 ms.</td>
+</tr>
+<tr>
+<td>Independent <code>verify</code></td>
+<td><strong>75 PASS, 0 FAIL</strong> from 23:06:36Z to 23:06:52Z, exit 0. Ran the block as its own Bash process from a clean checkout of the exact merge, with <code>MERGED_OPS_REVISION</code> set and no baseline.</td>
+</tr>
+</tbody>
+</table>
+<p>Comment 10322 reported 39 listener and lane probes. The pinned listener script
+sends 35 HTTP requests: 13 from voice, 13 from image and nine from run. The
+independent <code>verify</code> logged the expected 401, 403 or 422 for each request. The
+75 PASS total counts all PASS lines, including summary lines.</p>
+<p><strong>Changed.</strong> Flux fetched the merge at 22:56:10Z on its 30-minute poll,
+13 minutes 44 seconds after the merge. The audit accepted the later source
+revision <code>d618d8b8</code> because its Studio inputs matched the merge.</p>
+<p><strong>Changed.</strong> The coordinator's <code>wait</code> and <code>postflight</code> and the independent
+<code>verify</code> ran from session pods with Python 3.12 and PyYAML. Ingress reads went
+through the <code>studio-mcp</code> pod and internal ingress Service. <code>/</code> returned 200
+and <code>/v1/me</code> returned 401.</p>
+<p>The coordinator's <code>postflight</code> matched both archived runs, their deliveries and
+media indexes, and the store's file count, byte total, SHA-256 and modification
+time fingerprint against the pre-merge baseline. The independent <code>verify</code> found
+both archived runs, their linked deliveries and media indexes, and read the
+current store totals and fingerprints. Before-and-after equality comes from the
+coordinator's comparison with the private baseline. Tom's acceptance remains open.
+<a href="https://work.haynesnetwork.com/work_packages/967">Story 967</a></p>
+<p>The independent encoder reads confirmed PyAV 18.1.1 in the imported module and
+installed distribution metadata in both API replicas and the run, voice, image
+and offline render workers. All seven bundled library versions matched, including
+libavcodec 62.28.103 and libavformat 62.12.103. The mounted render requirements
+declared <code>av==18.1.1</code>. <a href="https://work.haynesnetwork.com/work_packages/966">Story 966</a></p>
+<h2 id="preflight">Preflight</h2>
+<p>Under provisional coordinator ruling <strong>CR-63</strong>, merging the reviewed PR
+is the only action that changes the cluster. Flux receives a GitHub push
+event and polls Git every 30 minutes. The stages start automatically when
+the new artifact arrives.</p>
+<p>Use Bash with GNU coreutils, jq, yq, Python 3.12 with PyYAML and Flux CLI 2.10.
+Every block can run from a session pod. Its ingress reads use
+<code>kubectl exec -i</code> into <code>studio-mcp</code> and connect to
+<code>traefik-internal.network.svc.cluster.local:443</code> with
+<code>studio.haynesops.com</code> as TLS SNI and HTTP Host. The probe verifies the
+certificate and sends anonymous GET requests for <code>/</code> and <code>/v1/me</code>.
+Work from the clean reviewed PR head incorporating
+current Ops <code>main</code>. Set <code>STUDIO_OP967_RECEIPT</code> and <code>STUDIO_OP967_BASELINE</code> to
+new paths in a private directory outside the checkout. Keep submissions
+closed and offline render idle through postflight. The render pod restarts
+on merge. Check that each API surge replica has a free eligible node.
+<a href="../studio-deployment/#op964-third-release">Third pin runbook</a></p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span>!<span class="w"> </span>bash<span class="w"> </span>scripts/studio-release/op967.sh<span class="w"> </span>preflight<span class="w"> </span><span class="o">||</span>
+<span class="w">   </span>!<span class="w"> </span>bash<span class="w"> </span>scripts/studio-release/op967.sh<span class="w"> </span>admit-merge<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'FAIL release preflight, hold the merge\n'</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="k">fi</span>
+</code></pre></div>
+<p>The merge gate fetches Ops <code>main</code> and checks the reviewed commit and tree,
+baseline hash, predecessor Job archive digest and every required PASS.
+Merge within 60 minutes of starting
+preflight. Take a fresh preflight if the PR head changes or the receipt
+expires. Save the receipt, baseline and four predecessor Job logs in
+<code>${STUDIO_OP967_RECEIPT}.jobs</code> for evidence and a possible retry. Flux prunes
+those Jobs and pod logs. The baseline hashes the database rows and store
+files and modification times.</p>
+<p>Preflight checks the old workloads, three Ready PostgreSQL instances,
+LAN status and worker dependencies. It requires
+zero queued, running or held Studio jobs, Wan with both active jobs null,
+an empty shared ComfyUI queue, and at most 10% CPU and 25% memory on
+<code>talosw01</code>. The offline app must measure at most 250m CPU and run only its
+idle PID 1 apart from the probe, with a complete PyAV 18.1.0 venv.</p>
+<h2 id="wait-for-automatic-deployment">Wait for automatic deployment</h2>
+<p>Check out the exact Ops merge and set <code>MERGED_OPS_REVISION</code> to its full
+SHA. The script reads Flux and fetches <code>main</code> before each comparison. It
+checks that the Git source, the rendered Studio stage definitions and the
+trees and rendered manifests at their paths match the selected merge.
+An unrelated descendant passes. A rewire, a changed stage input or an
+observed revision missing after the fetch fails with its revision. Each
+live stage at the selected pin must match every reviewed <code>spec</code> field.
+The sole allowed unlisted Flux v1 API default is <code>force: false</code>.
+A spec mismatch names the field. The inventory and each stage must
+report Ready for the current generation
+and a matching <strong>applied</strong> revision. An attempted revision alone is
+pending. After merge the audit uses the selected SHA and live state.</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span>!<span class="w"> </span>bash<span class="w"> </span>scripts/studio-release/op967.sh<span class="w"> </span>wait<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'FAIL automatic Flux rollout, keep submissions closed\n'</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="k">fi</span>
+</code></pre></div>
+<p>Report failed pickup if the artifact still precedes the merge at 35 minutes.
+After observing pickup, allow up to 35 minutes for stage readiness. While
+pending, the script samples the API pods and reads LAN status. It checks
+the two image pairs as workloads advance and requires a successful
+migration audit before treating any advanced workload as valid.</p>
+<table>
+<thead>
+<tr>
+<th>Flux stage</th>
+<th>Added or changed automatically on merge</th>
+<th>Pruned automatically</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AI inventory</td>
+<td>Updates migration and the existing registration gates.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>studio-render</code></td>
+<td>Adds the pinned render environment ConfigMap and updates the HelmRelease. Recreate rolls the offline pod once at 20 CPUs.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>studio-migration</code></td>
+<td>Creates the digest-named 0013 migration Job.</td>
+<td>Third-pin migration Job and pod logs.</td>
+</tr>
+<tr>
+<td><code>studio</code></td>
+<td>Rolls API replicas, web and MCP. Both API generations use the same port-8002 listener configuration.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>studio-worker-registration</code></td>
+<td>Creates the new run registration Job.</td>
+<td>Third-pin run registration Job and pod logs.</td>
+</tr>
+<tr>
+<td><code>studio-worker</code></td>
+<td>Replaces the run worker pod.</td>
+<td></td>
+</tr>
+<tr>
+<td><code>studio-media-worker-registration</code></td>
+<td>Creates the new voice and image registration Jobs.</td>
+<td>Third-pin voice and image registration Jobs and pod logs.</td>
+</tr>
+<tr>
+<td><code>studio-media-workers</code></td>
+<td>Replaces the voice and image worker pods.</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Offline render and migration can start in parallel. API, web and MCP wait
+for the successful migration. The run worker waits for the API stage, its
+registration and the Helm-ready render worker. Voice and image wait for the
+API stage and their registrations. The render worker builds a new venv from
+the exact lock export and keeps older completed Python environments on the
+share. Cleanup remains unwritten. Its forwarding PID 1 reaps children and
+forwards termination to the startup process group.</p>
+<h2 id="migrate-while-the-third-pin-serves">Migrate while the third pin serves</h2>
+<p><code>0013_matte_jobs</code> widens the three lane checks on <code>media_job_lanes</code>,
+<code>queue_lane_events</code> and <code>worker_lane_grants</code>, and the kind, lane and
+board/story checks on <code>media_jobs</code>. It seeds the matte FIFO and adds
+<code>matte_releases SMALLINT NOT NULL DEFAULT 0</code> with column-scoped runtime
+UPDATE permission. The constraint changes and writes commit together.
+The migration locks grants, media lanes, pause events and media jobs in
+that order. PostgreSQL's 500 ms timeout applies per lock acquisition. The
+grant lock can queue and the other three prelocks use <code>NOWAIT</code>. A readiness
+or worker-authentication read queued behind the migration can wait for the
+grant lock budget plus DDL and commit, about 10 ms at the installed table
+sizes. The independent fixture measured a 502 ms grant read when the holder
+released just before timeout. The guarantee covers lock acquisition. API
+readiness and worker requests can take longer. A lock timeout rolls the
+upgrade back to <code>0012_release_constraints</code> and the Job retries within its
+two-retry, 300-second budget. Keep sampling the old pods while the Job runs.
+Record when the active window is too short to sample.</p>
+<p><strong>Source verified.</strong> The <code>80975a9</code> readiness probe selects existing columns
+and tables with <code>LIMIT 0</code>. It doesn't require an exact Alembic revision.
+Old claims and pause reads use explicit run, voice and image lanes. Old
+media inserts and updates use named columns, and the release counter's
+server default covers old inserts. The widened predicates still admit
+the original job kinds and their original board/story associations.
+Old catalog, release and archive queries use the same columns and rows.
+The compatibility is for the original workloads. The old job provenance
+parser cannot display a matte job document, and the matte lane is absent
+from its queue controls. Retain those records for a forward recovery.
+<a href="https://github.com/thaynes43/haynes-studio/blob/80975a9e958d0bed78ab530c2b20f1279bf7ebe6/src/haynes_studio/api/app.py#L226">Old readiness</a>
+· <a href="https://github.com/thaynes43/haynes-studio/blob/80975a9e958d0bed78ab530c2b20f1279bf7ebe6/src/haynes_studio/db/jobs.py#L36">Old queue SQL</a>
+· <a href="https://github.com/thaynes43/haynes-studio/blob/80975a9e958d0bed78ab530c2b20f1279bf7ebe6/src/haynes_studio/queue/media_inputs.py#L51">Old job parser</a></p>
+<p>Flux owns the migration and registration Jobs. The <code>studio</code> apply stage
+depends on the migration Kustomization and its successful digest-named Job.
+The rollout keeps <code>maxUnavailable: 0</code> on the API.</p>
+<p>The migration Job verifies the TLS login before upgrading and reports its
+committed head. Each migration and registration read identifies the current
+Job UID, requires exactly one succeeded pod owned by that Job and reads the
+last line starting with <code>{</code> from its successful container. For a registration
+the last JSON result identifies the worker and the earlier matching audit
+line confirms its status. An older failed pod is normal after a retry. A
+Complete Job with zero or multiple succeeded pods fails the audit.</p>
+<h3 id="retry-a-terminal-migration-with-a-new-pr">Retry a terminal migration with a new PR</h3>
+<p><strong>Expected.</strong> The fourth-pin rollout completed on the first attempt.</p>
+<p>Keep submissions closed. From current Ops <code>main</code>, change only these two
+files under <code>kubernetes/main/apps/ai/studio/</code>. In <code>migration/job.yaml</code>,
+increment the terminal Job name to its next <code>-rN</code> suffix, starting at
+<code>-r1</code>. In <code>ks.yaml</code>, update the <code>studio-migration</code> Job health check to the
+same name. Keep the image and Job spec. Code or configuration recovery
+requires a separate review.</p>
+<p>On the clean reviewed retry head, set <code>STUDIO_OP967_FAILED_OPS_REVISION</code>
+and <code>STUDIO_OP967_PREVIOUS_RECEIPT</code> to the failed Ops merge and its receipt.
+Use new private receipt and baseline paths.</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span>!<span class="w"> </span>bash<span class="w"> </span>scripts/studio-release/op967.sh<span class="w"> </span>retry-preflight<span class="w"> </span><span class="o">||</span>
+<span class="w">   </span>!<span class="w"> </span>bash<span class="w"> </span>scripts/studio-release/op967.sh<span class="w"> </span>admit-merge<span class="w"> </span>retry<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'FAIL retry preflight, hold the merge\n'</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="k">fi</span>
+</code></pre></div>
+<p>The retry preflight checks for a Failed Job with zero active pods. It
+verifies the saved predecessor Job archive, the original baseline and
+fresh hashes. It requires Ready third-pin workloads and endpoints. Idle render may already
+be on PyAV 18.1.1. All other preflight checks apply.</p>
+<ul>
+<li><strong>Complete 0012.</strong> The primary reports <code>0012_release_constraints</code>, all six
+  original constraint definitions and both 0012 foreign keys, with the release
+  column absent. Use the replacement Job above to apply 0013 and read it back.</li>
+<li><strong>Committed 0013.</strong> The primary reports <code>0013_matte_jobs</code>, all six exact widened
+  check definitions, both 0012 foreign keys, the <code>SMALLINT NOT NULL DEFAULT 0</code>
+  release column and its <code>UPDATE</code> grant to <code>studio_app</code>, and a positive matte FIFO
+  position. The replacement Job reads back the already committed head. The
+  workload revert below is also available.</li>
+</ul>
+<p>The catalogue uses PostgreSQL 16's <code>pg_get_constraintdef</code> and reads the CNPG
+primary over its peer socket in a read-only transaction. A different catalogue
+state fails preflight. After the retry PR merges, use its exact merge with <code>wait</code>
+and <code>postflight</code> and the retry baseline.</p>
+<h2 id="serving-while-matte-activation-is-pending">Serving while matte activation is pending</h2>
+<p>The API readiness probe requires the matte FIFO row seeded by 0013. The API
+and MCP start with their existing configuration, and the run, voice and image
+workers claim using their own lanes and existing bearer tokens. The matting
+profile and sidecar client are loaded only by <code>studio-worker --lane matte</code>.
+Port 8002 keeps the existing five POST routes for voice and image; only those
+pods use that listener. The API's worker authentication looks up a single
+presented token and grant per request. <a href="https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/api/app.py#L225">API readiness and startup</a>
+· <a href="https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/mcp/server.py#L270">MCP startup</a>
+· <a href="https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/queue/worker.py#L236">Worker startup</a>
+· <a href="https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/api/auth.py">Worker authentication</a></p>
+<p>The pinned API has no submission gate tied to matte worker registration. A
+valid matte request returns HTTP 202 and waits queued until a registered matte
+worker claims it. The queue pause controls claiming and still accepts submissions.
+Keep matte submissions closed operationally until story 970 activates the worker.
+<a href="https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/api/job_routes.py#L235">Submit handler</a>
+· <a href="https://github.com/thaynes43/haynes-studio/blob/470a90af73a2201e6542b5d867853dce6facad04/src/haynes_studio/api/run_routes.py#L333">Lane authorization</a></p>
+<h3 id="carried-to-story-970">Carried to story 970</h3>
+<ul>
+<li><strong>P2.</strong> A queued cutout can keep image submission disabled when following
+  <strong>Generate asset</strong> from the same view. <strong>Close job view</strong> restores submission.
+  A queued matte job also fails postflight and requires a recorded matte pause
+  before the rollback snapshot can proceed.</li>
+<li><strong>P3.</strong> Pin the local helper entry points permitted by the read-only command
+  scanner and inspect their payloads.</li>
+<li><strong>P3.</strong> Compare the full offline requirements list with the pinned Studio
+  export in required CI.</li>
+<li><strong>P3.</strong> Add tests that fail when each independent release-phase and schema
+  guard is removed, including the all-stale encoder case.</li>
+</ul>
+<p><a href="https://work.haynesnetwork.com/work_packages/970">Story 970</a> · <a href="https://github.com/thaynes43/haynes-ops/pull/5093#issuecomment-7176652850">Independent review</a></p>
+<h2 id="postflight">Postflight</h2>
+<p>Run from the selected merge with <code>STUDIO_OP967_BASELINE</code> set. The script
+reads every Flux stage, the migration and three registration Job audits,
+workloads, endpoints, engines, encoders, LAN and the data snapshot. The
+snapshot requires three existing grants, no matte grant, no queued, running
+or held jobs in the matte queue, idle existing lanes and unchanged archives.
+It rechecks Flux before the listener POST probes, which fail validation or
+authorization before a write. Keep submissions closed through verification.</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span>!<span class="w"> </span>bash<span class="w"> </span>scripts/studio-release/op967.sh<span class="w"> </span>postflight<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'FAIL release verification, keep submissions closed\n'</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="k">fi</span>
+</code></pre></div>
+<p>Use <code>verify</code> for the same audits and status probes with an optional baseline.</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span>!<span class="w"> </span>bash<span class="w"> </span>scripts/studio-release/op967.sh<span class="w"> </span>verify<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'FAIL release verification\n'</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="k">fi</span>
+</code></pre></div>
+<p>The probe reports <code>av.__version__</code> and <code>av.library_versions</code> from both API
+pods, the run, voice and image workers and the offline render venv.
+It requires 18.1.1 and identical bundled library versions. Record the
+actual values and the data comparisons on both
+<a href="https://work.haynesnetwork.com/work_packages/966">966</a> and
+<a href="https://work.haynesnetwork.com/work_packages/967">967</a> from the Codex
+postflight session. This proof reads the installed encoders and archived
+data without rebuilding deliveries or runs.</p>
+<p>The listener probes require anonymous claim to return 401, malformed or
+unknown-lane claims to return 422, and a known other lane (including matte)
+or disallowed <code>settle_only</code> to return 403. The port-8002 listener refuses
+<code>/resume</code>. The API refuses forwarded media requests that default to the run
+lane. The run worker's malformed <code>/resume</code> reaches API validation. Record
+engine reachability and Gatus before opening run, voice and image submissions. <a href="../studio-deployment/#gatus-and-backup-coverage">Gatus check</a></p>
+<p>The static check permits <code>kubectl get</code>, <code>logs</code>, <code>wait</code>, and <code>top</code> with the
+reviewed read flags. Its named <code>kubectl exec</code> probes read PostgreSQL and the
+store, dependency and ingress status, the idle render process, encoder versions
+and worker engines. Flux renders local inputs with <code>flux build kustomization
+--dry-run --in-memory-build</code>. Direct HTTP reads use GET or HEAD. The named
+listener module sends only POSTs expected to fail at the listener,
+authentication, lane authorization or payload validation.</p>
+<h2 id="roll-back-workloads-through-a-reviewed-pr">Roll back workloads through a reviewed PR</h2>
+<p><strong>Expected.</strong> The fourth-pin rollout completed without a workload rollback.</p>
+<p>Keep submissions closed until active and held work settles. The snapshot
+allows queued matte jobs with a recorded matte pause and preserves any matte
+job and pause records. Keep schema 0013. Old migration images cannot resolve it.</p>
+<p>Base a workloads-only revert on current Ops <code>main</code>. Under
+<code>kubernetes/main/apps/ai/studio/</code>, use the verified third-pin manifests.</p>
+<ul>
+<li>Restore the image pair in <code>app/api.yaml</code>, <code>app/mcp.yaml</code>, <code>app/web.yaml</code>,
+  <code>worker/deployment.yaml</code> and <code>media-workers/{voice,image}.yaml</code>. The generated
+  port-8002 ConfigMap stays available at <code>studio-media-worker-routes-cbf48cht27</code>.</li>
+<li>Restore <code>worker-registration/job.yaml</code> and
+  <code>media-worker-registration/{voice,image}-job.yaml</code> and their three Job health
+  names in <code>ks.yaml</code>. Keep the render dependency and Helm health check.</li>
+<li>Retain <code>migration/job.yaml</code>, its Kustomization and <code>release.yaml</code> as the
+  schema pin. Keep the offline render venv at PyAV 18.1.1 and its limit at 20 CPUs.
+  Adjust the release guard to assert the third-pin workload pair alongside the
+  fourth-pin migration and render lock.</li>
+<li>Keep the exact migration Job health check when the Job completed. For
+  a terminal Job with verified 0013, remove the <code>healthChecks</code> field from
+  <code>studio-migration</code> in this revert. Flux can then reconcile the restored
+  workloads against the retained schema. The terminal Job stays available
+  as evidence.</li>
+</ul>
+<p>On the reviewed revert head, set <code>MERGED_OPS_REVISION</code> to the fourth-pin
+merge and set new private <code>STUDIO_OP967_RECEIPT</code> and
+<code>STUDIO_OP967_BASELINE</code> paths. The preflight checks the live Flux
+sequence, the idle offline environment and ingress. It checks the
+successful Job's log or, for a terminal Job, verifies the complete
+0013 catalogue on the primary. It takes the data snapshot from a Ready
+API pod on either verified image, so it works during a stalled turnover.</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span>!<span class="w"> </span>bash<span class="w"> </span>scripts/studio-release/op967.sh<span class="w"> </span>rollback-preflight<span class="w"> </span><span class="o">||</span>
+<span class="w">   </span>!<span class="w"> </span>bash<span class="w"> </span>scripts/studio-release/op967.sh<span class="w"> </span>admit-merge<span class="w"> </span>rollback<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'FAIL rollback preflight, hold the merge\n'</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="k">fi</span>
+</code></pre></div>
+<p>After the revert merges, return to the fourth-pin checkout. Set
+<code>ROLLBACK_OPS_REVISION</code> to the full revert merge SHA and set
+<code>STUDIO_OP967_ROLLBACK_BASELINE</code> to the revert preflight's snapshot.
+Run the same <code>wait</code> block, then compare the old images, endpoints,
+engine reachability and retained schema and data.</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span><span class="w"> </span>!<span class="w"> </span>bash<span class="w"> </span>scripts/studio-release/op967.sh<span class="w"> </span>compare<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'FAIL rollback read-back, keep submissions closed\n'</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="k">fi</span>
+</code></pre></div>
+<p>Record the Gatus result before reopening the original lanes. A forward
+fix is needed to resume matte submissions and job detail.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024-2025 Thomas Haynes
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.path", "navigation.indexes", "search.suggest"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,1309 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentaiton for my home-ops style repository so I can have an idea what past me did when something breaks. Hopefully someone else finds something useful here too!">
+      
+      
+        <meta name="author" content="Tom Haynes">
+      
+      
+        <link rel="canonical" href="https://haynesops.com/reference/studio-upscaling-deployment/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Stage the Studio upscaling comparison - HaynesOps</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#stage-the-studio-upscaling-comparison" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="HaynesOps" class="md-header__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            HaynesOps
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Stage the Studio upscaling comparison
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1M8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 5-5 5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5M7 15a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="HaynesOps" class="md-nav__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    HaynesOps
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../this-site/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    This Site
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    This Site
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cluster/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cluster Essentials
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cluster Essentials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cluster/rook-ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rook Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheat Sheets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cheat Sheets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/siderolabs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Siderolabs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/kubernetes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kubernetes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#pin-and-reconcile-the-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pin and reconcile the policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#provision-and-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provision and verify
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-the-measuring-smoke" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run the measuring smoke
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-the-private-comparison" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run the private comparison
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#handoff-retries-and-rollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Handoff, retries and rollback
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="stage-the-studio-upscaling-comparison">Stage the Studio upscaling comparison</h1>
+<p>CR-35 keeps Pillow Lanczos in delivery and permits a private CPU comparison
+with FSRCNN ×2 followed by Lanczos. Provisional CR-49 adds stored proxy frames
+and an optional master reference. Allocation <code>-02</code> was provisioned and its
+measuring smoke failed two quality verdicts. Allocation <code>-03</code> was provisioned
+and its measuring smoke passed under provisional CR-56. The private
+comparison attempt is <strong>Changed</strong>. Tom's verdict is pending.
+<a href="https://work.haynesnetwork.com/work_packages/461">Story 461</a> ·
+<a href="https://github.com/thaynes43/haynes-studio/blob/main/docs/reference/upscaling-backend-profile.md">Studio profile</a></p>
+<p>Provisional CR-55 removes the dormant upscaling sidecar on the Studio worker,
+the separate render overlay, and its CPU split. Upscaling is staged only for
+the private comparison, so delivery stays on Lanczos and the matting and
+segmentation render overlays can compose in order. The comparison result and
+Tom's choice determine whether to write a serving story.</p>
+<h2 id="pin-and-reconcile-the-policy">Pin and reconcile the policy</h2>
+<ol>
+<li>Merge the Studio source PR. Read the full revision and upscaling digest in
+   the successful <strong>Publish tested Studio images</strong> summary on Studio <code>main</code>.</li>
+<li>Set only <code>data.image</code> in the Ops <a href="../../kubernetes/main/apps/ai/studio/upscaling-pending/release/release.yaml">release file</a>.
+   The release guard fetches the immutable OCI manifest and config, checks
+   their digests and verifies the resource label and <code>stored-proxy-frame-v2</code>
+   comparison capability. The guard refuses the <code>-02</code> image because it still
+   applies the former absolute caps. Provision the published CR-56 image
+   under <code>upscaling-op461-fsrcnn-x2-v1-03</code>. The measuring smoke requests
+   2 GiB and caps at 8 GiB on talosw01. The 2 GiB quality
+   budget from CR-35 is checked against the observed peak. Merge after the
+   release guard passes with the published pin.</li>
+<li>Run the following in Bash from that Ops revision. Flux owns just the
+   ConfigMap with the provisioner and the three targeted policies. The
+   download pod can use CoreDNS and HTTPS for the immutable raw GitHub URL.
+   Smoke, probe and comparison have ingress and egress denied. Each Job is created
+   once by the coordinator. Provision and smoke are retained for 24 hours.
+   The probe and comparison expire one hour after finishing.</li>
+</ol>
+<p>Keep these helpers in the shell for the other blocks. Each check reports its
+own result. An idle gate failure prevents the Job creation. Before
+2026-11-25 14:30Z, the idle gates read only <code>/health</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="nv">stage</span><span class="o">=</span>kubernetes/main/apps/ai/studio/upscaling-pending
+
+check<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="nb">local</span><span class="w"> </span><span class="nv">label</span><span class="o">=</span><span class="nv">$1</span>
+<span class="w">  </span><span class="nb">shift</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="k">then</span><span class="w"> </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'PASS %s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$label</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">  </span><span class="k">else</span><span class="w"> </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'FAIL %s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$label</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span><span class="p">;</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="k">fi</span>
+<span class="o">}</span>
+
+check_json<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="nb">local</span><span class="w"> </span><span class="nv">label</span><span class="o">=</span><span class="nv">$1</span><span class="w"> </span><span class="nv">predicate</span><span class="o">=</span><span class="nv">$2</span>
+<span class="w">  </span><span class="nb">shift</span><span class="w"> </span><span class="m">2</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s2">"</span><span class="nv">$label</span><span class="s2">"</span><span class="w"> </span>jq<span class="w"> </span>-es<span class="w"> </span><span class="s2">"</span><span class="nv">$@</span><span class="s2">"</span><span class="w"> </span><span class="s2">"length == 1 and (.[0] | (</span><span class="nv">$predicate</span><span class="s2">))"</span><span class="w"> </span>&gt;/dev/null
+<span class="o">}</span>
+
+read_endpoint<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span><span class="s2">"</span><span class="nv">$1</span><span class="s2">"</span><span class="w"> </span>-c<span class="w"> </span><span class="s2">"</span><span class="nv">$2</span><span class="s2">"</span><span class="w"> </span>--<span class="w"> </span>python<span class="w"> </span>-B<span class="w"> </span>-c<span class="w"> </span><span class="s1">'</span>
+<span class="s1">import sys</span>
+<span class="s1">from urllib.request import urlopen</span>
+<span class="s1">with urlopen(sys.argv[1], timeout=5) as response:</span>
+<span class="s1">    sys.stdout.buffer.write(response.read())</span>
+<span class="s1">'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$3</span><span class="s2">"</span>
+<span class="o">}</span>
+
+idle_gate<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="nb">local</span><span class="w"> </span>node<span class="w"> </span>render
+<span class="w">  </span><span class="nv">node</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>top<span class="w"> </span>node<span class="w"> </span>talosw01<span class="w"> </span>--no-headers<span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">node</span><span class="o">=</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$node</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'talosw01 CPU at most 10% and memory at most 25%'</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">'</span>
+<span class="s1">    $1 == "talosw01" &amp;&amp; NF == 5 &amp;&amp; $3 ~ /^[0-9]+%$/ &amp;&amp; $5 ~ /^[0-9]+%$/ &amp;&amp;</span>
+<span class="s1">    $3+0 &lt;= 10 &amp;&amp; $5+0 &lt;= 25 {pass=1}</span>
+<span class="s1">    END {exit !pass}</span>
+<span class="s1">  '</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$node</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">render</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>top<span class="w"> </span>pod<span class="w"> </span>--containers<span class="w"> </span>--no-headers<span class="w"> </span>-l<span class="w"> </span>app.kubernetes.io/name<span class="o">=</span>studio-render<span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">render</span><span class="o">=</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$render</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'render app CPU at most 250m'</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">'</span>
+<span class="s1">    $2 == "app" {n++; if ($3 ~ /^[0-9]+m$/ &amp;&amp; $3+0 &lt;= 250) pass++}</span>
+<span class="s1">    END {exit !(n == 1 &amp;&amp; pass == 1)}</span>
+<span class="s1">  '</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$render</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>read_endpoint<span class="w"> </span>deploy/wan-video<span class="w"> </span>api<span class="w"> </span>http://127.0.0.1:8080/v1/ready<span class="w"> </span><span class="p">|</span>
+<span class="w">    </span>check_json<span class="w"> </span><span class="s1">'Wan idle'</span><span class="w"> </span><span class="s1">'.ready == true and</span>
+<span class="s1">      has("active_video_job") and .active_video_job == null and</span>
+<span class="s1">      has("active_foley_job") and .active_foley_job == null'</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>read_endpoint<span class="w"> </span>comfyui-0<span class="w"> </span>app<span class="w"> </span>http://127.0.0.1:8188/queue<span class="w"> </span><span class="p">|</span>
+<span class="w">    </span>check_json<span class="w"> </span><span class="s1">'shared ComfyUI queue empty'</span><span class="w"> </span><span class="s1">'.queue_running == [] and .queue_pending == []'</span>
+<span class="o">}</span>
+
+wait_for_job<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span><span class="nb">local</span><span class="w"> </span><span class="nv">name</span><span class="o">=</span><span class="nv">$1</span><span class="w"> </span>condition<span class="w"> </span><span class="nv">stop</span><span class="o">=</span><span class="k">$((</span><span class="nv">SECONDS</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="m">330</span><span class="k">))</span>
+<span class="w">  </span><span class="k">while</span><span class="w"> </span><span class="o">((</span><span class="w"> </span>SECONDS<span class="w"> </span>&lt;<span class="w"> </span>stop<span class="w"> </span><span class="o">))</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">    </span><span class="nv">condition</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span><span class="s2">"job/</span><span class="nv">$name</span><span class="s2">"</span><span class="w"> </span>-o<span class="w"> </span>json<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'</span>
+<span class="s1">      [.status.conditions[]? | select(.status == "True" and (.type == "Failed" or .type == "FailureTarget" or .type == "Complete")) | .type][0] // ""</span>
+<span class="s1">    '</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s2">"</span><span class="nv">$condition</span><span class="s2">"</span><span class="w"> </span><span class="k">in</span>
+<span class="w">      </span>Complete<span class="o">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="p">;;</span>
+<span class="w">      </span>Failed<span class="p">|</span>FailureTarget<span class="o">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="p">;;</span>
+<span class="w">    </span><span class="k">esac</span>
+<span class="w">    </span>sleep<span class="w"> </span><span class="m">10</span>
+<span class="w">  </span><span class="k">done</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<span class="o">}</span>
+
+final_report<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>logs<span class="w"> </span><span class="s2">"job/</span><span class="nv">$1</span><span class="s2">"</span><span class="w"> </span>-c<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">2</span><span class="k">:-</span><span class="nv">upscaling</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span>
+<span class="w">    </span>awk<span class="w"> </span><span class="s1">'/^\{/ {line=$0} END {if (line != "") print line}'</span>
+<span class="o">}</span>
+
+<span class="o">(</span>
+<span class="w">  </span><span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+<span class="w">  </span>python3<span class="w"> </span>scripts/tests/studio-release/check.py<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>flux<span class="w"> </span>reconcile<span class="w"> </span>kustomization<span class="w"> </span>cluster-apps<span class="w"> </span>-n<span class="w"> </span>flux-system<span class="w"> </span>--with-source<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>flux<span class="w"> </span>reconcile<span class="w"> </span>kustomization<span class="w"> </span>studio-upscaling-policy<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'upscaling policy revision ready'</span><span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">wait</span><span class="w"> </span>--for<span class="o">=</span><span class="nv">condition</span><span class="o">=</span>ready<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>kustomization/studio-upscaling-policy<span class="w"> </span>--timeout<span class="o">=</span>2m<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'all three targeted policies present'</span><span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span>ciliumnetworkpolicy<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>studio-upscaling-provision<span class="w"> </span>studio-upscaling-smoke<span class="w"> </span>studio-upscaling-compare<span class="w"> </span>-o<span class="w"> </span>name
+<span class="o">)</span>
+</code></pre></div>
+<h2 id="provision-and-verify">Provision and verify</h2>
+<p>The Job streams the exact 38,973-byte graph to a new allocation. The writer
+syncs and drops cached pages every 64 MiB and at EOF under a 1 GiB container
+limit, then verifies the Git blob ID and file SHA-256 from read-back. It writes
+the image, tool, host CPU and resource manifest and the pinned image's
+<code>FSRCNN-NOTICE</code> before publishing the weights directory. The following block also verifies the published files independently.
+If NFS omits free inode counts, set <code>OP461_INODE_RESERVE_CONFIRMED=yes</code> only
+after the existing storage owner confirms room for 1,024 planned entries and at
+least 1,024 further free entries. Keep failed allocations in the file budget.</p>
+<p><strong>Proven, 2026-11-25 14:38Z.</strong> <code>studio-upscaling-provision-02</code> published
+allocation <code>upscaling-op461-fsrcnn-x2-v1-02</code>. Read-back verified the 38,973-byte
+graph, raw SHA-256 <code>366b33f0084c7b3f2bf6724f0a2c77bca94fcec9d7b6d72389d330073b380d5c</code>,
+Git blob <code>2509b0e19b8a45ebce2ba50128e2fcb43ce8589c</code>, profile
+<code>dd4518ebcd629f390bd4550f4f05465737d8ff9abbef0ef3e96abf1db7e3ab66</code> and the
+licence notice. The share reported no free-file count. The operator confirmed
+the reserve with <code>OP461_INODE_RESERVE_CONFIRMED=yes</code>.
+<a href="https://work.haynesnetwork.com/work_packages/461#activity-10180">Provisioning evidence</a></p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span>
+<span class="w">  </span><span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+<span class="w">  </span><span class="nv">provision</span><span class="o">=</span><span class="k">$(</span>kustomize<span class="w"> </span>build<span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/provision"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'select(.kind == "Job")'</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">job</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.metadata.name'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$provision</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">config</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.spec.template.spec.volumes[] |</span>
+<span class="s1">    select(.name == "config") | .configMap.name'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$provision</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">allocation</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.data.allocation'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/release/release.yaml"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'Flux provisioner ConfigMap present'</span><span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span><span class="s2">"configmap/</span><span class="nv">$config</span><span class="s2">"</span><span class="w"> </span>-o<span class="w"> </span>name<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'40 GiB free on the Studio jobs filesystem'</span><span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>deploy/studio-render<span class="w"> </span>-c<span class="w"> </span>app<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-ec<span class="w"> </span><span class="s1">'</span>
+<span class="s1">    df -Pk /studio/jobs | awk "NR == 2 { print; if (\$4 &gt;= 41943040) good = 1 } END { exit !good }"</span>
+<span class="s1">  '</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">entries</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>deploy/studio-render<span class="w"> </span>-c<span class="w"> </span>app<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-ec<span class="w"> </span><span class="s1">'df -Pi /studio/jobs'</span><span class="w"> </span><span class="p">|</span>
+<span class="w">    </span>awk<span class="w"> </span><span class="s1">'NR == 2 {print $4}'</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'jobs inode budget and reserve confirmed'</span><span class="w"> </span>bash<span class="w"> </span>-ec<span class="w"> </span><span class="s1">'</span>
+<span class="s1">    [[ $1 =~ ^[0-9]+$ ]] &amp;&amp; (( $1 &gt;= 2048 )) || [[ $1 == "-" &amp;&amp; $2 == "yes" ]]</span>
+<span class="s1">  '</span><span class="w"> </span>--<span class="w"> </span><span class="s2">"</span><span class="nv">$entries</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">OP461_INODE_RESERVE_CONFIRMED</span><span class="k">:-</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'provision Job created'</span><span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$provision</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">status</span><span class="o">=</span><span class="m">0</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'provision Job complete'</span><span class="w"> </span>wait_for_job<span class="w"> </span><span class="s2">"</span><span class="nv">$job</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="nv">report</span><span class="o">=</span><span class="k">$(</span>final_report<span class="w"> </span><span class="s2">"</span><span class="nv">$job</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">report</span><span class="o">=</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'provision JSON report present'</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span>
+<span class="w">  </span>check_json<span class="w"> </span><span class="s1">'provisioned graph and profile pins'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .graph_bytes == 38973 and</span>
+<span class="s1">    .graph_sha256 == "366b33f0084c7b3f2bf6724f0a2c77bca94fcec9d7b6d72389d330073b380d5c" and</span>
+<span class="s1">    .graph_git_blob == "2509b0e19b8a45ebce2ba50128e2fcb43ce8589c" and</span>
+<span class="s1">    (.profile_sha256 | test("^[0-9a-f]{64}$")) and</span>
+<span class="s1">    (.notice_sha256 | test("^[0-9a-f]{64}$"))</span>
+<span class="s1">  '</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="o">((</span><span class="w"> </span><span class="nv">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">))</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="s2">"</span><span class="nv">$status</span><span class="s2">"</span>
+<span class="w">  </span><span class="nv">profile</span><span class="o">=</span><span class="k">$(</span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'.profile_sha256'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="k">)</span>
+<span class="w">  </span><span class="nv">notice</span><span class="o">=</span><span class="k">$(</span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'.notice_sha256'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="k">)</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-i<span class="w"> </span>deploy/studio-render<span class="w"> </span>-c<span class="w"> </span>app<span class="w"> </span>--<span class="w"> </span>python<span class="w"> </span>-B<span class="w"> </span>-<span class="w"> </span><span class="s2">"</span><span class="nv">$allocation</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$profile</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$notice</span><span class="s2">"</span><span class="w"> </span><span class="s">&lt;&lt;'PY'</span>
+<span class="s">from hashlib import sha1, sha256</span>
+<span class="s">from pathlib import Path</span>
+<span class="s">import sys</span>
+
+<span class="s">weights = Path("/studio/jobs") / sys.argv[1] / "weights"</span>
+<span class="s">graph = (weights / "FSRCNN_x2.pb").read_bytes()</span>
+<span class="s">manifest = (weights / "profile.json").read_bytes()</span>
+<span class="s">notice = (weights / "FSRCNN-NOTICE").read_bytes()</span>
+<span class="s">checks = {</span>
+<span class="s">    "graph bytes": len(graph) == 38973,</span>
+<span class="s">    "graph SHA-256": sha256(graph).hexdigest() == "366b33f0084c7b3f2bf6724f0a2c77bca94fcec9d7b6d72389d330073b380d5c",</span>
+<span class="s">    "Git blob": sha1(b"blob 38973\0" + graph, usedforsecurity=False).hexdigest() == "2509b0e19b8a45ebce2ba50128e2fcb43ce8589c",</span>
+<span class="s">    "profile": sha256(manifest).hexdigest() == sys.argv[2] == (weights / "profile.sha256").read_text().strip(),</span>
+<span class="s">    "licence notice": bool(notice) and sha256(notice).hexdigest() == sys.argv[3],</span>
+<span class="s">}</span>
+<span class="s">for label, passed in checks.items():</span>
+<span class="s">    print(f"{'PASS' if passed else 'FAIL'} {label}")</span>
+<span class="s">raise SystemExit(not all(checks.values()))</span>
+<span class="s">PY</span>
+<span class="o">)</span>
+</code></pre></div>
+<h2 id="run-the-measuring-smoke">Run the measuring smoke</h2>
+<p>Choose a window with no heavy render, Wan or Foley work. The idle gate reads
+node and render load, requires Wan readiness with both video and Foley
+idle, and checks the queue from <code>comfyui-0</code> itself. Keep this window exclusive
+for the smoke. The Job compares the default and compact glibc allocator across the same frames and
+runs the deliberate timeout and fresh-worker replay. Capture the last JSON
+line even if Kubernetes recorded a failed Job. Record the measuring and
+quality verdicts separately. Record the observed worker RSS and cgroup peaks
+by phase. The allowance check
+reads the running container’s cgroup limit from <code>/sys/fs/cgroup/memory.max</code>.</p>
+<p><strong>Ran and failed, 2026-11-25 14:38:42Z to 14:39:22Z.</strong>
+<code>studio-upscaling-smoke-02</code> used allocation <code>upscaling-op461-fsrcnn-x2-v1-02</code>
+and image <code>sha256:577f9763a172164ca355de3afc335241deeb3c49ffcb103ba9ebcb1535a1c2ab</code>
+on talosw01 (AMD Threadripper 7960X, OpenCV DNN CPU with AVX-512 dispatch).
+Whole-Job cgroup peak was 1,290,694,656 bytes, within the 8 GiB measuring limit
+and 2 GiB quality budget. The Job exited 1. Both allocator settings gave the
+same results and passed every verdict except <code>edge_overshoot</code> and
+<code>motion_residual</code>. Both failures were on the former absolute caps.
+<a href="https://work.haynesnetwork.com/work_packages/461#activity-10180">Smoke evidence</a></p>
+<table>
+<thead>
+<tr>
+<th>Measure (synthetic fixtures)</th>
+<th>FSRCNN</th>
+<th>Lanczos (delivery scaler)</th>
+<th>Rule in the <code>-02</code> smoke</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Edge overshoot</td>
+<td>0.070588 (18/255)</td>
+<td>0.121569 (31/255)</td>
+<td>At most 12/255 <strong>and</strong> at most Lanczos + 2/255</td>
+</tr>
+<tr>
+<td>Dark undershoot</td>
+<td>0.066667</td>
+<td>0.117647</td>
+<td>Reported</td>
+</tr>
+<tr>
+<td>Edge spread, px</td>
+<td>1.6216</td>
+<td>2.1173</td>
+<td>At most 0.90 × Lanczos. Pass.</td>
+</tr>
+<tr>
+<td>Motion residual, worst mean</td>
+<td>0.011776 (3.00/255)</td>
+<td>0.011209 (2.86/255)</td>
+<td>At most 2/255 <strong>and</strong> at most Lanczos + 0.5/255</td>
+</tr>
+<tr>
+<td>Motion residual, worst p95</td>
+<td>0.076465</td>
+<td>0.080104</td>
+<td>At most Lanczos + 2/255. Pass.</td>
+</tr>
+<tr>
+<td>Text luma error, three sizes</td>
+<td>0.0482, 0.0568, 0.0469</td>
+<td>0.0554, 0.0686, 0.0618</td>
+<td>At most Lanczos. Pass.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Provisional CR-56, for Tom's review.</strong> Both scalers exceeded both absolute
+caps. For <code>studio-upscaling-smoke-03</code>, the edge overshoot limit is Lanczos +
+2/255. The worst mean and p95 motion residual limits are Lanczos + 0.5/255
+and Lanczos + 2/255 respectively. Each allocator still reports absolute
+measurements for both scalers, with diagnostic booleans in
+<code>.settings[].baseline_meets_former_caps</code> for the Lanczos overshoot and
+worst mean residual. The smoke must pass before the comparison can run.
+Delivery stays on Lanczos under CR-35.</p>
+<p><strong>Proven, 2026-11-25 15:15Z to 15:16Z.</strong> <code>studio-upscaling-smoke-03</code> passed
+every verdict on talosw01 with allocation <code>upscaling-op461-fsrcnn-x2-v1-03</code> and
+image <code>sha256:59de528c04f908f8ee92281fa7c9b12f3a8fbcaaeb487ea8777250d2a28b143e</code>.
+Whole-Job cgroup peak was 1,291,743,232 bytes.
+<a href="https://work.haynesnetwork.com/work_packages/461#activity-10208">Smoke evidence</a></p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span>
+<span class="w">  </span><span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+<span class="w">  </span><span class="nv">allocation</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.data.allocation'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/release/release.yaml"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">provision</span><span class="o">=</span><span class="s2">"studio-upscaling-provision-</span><span class="si">${</span><span class="nv">allocation</span><span class="p">##*-</span><span class="si">}</span><span class="s2">"</span>
+<span class="w">  </span><span class="nv">profile</span><span class="o">=</span><span class="k">$(</span>final_report<span class="w"> </span><span class="s2">"</span><span class="nv">$provision</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'.profile_sha256 | select(test("^[0-9a-f]{64}$"))'</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">pin</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.data.image'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/release/release.yaml"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">allowance</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.data.memoryLimit'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/release/release.yaml"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="o">[[</span><span class="w"> </span><span class="nv">$allowance</span><span class="w"> </span><span class="o">=</span>~<span class="w"> </span>^<span class="o">[</span><span class="m">1</span>-9<span class="o">][</span><span class="m">0</span>-9<span class="o">]</span>*Gi$<span class="w"> </span><span class="o">]]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">allowance_bytes</span><span class="o">=</span><span class="k">$((</span><span class="w"> </span><span class="si">${</span><span class="nv">allowance</span><span class="p">%Gi</span><span class="si">}</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="m">1024</span><span class="o">**</span><span class="m">3</span><span class="w"> </span><span class="k">))</span>
+<span class="w">  </span>idle_gate<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">smoke</span><span class="o">=</span><span class="k">$(</span>kustomize<span class="w"> </span>build<span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/smoke"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">job</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.metadata.name'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$smoke</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'smoke Job created'</span><span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$smoke</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">status</span><span class="o">=</span><span class="m">0</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'smoke Job complete'</span><span class="w"> </span>wait_for_job<span class="w"> </span><span class="s2">"</span><span class="nv">$job</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="nv">report</span><span class="o">=</span><span class="k">$(</span>final_report<span class="w"> </span><span class="s2">"</span><span class="nv">$job</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">report</span><span class="o">=</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'smoke JSON report present'</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span>
+<span class="w">  </span>check_json<span class="w"> </span><span class="s1">'installed profile and image match'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .profile_sha256 == $profile and .image_digest == $digest and .provider == "opencv-dnn-cpu-fp32"</span>
+<span class="s1">  '</span><span class="w"> </span>--arg<span class="w"> </span>profile<span class="w"> </span><span class="s2">"</span><span class="nv">$profile</span><span class="s2">"</span><span class="w"> </span>--arg<span class="w"> </span>digest<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">pin</span><span class="p">##*@</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span>check_json<span class="w"> </span><span class="s1">'both allocator runs measured by phase'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .verdicts.allocator_measured and .verdicts.phase_memory_measured and</span>
+<span class="s1">    (.whole_job_cgroup_peak_bytes &gt; 0) and</span>
+<span class="s1">    ([.settings[].frame_count] == [19, 19])</span>
+<span class="s1">  '</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span>check_json<span class="w"> </span><span class="s1">'actual cgroup memory limit matches the measuring allowance'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .measuring_limit_bytes == $bytes</span>
+<span class="s1">  '</span><span class="w"> </span>--argjson<span class="w"> </span>bytes<span class="w"> </span><span class="s2">"</span><span class="nv">$allowance_bytes</span><span class="s2">"</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span>check_json<span class="w"> </span><span class="s1">'allocator and fresh-worker bytes are stable'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .verdicts.allocator_byte_match and .verdicts.fresh_worker_repeat</span>
+<span class="s1">  '</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span>check_json<span class="w"> </span><span class="s1">'all smoke verdicts'</span><span class="w"> </span><span class="s1">'.passed == true'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="s2">"</span><span class="nv">$status</span><span class="s2">"</span>
+<span class="o">)</span>
+</code></pre></div>
+<h2 id="run-the-private-comparison">Run the private comparison</h2>
+<p>After the synthetic smoke passes, set <code>OP461_INPUT</code> to an authorized delivery
+proxy's canonical locator. For ground truth, also set <code>OP461_MASTER</code> to the
+approved master locator and <code>OP461_DELIVERY_ID</code> to the ID in Studio's <code>titles/</code>
+evidence. Use the approved proxy and master SHA-256 values from that evidence
+in the locators. The API pod reads in a read-only transaction and requires
+exactly one delivery with the requested hashes in their respective proxy and
+master roles. The ID and both locators must agree with the approved inputs.
+The runbook captures the selected record privately and uses its fields to
+render both Jobs. The delivery lookup prints only check verdicts to the
+terminal.</p>
+<p>Set <code>OP461_FRAME_INDEX</code> to a zero-based index or <code>OP461_TIMESTAMP</code> to decimal
+seconds from the first frame, with up to nine decimal places. Choose one
+selector. The timestamp selects the active frame on the 24 fps delivery
+clock. The probe and comparison check the first presentation timestamp
+from the MP4 sample and edit tables. They refuse a nonzero origin with
+<code>adapter.nonzero_start_timestamp</code> and use the zero-based delivery clock for
+selection. Each file is limited to 256 MiB.</p>
+<p>For a still, set <code>OP461_INPUT</code> to the authorized opaque PNG or JPEG locator.
+Stills are limited to 4 MiB. Use an exact-aspect frame or set
+<code>OP461_PLATE=yes</code> for delivery's centered cover fit. Both still and proxy
+inputs have a 1280 px long-edge limit and a 921,600 pixel limit. Set
+<code>OP461_ORIENTATION=landscape</code> for a 1920 × 1080 target. The default is
+1080 × 1920. A master frame must match the target dimensions exactly.</p>
+<p>A locator is <code>library/sha256/&lt;first-two-hex&gt;/&lt;sha256&gt;.&lt;ext&gt;</code> or
+<code>productions/&lt;prd_id&gt;/sha256/&lt;first-two-hex&gt;/&lt;sha256&gt;.&lt;ext&gt;</code>, relative to
+the canonical store root. The release's <code>storeSubPath</code> names that root
+within the NFS export. The API mounts it at <code>/studio</code>, and the render worker
+sees it at <code>/studio/api-store-v1</code>. The hash comes from the filename.
+If set, <code>OP461_INPUT_SHA256</code> must match it. Set <code>OP461_RUN</code> to a fresh
+12-hex suffix. For optional ROIs,
+add <code>--lettering-roi</code>, <code>--face-roi</code> or <code>--hair-roi</code> and output coordinates
+<code>X0 Y0 X1 Y1</code> to <code>options</code> before rendering. The lower-right bounds are exclusive.
+Allocation <code>-03</code> renders the comparison as <code>studio-upscaling-compare-03-&lt;suffix&gt;</code>.
+Each run reserves its output directory using the fresh suffix.</p>
+<p><strong>Changed, 2026-11-25 15:16Z to 15:18Z.</strong> The API verified the requested
+proxy and master against one delivery. Both content checks then failed
+because they resolved the locators against the render worker's <code>/studio</code>.
+The probe and comparison mounts also targeted the parent of the canonical
+store. The comparison block was sourced in a context where Bash ignored
+<code>errexit</code> and continued after the failed checks. Probe
+<code>studio-upscaling-probe-869404168e63</code> reached its deadline before starting a
+container. No comparison Job was created. The runbook now exits on the
+first failed precondition, and both Jobs use the release's canonical store
+prefix. The <code>-03</code> allocation, pinned image and passed smoke still apply.
+<a href="https://work.haynesnetwork.com/work_packages/461#activity-10208">Attempt evidence</a></p>
+<p>The gate checks the store shape and verifies the bytes. For an MP4 input,
+the probe runs before the idle gate and heavy window. It reads the clock
+origin from the MP4 tables and uses the bundled OpenCV FFmpeg backend to
+decode the selected frame from the verified descriptors. Its deadline is
+90 seconds, with one CPU and 256 MiB of memory. It reports frame count, dimensions, first timestamp
+in seconds and whether the requested frame resolves. It mounts only the
+read-only input shards and runs without weights or either scaler. A refusal
+stops the block before the heavy comparison. Both Jobs use the same
+deny-all comparison network policy. The comparison's UID/GID 1000
+init container reserves one new group-writable job directory exclusively.
+The comparison runs as UID/GID 10001 with supplemental group 1000. It
+mounts the pinned weights and the selected hash shards read-only. Its only
+writable share mount is the new output directory. One local <code>emptyDir</code>
+provides bounded worker scratch. Keep the rendered Job private.</p>
+<div class="highlight"><pre><span></span><code><span class="o">(</span>
+<span class="w">  </span><span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+<span class="w">  </span>:<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">OP461_INPUT</span><span class="p">:?set the approved canonical store locator</span><span class="si">}</span><span class="s2">"</span>
+<span class="w">  </span>:<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">OP461_RUN</span><span class="p">:?set a fresh 12-hex suffix</span><span class="si">}</span><span class="s2">"</span>
+
+<span class="w">  </span>input_matches_store_hash<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="nb">local</span><span class="w"> </span><span class="nv">locator</span><span class="o">=</span><span class="nv">$1</span><span class="w"> </span><span class="nv">name</span><span class="o">=</span><span class="si">${</span><span class="nv">1</span><span class="p">##*/</span><span class="si">}</span><span class="w"> </span><span class="nv">limit</span><span class="o">=</span><span class="m">4194304</span>
+<span class="w">    </span><span class="o">[[</span><span class="w"> </span><span class="nv">$name</span><span class="w"> </span>!<span class="o">=</span><span class="w"> </span>*.mp4<span class="w"> </span><span class="o">]]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">limit</span><span class="o">=</span><span class="m">268435456</span>
+<span class="w">    </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>deploy/studio-render<span class="w"> </span>-c<span class="w"> </span>app<span class="w"> </span>--<span class="w"> </span>sh<span class="w"> </span>-ec<span class="w"> </span><span class="s1">'</span>
+<span class="s1">      path=$1</span>
+<span class="s1">      test "$(realpath -e -- "$path")" = "$path"</span>
+<span class="s1">      test -f "$path"</span>
+<span class="s1">      test "$(stat -c %h -- "$path")" = 1</span>
+<span class="s1">      bytes=$(stat -c %s -- "$path")</span>
+<span class="s1">      test "$bytes" -gt 0 &amp;&amp; test "$bytes" -le "$3" || exit 1</span>
+<span class="s1">      sum=$(sha256sum -- "$path")</span>
+<span class="s1">      test "${sum%% *}" = "$2"</span>
+<span class="s1">    '</span><span class="w"> </span>sh<span class="w"> </span><span class="s2">"</span><span class="nv">$store_root</span><span class="s2">/</span><span class="nv">$locator</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">name</span><span class="p">%.*</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$limit</span><span class="s2">"</span><span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+<span class="w">  </span><span class="o">}</span>
+
+<span class="w">  </span><span class="nv">source</span><span class="o">=</span><span class="nv">$OP461_INPUT</span>
+<span class="w">  </span><span class="nv">master</span><span class="o">=</span><span class="si">${</span><span class="nv">OP461_MASTER</span><span class="k">:-</span><span class="si">}</span>
+<span class="w">  </span><span class="nv">delivery_id</span><span class="o">=</span><span class="si">${</span><span class="nv">OP461_DELIVERY_ID</span><span class="k">:-</span><span class="si">}</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span>-n<span class="w"> </span><span class="nv">$master</span><span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span>check<span class="w"> </span><span class="s1">'approved delivery ID supplied for the master'</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$delivery_id</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span>!<span class="w"> </span><span class="nv">delivery</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-i<span class="w"> </span>deploy/studio-api<span class="w"> </span>-c<span class="w"> </span>api<span class="w"> </span>--<span class="w"> </span>python<span class="w"> </span>-I<span class="w"> </span>-B<span class="w"> </span>-<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span><span class="s2">"</span><span class="nv">$source</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$master</span><span class="s2">"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$delivery_id</span><span class="s2">"</span><span class="w"> </span>&lt;<span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/compare/verify_delivery.py"</span><span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">      </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'FAIL verified delivery required for a master\n'</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">      </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="k">fi</span>
+<span class="w">    </span><span class="nv">source</span><span class="o">=</span><span class="k">$(</span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'.proxy'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$delivery</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="nv">master</span><span class="o">=</span><span class="k">$(</span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'.master'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$delivery</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="nv">delivery_id</span><span class="o">=</span><span class="k">$(</span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'.id'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$delivery</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="k">else</span>
+<span class="w">    </span>check<span class="w"> </span><span class="s1">'delivery ID is used only with a master'</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">"</span><span class="nv">$delivery_id</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span><span class="nv">options</span><span class="o">=(</span>--input<span class="w"> </span><span class="s2">"</span><span class="nv">$source</span><span class="s2">"</span><span class="w"> </span>--run<span class="w"> </span><span class="s2">"</span><span class="nv">$OP461_RUN</span><span class="s2">"</span><span class="w"> </span>--orientation<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">OP461_ORIENTATION</span><span class="k">:-</span><span class="nv">portrait</span><span class="si">}</span><span class="s2">"</span><span class="o">)</span>
+<span class="w">  </span><span class="o">[[</span><span class="w"> </span>-z<span class="w"> </span><span class="si">${</span><span class="nv">OP461_FRAME_INDEX</span><span class="k">:-</span><span class="si">}</span><span class="w"> </span><span class="o">]]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">options</span><span class="o">+=(</span>--frame-index<span class="w"> </span><span class="s2">"</span><span class="nv">$OP461_FRAME_INDEX</span><span class="s2">"</span><span class="o">)</span>
+<span class="w">  </span><span class="o">[[</span><span class="w"> </span>-z<span class="w"> </span><span class="si">${</span><span class="nv">OP461_TIMESTAMP</span><span class="k">:-</span><span class="si">}</span><span class="w"> </span><span class="o">]]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">options</span><span class="o">+=(</span>--timestamp<span class="w"> </span><span class="s2">"</span><span class="nv">$OP461_TIMESTAMP</span><span class="s2">"</span><span class="o">)</span>
+<span class="w">  </span><span class="o">[[</span><span class="w"> </span>-z<span class="w"> </span><span class="nv">$master</span><span class="w"> </span><span class="o">]]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">options</span><span class="o">+=(</span>--master<span class="w"> </span><span class="s2">"</span><span class="nv">$master</span><span class="s2">"</span><span class="w"> </span>--delivery-id<span class="w"> </span><span class="s2">"</span><span class="nv">$delivery_id</span><span class="s2">"</span><span class="o">)</span>
+<span class="w">  </span><span class="o">[[</span><span class="w"> </span><span class="si">${</span><span class="nv">OP461_PLATE</span><span class="k">:-</span><span class="si">}</span><span class="w"> </span>!<span class="o">=</span><span class="w"> </span>yes<span class="w"> </span><span class="o">]]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">options</span><span class="o">+=(</span>--plate<span class="o">)</span>
+<span class="w">  </span><span class="nv">template</span><span class="o">=</span><span class="k">$(</span>kustomize<span class="w"> </span>build<span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/compare"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>yq<span class="w"> </span>-e<span class="w"> </span>-o<span class="o">=</span>json<span class="w"> </span><span class="s1">'select(.kind == "Job")'</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">job_spec</span><span class="o">=</span><span class="k">$(</span>python3<span class="w"> </span>-B<span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/compare/render.py"</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">options</span><span class="p">[@]</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$template</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">job</span><span class="o">=</span><span class="k">$(</span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'.metadata.name'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$job_spec</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">store_sub_path</span><span class="o">=</span><span class="k">$(</span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'.metadata.annotations["studio.haynesops.com/store-sub-path"]'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$job_spec</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">store_root</span><span class="o">=</span><span class="s2">"/studio/</span><span class="si">${</span><span class="nv">store_sub_path</span><span class="p">#data/studio/</span><span class="si">}</span><span class="s2">"</span>
+<span class="w">  </span><span class="nv">source_name</span><span class="o">=</span><span class="si">${</span><span class="nv">source</span><span class="p">##*/</span><span class="si">}</span>
+<span class="w">  </span><span class="nv">source_hash</span><span class="o">=</span><span class="si">${</span><span class="nv">source_name</span><span class="p">%.*</span><span class="si">}</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'supplied input digest agrees with the locator'</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">OP461_INPUT_SHA256</span><span class="k">:-</span><span class="nv">$source_hash</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"</span><span class="nv">$source_hash</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'content-addressed regular single-link input matches SHA-256'</span><span class="w"> </span>input_matches_store_hash<span class="w"> </span><span class="s2">"</span><span class="nv">$source</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">master_hash</span><span class="o">=</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span>-n<span class="w"> </span><span class="nv">$master</span><span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span>check<span class="w"> </span><span class="s1">'content-addressed regular single-link master matches SHA-256'</span><span class="w"> </span>input_matches_store_hash<span class="w"> </span><span class="s2">"</span><span class="nv">$master</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="nv">master_name</span><span class="o">=</span><span class="si">${</span><span class="nv">master</span><span class="p">##*/</span><span class="si">}</span>
+<span class="w">    </span><span class="nv">master_hash</span><span class="o">=</span><span class="si">${</span><span class="nv">master_name</span><span class="p">%.*</span><span class="si">}</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span><span class="nv">allocation</span><span class="o">=</span><span class="k">$(</span>yq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.data.allocation'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/release/release.yaml"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>final_report<span class="w"> </span><span class="s2">"studio-upscaling-smoke-</span><span class="si">${</span><span class="nv">allocation</span><span class="p">##*-</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span>
+<span class="w">    </span>check_json<span class="w"> </span><span class="s1">'synthetic install smoke passed'</span><span class="w"> </span><span class="s1">'.passed == true'</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>get<span class="w"> </span>ciliumnetworkpolicy<span class="w"> </span>studio-upscaling-compare<span class="w"> </span>-o<span class="w"> </span>json<span class="w"> </span><span class="p">|</span>
+<span class="w">    </span>check_json<span class="w"> </span><span class="s1">'dedicated deny-all comparison policy is installed'</span><span class="w"> </span><span class="s1">'.spec == {</span>
+<span class="s1">      "endpointSelector":{"matchLabels":{"app.kubernetes.io/name":"studio-upscaling-compare"}},</span>
+<span class="s1">      "ingressDeny":[{"fromEntities":["all"]}], "egressDeny":[{"toEntities":["all"]}]}'</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span><span class="nv">$source</span><span class="w"> </span><span class="o">==</span><span class="w"> </span>*.mp4<span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nv">probe_spec</span><span class="o">=</span><span class="k">$(</span>python3<span class="w"> </span>-B<span class="w"> </span><span class="s2">"</span><span class="nv">$stage</span><span class="s2">/compare/render.py"</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">options</span><span class="p">[@]</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>--probe<span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$template</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="nv">probe</span><span class="o">=</span><span class="k">$(</span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'.metadata.name'</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$probe_spec</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span>check<span class="w"> </span><span class="s1">'probe Job created'</span><span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$probe_spec</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span>!<span class="w"> </span>check<span class="w"> </span><span class="s1">'probe Job complete'</span><span class="w"> </span>wait_for_job<span class="w"> </span><span class="s2">"</span><span class="nv">$probe</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">      </span>final_report<span class="w"> </span><span class="s2">"</span><span class="nv">$probe</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span>:
+<span class="w">      </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="k">fi</span>
+<span class="w">    </span><span class="nv">report</span><span class="o">=</span><span class="k">$(</span>final_report<span class="w"> </span><span class="s2">"</span><span class="nv">$probe</span><span class="s2">"</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span>check<span class="w"> </span><span class="s1">'probe JSON report present'</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span>
+<span class="w">    </span>check_json<span class="w"> </span><span class="s1">'proxy frame resolves on the zero-based delivery clock'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">      .passed == true and .source.sha256 == $input and .source.resolved == true and</span>
+<span class="s1">      .source.first_timestamp_seconds == 0 and .source.fps == 24 and</span>
+<span class="s1">      (.source.frame_count &gt; .source.frame_index) and (.source.size | length) == 2</span>
+<span class="s1">    '</span><span class="w"> </span>--arg<span class="w"> </span>input<span class="w"> </span><span class="s2">"</span><span class="nv">$source_hash</span><span class="s2">"</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span>-n<span class="w"> </span><span class="nv">$master_hash</span><span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">      </span>check_json<span class="w"> </span><span class="s1">'verified master resolves at the same frame'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">        .delivery_id == $delivery and .reference.sha256 == $master and .reference.resolved == true and</span>
+<span class="s1">        .reference.first_timestamp_seconds == 0 and .reference.fps == 24 and</span>
+<span class="s1">        .reference.frame_index == .source.frame_index and .reference.frame_count == .source.frame_count and</span>
+<span class="s1">        (.reference.size | length) == 2</span>
+<span class="s1">      '</span><span class="w"> </span>--arg<span class="w"> </span>delivery<span class="w"> </span><span class="s2">"</span><span class="nv">$delivery_id</span><span class="s2">"</span><span class="w"> </span>--arg<span class="w"> </span>master<span class="w"> </span><span class="s2">"</span><span class="nv">$master_hash</span><span class="s2">"</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">    </span><span class="k">fi</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span>idle_gate<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'comparison Job created'</span><span class="w"> </span>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$job_spec</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">  </span><span class="nv">status</span><span class="o">=</span><span class="m">0</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'comparison Job complete'</span><span class="w"> </span>wait_for_job<span class="w"> </span><span class="s2">"</span><span class="nv">$job</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="nv">report</span><span class="o">=</span><span class="k">$(</span>final_report<span class="w"> </span><span class="s2">"</span><span class="nv">$job</span><span class="s2">"</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">report</span><span class="o">=</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span>-z<span class="w"> </span><span class="nv">$report</span><span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span><span class="nv">report</span><span class="o">=</span><span class="k">$(</span>final_report<span class="w"> </span><span class="s2">"</span><span class="nv">$job</span><span class="s2">"</span><span class="w"> </span>reserve-output<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">report</span><span class="o">=</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span>check<span class="w"> </span><span class="s1">'comparison JSON report present'</span><span class="w"> </span><span class="nb">test</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s\n'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span>
+<span class="w">  </span>check_json<span class="w"> </span><span class="s1">'source and both outputs recorded with measurements'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">    .source.sha256 == $input and</span>
+<span class="s1">    ([.outputs[].sha256 | test("^[0-9a-f]{64}$")] == [true, true]) and</span>
+<span class="s1">    (.memory_by_phase | length) &gt;= 4 and (.objective_measures | length) == 3</span>
+<span class="s1">  '</span><span class="w"> </span>--arg<span class="w"> </span>input<span class="w"> </span><span class="s2">"</span><span class="nv">$source_hash</span><span class="s2">"</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[[</span><span class="w"> </span>-n<span class="w"> </span><span class="nv">$master_hash</span><span class="w"> </span><span class="o">]]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">    </span>check_json<span class="w"> </span><span class="s1">'verified delivery, master frame, reference measurements and caveat recorded'</span><span class="w"> </span><span class="s1">'</span>
+<span class="s1">      .delivery_id == $delivery and</span>
+<span class="s1">      (.pairing_verification | contains("The caller verified the pairing")) and</span>
+<span class="s1">      (.ground_truth_scope | contains("encoded downscale of the master")) and</span>
+<span class="s1">      .reference.sha256 == $master and .reference.frame_index == .source.frame_index and</span>
+<span class="s1">      (.normalized_reference.sha256 | test("^[0-9a-f]{64}$")) and</span>
+<span class="s1">      ([.objective_measures.lanczos.ground_truth, .objective_measures.fsrcnn.ground_truth] |</span>
+<span class="s1">        all(has("luma_psnr_db") and has("luma_ssim") and has("luma_mae")))</span>
+<span class="s1">    '</span><span class="w"> </span>--arg<span class="w"> </span>delivery<span class="w"> </span><span class="s2">"</span><span class="nv">$delivery_id</span><span class="s2">"</span><span class="w"> </span>--arg<span class="w"> </span>master<span class="w"> </span><span class="s2">"</span><span class="nv">$master_hash</span><span class="s2">"</span><span class="w"> </span><span class="o">&lt;&lt;&lt;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$report</span><span class="s2">"</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="m">1</span>
+<span class="w">  </span><span class="k">fi</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="s2">"</span><span class="nv">$status</span><span class="s2">"</span>
+<span class="o">)</span>
+</code></pre></div>
+<p>After success, read the two result PNGs and <code>report.json</code> from the new
+private jobs allocation. A video comparison also saves <code>proxy.png</code> and,
+with a master, <code>master.png</code>. Verify each PNG against its report hash. Tom
+judges lettering, hair and face fidelity, ringing and changed geometry at
+matching 1:1 crops. The Job reports source-scale luma error, edge energy
+and pairwise luma differences, including selected ROIs. With a master, it
+adds luma MAE, PSNR and SSIM for both arms. The printed JSON above shows
+<code>ground_truth_scope</code> alongside those numbers. The proxy is an encoded downscale
+of its master, so these measures reward undoing that specific encode. The
+synthetic smoke covers edge-spread, text, flatness and cadence gates. The
+fuller authorized excerpt and Tom's delivery review are tracked by
+<a href="https://work.haynesnetwork.com/work_packages/453">story 453</a>.</p>
+<p><strong>Proven, 2026-11-25 16:30Z.</strong> Run <code>2d253c3f7e8b</code> passed all 24 checks of the
+block above from the revision that carries <code>storeSubPath</code>. The API verified
+delivery <code>dlv_01M7C5D3KFX3MFVWCXBCVJHMG7</code> for proxy <code>0212a7de…748d</code> and master
+<code>92d1efa3…09bc</code>; both files matched in the canonical store; the probe resolved
+frame 543 of 1,087 on both zero-based clocks; the idle gate passed; and
+<code>studio-upscaling-compare-03-2d253c3f7e8b</code> finished in 10 s with a whole-Job
+cgroup peak of 1,265,393,664 bytes.</p>
+<table>
+<thead>
+<tr>
+<th>Against the master's frame</th>
+<th>Lanczos</th>
+<th>FSRCNN</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Luma PSNR</td>
+<td>38.62 dB</td>
+<td>38.39 dB</td>
+</tr>
+<tr>
+<td>Luma SSIM</td>
+<td>0.9651</td>
+<td>0.9629</td>
+</tr>
+<tr>
+<td>Luma mean absolute error</td>
+<td>0.00757</td>
+<td>0.00795</td>
+</tr>
+</tbody>
+</table>
+<p>The proxy is an encoded downscale of the master, so these figures reward
+undoing that encode and do not establish quality on real low-resolution
+sources. The frame was chosen without viewing it. The four PNGs and the report
+are in the private output directory <code>upscaling-op461-compare-2d253c3f7e8b</code>
+under the Studio jobs tree. Tom's visual verdict is pending and delivery stays
+on Lanczos. <a href="https://work.haynesnetwork.com/work_packages/461">Story 461, comment 10229</a>.</p>
+<h2 id="handoff-retries-and-rollback">Handoff, retries and rollback</h2>
+<p>Record the Git revisions, published digest, Jobs and final reports in OP461.
+Installation evidence belongs to the coordinator. The comparison status
+stays pending until the private review.</p>
+<p>Keep a failed allocation and its report. A deliberate fresh retry gets a new
+Job name and allocation. Rollback withdraws the policy
+stage in Git and stops new Job launches. Allow existing Jobs to reach their
+bounds and preserve files and evidence.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024-2025 Thomas Haynes
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.path", "navigation.indexes", "search.suggest"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>

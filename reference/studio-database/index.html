@@ -1,0 +1,999 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentaiton for my home-ops style repository so I can have an idea what past me did when something breaks. Hopefully someone else finds something useful here too!">
+      
+      
+        <meta name="author" content="Tom Haynes">
+      
+      
+        <link rel="canonical" href="https://haynesops.com/reference/studio-database/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Studio database on postgres16 - HaynesOps</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#studio-database-on-postgres16" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="HaynesOps" class="md-header__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            HaynesOps
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Studio database on postgres16
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1M8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 5-5 5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5M7 15a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="HaynesOps" class="md-nav__button md-logo" aria-label="HaynesOps" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    HaynesOps
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/thaynes43/haynes-ops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    thaynes43/haynes-ops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../this-site/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    This Site
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    This Site
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cluster/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cluster Essentials
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cluster Essentials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cluster/rook-ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rook Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheat Sheets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cheat Sheets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/siderolabs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Siderolabs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/kubernetes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kubernetes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheat-sheets/ceph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ceph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#consumer-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consumer contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reconciliation-and-owner-bootstrap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reconciliation and owner bootstrap
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-and-grants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration and grants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#credential-free-access-evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Credential-free access evidence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backup-and-rollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backup and rollback
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="studio-database-on-postgres16">Studio database on postgres16</h1>
+<p><a href="https://work.haynesnetwork.com/work_packages/431">OP431</a> adds a retained CNPG
+<code>Database</code> named <code>studio</code> on <code>database/postgres16</code>. PostgreSQL's <code>postgres</code>
+role owns the database. <code>studio_migrator</code> owns the <code>studio</code> schema, and
+<code>studio_app</code> is the API runtime role. Both logins require TLS and SCRAM from
+the IPv4 pod network. Their other TCP connections hit explicit HBA rejects.</p>
+<h2 id="consumer-contract">Consumer contract</h2>
+<p>The <code>ai/studio-database</code> Flux Kustomization projects the two CNPG passwords
+into separate libpq connection strings for the primary service. Have the
+<a href="https://work.haynesnetwork.com/work_packages/434">OP434</a> deployment depend
+on this Kustomization. Wire individual <code>secretKeyRef</code> entries as follows.</p>
+<table>
+<thead>
+<tr>
+<th>Consumer</th>
+<th>Secret in <code>ai</code></th>
+<th>Key and environment variable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>API</td>
+<td><code>studio-runtime-db</code></td>
+<td><code>STUDIO_DATABASE_URL</code></td>
+</tr>
+<tr>
+<td>Migration and worker registration Jobs</td>
+<td><code>studio-migrator-db</code></td>
+<td><code>STUDIO_MIGRATION_DATABASE_URL</code></td>
+</tr>
+</tbody>
+</table>
+<p>Set <code>STUDIO_DATABASE_SCHEMA=studio</code> for all three consumers. The web, MCP and render
+workers use the API and need no database Secret. Run each consumer with its own service account. The projection readers are for ESO's TokenRequest
+calls only.</p>
+<p>ESO generates each CNPG basic-auth Secret once in <code>database</code>. The two
+namespaced stores each authenticate as a different <code>ai</code> service account.
+Each account can <code>get</code> its own named source Secret. Kubernetes' default
+<code>system:basic-user</code> binding provides the store permission review. The
+projection reads the username and password by property and refreshes every
+minute. Both DSNs require TLS with SCRAM channel binding. The project uses
+the cluster's Postgres TLS setup without distributing the CNPG CA Secret.
+If a source Secret is regenerated, verify CNPG and the projection have
+converged. Reloader rolls the API when its projected Secret changes. The
+completed migration Job stays complete. A new Job pod reads the current
+value from its own projection.
+<a href="https://github.com/external-secrets/external-secrets/blob/v2.15.0/providers/v1/kubernetes/validate.go">ESO 2.15.0 permission validation</a>
+<a href="https://www.postgresql.org/docs/16/libpq-connect.html#LIBPQ-CONNECT-CHANNEL-BINDING">PostgreSQL 16 connection options</a></p>
+<h2 id="reconciliation-and-owner-bootstrap">Reconciliation and owner bootstrap</h2>
+<p>The following commands are for the authorized coordinator. On an initial
+installation, check for name collisions from the current primary before
+reconciling. Use the primary lookup and peer connection below with <code>-d postgres</code>
+and expect no rows from both queries. Investigate any existing database or role
+before proceeding.</p>
+<div class="highlight"><pre><span></span><code><span class="k">SELECT</span><span class="w"> </span><span class="n">datname</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">pg_database</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">datname</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'studio'</span><span class="p">;</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="n">rolname</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">pg_roles</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">rolname</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="s1">'studio_app'</span><span class="p">,</span><span class="w"> </span><span class="s1">'studio_migrator'</span><span class="p">);</span>
+</code></pre></div>
+<p>Capture PostgreSQL pod UIDs and restart counts before and after reconciliation.
+Require all three instances ready. Wait for the CNPG <code>Database</code> generation
+to be applied, both roles to be reconciled and all four ExternalSecrets to be
+ready. Capture statuses only.</p>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>-n<span class="w"> </span>database<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-l<span class="w"> </span>cnpg.io/cluster<span class="o">=</span>postgres16<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-o<span class="w"> </span><span class="s1">'custom-columns=NAME:.metadata.name,UID:.metadata.uid,RESTARTS:.status.containerStatuses[*].restartCount'</span>
+kubectl<span class="w"> </span>-n<span class="w"> </span>database<span class="w"> </span>get<span class="w"> </span>cluster.postgresql.cnpg.io<span class="w"> </span>postgres16<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-o<span class="w"> </span><span class="s1">'custom-columns=NAME:.metadata.name,READY:.status.readyInstances,ROLES:.status.managedRolesStatus.byStatus.reconciled'</span>
+kubectl<span class="w"> </span>-n<span class="w"> </span>database<span class="w"> </span>get<span class="w"> </span>databases.postgresql.cnpg.io<span class="w"> </span>studio<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-o<span class="w"> </span><span class="s1">'custom-columns=NAME:.metadata.name,GEN:.metadata.generation,OBSERVED:.status.observedGeneration,APPLIED:.status.applied'</span>
+<span class="k">for</span><span class="w"> </span>namespace<span class="w"> </span><span class="k">in</span><span class="w"> </span>database<span class="w"> </span>ai<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span>kubectl<span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="nv">$namespace</span><span class="s2">"</span><span class="w"> </span><span class="nb">wait</span><span class="w"> </span>--for<span class="o">=</span><span class="nv">condition</span><span class="o">=</span>Ready<span class="w"> </span>--timeout<span class="o">=</span>2m<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>externalsecret/studio-runtime-db<span class="w"> </span>externalsecret/studio-migrator-db
+<span class="k">done</span>
+</code></pre></div>
+<p>CNPG creates the database and schema. Its <code>Database</code> spec has no ACL fields.
+Before OP434 starts the migration or starts using the database, run the
+following once through the existing local <code>postgres</code> peer path. The guard
+requires the expected database, owners and unprivileged roles. The changes are
+restricted to the new database and can be retried.</p>
+<div class="highlight"><pre><span></span><code><span class="nv">primary</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>-n<span class="w"> </span>database<span class="w"> </span>get<span class="w"> </span>cluster.postgresql.cnpg.io<span class="w"> </span>postgres16<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.currentPrimary}'</span><span class="k">)</span>
+kubectl<span class="w"> </span>-n<span class="w"> </span>database<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$primary</span><span class="s2">"</span><span class="w"> </span>-c<span class="w"> </span>postgres<span class="w"> </span>--<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>psql<span class="w"> </span>-X<span class="w"> </span>-w<span class="w"> </span>-h<span class="w"> </span>/controller/run<span class="w"> </span>-U<span class="w"> </span>postgres<span class="w"> </span>-d<span class="w"> </span>studio<span class="w"> </span>-v<span class="w"> </span><span class="nv">ON_ERROR_STOP</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="s">&lt;&lt;'SQL'</span>
+<span class="s">BEGIN;</span>
+<span class="s">SET LOCAL lock_timeout = '5s';</span>
+<span class="s">SET LOCAL statement_timeout = '30s';</span>
+<span class="s">DO $guard$</span>
+<span class="s">BEGIN</span>
+<span class="s">  IF current_database() &lt;&gt; 'studio' OR current_user &lt;&gt; 'postgres'</span>
+<span class="s">     OR pg_is_in_recovery()</span>
+<span class="s">     OR (SELECT datdba FROM pg_database WHERE datname = 'studio')</span>
+<span class="s">        IS DISTINCT FROM 'postgres'::regrole::oid</span>
+<span class="s">     OR (SELECT nspowner FROM pg_namespace WHERE nspname = 'studio')</span>
+<span class="s">        IS DISTINCT FROM 'studio_migrator'::regrole::oid THEN</span>
+<span class="s">    RAISE EXCEPTION 'Studio database, owner, or primary mismatch';</span>
+<span class="s">  END IF;</span>
+<span class="s">  IF (SELECT count(*) FROM pg_roles</span>
+<span class="s">      WHERE rolname IN ('studio_app', 'studio_migrator')</span>
+<span class="s">        AND rolcanlogin AND NOT (rolsuper OR rolcreatedb OR rolcreaterole</span>
+<span class="s">                                OR rolreplication OR rolbypassrls OR rolinherit)) &lt;&gt; 2</span>
+<span class="s">     OR EXISTS (SELECT FROM pg_auth_members</span>
+<span class="s">                WHERE member IN ('studio_app'::regrole, 'studio_migrator'::regrole)</span>
+<span class="s">                   OR roleid IN ('studio_app'::regrole, 'studio_migrator'::regrole)) THEN</span>
+<span class="s">    RAISE EXCEPTION 'Studio role privileges mismatch';</span>
+<span class="s">  END IF;</span>
+<span class="s">END</span>
+<span class="s">$guard$;</span>
+<span class="s">REVOKE ALL ON DATABASE studio FROM PUBLIC;</span>
+<span class="s">GRANT CONNECT ON DATABASE studio TO studio_app, studio_migrator;</span>
+<span class="s">REVOKE ALL ON SCHEMA public, studio FROM PUBLIC;</span>
+<span class="s">GRANT USAGE ON SCHEMA studio TO studio_app;</span>
+<span class="s">COMMIT;</span>
+<span class="s">SQL</span>
+</code></pre></div>
+<h2 id="migration-and-grants">Migration and grants</h2>
+<p>Follow the <a href="../studio-deployment/">Studio LAN rollout</a> for Flux ordering.</p>
+<p>Run <code>studio-api-migrate upgrade head</code> once in the Job under <code>studio_migrator</code>
+using the pinned Studio API image. The command holds a database advisory
+transaction lock. A second connection slot lets a retry connect while a
+previous Job's backend lingers. The lock still serializes schema writes.
+The Job verifies the migrator role and its HBA rules before upgrading.
+<code>STUDIO_RUNTIME_ROLE=studio_app</code> applies schema, table and column grants in
+the Alembic revision transaction. The owner bootstrap above grants database
+CONNECT. After migration, the one-shot registration Job uses the migration
+identity to register the worker token digest. The API runtime role can read
+credential rows for authentication. It has no credential writes, create,
+temporary table, sequence or Alembic history privileges.
+<a href="https://github.com/thaynes43/haynes-studio/blob/c75086b85a3278ead1d42b7a26da3b70da8b5793/docs/reference/studio-api.md#database-privileges">Studio API runtime grants</a></p>
+<p>The initial OP434 install applied <code>0002_active_agent_grants</code>.
+<a href="https://work.haynesnetwork.com/work_packages/956">OP956</a> pins
+<code>0003_studio_run_queue</code>, which adds the queue tables and reapplies the initial
+grants while adding the queue-specific ones. Use the migration identity to
+check the applied Alembic revision.</p>
+<div class="highlight"><pre><span></span><code><span class="k">SELECT</span><span class="w"> </span><span class="n">version_num</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">studio</span><span class="p">.</span><span class="n">alembic_version</span><span class="p">;</span>
+</code></pre></div>
+<h2 id="credential-free-access-evidence">Credential-free access evidence</h2>
+<p>Review the rendered HBA rules on the Postgres instances using the peer path
+above. Expect zero syntax errors and the three Studio rules in order on each
+instance. Compare the pod UIDs and restart counts with the pre-change capture.</p>
+<div class="highlight"><pre><span></span><code><span class="k">SELECT</span><span class="w"> </span><span class="k">count</span><span class="p">(</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">hba_errors</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">pg_hba_file_rules</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">error</span><span class="w"> </span><span class="k">IS</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">;</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="k">type</span><span class="p">,</span><span class="w"> </span><span class="k">database</span><span class="p">,</span><span class="w"> </span><span class="n">address</span><span class="p">,</span><span class="w"> </span><span class="n">auth_method</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">pg_hba_file_rules</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">user_name</span><span class="w"> </span><span class="o">@&gt;</span><span class="w"> </span><span class="nb">ARRAY</span><span class="p">[</span><span class="s1">'studio_app'</span><span class="p">,</span><span class="w"> </span><span class="s1">'studio_migrator'</span><span class="p">]</span>
+<span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">rule_number</span><span class="p">;</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="n">pg_postmaster_start_time</span><span class="p">(),</span><span class="w"> </span><span class="n">pg_conf_load_time</span><span class="p">();</span>
+</code></pre></div>
+<p>From a permitted <code>ai</code> workload with the chosen key injected via
+<code>secretKeyRef</code>, run the following with the role argument set to <code>studio_app</code>
+or <code>studio_migrator</code>. The migration Job runs the migrator checks and prints the
+revision before it exits. Read its results from the completed Job logs. Run
+the runtime checks in the API container after the grants. The checks print
+role and outcome only.</p>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>-n<span class="w"> </span>ai<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-i<span class="w"> </span><span class="s2">"</span><span class="nv">$verification_pod</span><span class="s2">"</span><span class="w"> </span>-c<span class="w"> </span><span class="s2">"</span><span class="nv">$verification_container</span><span class="s2">"</span><span class="w"> </span>--<span class="w"> </span>python<span class="w"> </span>-<span class="w"> </span>studio_app<span class="w"> </span><span class="s">&lt;&lt;'PY'</span>
+<span class="s">import os</span>
+<span class="s">import sys</span>
+
+<span class="s">import psycopg</span>
+
+<span class="s">role = sys.argv[1]</span>
+<span class="s">key = {</span>
+<span class="s">    "studio_app": "STUDIO_DATABASE_URL",</span>
+<span class="s">    "studio_migrator": "STUDIO_MIGRATION_DATABASE_URL",</span>
+<span class="s">}[role]</span>
+<span class="s">dsn = os.environ[key]</span>
+<span class="s">with psycopg.connect(dsn) as connection:</span>
+<span class="s">    actual = connection.execute(</span>
+<span class="s">        "SELECT current_user, current_database(), ssl "</span>
+<span class="s">        "FROM pg_stat_ssl WHERE pid = pg_backend_pid()"</span>
+<span class="s">    ).fetchone()</span>
+<span class="s">    assert actual == (role, "studio", True)</span>
+<span class="s">    if role == "studio_app":</span>
+<span class="s">        privileges = connection.execute("""</span>
+<span class="s">            SELECT has_schema_privilege(current_user, 'studio', 'USAGE'),</span>
+<span class="s">                   has_schema_privilege(current_user, 'studio', 'CREATE'),</span>
+<span class="s">                   has_database_privilege(current_user, 'studio', 'TEMP'),</span>
+<span class="s">                   has_table_privilege(current_user, 'studio.productions', 'UPDATE'),</span>
+<span class="s">                   has_column_privilege(current_user, 'studio.productions', 'document', 'UPDATE'),</span>
+<span class="s">                   has_column_privilege(current_user, 'studio.productions', 'id', 'UPDATE'),</span>
+<span class="s">                   has_table_privilege(current_user, 'studio.agent_keys', 'INSERT'),</span>
+<span class="s">                   has_table_privilege(current_user, 'studio.worker_tokens', 'SELECT'),</span>
+<span class="s">                   has_table_privilege(current_user, 'studio.worker_tokens', 'INSERT,UPDATE,DELETE'),</span>
+<span class="s">                   has_column_privilege(current_user, 'studio.runs', 'document', 'UPDATE'),</span>
+<span class="s">                   has_column_privilege(current_user, 'studio.runs', 'snapshot', 'UPDATE'),</span>
+<span class="s">                   has_column_privilege(current_user, 'studio.run_wan_attempts', 'request', 'UPDATE'),</span>
+<span class="s">                   has_column_privilege(current_user, 'studio.run_wan_attempts', 'job_id', 'UPDATE')</span>
+<span class="s">        """).fetchone()</span>
+<span class="s">        assert privileges == (</span>
+<span class="s">            True, False, False, False, True, False, False,</span>
+<span class="s">            True, False, True, False, False, False,</span>
+<span class="s">        )</span>
+<span class="s">        print("studio_app schema, draft, worker and queue privileges passed")</span>
+<span class="s">    else:</span>
+<span class="s">        version = connection.execute(</span>
+<span class="s">            "SELECT version_num FROM studio.alembic_version"</span>
+<span class="s">        ).fetchone()[0]</span>
+<span class="s">        print("Alembic revision:", version)</span>
+<span class="s">print(role, "connected to studio over TLS")</span>
+
+<span class="s">for target, override in (</span>
+<span class="s">    ("other database", {"dbname": "postgres"}),</span>
+<span class="s">    ("plaintext", {"sslmode": "disable", "channel_binding": "disable"}),</span>
+<span class="s">):</span>
+<span class="s">    try:</span>
+<span class="s">        connection = psycopg.connect(dsn, **override)</span>
+<span class="s">    except psycopg.OperationalError as error:</span>
+<span class="s">        if "pg_hba.conf rejects connection" not in str(error):</span>
+<span class="s">            raise SystemExit(f"{role}: expected HBA rejection for {target}") from None</span>
+<span class="s">    else:</span>
+<span class="s">        connection.close()</span>
+<span class="s">        raise SystemExit(f"{role}: unexpectedly allowed {target}")</span>
+<span class="s">    print(role, "HBA rejected", target)</span>
+<span class="s">PY</span>
+</code></pre></div>
+<h2 id="backup-and-rollback">Backup and rollback</h2>
+<p>D47 relies on the existing <code>postgres16</code> daily Barman physical base backups
+and archived WAL, which include the Studio database and its role catalog.
+Check a completed backup after provisioning. The NFS media share is outside
+that coverage. <a href="https://cloudnative-pg.io/docs/1.30/backup/#main-concepts">CNPG 1.30 backup scope</a></p>
+<p>For rollback, stop Studio clients and the Job first. Keep the <code>Database</code>
+and its schema, and keep both managed roles. In a GitOps commit change the
+roles to <code>login: false</code> and <code>disablePassword: true</code>, remove their
+<code>passwordSecret</code> references and remove the Studio <code>hostssl</code> allow. Keep
+the Studio rejects ahead of CNPG's default rule. Verify both logins disabled
+and Studio sessions drained before removing the projections, readers and
+generators in a follow-up. Preserve the database, schema owners, ACLs,
+tables and migration revision. The Flux prune exemption and CNPG reclaim
+policy retain the database. Restore via an isolated target or recover forward.
+Removing inline role definitions leaves their PostgreSQL roles unmanaged,
+including their LOGIN settings. Use the staged rollback above.
+<a href="https://cloudnative-pg.io/docs/1.30/declarative_role_management/#inline-managed-roles">CNPG 1.30 managed roles</a></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024-2025 Thomas Haynes
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.path", "navigation.indexes", "search.suggest"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>
