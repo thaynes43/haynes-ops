@@ -165,17 +165,38 @@ export async function plexIdle(env, fetcher = fetch, log = console.log) {
   return allIdle;
 }
 
+// Kubectl can include response bodies and endpoint details in stderr. Keep only
+// a known diagnostic class from the first line that matches one, since client
+// warnings can precede the error itself.
+const kubectlFailures = [
+  [/^(?:Error from server \(Unauthorized\):|error: You must be logged in to the server\b)/, 'unauthorized'],
+  [/^Error from server \(Forbidden\):/, 'forbidden'],
+  [/^Error from server \(NotFound\):/, 'not found'],
+  [/^The connection to the server localhost:8080 was refused\b/, 'localhost fallback'],
+  [/^The connection to the server .+ was refused\b/, 'connection refused'],
+  [/^(?:error: )?(?:unable to load in-cluster configuration\b|no configuration has been provided\b)/, 'no in-cluster config'],
+  [/^(?:Unable to connect to the server:|error:) .*\bx509:/, 'TLS certificate error'],
+  [/^Error from server \((?:Server)?Timeout\):/, 'timeout'],
+  [/^(?:Unable to connect to the server:|error:) (?:.*\b)?(?:context deadline exceeded|i\/o timeout|TLS handshake timeout|Client\.Timeout exceeded)\b/, 'timeout'],
+];
+
 class KubectlError extends Error {
-  constructor(status) {
+  constructor(status, stderr) {
     super('kubectl failed');
     this.status = status;
+    const lines = (stderr ?? '').split(/\r?\n/).map((line) => line.trimStart());
+    for (const line of lines) {
+      this.reason = kubectlFailures.find(([pattern]) => pattern.test(line))?.[1];
+      if (this.reason) break;
+    }
   }
 }
 
 function logStageFailure(stage, error) {
   let detail = '';
   if (error instanceof KubectlError && Number.isInteger(error.status)) {
-    detail = ` (kubectl exit ${error.status})`;
+    const reason = error.reason ? `, ${error.reason}` : '';
+    detail = ` (kubectl exit ${error.status}${reason})`;
   } else if (safeErrorCodes.has(error?.code)) {
     detail = ` (${error.code})`;
   }
@@ -185,10 +206,10 @@ function logStageFailure(stage, error) {
 function reportStore() {
   function kubectl(args, input) {
     const command = spawnSync('kubectl', ['--request-timeout=8s', ...args], {
-      input, encoding: 'utf8', timeout: 10_000, stdio: ['pipe', 'pipe', 'ignore'],
+      input, encoding: 'utf8', timeout: 10_000, stdio: ['pipe', 'pipe', 'pipe'],
     });
     if (command.error) throw command.error;
-    if (command.status !== 0) throw new KubectlError(command.status);
+    if (command.status !== 0) throw new KubectlError(command.status, command.stderr);
     return JSON.parse(command.stdout);
   }
   // A fixed core API resource needs neither API discovery nor its on-disk cache.
