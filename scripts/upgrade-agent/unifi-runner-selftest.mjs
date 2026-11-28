@@ -176,7 +176,8 @@ for (const [diagnostic, reason, scenario = reason ?? 'unrecognized errors'] of [
   ['Unable to connect to the server: tls: failed to verify certificate: x509: private detail', 'TLS certificate error'],
   ['error: Get "fixture-service": context deadline exceeded (Client.Timeout exceeded while awaiting headers)', 'timeout', 'client timeout'],
   ['Error from server (ServerTimeout): private detail', 'timeout', 'server timeout'],
-  ['unrecognized error\nError from server (Forbidden): private detail', null],
+  ['W1128 private client warning\nError from server (Forbidden): private detail', 'forbidden', 'an error after a client warning'],
+  ['unrecognized error\nprivate second line', null],
 ]) {
   test(`the mounted CLI sanitizes kubectl stderr for ${scenario}`, async (t) => {
     const fixture = await withJobFixture(t, 'configmap-read', `${diagnostic}\nprivate response body`);

@@ -166,7 +166,8 @@ export async function plexIdle(env, fetcher = fetch, log = console.log) {
 }
 
 // Kubectl can include response bodies and endpoint details in stderr. Keep only
-// a known diagnostic class from the first line.
+// a known diagnostic class from the first line that matches one, since client
+// warnings can precede the error itself.
 const kubectlFailures = [
   [/^(?:Error from server \(Unauthorized\):|error: You must be logged in to the server\b)/, 'unauthorized'],
   [/^Error from server \(Forbidden\):/, 'forbidden'],
@@ -183,8 +184,11 @@ class KubectlError extends Error {
   constructor(status, stderr) {
     super('kubectl failed');
     this.status = status;
-    const firstLine = stderr.trimStart().split(/\r?\n/, 1)[0];
-    this.reason = kubectlFailures.find(([pattern]) => pattern.test(firstLine))?.[1];
+    const lines = (stderr ?? '').split(/\r?\n/).map((line) => line.trimStart());
+    for (const line of lines) {
+      this.reason = kubectlFailures.find(([pattern]) => pattern.test(line))?.[1];
+      if (this.reason) break;
+    }
   }
 }
 
