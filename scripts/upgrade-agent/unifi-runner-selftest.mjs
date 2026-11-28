@@ -47,7 +47,7 @@ test('the mounted manifest parses and the mounted gate matches OP662', async () 
   assert.equal(await read('resources/unifi-gate.mjs'), await readFile(new URL('unifi-gate.mjs', import.meta.url), 'utf8'));
 });
 
-async function withJobFixture(t, stage = '') {
+async function withJobFixture(t, stage = '', kubectlStderr = 'private kubectl diagnostic') {
   const directory = await mkdtemp(join(tmpdir(), 'unifi-selftest-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const mounted = join(directory, 'mount');
@@ -78,7 +78,7 @@ const reportPath = '/api/v1/namespaces/upgrade-agent/configmaps/unifi-inventory'
 const { FIXTURE_STAGE, FIXTURE_CONFIGMAP } = process.env;
 const previous = JSON.parse(fs.readFileSync(FIXTURE_CONFIGMAP, 'utf8'));
 function fail() {
-  console.error('private kubectl diagnostic');
+  console.error(process.env.FIXTURE_KUBECTL_STDERR);
   process.exit(7);
 }
 if (command === 'get') {
@@ -126,7 +126,7 @@ globalThis.fetch = async (url, { method, body }) => {
   return {
     run: () => exec(process.execPath, ['--import', preload, script], {
       env: { PATH: directory, MCP_AUTH_TOKEN: 'fixture', UNIFI_LIVE_MODE: 'false',
-        FIXTURE_STAGE: stage, FIXTURE_CONFIGMAP: configmap },
+        FIXTURE_STAGE: stage, FIXTURE_CONFIGMAP: configmap, FIXTURE_KUBECTL_STDERR: kubectlStderr },
     }),
     read: () => readFile(configmap, 'utf8').then(JSON.parse),
   };
@@ -163,6 +163,27 @@ for (const [stage, detail, expectedVersion] of [
     assert.equal(metadata.resourceVersion, expectedVersion);
     assert.equal(data?.observed_at, expectedVersion === '2' ? iso(now) : undefined);
     assert.equal(data?.['last-run.json'], undefined);
+  });
+}
+
+for (const [diagnostic, reason, scenario = reason ?? 'unrecognized errors'] of [
+  ['error: You must be logged in to the server (private detail)', 'unauthorized'],
+  ['Error from server (Forbidden): private detail', 'forbidden'],
+  ['Error from server (NotFound): private detail', 'not found'],
+  ['The connection to the server localhost:8080 was refused - private detail', 'localhost fallback'],
+  ['The connection to the server fixture-service was refused - private detail', 'connection refused'],
+  ['error: unable to load in-cluster configuration, private detail', 'no in-cluster config'],
+  ['Unable to connect to the server: tls: failed to verify certificate: x509: private detail', 'TLS certificate error'],
+  ['error: Get "fixture-service": context deadline exceeded (Client.Timeout exceeded while awaiting headers)', 'timeout', 'client timeout'],
+  ['Error from server (ServerTimeout): private detail', 'timeout', 'server timeout'],
+  ['unrecognized error\nError from server (Forbidden): private detail', null],
+]) {
+  test(`the mounted CLI sanitizes kubectl stderr for ${scenario}`, async (t) => {
+    const fixture = await withJobFixture(t, 'configmap-read', `${diagnostic}\nprivate response body`);
+    const suffix = reason ? `, ${reason}` : '';
+    await assert.rejects(fixture.run(), {
+      code: 1, stdout: '', stderr: `STOP: configmap-read (kubectl exit 7${suffix})\n`,
+    });
   });
 }
 
