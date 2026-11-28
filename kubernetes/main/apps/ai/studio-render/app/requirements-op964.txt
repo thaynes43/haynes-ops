@@ -4,7 +4,7 @@
 # uv export --locked --no-default-groups --no-emit-project --no-annotate --no-header --no-hashes --python 3.12
 attrs==26.1.0
 av==18.1.0
-imageio-ffmpeg==0.7.0
+imageio-ffmpeg==0.8.2
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 numpy==2.4.6
