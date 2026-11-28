@@ -7,7 +7,7 @@ av==18.1.0
 imageio-ffmpeg==0.7.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
-numpy==2.4.6
+numpy==2.5.5
 opencv-python-headless==4.14.0.94
 pillow==13.0.0
 referencing==0.37.0
