@@ -31,7 +31,7 @@
 FROM nvidia/cuda:12.9.2-cudnn-runtime-ubuntu24.04@sha256:070f8f2672df1b05b84c0409a5fd1d54ddfd646e5b9d8dee7878131271b563fc
 
 # renovate: datasource=pypi depName=wyoming-faster-whisper
-ARG WYOMING_FASTER_WHISPER_VERSION=3.8.1
+ARG WYOMING_FASTER_WHISPER_VERSION=3.9.1
 # Renovate rewrites every occurrence of the old version inside the block it
 # matched, comments included — never put a version number in a comment BETWEEN
 # the annotation and its ARG. See scripts/dev-env/Dockerfile.
