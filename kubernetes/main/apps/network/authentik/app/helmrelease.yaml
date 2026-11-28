@@ -109,7 +109,7 @@ spec:
           mountPath: /web/dist
       initContainers:
         - name: init-db
-          image: ghcr.io/home-operations/postgres-init:18.6
+          image: ghcr.io/home-operations/postgres-init:19.0
           imagePullPolicy: IfNotPresent
           envFrom:
             - secretRef:
