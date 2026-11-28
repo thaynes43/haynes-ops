@@ -14,13 +14,13 @@
 FROM node:24-slim
 
 # renovate: datasource=github-releases depName=kubernetes/kubernetes
-ARG KUBECTL_VERSION=v1.37.2
+ARG KUBECTL_VERSION=v1.37.3
 # renovate: datasource=github-releases depName=fluxcd/flux2
-ARG FLUX_VERSION=2.10.0
+ARG FLUX_VERSION=2.10.1
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION=2.103.3
+ARG GH_VERSION=2.106.0
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.322
+ARG CLAUDE_CODE_VERSION=2.1.332
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
